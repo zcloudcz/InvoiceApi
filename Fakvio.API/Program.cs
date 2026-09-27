@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Threading.RateLimiting;
 using Fakvio.API.Middleware;
 using Fakvio.API.Telemetry;
 using Fakvio.Application.Service;
@@ -7,6 +8,8 @@ using Fakvio.Infrastructure.DependencyInjection;
 using Fakvio.Infrastructure.Logging;
 using Fakvio.Infrastructure.Service;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -40,6 +43,7 @@ builder.Services.AddFakvioAuthentication(builder.Configuration);
 builder.Services.AddHostedService<LogFlushService>();
 builder.Services.AddHostedService<LogCleanupService>();
 builder.Services.AddHostedService<ReminderWorker>();
+builder.Services.AddHostedService<RecurringInvoiceWorker>();
 
 // ── Application Insights ────────────────────────────────────────────────────
 // Reads APPLICATIONINSIGHTS_CONNECTION_STRING from the App Service settings; without it
@@ -127,7 +131,83 @@ builder.Services.AddCors(options =>
     });
 });
 
+// ── Forwarded headers (Azure App Service front-end) ─────────────────────────
+// Fakvio.API runs on Azure App Service. The platform's own front-end/edge is the ONLY
+// network path into this container — there is no way for a caller to open a TCP
+// connection straight to our Kestrel process, so whatever connects to us has already
+// gone through Azure's own reverse proxy. That proxy's own address is a private Azure
+// address, NOT loopback (127.0.0.1) — the "App Service front-end talks to Kestrel over
+// loopback" assumption holds for IIS in-process hosting on Windows, but not for the
+// platform's own edge layer this middleware needs to trust.
+//
+// ForwardedHeadersOptions' default KnownProxies/KnownNetworks only contains loopback,
+// so leaving it untouched would mean the middleware never trusts Azure's edge, never
+// applies X-Forwarded-For, and every request would show the SAME RemoteIpAddress (the
+// edge's own address) — collapsing the "auth-anon" limiter below from per-IP into one
+// single global bucket shared by every visitor (one burst from anywhere would 429 lock
+// out all real logins). Clearing KnownNetworks/KnownProxies here is what many
+// Microsoft-documented Azure App Service / containerized-hosting samples do for exactly
+// this reason, and it is safe ONLY because of the point above: nothing but Azure's own
+// edge can ever be the thing connecting to Kestrel.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+    // Only the right-most X-Forwarded-For entry is used - the one the Azure front-end appends.
+    // Anything to its left came from the client and is spoofable, so never raise this limit
+    // (a spoofed IP would let an attacker get a fresh rate-limit bucket per request).
+    options.ForwardLimit = 1;
+});
+
+// ── Rate limiting for anonymous auth endpoints (RC.4) ────────────────────────
+// reCAPTCHA (CaptchaService) is the only gate on login/register/ares/forgot-password/
+// set-password/validate-invitation/2FA-verify, and it can be starved by an ad blocker
+// (the token then comes back empty and the gate fails closed — safe, but each attempt
+// still costs a request). A per-IP fixed window on top bounds the attempt rate itself,
+// independent of whether the CAPTCHA gate lets a given request through.
+// Limits are configurable (RateLimiting:AuthAnon in appsettings.json) — bump them if a
+// legitimate flow (e.g. shared office IP) hits the ceiling in practice.
+//
+// ponytail: this counter is per PROCESS, not shared across App Service replicas — with
+// N running instances an attacker effectively gets PermitLimit x N, and which instance
+// answers a given request is up to Azure's load balancer. Fine at today's scale (single
+// instance); if/when this app scales out and that matters, move the counter to a shared
+// store (e.g. a distributed rate limiter backed by the existing PostgreSQL or Redis) —
+// don't reach for that now for a service with no replicas.
+var authAnonRateLimitConfig = builder.Configuration.GetSection("RateLimiting:AuthAnon");
+var authAnonPermitLimit = authAnonRateLimitConfig.GetValue("PermitLimit", 10);
+var authAnonWindowSeconds = authAnonRateLimitConfig.GetValue("WindowSeconds", 60);
+
+builder.Services.AddRateLimiter(options =>
+{
+    // 429 + Retry-After (RFC 6585) — the Blazor UI checks for 429 specifically to show
+    // its own localized "too many attempts" message instead of a generic error.
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = authAnonWindowSeconds.ToString();
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new { message = "Too many attempts. Please try again later." },
+            cancellationToken);
+    };
+
+    options.AddPolicy("auth-anon", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientIpPartitionKey(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = authAnonPermitLimit,
+                Window = TimeSpan.FromSeconds(authAnonWindowSeconds),
+                QueueLimit = 0 // Reject immediately once the window is full — do not make callers wait in a queue.
+            }));
+});
+
 var app = builder.Build();
+
+// Forwarded headers must run before anything that reads the client IP or scheme —
+// first middleware in the pipeline, per Microsoft's own guidance for reverse-proxy setups.
+app.UseForwardedHeaders();
 
 // Startup breadcrumb: which database auth mode won, and from which config key. Logged
 // BEFORE the migrations below, because that is the step that fails when the database is
@@ -223,9 +303,23 @@ app.UseImpersonation();
 // Must be after UseImpersonation so the CompanyId claim is already set.
 app.UseTenantContext();
 
+// Rate limiter — enforces the "auth-anon" policy on endpoints tagged with
+// [EnableRateLimiting("auth-anon")] (login, register, ares, forgot-password,
+// set-password, validate-invitation, 2FA verify). Endpoints without the attribute are
+// unaffected. Must come after UseForwardedHeaders (top of pipeline) so the partition
+// key below sees the real client IP, not Azure's front-end.
+app.UseRateLimiter();
+
 app.MapControllers();
 
 await app.RunAsync();
+
+// Partition key for the "auth-anon" rate limiter policy: the caller's IP address.
+// Falls back to a single shared "unknown" bucket when no IP is available at all (some
+// test hosts have no Connection.RemoteIpAddress) — every such caller then shares one
+// limit, which is a safe default and never happens in production behind Azure.
+static string GetClientIpPartitionKey(HttpContext context)
+    => context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
 // Required for WebApplicationFactory<Program> in integration tests.
 // The top-level statements file doesn't expose a named class by default,

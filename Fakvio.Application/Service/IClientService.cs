@@ -42,6 +42,18 @@ public interface IClientService
     Task<ClientDto?> GetClientByRegistrationNumberAsync(string registrationNumber, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Bulk existence check by registration number (IČO) — a single lean query (no navigation
+    /// collections loaded), for callers that only need "does a client with this IČO exist, and
+    /// what's its ID" for many IČOs at once (e.g. CSV import dedup). Prefer this over calling
+    /// <see cref="GetClientByRegistrationNumberAsync"/> in a loop — that method loads the full
+    /// client graph (addresses/contacts/bank accounts/billing settings) per call.
+    /// </summary>
+    /// <param name="registrationNumbers">Registration numbers to look up (duplicates/blank entries are ignored).</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Map of registration number → existing client ID, for the ones that exist.</returns>
+    Task<Dictionary<string, long>> GetClientIdsByRegistrationNumbersAsync(IEnumerable<string> registrationNumbers, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets the issuer (your company)
     /// There should be only one issuer per database
     /// </summary>

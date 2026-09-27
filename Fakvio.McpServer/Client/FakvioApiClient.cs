@@ -4,15 +4,21 @@ using System.Text.Json;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.ApiKey;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
+using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.McpServer.Client;
 
@@ -188,7 +194,147 @@ public class FakvioApiClient : IFakvioApiClient
         return await response.Content.ReadFromJsonAsync<ClientDto>(JsonOptions, ct);
     }
 
+    public async Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"api/client/{clientId}/bank-account", dto, JsonOptions, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<ClientDto>(JsonOptions, ct);
+    }
+
     // ── Invoice Template endpoints ─────────────────────────────────────
+
+    public async Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken ct = default)
+    {
+        var result = await GetJsonAsync<List<CurrencyDto>>(_http, "api/currency/active", ct);
+        return result ?? [];
+    }
+
+    public async Task<List<VatRateDto>> GetActiveVatRatesAsync(DateTime? date = null, CancellationToken ct = default)
+    {
+        var query = date.HasValue ? $"?date={date.Value:O}" : "";
+        var result = await GetJsonAsync<List<VatRateDto>>(_http, $"api/vatrate/active{query}", ct);
+        return result ?? [];
+    }
+
+    public async Task<List<NumberSequenceDto>> GetNumberSequencesAsync(
+        EDocumentType? documentType = null, bool includeInactive = false, CancellationToken ct = default)
+    {
+        var parts = new List<string>();
+        if (documentType.HasValue) parts.Add($"documentType={documentType.Value}");
+        if (includeInactive) parts.Add("includeInactive=true");
+        var query = parts.Count > 0 ? "?" + string.Join("&", parts) : "";
+
+        var result = await GetJsonAsync<List<NumberSequenceDto>>(_http, $"api/numbersequence{query}", ct);
+        return result ?? [];
+    }
+
+    public async Task<NumberSequenceDto?> GetNumberSequenceByIdAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/numbersequence/{id}", ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct);
+    }
+
+    public async Task<List<NumberSequenceFormatDto>> GetNumberSequenceFormatsAsync(
+        bool includeInactive = false, CancellationToken ct = default)
+    {
+        var query = includeInactive ? "?includeInactive=true" : "";
+        var result = await GetJsonAsync<List<NumberSequenceFormatDto>>(_http, $"api/numbersequence/formats{query}", ct);
+        return result ?? [];
+    }
+
+    public async Task<NumberSequenceDto> CreateNumberSequenceAsync(CreateNumberSequenceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/numbersequence", dto, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<NumberSequenceDto?> UpdateNumberSequenceAsync(
+        long id, UpdateNumberSequenceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"api/numbersequence/{id}", dto, JsonOptions, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct);
+    }
+
+    public async Task<NumberSequenceDto?> SetDefaultNumberSequenceAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"api/numbersequence/{id}/set-default", content: null, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct);
+    }
+
+    public async Task<PagedResult<BankTransactionDto>> GetPaymentsPagedAsync(
+        EMatchStatus? status, EPaymentDirection? direction, DateTime? from, DateTime? to,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        var parts = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (status.HasValue) parts.Add($"status={status.Value}");
+        if (direction.HasValue) parts.Add($"direction={direction.Value}");
+        if (from.HasValue) parts.Add($"from={from.Value:O}");
+        if (to.HasValue) parts.Add($"to={to.Value:O}");
+
+        var query = "?" + string.Join("&", parts);
+        var result = await GetJsonAsync<PagedResult<BankTransactionDto>>(_http, $"api/payment-matching/transactions{query}", ct);
+        return result ?? new PagedResult<BankTransactionDto>([], 0, page, pageSize);
+    }
+
+    public async Task<BankTransactionDto?> GetPaymentByIdAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/payment-matching/transactions/{id}", ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<BankTransactionDto>(JsonOptions, ct);
+    }
+
+    public async Task<PagedResult<ReminderDto>> GetRemindersPagedAsync(ReminderFilterDto filter, CancellationToken ct = default)
+    {
+        var parts = new List<string> { $"page={filter.Page}", $"pageSize={filter.PageSize}" };
+        if (filter.Status.HasValue) parts.Add($"status={filter.Status.Value}");
+        if (filter.ClientId.HasValue) parts.Add($"clientId={filter.ClientId.Value}");
+        if (filter.InvoiceId.HasValue) parts.Add($"invoiceId={filter.InvoiceId.Value}");
+        if (filter.Level.HasValue) parts.Add($"level={filter.Level.Value}");
+        if (!string.IsNullOrEmpty(filter.Search)) parts.Add($"search={Uri.EscapeDataString(filter.Search)}");
+        if (filter.DateFrom.HasValue) parts.Add($"dateFrom={filter.DateFrom.Value:O}");
+        if (filter.DateTo.HasValue) parts.Add($"dateTo={filter.DateTo.Value:O}");
+
+        var query = "?" + string.Join("&", parts);
+        var result = await GetJsonAsync<PagedResult<ReminderDto>>(_http, $"api/reminder/paged{query}", ct);
+        return result ?? new PagedResult<ReminderDto>([], 0, filter.Page, filter.PageSize);
+    }
+
+    public async Task<List<ReminderDto>> GetRemindersByInvoiceAsync(long invoiceId, CancellationToken ct = default)
+    {
+        var result = await GetJsonAsync<List<ReminderDto>>(_http, $"api/reminder/invoice/{invoiceId}", ct);
+        return result ?? [];
+    }
+
+    public async Task<ReminderSettingsDto> GetReminderSettingsAsync(CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync("api/reminder/settings", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<ReminderSettingsDto>(JsonOptions, ct))!;
+    }
 
     public async Task<List<InvoiceTemplateDto>> GetActiveTemplatesAsync(string? documentType = null, CancellationToken ct = default)
     {
@@ -403,6 +549,27 @@ public class FakvioApiClient : IFakvioApiClient
     }
 
     /// <summary>
+    /// GET a URL and deserialize a success response, routing anything else through
+    /// <see cref="EnsureSuccessAsync"/> so a 4xx/5xx becomes a <see cref="FakvioApiException"/>
+    /// with a sanitized <c>SafeMessage</c> instead of a bare <see cref="HttpRequestException"/>.
+    ///
+    /// Junior note (Codex review, N2/N3 follow-up): <c>HttpClientJsonExtensions.GetFromJsonAsync</c>
+    /// calls its own internal <c>EnsureSuccessStatusCode</c> on failure — that throws a plain
+    /// <see cref="HttpRequestException"/> that never goes through our sanitization, so
+    /// <see cref="Tools.McpToolError.ToJson"/> could not tell "read-only key on a write" from
+    /// "server crashed" for these endpoints; both landed on <c>internal_error</c>. Every list/read
+    /// endpoint added by story N2/N3 goes through this helper instead of calling
+    /// <c>GetFromJsonAsync</c> directly, so it gets the same forbidden/not_found/validation_error
+    /// mapping every other tool call already has.
+    /// </summary>
+    private static async Task<T?> GetJsonAsync<T>(HttpClient http, string url, CancellationToken ct)
+    {
+        var response = await http.GetAsync(url, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct);
+    }
+
+    /// <summary>
     /// Checks the HTTP response and throws a descriptive exception on failure.
     /// Tries to extract {"message":"..."} from the error body (same pattern as Blazor ApiClientBase).
     ///
@@ -424,27 +591,50 @@ public class FakvioApiClient : IFakvioApiClient
             TryParseTenantNotReady(body) is { } tenantNotReady)
             throw tenantNotReady;
 
-        // Try to extract a user-friendly message from the API error response
+        // Try to extract a user-friendly message from the API error response.
+        // errorMessage (unsanitized, may repeat the raw body) goes into the exception's
+        // Message — server log only. safeMessage (#279 / N2.2) is the ONLY part that may
+        // ever reach the AI client, via FakvioApiException.SafeMessage, and only exists
+        // when the body is actually JSON with a string message (object shape) or a bare
+        // JSON string (e.g. TaxController's BadRequest("...") calls).
         string errorMessage;
+        string? safeMessage;
         try
         {
             using var doc = JsonDocument.Parse(body);
-            errorMessage = doc.RootElement.TryGetProperty("message", out var msg)
-                ? msg.GetString() ?? body
-                : body;
+            var root = doc.RootElement;
+
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("message", out var msg) &&
+                msg.ValueKind == JsonValueKind.String)
+            {
+                safeMessage = msg.GetString();
+                errorMessage = safeMessage ?? body;
+            }
+            else if (root.ValueKind == JsonValueKind.String)
+            {
+                safeMessage = root.GetString();
+                errorMessage = safeMessage ?? body;
+            }
+            else
+            {
+                safeMessage = null;
+                errorMessage = body;
+            }
         }
-        catch
+        catch (JsonException)
         {
-            // Response body is not JSON — use raw text
+            // Response body is not JSON — use raw text for the log, nothing safe to relay.
+            safeMessage = null;
             errorMessage = string.IsNullOrWhiteSpace(body)
                 ? response.ReasonPhrase ?? "Unknown error"
                 : body;
         }
 
-        throw new HttpRequestException(
+        throw new FakvioApiException(
             $"API returned {(int)response.StatusCode} {response.StatusCode}: {errorMessage}",
-            inner: null,
-            response.StatusCode);
+            response.StatusCode,
+            safeMessage);
     }
 
     /// <summary>

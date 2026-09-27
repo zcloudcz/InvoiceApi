@@ -3,12 +3,17 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.Reminder;
+using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
 using Shouldly;
@@ -297,6 +302,237 @@ public class FakvioApiClientTests : IDisposable
         result.ShouldBeNull();
     }
 
+    // ── Currency tests ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetActiveCurrenciesAsync_CallsActiveEndpoint_AndDeserializesResult()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<CurrencyDto>
+        {
+            new() { Id = 1, Code = "CZK", Name = "Czech Koruna", Symbol = "Kč" }
+        });
+
+        var result = await _sut.GetActiveCurrenciesAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/currency/active");
+        result.ShouldHaveSingleItem();
+        result[0].Code.ShouldBe("CZK");
+    }
+
+    [Fact]
+    public async Task GetActiveCurrenciesAsync_EmptyResponseBody_ReturnsEmptyList()
+    {
+        _handler.SetupRawResponse(HttpStatusCode.OK, "null");
+
+        var result = await _sut.GetActiveCurrenciesAsync();
+
+        result.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Codex review follow-up: every GET added by story N2/N3 must route a non-success response
+    /// through <c>EnsureSuccessAsync</c> (via the shared <c>GetJsonAsync&lt;T&gt;</c> helper), not
+    /// <c>HttpClientJsonExtensions.GetFromJsonAsync</c>'s own <c>EnsureSuccessStatusCode</c> — the
+    /// latter throws a bare <see cref="HttpRequestException"/> that <c>McpToolError</c> cannot
+    /// distinguish from a real server crash. One representative endpoint per wrapped-GET group
+    /// (currency here, VAT rate/number sequence/payment/reminder below) proves the fix; they all
+    /// go through the same helper, so a regression in it fails here first.
+    /// </summary>
+    [Fact]
+    public async Task GetActiveCurrenciesAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.GetActiveCurrenciesAsync());
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    // ── VAT rate tests ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetActiveVatRatesAsync_NoDate_NoQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<VatRateDto>());
+
+        await _sut.GetActiveVatRatesAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/vatrate/active");
+    }
+
+    [Fact]
+    public async Task GetActiveVatRatesAsync_WithDate_AppendsDateQuery()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<VatRateDto> { new() { Id = 1, Rate = 21m } });
+
+        var result = await _sut.GetActiveVatRatesAsync(new DateTime(2026, 3, 1));
+
+        _handler.LastRequestUri?.ToString().ShouldContain("date=");
+        result.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GetActiveVatRatesAsync_On400_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new { message = "invalid date" });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.GetActiveVatRatesAsync());
+
+        ex.SafeMessage.ShouldBe("invalid date");
+    }
+
+    // ── Number sequence tests ───────────────────────────────────────────
+
+    [Fact]
+    public async Task GetNumberSequencesAsync_NoFilters_NoQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<NumberSequenceDto>());
+
+        await _sut.GetNumberSequencesAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/numbersequence");
+    }
+
+    [Fact]
+    public async Task GetNumberSequencesAsync_WithFilters_AppendsQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<NumberSequenceDto>());
+
+        await _sut.GetNumberSequencesAsync(EDocumentType.CreditNote, includeInactive: true);
+
+        _handler.LastRequestUri?.ToString().ShouldContain("documentType=CreditNote");
+        _handler.LastRequestUri?.ToString().ShouldContain("includeInactive=true");
+    }
+
+    [Fact]
+    public async Task GetNumberSequenceFormatsAsync_CallsFormatsEndpoint()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<NumberSequenceFormatDto> { new() { Id = 1 } });
+
+        var result = await _sut.GetNumberSequenceFormatsAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/numbersequence/formats");
+        result.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GetNumberSequenceFormatsAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        await Should.ThrowAsync<FakvioApiException>(() => _sut.GetNumberSequenceFormatsAsync());
+    }
+
+    [Fact]
+    public async Task CreateNumberSequenceAsync_PostsAndReturnsCreated()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new NumberSequenceDto { Id = 9, Name = "Faktury" });
+
+        var result = await _sut.CreateNumberSequenceAsync(new CreateNumberSequenceDto { Name = "Faktury" });
+
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Post);
+        result.Id.ShouldBe(9);
+    }
+
+    [Fact]
+    public async Task UpdateNumberSequenceAsync_NotFound_ReturnsNull()
+    {
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "not found" });
+
+        var result = await _sut.UpdateNumberSequenceAsync(999, new UpdateNumberSequenceDto());
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task SetDefaultNumberSequenceAsync_PostsToSetDefaultRoute()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new NumberSequenceDto { Id = 1, IsDefault = true });
+
+        var result = await _sut.SetDefaultNumberSequenceAsync(1);
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/numbersequence/1/set-default");
+        result!.IsDefault.ShouldBeTrue();
+    }
+
+    // ── Payment / reminder tests ────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPaymentsPagedAsync_AppendsFilterQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new PagedResult<BankTransactionDto>([], 0, 1, 20));
+
+        await _sut.GetPaymentsPagedAsync(EMatchStatus.Unmatched, EPaymentDirection.Incoming,
+            new DateTime(2026, 1, 1), new DateTime(2026, 1, 31), page: 1, pageSize: 20);
+
+        var url = _handler.LastRequestUri?.ToString();
+        url.ShouldContain("status=Unmatched");
+        url.ShouldContain("direction=Incoming");
+        url.ShouldContain("from=");
+        url.ShouldContain("to=");
+    }
+
+    [Fact]
+    public async Task GetPaymentsPagedAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        await Should.ThrowAsync<FakvioApiException>(
+            () => _sut.GetPaymentsPagedAsync(null, null, null, null, 1, 20));
+    }
+
+    [Fact]
+    public async Task GetPaymentByIdAsync_NotFound_ReturnsNull()
+    {
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "not found" });
+
+        var result = await _sut.GetPaymentByIdAsync(999);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetRemindersPagedAsync_AppendsFilterQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new PagedResult<ReminderDto>([], 0, 1, 20));
+
+        await _sut.GetRemindersPagedAsync(new ReminderFilterDto { InvoiceId = 7, Status = EReminderStatus.Sent });
+
+        var url = _handler.LastRequestUri?.ToString();
+        url.ShouldContain("invoiceId=7");
+        url.ShouldContain("status=Sent");
+    }
+
+    [Fact]
+    public async Task GetRemindersPagedAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        await Should.ThrowAsync<FakvioApiException>(() => _sut.GetRemindersPagedAsync(new ReminderFilterDto()));
+    }
+
+    [Fact]
+    public async Task GetRemindersByInvoiceAsync_CallsInvoiceEndpoint()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<ReminderDto> { new() { Id = 1 } });
+
+        var result = await _sut.GetRemindersByInvoiceAsync(7);
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/reminder/invoice/7");
+        result.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GetReminderSettingsAsync_CallsSettingsEndpoint()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new ReminderSettingsDto { IsEnabled = true });
+
+        var result = await _sut.GetReminderSettingsAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/reminder/settings");
+        result.IsEnabled.ShouldBeTrue();
+    }
+
     // ── Template tests ─────────────────────────────────────────────────
 
     [Fact]
@@ -557,6 +793,34 @@ public class FakvioApiClientTests : IDisposable
         var ex = await Should.ThrowAsync<TenantNotReadyApiException>(() => _sut.CompleteInvoiceAsync(1));
 
         ex.Message.ShouldBe(body);
+    }
+
+    /// <summary>
+    /// N2.2 (#279 follow-up): a 403 from a read-only API key must come out as a
+    /// <see cref="FakvioApiException"/> with SafeMessage null when the body carries no
+    /// domain message — McpToolError.ToJson uses a fixed guidance text for 401/403 regardless,
+    /// but the API client itself must not invent a SafeMessage that was never in the body.
+    /// </summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_On403_ThrowsFakvioApiException_WithNullSafeMessage_WhenBodyHasNoMessage()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { error = "Forbidden" });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ex.SafeMessage.ShouldBeNull();
+    }
+
+    /// <summary>A 400 with a string "message" property must surface it as SafeMessage verbatim.</summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_On400WithMessage_SetsSafeMessage()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new { message = "Duplicate variable symbol." });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.SafeMessage.ShouldBe("Duplicate variable symbol.");
     }
 
     [Fact]

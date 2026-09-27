@@ -360,6 +360,25 @@ Tyto hodnoty se automaticky aplikují při vytváření nové faktury pro tohoto
 
 V detailu klienta se zobrazuje tabulka faktur tohoto klienta (server-side stránkování).
 
+### 5.5 Import klientů z Fakturoidu / iDokladu
+
+**Stránka:** `/clients` → tlačítko „Importovat z CSV"
+
+Když přecházíte z Fakturoidu nebo iDokladu, nemusíte klienty přepisovat ručně:
+
+1. Ve Fakturoidu: Kontakty → Export; v iDokladu: Adresář → Export. Uložte jako CSV.
+2. Na stránce Klienti klikněte „Importovat z CSV" a vyberte soubor.
+3. Systém zobrazí náhled — u každého řádku vidíte, zda je klient **nový**, **duplicitní**
+   (podle IČO — už v systému existuje, nebo se opakuje v souboru) nebo **chybný** (chybí název
+   nebo IČO, případně je některá hodnota delší, než systém dovoluje — např. PSČ nad 20 znaků,
+   typicky posunutý sloupec v exportu).
+   Neznámé sloupce z exportu se ignorují.
+4. Klikněte „Importovat" — založí se jen nové řádky. Opakovaným nahráním stejného souboru se
+   nic nezaloží znovu.
+
+Import zatím nenačítá historii vydaných faktur (jen kontakty) — přenos faktur je plánovaná
+druhá fáze.
+
 ---
 
 ## 6. Šablony faktur (InvoiceTemplates)
@@ -391,6 +410,40 @@ Grid šablon umožňuje filtrovat podle:
 - Textového hledání (název)
 - Typu dokladu (Faktura / Dobropis)
 - Stavu (aktivní / neaktivní)
+
+### Opakované faktury
+
+Na detailu uložené šablony (`/invoice-templates/{id}`) je sekce **„Opakování"**, kde lze naplánovat
+automatické generování faktur z této šablony:
+
+1. Klikněte „Přidat plán".
+2. Vyberte klienta, frekvenci (týdně / měsíčně / čtvrtletně / ročně), interval (např. „každé 2
+   měsíce"), den v měsíci (1–28) nebo den v týdnu (u týdenní frekvence), první datum vystavení
+   a volitelně konec — buď konkrétním datem, nebo počtem opakování.
+3. Uložte.
+
+**Kdy se faktura vygeneruje:** jednou za app hodinovou kontrolu (`RecurringInvoiceWorker`), jakmile
+nastane naplánovaný termín. Faktura se **rovnou vystaví** (ne koncept) — číslo dokladu se přidělí
+ihned, takže po smazání vygenerované faktury nezůstane v číselné řadě díra.
+
+**Co když aplikace byla dočasně nedostupná:** zmeškaná perioda se dožene v příštím běhu, ale vždy
+jen jedna faktura za cyklus — datum vystavení odpovídá původně plánovanému datu, ne datu, kdy se
+generování skutečně stihlo.
+
+**Chyba generování:** pokud se fakturu nepodaří vytvořit (např. chybí nastavení firmy), plán
+zůstane ve stejném stavu a příští cyklus to zkusí znovu. Chybu vidíte v gridu plánů jako červený
+štítek u sloupce „Poslední chyba" (najetí myší zobrazí detail) a přijde vám i in-app notifikace —
+jen jednou pro stejnou chybu, ne při každém dalším neúspěšném pokusu. Po úspěšném vygenerování
+se chyba vymaže a případná další chyba vás upozorní znovu.
+
+**Pozastavení / obnovení / smazání:** tlačítka v řádku plánu. Smazání plánu, který ještě nikdy
+nevygeneroval fakturu, ho úplně odstraní; jinak se jen pozastaví (historie zůstává zachována).
+
+**Automatické odeslání e-mailem („Rovnou vystavit a odeslat e-mailem"):** faktura se vystaví
+vždy — tento přepínač navíc pošle vystavenou fakturu e-mailem na kontaktní adresu klienta
+(kontakt typu „Email"). Pokud klient nemá e-mail vyplněný nebo odeslání selže (SMTP chyba),
+faktura zůstane vystavená, uvidíte to jako chybu u plánu a další perioda se generuje normálně —
+neodeslaný e-mail se negeneruje znovu.
 
 ---
 
@@ -516,6 +569,8 @@ dokladu žádná aktivní výchozí řada neexistuje, je přiřazená řada deak
 Aplikace v takovém případě nikdy nepřidělí náhradní číslo mimo vaši řadu — číslování
 dokladů musí zůstat souvislé a předvídatelné. Chybová hláška uvádí typ dokladu i stránku
 `/number-sequences`, kde řadu nastavíte; po nastavení aktivní výchozí řady akci zopakujte.
+Chybějící řadu jde opravit i přes AI (kapitola 20) — `list_number_sequences` vypíše dostupné
+formáty a `create_number_sequence` založí novou výchozí řadu, aniž byste museli otevírat UI.
 
 Zvláštní případ je **souběh** — dva doklady si sáhnou pro číslo ze stejné řady ve stejný
 okamžik. Aplikace se pokus několikrát zopakuje sama, a když ani pak neuspěje, vytvoření
@@ -545,6 +600,9 @@ Správa informací o vaší firmě (vydavatele faktur).
 - Přidávání přes dialog „Bankovní účet"
 - Formát: číslo účtu, kód banky, IBAN, BIC/SWIFT
 - QR kód platba — systém generuje QR kód pro faktury automaticky
+
+Základní informace, primární adresu i bankovní účet jde nastavit i přes AI (kapitola 20) —
+`update_my_company` a `add_bank_account`.
 
 **Email pro příjem faktur:**
 - Aktivace unikátní emailové adresy pro automatický příjem faktur — viz [§18](#18-příjem-faktur-emailem)
@@ -978,20 +1036,34 @@ kontaktujte podporu.
 
 ---
 
+## 19b. Chyby při přihlášení, registraci a resetu hesla
+
+Přihlášení, registrace, načtení firmy z ARES i zapomenuté heslo jsou chráněné neviditelnou
+kontrolou proti robotům (reCAPTCHA). Pokud se zobrazí hláška **„Ověření proti robotům se
+nezdařilo"**:
+
+1. Zkuste stránku obnovit (F5) a akci zopakovat.
+2. Pokud používáte blokování reklam (AdBlock, uBlock Origin apod.), vypněte ho pro
+   `app.fakvio.cz` — právě tyto nástroje nejčastěji blokují skript, na kterém kontrola
+   proti robotům závisí.
+3. Přetrvává-li chyba, kontaktujte podporu.
+
+Tato hláška neznamená chybu ve vašich přihlašovacích údajích ani v e-mailu — je to
+samostatná kontrola, která proběhne dřív, než se cokoli z formuláře vůbec odešle.
+
+**Hláška „Příliš mnoho pokusů. Zkuste to prosím znovu za chvíli."** se zobrazí, když
+z vaší sítě přišlo za krátkou dobu příliš mnoho pokusů o přihlášení/registraci/reset
+hesla (ochrana proti zneužití, ne chyba na vaší straně). Počkejte přibližně minutu a
+zkuste to znovu.
+
+---
+
 ## 20. Napojení vlastního AI klienta (MCP server)
 
-Kromě vestavěného [AI asistenta](#13-ai-asistent) umí Fakvio pracovat i s AI
-aplikací, kterou už používáte (např. Claude Desktop nebo Claude Code). Napojení
-zajišťuje **MCP server** — program, který překládá požadavky AI na volání Fakvia.
-
-**V čem se to liší od AI asistenta v aplikaci:**
-
-| | AI asistent v aplikaci | MCP server |
-|---|---|---|
-| Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace |
-| Instalace | Žádná | Podle způsobu připojení (viz krok 2) |
-| Přihlášení | Vaše běžné přihlášení | Osobní **API klíč**, který si vytvoříte |
-| Rozsah akcí | Vyhledávání a přehledy | 38 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
+Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
+nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
+volání Fakvia. Nabízí 49 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+výpočty, šablony, měny, nastavení, platby a upomínky.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
 
@@ -1033,11 +1105,11 @@ odpovídá vašemu způsobu připojení podle kroku 2.
 |---|---|---|
 | Kde MCP server běží | Na vašem počítači, spouští ho vaše AI aplikace | Na serveru, který provozuje váš správce |
 | Co musíte nainstalovat | Nástroj `fakvio-mcp` (jeden příkaz, viz krok 3a) | Nic |
-| Co potřebujete znát | Adresu **API** Fakvia (najdete ji v připraveném bloku, viz krok 3a) | Adresu MCP serveru (dá vám ji správce) |
+| Co potřebujete znát | Adresu **API** Fakvia (najdete ji v připraveném bloku, viz krok 3a) | Adresu MCP serveru — `https://mcp.fakvio.cz/mcp` (viz krok 3b) |
 | Kdy zvolit | Pracujete na jednom počítači a máte tam práva instalovat | Chcete se připojit odkudkoli nebo nemůžete nic instalovat |
 
-Nevíte-li, co máte k dispozici, zeptejte se správce systému — provoz MCP serveru je jeho
-část (technický popis má v ADMINGUIDE, kapitola „Bezpečnost“).
+Nevíte-li, který způsob zvolit, zeptejte se správce systému — technický popis provozu MCP
+serveru má v ADMINGUIDE, kapitola „Bezpečnost“.
 
 ---
 
@@ -1054,7 +1126,7 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
     "fakvio": {
       "command": "fakvio-mcp",
       "env": {
-        "FAKVIO_API_URL": "https://adresa-api-fakvia",
+        "FAKVIO_API_URL": "https://fakvio-api.azurewebsites.net",
         "FAKVIO_API_TOKEN": "fak_live_vas-klic"
       }
     }
@@ -1063,10 +1135,9 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
 ```
 
 - `FAKVIO_API_URL` je adresa **API** Fakvia — tedy serveru, se kterým aplikace mluví.
-  **Není to adresa, na kterou se hlásíte v prohlížeči**; v běžném nasazení to jsou dvě
-  různé adresy. Nejjistější je vzít hodnotu z připraveného bloku **Lokální MCP server
-  (stdio)** na stránce Integrace — je v něm vyplněná správně. Kdo blok už nemá otevřený,
-  ať si o adresu řekne správci.
+  **Není to adresa, na kterou se hlásíte v prohlížeči** (`app.fakvio.cz`) — v produkci je to
+  `https://fakvio-api.azurewebsites.net`. Nejjistější je ale vzít hodnotu z připraveného
+  bloku **Lokální MCP server (stdio)** na stránce Integrace — je v něm vyplněná automaticky.
 - `FAKVIO_API_TOKEN` je váš API klíč z kroku 1.
 - Předpokladem je nainstalovaný nástroj `fakvio-mcp`. Vyžaduje .NET 10 SDK (nebo
   .NET 10 runtime **spolu s ASP.NET Core runtime**) a instaluje se jedním příkazem:
@@ -1077,6 +1148,9 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
 
   Aktualizace je `dotnet tool update --global Fakvio.McpServer`. Nemáte-li na počítači
   práva instalovat, požádejte správce.
+  Verze **2.0.0** je nekompatibilní s předchozími — vlastní skript, který volá nástroje s pevně
+  zapsanými argumenty, po aktualizaci upravte podle `Fakvio.McpServer/README.md` § „Kompatibilita
+  2.0". Váš AI klient (Claude, ChatGPT) si schéma nástrojů načte sám, nic dělat nemusíte.
 
 Po uložení souboru AI aplikaci restartujte.
 
@@ -1092,7 +1166,7 @@ posílá v hlavičce každého požadavku.
   "mcpServers": {
     "fakvio-remote": {
       "type": "http",
-      "url": "https://adresa-mcp-serveru.invalid/mcp",
+      "url": "https://mcp.fakvio.cz/mcp",
       "headers": {
         "Authorization": "Bearer fak_live_vas-klic"
       }
@@ -1101,10 +1175,8 @@ posílá v hlavičce každého požadavku.
 }
 ```
 
-- `url` končí vždy `/mcp`.
-- Adresu serveru vám dá správce a bez ní se nepřipojíte. Dokud pro vás žádný MCP server
-  neběží, je `url` v připraveném bloku na stránce Integrace jen **ukázková adresa** (nikam
-  neukazuje) — po vložení ji **vždy** přepište skutečnou adresou od správce.
+- `url` je produkční adresa MCP serveru, končí vždy `/mcp`. Připravený blok na stránce
+  Integrace ji vyplní automaticky.
 - Podporu vzdálených MCP serverů musí umět i vaše AI aplikace; ne všechny to zatím zvládají.
 
 ---
@@ -1120,7 +1192,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Chybu s číslem **403** | Klíč má oprávnění `Jen čtení` a AI se pokusila něco změnit | Vytvořte klíč s `Čtení i zápis` (a ten původní revokujte) |
 | Že nástroje Fakvia vůbec nevidí | Konfigurace se nenačetla | Zkontrolujte, že soubor je uložený na správném místě, a AI aplikaci restartujte |
 | Že se nemůže připojit — **lokální** režim | Chybí nástroj `fakvio-mcp`, nebo v `FAKVIO_API_URL` není adresa API (častá chyba: je tam adresa, na které máte Fakvio otevřené v prohlížeči) | Porovnejte `FAKVIO_API_URL` s blokem **Lokální MCP server (stdio)** na stránce Integrace; když blok už nemáte otevřený, řekněte si o adresu API správci |
-| Že se nemůže připojit — **vzdálený** režim | Nesedí `url` MCP serveru | Vložte adresu, kterou vám dal správce (končí `/mcp`). S připraveným blokem ji neporovnávejte — `url` je v něm jen ukázková adresa (viz krok 3b) |
+| Že se nemůže připojit — **vzdálený** režim | Nesedí `url` MCP serveru | Zkontrolujte, že `url` je přesně `https://mcp.fakvio.cz/mcp` (viz krok 3b) |
 
 ---
 
@@ -1134,7 +1206,8 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
 | Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné, daňové nastavení |
 | Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
-| Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury |
+| Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury, vypsat platné měny (pro vystavení faktury v cizí měně), vypsat i založit/upravit číselné řady, vypsat platné sazby DPH, upravit údaje o firmě a adresu, přidat bankovní účet |
+| Platby a upomínky | Vypsat bankovní platby a jejich stav spárování, zobrazit detail platby, vypsat odeslané upomínky (i k jedné faktuře), zobrazit nastavení upomínek |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
@@ -1164,7 +1237,9 @@ požadavek AI už neprojde. Vzít zpět to nejde; místo revokovaného klíče s
   účtu — nesdílejte ho, neposílejte emailem a nedávejte ho do gitu. Když se přesto někam dostane,
   klíč revokujte; je to rychlejší i bezpečnější než ho hledat.
 - Klíč **nikdy neumí víc než váš účet**. Když má navíc `Jen čtení`, umí ještě míň — na zápis
-  vrátí chybu, i kdyby vaše role zápis dovolovala.
+  vrátí chybu, i kdyby vaše role zápis dovolovala. AI dostane srozumitelnou zprávu
+  (`"error": "forbidden"` s návodem vytvořit klíč `Čtení i zápis`), ne obecnou chybu serveru —
+  pozná tak hned, že problém je v oprávnění klíče, ne v pádu aplikace.
 - Klíčem **nejde spravovat klíče**. Vytvořit nebo revokovat klíč jde jen po přihlášení do
   aplikace, takže ani zneužitý klíč si nevyrobí náhradu.
 - Když se váš účet deaktivuje, přestanou fungovat **všechny** vaše klíče najednou.

@@ -191,6 +191,9 @@ jobs:
     if: github.ref_name == 'master'
 
     permissions:
+      # nuget.org Trusted Publishing: the job proves its identity with a GitHub OIDC token
+      # instead of a long-lived API key stored as a repo secret.
+      id-token: write
       contents: read
 
     steps:
@@ -207,22 +210,32 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Log in to nuget.org (Trusted Publishing)
+        id: nuget-login
+        # Exchanges this run's OIDC token for a short-lived (1 h) API key. The matching
+        # trusted-publishing policy on nuget.org (owner `zahy`) allows only this repo
+        # (zcloudcz/InvoiceApi) and this workflow file, and only the Fakvio.McpServer package.
+        # No secret to rotate: if the policy is missing or wrong, this step fails the job red.
+        uses: NuGet/login@v1
+        with:
+          user: zahy
+
       - name: Push to nuget.org
         shell: bash
         env:
-          # A secret cannot be read from a job-level `if` (the secrets context is not available
-          # there), so the switch is inside the step: no key configured, no push, green build.
-          # That is what keeps this job harmless until a human adds NUGET_API_KEY.
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
           set -euo pipefail
 
-          if [ -z "${NUGET_API_KEY}" ]; then
-            echo "::notice::NUGET_API_KEY is not configured — skipping the nuget.org push."
-            exit 0
-          fi
-
           # --skip-duplicate is what makes this safe to run on every master push: the version
+          # lives in Fakvio.McpServer.csproj and is bumped by hand, so a merge that did not
+          # touch it re-pushes an already-published version. Without the flag nuget.org answers
+          # 409 and the build goes red on a merge that did nothing wrong; with it, the push is
+          # a no-op and a real bump still ships.
+          #
+          # The consequence to know: forgetting the bump means the fix reaches CI artifacts and
+          # nobody else, silently. The version bump belongs in the same PR as the change.
+          dotnet nuget push ./nupkg/*.nupkg             --source https://api.nuget.org/v3/index.json             --api-key "${NUGET_API_KEY}"             --skip-duplicate is what makes this safe to run on every master push: the version
           # lives in Fakvio.McpServer.csproj and is bumped by hand, so a merge that did not
           # touch it re-pushes an already-published version. Without the flag nuget.org answers
           # 409 and the build goes red on a merge that did nothing wrong; with it, the push is

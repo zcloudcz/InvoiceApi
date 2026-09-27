@@ -226,6 +226,28 @@ public class SharedResourceLocalizationTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// RC.2 / RC.4 — the two messages shown by Login.razor/Register.razor for a CAPTCHA
+    /// rejection (see <c>CaptchaException</c>) and a 429 rate-limit rejection (see
+    /// <c>RateLimitExceededException</c>), in both cultures.
+    /// </summary>
+    [Theory]
+    [InlineData("Captcha_VerificationFailed")]
+    [InlineData("RateLimit_TooManyAttempts")]
+    public void ErrorKeys_HaveBothCzechAndEnglishTranslations(string key)
+    {
+        CultureInfo.CurrentUICulture = new CultureInfo("cs-CZ");
+        var czech = _localizer[key];
+        czech.ResourceNotFound.ShouldBeFalse();
+
+        CultureInfo.CurrentUICulture = new CultureInfo("en-US");
+        var english = _localizer[key];
+        english.ResourceNotFound.ShouldBeFalse();
+
+        english.Value.ShouldNotBe(czech.Value,
+            $"{key} has no English translation — it falls back to Czech.");
+    }
+
     [Fact]
     public void NonExistentKey_ShouldReturn_ResourceNotFound()
     {

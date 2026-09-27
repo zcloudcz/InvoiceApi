@@ -22,5 +22,11 @@ public enum ENotificationType
     /// An inbound invoice email was imported but flagged for review (low AI confidence).
     /// Created by InvoiceEmailProcessor when classification confidence is below threshold.
     /// </summary>
-    InvoiceEmailNeedsReview = 3
+    InvoiceEmailNeedsReview = 3,
+
+    /// <summary>
+    /// A recurring invoice schedule failed to generate its invoice for the current period.
+    /// Created by RecurringInvoiceService.RunCycleAsync — see RecurringInvoiceSchedule.LastError.
+    /// </summary>
+    RecurringInvoiceFailed = 4
 }

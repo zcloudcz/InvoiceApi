@@ -109,6 +109,41 @@ public class AuthApiServiceTests
             Arg.Any<string?>());
     }
 
+    /// <summary>
+    /// RC.2 — a 400 whose body is the CAPTCHA rejection must surface as
+    /// <see cref="CaptchaException"/>, not the generic "return null" every other 401/400
+    /// gets. Login.razor relies on this to show a distinct, actionable message.
+    /// </summary>
+    [Fact]
+    public async Task LoginAsync_CaptchaFailure_ThrowsCaptchaException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("""{"message":"CAPTCHA verification failed. Please try again."}""")
+            }));
+
+        await Should.ThrowAsync<CaptchaException>(
+            () => svc.LoginAsync(new LoginRequest { Email = "a@b.cz", Password = "pw" }));
+    }
+
+    /// <summary>
+    /// RC.4 — a 429 from the "auth-anon" rate limiter must surface as
+    /// <see cref="RateLimitExceededException"/>, not the generic "return null".
+    /// </summary>
+    [Fact]
+    public async Task LoginAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("""{"message":"Too many attempts. Please try again later."}""")
+            }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(
+            () => svc.LoginAsync(new LoginRequest { Email = "a@b.cz", Password = "pw" }));
+    }
+
     [Fact]
     public async Task LoginAsync_WithoutClientLogger_DoesNotThrow()
     {
@@ -163,6 +198,36 @@ public class AuthApiServiceTests
             Arg.Any<string?>());
     }
 
+    /// <summary>
+    /// RC.2 — same distinction as login: a CAPTCHA rejection must not be reported as a
+    /// generic "Registration failed" (ex.Message would then read the raw server text).
+    /// </summary>
+    [Fact]
+    public async Task RegisterAsync_CaptchaFailure_ThrowsCaptchaException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("""{"message":"CAPTCHA verification failed. Please try again."}""")
+            }));
+
+        await Should.ThrowAsync<CaptchaException>(
+            () => svc.RegisterAsync(new RegisterRequest { Email = "a@b.cz" }));
+    }
+
+    [Fact]
+    public async Task RegisterAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("""{"message":"Too many attempts. Please try again later."}""")
+            }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(
+            () => svc.RegisterAsync(new RegisterRequest { Email = "a@b.cz" }));
+    }
+
     [Fact]
     public async Task RegisterAsync_TransportException_Throws_AndForwardsError()
     {
@@ -178,6 +243,54 @@ public class AuthApiServiceTests
             Arg.Any<string>(),
             Arg.Any<string?>(),
             Arg.Any<string?>());
+    }
+
+    // ── FetchFromAresAsync ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// RC.2 — same distinction, for the anonymous ARES lookup called from Register.razor's
+    /// "Load from ARES" button: a CAPTCHA rejection must not look like "IČO not found".
+    /// </summary>
+    [Fact]
+    public async Task FetchFromAresAsync_CaptchaFailure_ThrowsCaptchaException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("""{"message":"CAPTCHA verification failed. Please try again."}""")
+            }));
+
+        await Should.ThrowAsync<CaptchaException>(
+            () => svc.FetchFromAresAsync("12345678"));
+    }
+
+    [Fact]
+    public async Task FetchFromAresAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("""{"message":"Too many attempts. Please try again later."}""")
+            }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(
+            () => svc.FetchFromAresAsync("12345678"));
+    }
+
+    [Fact]
+    public async Task FetchFromAresAsync_CompanyNotFound_ReturnsNull_WithoutThrowing()
+    {
+        // A plain "not found" 400 (no CAPTCHA marker in the body) must keep behaving like
+        // before RC.2 — the caller shows Register_AresFailed, not a thrown exception.
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("""{"message":"Company not found in ARES."}""")
+            }));
+
+        var result = await svc.FetchFromAresAsync("12345678");
+
+        result.ShouldBeNull();
     }
 
     // ── VerifyEmailAsync ──────────────────────────────────────────────────────

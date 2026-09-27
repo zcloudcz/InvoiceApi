@@ -6,6 +6,7 @@ using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Claims;
 
 namespace Fakvio.API.Controller;
@@ -55,6 +56,7 @@ public class AuthController : ControllerBase
     /// <response code="401">Invalid credentials or user is inactive</response>
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-anon")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest loginRequest)
@@ -102,6 +104,7 @@ public class AuthController : ControllerBase
     /// <response code="400">Validation error (e.g., email already taken)</response>
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-anon")]
     [ProducesResponseType(typeof(RegisterResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<RegisterResponse>> Register([FromBody] RegisterRequest request)
@@ -152,14 +155,16 @@ public class AuthController : ControllerBase
     ///
     /// Abuse protection, in order of importance:
     /// 1. The same reCAPTCHA v3 gate as login/register (X-Captcha-Token header).
-    ///    This is the mechanism the repo already uses for anonymous endpoints. (ASP.NET
-    ///    rate limiting was ruled out while the Azure Functions host existed; it is an
-    ///    option again now that Fakvio.API is the only host.)
-    /// 2. Cache-first lookup (GetCompanyInfoAsync, not RefreshCompanyInfoAsync): a
+    ///    This is the mechanism the repo already uses for anonymous endpoints.
+    /// 2. Per-IP rate limiting (RC.4, [EnableRateLimiting("auth-anon")]) — 10
+    ///    requests/minute/IP by default (RateLimiting:AuthAnon in appsettings.json).
+    ///    ASP.NET rate limiting was ruled out while the Azure Functions host existed;
+    ///    it became an option once Fakvio.API became the only host, and this is that.
+    /// 3. Cache-first lookup (GetCompanyInfoAsync, not RefreshCompanyInfoAsync): a
     ///    caller cannot force unbounded outbound traffic to the public ARES registry
     ///    by replaying the same IČO.
-    /// 3. Input is validated here (8 digits) — a malformed IČO never leaves our host.
-    /// 4. The response is a narrow AresLookupResponse (name + registered office), not
+    /// 4. Input is validated here (8 digits) — a malformed IČO never leaves our host.
+    /// 5. The response is a narrow AresLookupResponse (name + registered office), not
     ///    the full ClientDto. Registration needs nothing else.
     /// </summary>
     /// <param name="registrationNumber">Czech registration number (IČO), exactly 8 digits</param>
@@ -169,6 +174,7 @@ public class AuthController : ControllerBase
     /// <response code="400">Malformed IČO, failed CAPTCHA, or company not found in ARES</response>
     [HttpGet("ares/{registrationNumber}")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-anon")]
     [ProducesResponseType(typeof(AresLookupResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<AresLookupResponse>> FetchFromAres(

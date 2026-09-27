@@ -288,6 +288,112 @@ public class ToolDiscoveryTests
     }
 
     /// <summary>
+    /// Every tool must tell an AI client whether it is safe to call without confirmation
+    /// (read-only) and whether it destroys data (destructive) — MCP clients such as Claude and
+    /// ChatGPT use these annotations to decide whether to ask the user before invoking a tool.
+    ///
+    /// Junior note: the rule is derived from the tool's NAME, not from a hard-coded list of tool
+    /// names (same principle as <see cref="EveryToolName_IsTheProtocolSpellingOfItsMethodName"/>
+    /// above) — a hard-coded list would need a manual edit for every new tool and would silently
+    /// stop catching regressions the day someone forgets that edit.
+    /// </summary>
+    [Fact]
+    public void EveryTool_DeclaresItsSideEffects()
+    {
+        foreach (var tool in DiscoverTools())
+        {
+            var name = tool.ProtocolTool.Name;
+            var annotations = tool.ProtocolTool.Annotations;
+
+            annotations.ShouldNotBeNull(
+                $"Tool '{name}' has no annotations — every [McpServerTool] must set " +
+                "ReadOnly/Destructive/Idempotent/OpenWorld explicitly (DEVGUIDE §4.9).");
+
+            annotations!.ReadOnlyHint.ShouldNotBeNull(
+                $"Tool '{name}' does not declare ReadOnlyHint.");
+
+            if (name.StartsWith("delete_", StringComparison.Ordinal))
+            {
+                annotations.DestructiveHint.ShouldBe(true,
+                    $"Tool '{name}' starts with 'delete_' and must be DestructiveHint = true.");
+            }
+
+            if (name.StartsWith("get_", StringComparison.Ordinal) ||
+                name.StartsWith("list_", StringComparison.Ordinal) ||
+                name.StartsWith("find_", StringComparison.Ordinal) ||
+                name.StartsWith("export_", StringComparison.Ordinal) ||
+                name.StartsWith("lookup_", StringComparison.Ordinal) ||
+                name.StartsWith("estimate_", StringComparison.Ordinal) ||
+                name.StartsWith("compare_", StringComparison.Ordinal))
+            {
+                annotations.ReadOnlyHint.ShouldBe(true,
+                    $"Tool '{name}' looks read-only from its name and must be ReadOnlyHint = true.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Tools whose name does not start with "delete_" but can still destroy data, so the
+    /// name-based rule above cannot catch them:
+    ///   - update_number_sequence can LOWER currentNumber → the next documents get numbers that
+    ///     were already used (duplicate invoice numbers are a legal problem).
+    ///   - update_my_company sends the whole address list back; the API replaces it wholesale,
+    ///     so an address changed by someone else in between is overwritten (lost update).
+    /// </summary>
+    [Theory]
+    [InlineData("update_number_sequence")]
+    [InlineData("update_my_company")]
+    public void DataRiskyUpdateTools_AreMarkedDestructive(string toolName)
+    {
+        var tool = DiscoverTools().Single(t => t.ProtocolTool.Name == toolName);
+
+        tool.ProtocolTool.Annotations!.DestructiveHint.ShouldBe(true);
+    }
+
+    /// <summary>
+    /// N2.6: the version reported in the MCP handshake (<c>initialize</c> → <c>ServerInfo.Version</c>)
+    /// must be the assembly's real version, not a hand-maintained constant that can drift from the
+    /// csproj <c>&lt;Version&gt;</c> — which is exactly what happened before this test existed
+    /// (constant said "1.0.0", csproj said "1.0.2", and neither was ever bumped to 2.0.0).
+    /// </summary>
+    [Fact]
+    public void HandshakeReports_TheAssemblysRealVersion()
+    {
+        var container = BuildServerContainer();
+        var options = container.GetRequiredService<
+            Microsoft.Extensions.Options.IOptions<ModelContextProtocol.Server.McpServerOptions>>().Value;
+
+        var assemblyVersion = McpServerAssembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion?.Split('+')[0];
+
+        options.ServerInfo!.Version.ShouldBe(assemblyVersion);
+        options.ServerInfo.Version.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    /// <summary>
+    /// N2.5: no tool parameter is an opaque "JSON string of SomeDto" — the SDK generates a real
+    /// JSON Schema from a typed DTO parameter for free, so a string parameter whose only purpose
+    /// is to be JSON-parsed inside the tool method is exactly the anti-pattern this guards
+    /// against (mirrors `git grep -E "string [a-zA-Z]*Json" -- Fakvio.McpServer/Tools`).
+    /// </summary>
+    [Fact]
+    public void NoTool_TakesAnOpaqueJsonStringParameter()
+    {
+        foreach (var method in AnnotatedToolMethods())
+        {
+            foreach (var parameter in method.GetParameters())
+            {
+                (parameter.ParameterType == typeof(string) &&
+                 parameter.Name!.EndsWith("Json", StringComparison.Ordinal))
+                    .ShouldBeFalse(
+                        $"Method '{method.Name}' has a string parameter '{parameter.Name}' — " +
+                        "replace it with a typed DTO parameter (DEVGUIDE §4.9).");
+            }
+        }
+    }
+
+    /// <summary>
     /// Every guide that names a tool count must name the count the server actually exposes.
     ///
     /// Why this needs a test rather than a reviewer: story #144 published "36" and the number
