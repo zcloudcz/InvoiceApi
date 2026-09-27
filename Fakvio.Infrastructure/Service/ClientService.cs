@@ -7,6 +7,7 @@ using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using ZMapper;
 
 namespace Fakvio.Infrastructure.Service;
@@ -245,6 +246,32 @@ public class ClientService : IClientService
     }
 
     /// <summary>
+    /// Bulk existence check by registration number — see interface docs for why this exists
+    /// (avoids N queries × full client graph when a caller just needs "does it exist").
+    /// </summary>
+    public async Task<Dictionary<string, long>> GetClientIdsByRegistrationNumbersAsync(
+        IEnumerable<string> registrationNumbers,
+        CancellationToken cancellationToken = default)
+    {
+        var distinct = registrationNumbers
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct()
+            .ToList();
+
+        if (distinct.Count == 0)
+        {
+            return new Dictionary<string, long>();
+        }
+
+        // AsNoTracking + no Include: this is an existence/id lookup, not a full read.
+        return await _context.Client
+            .AsNoTracking()
+            .Where(c => distinct.Contains(c.RegistrationNumber!))
+            .Select(c => new { c.RegistrationNumber, c.Id })
+            .ToDictionaryAsync(c => c.RegistrationNumber!, c => c.Id, cancellationToken);
+    }
+
+    /// <summary>
     /// Gets the issuer (your company)
     /// </summary>
     public async Task<ClientDto?> GetIssuerAsync(CancellationToken cancellationToken = default)
@@ -377,7 +404,29 @@ public class ClientService : IClientService
         }
 
         _context.Client.Add(client);
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            // A failed INSERT leaves the new client (and its addresses, contacts, …) tracked as
+            // "Added" on this DbContext. Callers that create several clients on the same scoped
+            // context (CSV import, invoice import) would then re-send that broken INSERT with
+            // EVERY following SaveChanges, so one bad row would fail all rows after it.
+            // Nothing from this SaveChanges reached the DB, so detaching every Added entry is safe.
+            foreach (var entry in _context.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).ToList())
+                entry.State = EntityState.Detached;
+
+            // 23505 = unique violation. The only unique index a new client can hit is
+            // RegistrationNumber: another request inserted the same IČO between our
+            // "already exists" check above and this INSERT. Report it exactly like that check
+            // does, so callers (409 in ClientController, "Skipped" in CSV import) handle both alike.
+            if (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+                throw new InvalidOperationException($"Client with registration number {createDto.RegistrationNumber} already exists", ex);
+
+            throw;
+        }
 
         _logger.LogInformation("Created client with ID: {ClientId}", client.Id);
 

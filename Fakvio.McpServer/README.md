@@ -1,5 +1,45 @@
 # Fakvio MCP Server
 
+## Kompatibilita 2.0
+
+Verze **2.0.0** je nekompatibilní se všemi předchozími (poslední skutečně vydaná na nuget.org
+byla 1.0.2 — 1.0.3/1.0.4 nikdy nevyšly, viz #398 níže). LLM klienti (Claude, ChatGPT), kteří si
+schéma nástrojů načtou sami z `tools/list`, nic dělat nemusí. **Skriptovaní klienti** (cokoli, co
+volá `fakvio-mcp` s natvrdo zapsanými argumenty) musí upravit volání:
+
+- **Typované vstupy místo JSON stringu.** `create_client`, `update_client`,
+  `create_received_invoice`, `create_invoice_from_template` a `create_invoice` už neberou
+  `"…Json": "{...}"` — parametr je teď skutečný objekt/pole ve stejné JSON-RPC zprávě.
+- **`currency` místo `currencyId`.** `create_invoice` a `create_received_invoice` chtějí ISO kód
+  (`"EUR"`), ne interní číselné ID — zjistíte ho přes `list_currencies`.
+- **`issuerId` je teď volitelný** u `create_invoice` — vynechaný = vlastní firma volajícího.
+- **Nové chybové kódy.** Zápis na read-only klíč, neexistující záznam a validační chyba už
+  nekončí jako `{"error":"internal_error"}` bez rozlišení — viz tabulka v sekci
+  „Chování nástrojů" výše (`forbidden` / `not_found` / `validation_error`).
+- **Annotations.** Každý nástroj v `tools/list` nese `readOnlyHint`/`destructiveHint`/
+  `idempotentHint`/`openWorldHint` — klient, který se na ně dřív nedíval, může začít.
+
+Ukázka staré (1.0.2) a nové (2.0.0) volby `create_invoice`:
+
+```jsonc
+// 1.0.2 — jeden JSON string, interní ID, model neví, odkud currencyId/issuerId vzít
+{
+  "invoiceJson": "{\"documentType\":\"Invoice\",\"clientId\":1,\"issuerId\":2,\"currencyId\":1,\"invoiceItem\":[{\"description\":\"Web development\",\"quantity\":10,\"unitPrice\":1500,\"vatRatePercentage\":21}]}"
+}
+
+// 2.0.0 — typované argumenty, měna kódem, issuerId volitelné
+{
+  "clientId": 1,
+  "currency": "EUR",
+  "items": [{ "description": "Web development", "quantity": 10, "unit": "hrs", "unitPrice": 1500, "vatRatePercentage": 21 }]
+}
+```
+
+**2.1.0** je jen doplnění nástrojů (story N3 — nastavení, platby, upomínky), zpětně
+kompatibilní — žádné volání ze 2.0.0 se neláme.
+
+---
+
 Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
 **Model Context Protocol (MCP)**. Umí dva režimy — sada nástrojů je v obou
 totožná, liší se jen tím, odkud se bere credential:
@@ -215,17 +255,20 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (38)
+## Dostupné nástroje (49)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 10 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice, CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, DeleteInvoice |
+| `Tools/InvoiceTools.cs` | 10 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, DeleteInvoice |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
 | `Tools/TaxTools.cs` | 5 | EstimateTax, CompareTaxRegimes, GetAnnualIncome, GetInsuranceAdvance, GetTaxConfig |
 | `Tools/TemplateTools.cs` | 3 | ListTemplates, GetTemplate, CreateInvoiceFromTemplate |
 | `Tools/ReadinessTools.cs` | 1 | GetReadiness |
+| `Tools/CodeListTools.cs` | 1 | ListCurrencies |
+| `Tools/SettingsTools.cs` | 6 | ListNumberSequences, ListVatRates, CreateNumberSequence, UpdateNumberSequence, UpdateMyCompany, AddBankAccount |
+| `Tools/PaymentTools.cs` | 4 | ListPayments, GetPayment, ListReminders, GetReminderSettings |
 
 Zdroj pravdy je vždy kód — atributy `[McpServerTool]` v `Tools/`:
 
@@ -239,9 +282,21 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   nevyhazuje jako výjimka, ale vrací se jako `{ "error": "..." }` — AI klient tak dostane
   čitelnou zprávu místo pádu spojení.
 - Neočekávaná výjimka jde přes `McpToolError.ToJson(ex)` — jedno místo pro všech 38
-  nástrojů. Zaloguje celou výjimku server-side a vrátí stabilní
-  `{ "error": "internal_error", "message": "..." }`, **nikdy `ex.Message`** (to může nést
-  syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`).
+  nástrojů. Zaloguje celou výjimku server-side a vrátí stabilní JSON, **nikdy `ex.Message`**
+  (to může nést syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`). Chybová
+  odpověď API (`FakvioApiException`) se podle status kódu mapuje takto:
+
+  | HTTP status | `error` | `message` |
+  |---|---|---|
+  | 401 | `unauthorized` | Vždy pevný text — klíč je neplatný/expirovaný/revokovaný, vytvořte nový na `/settings/integrations`. |
+  | 403 | `forbidden` | Vždy pevný text — klíč je platný, ale read-only nebo role nemá oprávnění; vytvořte klíč s `read+write` scope. |
+  | 404 | `not_found` | `SafeMessage` z těla (`{"message":"…"}`), jinak "The requested record does not exist." |
+  | 400/409/422 | `validation_error` | `SafeMessage` z těla, jinak "The API rejected the input." |
+  | ostatní (5xx…) | `internal_error` | Obecná hláška, viz výše. |
+
+  `SafeMessage` existuje jen když tělo API chyby je JSON objekt s řetězcovým `message`, nebo
+  bare JSON string (`TaxController` styl) — cokoli jiného (ne-JSON tělo, HTML stránka) se
+  nikdy nedostane k modelu, i pro 400/404.
 - Zrušení od volajícího se **propaguje**: `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`.
   Filtr je nutný — `HttpClient` vyhodí `TaskCanceledException` (potomek `OperationCanceledException`)
   i při vlastním timeoutu, kdy token volajícího zrušený není; ten případ má skončit sanitizovaným JSONem,
@@ -254,13 +309,35 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   je na klientovi.
 - Logy jdou **výhradně na stderr** (`LogToStandardErrorThreshold = Trace`).
   Stdout je vyhrazený pro JSON-RPC — jakýkoli zápis do stdout protokol rozbije.
+- **Vstup nikdy není „JSON string of …Dto" (N2.5).** Parametr typu DTO (`CreateClientDto client`,
+  `List<CreateInvoiceItemDto> items`, …) dá modelu schéma zdarma — SDK ho vygeneruje ze skutečného
+  typu, žádná ruční deserializace v těle toolu. Enumy jako řetězce (`"BankTransfer"`,
+  `"CreditNote"`) a camelCase fungují díky `McpToolJsonOptions.Default`, které
+  `McpServerRegistration` předává do `WithToolsFromAssembly()` — bez něj by SDK čekalo
+  PascalCase a číselné enumy. Hlídá `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter`.
+- **`CreateInvoice` (N2.4) překládá modelem srozumitelný vstup na interní ID** — bez volání API:
+  `currency` (ISO kód, výchozí `CZK`) se přeloží přes `list_currencies` na `currencyId`; `issuerId`
+  vynechaný znamená vlastní firmu (`get_issuer`); položce bez `vatRateId` doplní ID podle
+  `vatRatePercentage` (aktivní sazby k `issueDate`) — jen když je vystavitel plátce DPH, neplátce
+  necháváme beze změny. Neznámá měna / procento vrátí konkrétní chybu se seznamem platných hodnot
+  a API se vůbec nezavolá. Když stejnému procentu odpovídá **víc aktivních sazeb** (např. dvě
+  překrývající se platnosti při změně sazby), nevybírá se první — vrátí se chyba se seznamem
+  kandidátů (`id`, název, platnost) a model musí nejednoznačnost vyřešit sám přes `vatRateId`
+  na položce.
 
 ## Přidání nového nástroje
 
 1. Přidejte statickou metodu do existující třídy v `Tools/` (nebo novou třídu
    s atributem `[McpServerToolType]` — `WithToolsFromAssembly()` ji najde sama).
-2. Metodu označte `[McpServerTool, Description("…")]` a každý parametr
-   `[Description("…")]` — právě z těchto textů se AI rozhoduje, kdy nástroj zavolat.
+2. Metodu označte `[McpServerTool(Title = "…", ReadOnly = …, Destructive = …, Idempotent = …, OpenWorld = …), Description("…")]`
+   a každý parametr `[Description("…")]` — právě z těchto textů se AI rozhoduje, kdy nástroj zavolat.
+   Hinty jsou **povinné** (hlídá `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects`):
+   - `ReadOnly = true` — nástroj nic nemění (typicky `list_*`/`get_*`/`find_*`/`export_*`).
+   - `Destructive = true` — nevratná akce (mazání, odeslání e-mailu, vystavení faktury).
+     Každý `delete_*` nástroj musí mít `Destructive = true`.
+   - `Idempotent = true` — opakované volání se stejnými argumenty nic dalšího nezmění
+     (typicky zápisy, které jen nastaví stav — „mark as paid", „approve").
+   - `OpenWorld = true` — nástroj mluví s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování).
 3. Volejte API přes `IFakvioApiClient`; chybí-li endpoint, doplňte ho do
    `Client/IFakvioApiClient.cs` + `Client/FakvioApiClient.cs`.
 4. Celé tělo obalte `try` + `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`

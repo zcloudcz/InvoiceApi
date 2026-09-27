@@ -30,7 +30,7 @@ public static class TaxTools
     /// Estimates tax obligations for a specific tax regime.
     /// Returns income tax, social insurance, health insurance, net income, and step-by-step breakdown.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Estimate tax", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Estimate tax obligations for a self-employed person (OSVČ/SZČO). " +
         "Provide gross income, country (CZ/SK), year, and tax regime. " +
         "Returns income tax, social/health insurance, net income, and calculation steps. " +
@@ -72,7 +72,7 @@ public static class TaxTools
     /// <summary>
     /// Compares all applicable tax regimes for given income — helps find the cheapest option.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Compare tax regimes", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Compare all applicable tax regimes for a given income. " +
         "Returns all regimes sorted by total obligations (cheapest first). " +
         "Useful for advising which regime saves the most money.")]
@@ -104,7 +104,7 @@ public static class TaxTools
     /// <summary>
     /// Gets the annual gross income auto-calculated from issued invoices.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get annual income", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get the annual gross income calculated from issued invoices. " +
         "Sums TotalBeforeVat of all Completed/Paid invoices for the given year. " +
         "Returns gross income, invoice count, and currency.")]
@@ -131,7 +131,7 @@ public static class TaxTools
     /// <summary>
     /// Gets upcoming insurance advance payment information.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get insurance advance", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get upcoming insurance advance payment notification. " +
         "Returns monthly social/health insurance amounts, next due date, and days until payment. " +
         "Based on company's configured tax regime and current year's income from invoices.")]
@@ -160,7 +160,7 @@ public static class TaxTools
     /// <summary>
     /// Gets tax year configuration (rates and thresholds) for a specific country and year.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get tax config", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get tax year configuration (annual rates, thresholds, insurance minimums/maximums) " +
         "for a specific country and year. Useful for understanding the tax parameters.")]
     public static async Task<string> GetTaxConfig(

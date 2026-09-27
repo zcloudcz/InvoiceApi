@@ -5,6 +5,7 @@
 @inject ClientApiService ClientService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@L["Client_Title"]</PageTitle>
@@ -17,6 +18,9 @@
     <ResponsiveButton Label="@L["Client_New"].Value"
                       StartIcon="@Icons.Material.Filled.Add"
                       Href="/clients/create" Class="mb-4" />
+    <ResponsiveButton Label="@L["Client_ImportCsv"].Value"
+                      StartIcon="@Icons.Material.Filled.UploadFile"
+                      OnClick="OpenImportDialog" Class="mb-4 ml-2" />
 
     @* MudDataGrid with column filters, quick search, and inline actions *@
     <FakvioGrid T="ClientDto"
@@ -99,6 +103,23 @@
         finally
         {
             _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the CSV import dialog (Story N6). Reloads the grid afterwards if any client
+    /// was actually created — the dialog itself does the upload/preview/confirm round trip.
+    /// </summary>
+    private async Task OpenImportDialog()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<Fakvio.UI.Shared.Components.Shared.ClientCsvImportDialog>(
+            L["ClientImport_DialogTitle"], options);
+        var result = await dialog.Result;
+
+        if (result?.Canceled == false && result.Data is true)
+        {
+            await LoadClients();
         }
     }
 

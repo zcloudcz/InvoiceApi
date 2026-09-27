@@ -143,7 +143,7 @@ public abstract class ApiClientBase
     /// Note: 401 Unauthorized is already intercepted by UnauthorizedRedirectHandler
     /// at the HttpClient pipeline level, so this method typically handles 403, 404, 500 etc.
     /// </summary>
-    private async Task HandleErrorResponseAsync(
+    protected async Task HandleErrorResponseAsync(
         HttpResponseMessage response, string httpMethod, string endpoint)
     {
         var errorContent = await response.Content.ReadAsStringAsync();

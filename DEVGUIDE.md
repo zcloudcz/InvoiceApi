@@ -157,7 +157,8 @@ Pravidla:
 Reuse **InvitationToken** mechaniku (`User.InvitationToken` + `InvitationTokenExpiresAt`):
 - Token: GUID string, expirace 48h.
 - Generování: `IUserService.ForgotPasswordAsync` (`Fakvio.Application/Service/IUserService.cs:128`).
-- **Anti-enumeration**: vrací `null` (success-like) i pro neexistující email, aby útočník neviděl rozdíl.
+- **Anti-enumeration**: vrací `null` (success-like) i pro neexistující email, aby útočník neviděl rozdíl v **odpovědi**. Zbývá užší mezera přes **časování** — existující email čeká na uložení tokenu a odeslání e-mailu (`await SendInvitationEmailAsync`), neexistující se vrátí skoro okamžitě; opakovaným měřením lze rozdíl odhalit. Předchází RC.3, RC.3 na to nesahá (přidává jen captcha gate) — zavření mezery (fronta/fire-and-forget + umělé zpoždění na "neznámé" větvi) je samostatný úkol.
+- Od RC.3: `UserController.ForgotPassword` ověřuje reCAPTCHA (`action: "forgot_password"`) **před** čímkoli e-mail-specifickým — 400 při selhání captcha nic o existenci e-mailu neprozrazuje (viz CAPTCHA.md §5).
 - Set: `IUserService.SetPasswordAsync` (`IUserService.cs:107`) — validuje token, expiraci, BCrypt hash, **vyčistí token** (one-shot).
 
 **Token se NIKDY nevrací z listovacích endpointů** (issue #364). `SetPassword` je `[AllowAnonymous]`,
@@ -246,7 +247,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 ### 2.8 reCAPTCHA gate (issue #200)
 
-`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není**; od migrace na App Service je `AddRateLimiter` middleware možná cesta (viz §11.3).
+`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) chrání čtyři anonymní endpointy — `/api/auth/login`, `/api/auth/register`, ARES proxy `/api/auth/ares/{ico}` a od RC.3 i `/api/user/forgot-password`. Od RC.4 je nad ním ještě per-IP rate limiting (`AddRateLimiter`, politika `auth-anon`, viz §11.3 a ADMINGUIDE §9) — nezávislá druhá vrstva, funguje i když je reCAPTCHA vypnutá.
 
 **Fail closed.** Cokoli zabrání kladnému ověření (výjimka, HTTP chyba od Googlu, chybějící `SecretKey`) znamená **odmítnutí** požadavku. Dřív se v těchto případech vracelo `true`, takže výpadek Googlu bránu úplně vypnul.
 
@@ -262,6 +263,58 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 **Kde je escape hatch nastavený**: `appsettings.Development.json` (`Recaptcha__Enabled`), `FakvioFactory` v integračních testech (`builder.UseSetting`). Testy, které testují **samotnou bránu**, místo toho substituují `ICaptchaService`.
 
 **AresCache TTL.** ARES proxy je anonymní, takže počet klíčů v `AresCache` volí volající. `AresCacheRepository.SaveCacheAsync` proto při každém zápisu smaže dávku expirovaných řádků (`ExpiredSweepBatchSize`, index na `ExpiresAt`). Záměrně **není** periodická úloha (§6) — řádky vznikají jen na zápisové cestě, takže tabulka neroste, když se nezapisuje, a úklid nepotřebuje dvojici BackgroundService + `[TimerTrigger]` ani průchod všemi tenant schématy. Neúspěšné lookupy expirují za 1 hodinu (`AresServiceImpl.FailureCacheExpiration`), takže enumerace uklízí sama po sobě.
+
+### 2.8a Rate limiting anonymních endpointů (issue RC.4)
+
+`Microsoft.AspNetCore.RateLimiting` (built-in v .NET, žádný NuGet navíc), politika
+`auth-anon` registrovaná v `Fakvio.API/Program.cs`. Fixed-window limiter partitioned podle
+klienské IP (`GetClientIpPartitionKey` — lokální funkce v `Program.cs`), limity
+konfigurovatelné (`RateLimiting:AuthAnon:PermitLimit`/`WindowSeconds`, výchozí 10/60s).
+
+**Proč nad reCAPTCHA, ne místo ní**: reCAPTCHA ověřuje "je to člověk", rate limiter
+"kolikrát za minutu smí tahle IP zkusit" — nezávislé osy. Produkce dnes běží s
+`Recaptcha__Enabled=false`, takže rate limiter je jediná aktivní ochrana těchto endpointů,
+dokud RC.1/RC.2 nedoběhnou.
+
+**Klientská IP vyžaduje `ForwardedHeadersMiddleware`** — Fakvio.API běží za Azure App
+Service front-endem, takže bez přeposílání `X-Forwarded-For` by
+`HttpContext.Connection.RemoteIpAddress` byla vždy adresa front-endu, ne klienta, a limiter
+by (chybně) partitionoval všechny volající do jednoho koše. Azure App Service front-end
+**není** loopback (to platí jen pro IIS in-process hosting na Windows) — je to privátní
+Azure adresa, kterou předem neznáme. `ForwardedHeadersOptions` default
+(`KnownProxies`/`KnownNetworks` = jen loopback) by proto hlavičku nikdy nedůvěřoval a limiter
+by tiše degradoval na jeden globální koš (jeden útočník = zablokované přihlášení všem).
+`Program.cs` proto `KnownNetworks`/`KnownProxies` explicitně **čistí** (= důvěřuj
+libovolnému přeposílateli) — bezpečné jen díky tomu, že do kontejneru na App Service se
+nedá připojit jinudy než přes Azure vlastní edge (žádná přímá síťová cesta z internetu).
+Tohle je jiný trust model než generický reverse proxy, kde by "vyprázdnit seznam" bylo
+skutečné zneužitelné rozšíření důvěry.
+
+**Aplikace na endpoint**: `[EnableRateLimiting("auth-anon")]` atribut na metodě (ne na
+celém controlleru — `AuthController`/`UserController` mají i autentizované endpointy, které
+limit nepotřebují). Aktuálně: `AuthController.Login/Register/FetchFromAres`,
+`UserController.ForgotPassword/SetPassword/ValidateInvitationToken`,
+`TwoFactorController.VerifyTwoFactorCode`.
+
+**Odpověď při překročení**: `options.OnRejected` v `Program.cs` — 429 + `Retry-After`
+hlavička (počet vteřin do konce okna) + JSON `{"message": "Too many attempts..."}`. UI
+(`RateLimitExceededException` ve `Fakvio.UI.Shared/Services`) rozpozná 429 a zobrazí
+lokalizovanou hlášku (`RateLimit_TooManyAttempts`) místo hlášky dané endpointu.
+
+**Known limitation — counter je per proces, ne per App Service replika.** S N běžícími
+instancemi má útočník efekticně `PermitLimit × N`, protože Azure load balancer rozhazuje
+požadavky mezi instance a každá má vlastní in-memory counter. Při dnešním rozsahu (jedna
+instance) to nevadí; pokud se aplikace bude škálovat na víc instancí a limit bude potřeba
+dodržet přesně, přesunout counter do sdíleného úložiště (Redis, nebo distribuovaný limiter
+nad existující PostgreSQL) — neřešit teď dopředu.
+
+**Testy**: integrační testy proti produkčnímu limitu (10/60s) by byly buď pomalé, nebo by
+kolidovaly s ostatními testy sdílejícími stejný `FakvioFactory` (TestServer nemá reálnou
+per-request IP, takže všechny testy sdílejí jednu partition). `InvoiceApiFactory` proto
+limit ve výchozím testovacím hostu prakticky vypíná (`PermitLimit=1000000`); test, který
+chce ověřit samotný limiter (`AuthAnonRateLimitTests`), si vytváří **vlastní** `FakvioFactory`
+instanci (ne `IClassFixture`, aby si nesdílel server-side counter s jiným testem) a limit
+si sníží zpátky přes `builder.UseSetting`.
 
 ### 2.9 API klíče (SHA-256 — vědomá výjimka z §2.1)
 
@@ -1403,7 +1456,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 38 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 49 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1425,7 +1478,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
 | **Vydané faktury** (`InvoiceTools`, 10) |
-| `CreateInvoice` | Create | `create_invoice` | ✅ | |
+| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
 | `GetInvoice` | Read | `get_invoice` (`id`) | ✅ | |
@@ -1458,29 +1511,35 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `CreateInvoiceFromTemplate` | Create | — | ❌ | zatím bez tasku |
 | **Readiness** (`ReadinessTools`, 1) |
 | `GetReadiness` | Read | `get_readiness` | ✅ | |
+| **Číselníky** (`CodeListTools`, 1) |
+| `ListCurrencies` | Read | — | ❌ | zatím bez tasku |
+| **Nastavení** (`SettingsTools`, 6) |
+| `ListNumberSequences` | Read | `list_number_sequences` | ✅ | |
+| `ListVatRates` | Read | `list_vat_rates` | ✅ | |
+| `CreateNumberSequence` | **Write** | `create_number_sequence` | ✅ | |
+| `UpdateNumberSequence` | Idempotent | `update_number_sequence` | ✅ | |
+| `UpdateMyCompany` | Idempotent | `update_my_company` | ✅ | |
+| `AddBankAccount` | **Write** | `add_bank_account` | ✅ | |
+| **Platby a upomínky** (`PaymentTools`, 4) |
+| `ListPayments` | Read | `list_payments` | ✅ | |
+| `GetPayment` | Read | `get_payment` | ✅ | |
+| `ListReminders` | Read | `list_reminders` | ✅ | |
+| `GetReminderSettings` | Read | `get_reminder_settings` | ✅ | |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
 | — | Navigace UI | `navigate` | ⬅ | |
 | — | Upload přílohy | `attach_file` | ⬅ | |
 | — | Read | `list_attachments` | ⬅ | |
-| — | **Write** (nastavení firmy) | `update_my_company` | ⬅ | |
-| — | **Write** (bankovní účty) | `add_bank_account`, `update_bank_account`, `delete_bank_account` | ⬅ | |
-| — | Read | `list_number_sequences` | ⬅ | |
-| — | **Write** (číselné řady) | `create_number_sequence`, `update_number_sequence` | ⬅ | |
-| — | Read | `list_vat_rates` | ⬅ | |
+| — | **Write** (bankovní účty) | `update_bank_account`, `delete_bank_account` | ⬅ | |
 | — | **Write** (sazby DPH) | `create_vat_rate`, `update_vat_rate` | ⬅ | |
 | — | Read (šablony dokumentů) | `list_content_templates`, `get_content_template` | ⬅ | |
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
-| — | Read (upomínky) | `list_reminders` | ⬅ | |
-| — | Read (nastavení upomínek) | `get_reminder_settings` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
-| — | Read (platby) | `list_payments` | ⬅ | |
-| — | Read (detail platby) | `get_payment` | ⬅ | |
 
-**Součty:** 38 MCP toolů, 49 chat toolů. Chat pokrývá 32 MCP toolů, žádný už jen částečně;
-23 chat toolů nemá MCP protějšek. Zbývá 6 mezer: daně (5, zatím bez tasku),
-šablony (1 — `CreateInvoiceFromTemplate`).
+**Součty:** 49 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 7 mezer: daně (5, zatím bez tasku),
+šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1493,9 +1552,11 @@ jen vyhledávacím klíčem nebo příponou souboru.
 částečnou položku — `import_invoice` zastupoval `CreateReceivedInvoice` jen pro text dokladu,
 diktovaná data neuměl.
 
-Číselné řady a sazby DPH už chat umí (#224), upomínky a platby taky (#227) — u obou MCP
-protějšek nemá. Mimo obě rozhraní zůstává jen UI / SysAdmin: párování platby s fakturou
-(PaymentMatch) — `list_payments`/`get_payment` čtou, ale spárovat jde jen na stránce Platby.
+Číselné řady, nastavení firmy, bankovní účty, platby a upomínky (chat #224/#227) mají MCP
+protějšek od N3 — čtecí i (kde dává smysl) zápisové. Zbývá: úprava/mazání jednotlivého
+bankovního účtu (N3.4) a zápis nastavení upomínek (N3.6) — obojí vědomě odloženo, viz task.
+Mimo obě rozhraní zůstává jen UI / SysAdmin: párování platby s fakturou (PaymentMatch) —
+`list_payments`/`get_payment` čtou, ale spárovat jde jen na stránce Platby.
 
 ### 4.8 In-app notifikace (per-user)
 
@@ -1561,10 +1622,26 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **Mimo scope (story #144):** OAuth 2.1 / dynamic client registration pro Claude.ai konektory (hlavičku dodává uživatel ručně), per-area scopes (jen read/write), cache API klíčů.
-- **38 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
+- **49 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
-- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 38 nástrojů.**
+- **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
+  `Idempotent`, `OpenWorld` a krátký `Title`. Klienti (Claude, ChatGPT) je čtou z `tools/list`
+  (`ProtocolTool.Annotations`) a rozhodují podle nich, jestli nástroj potvrzovat před voláním.
+  Klasifikace se odvozuje z názvu nástroje, ne zapisuje ručně pro každý:
+  - `list_*`/`get_*`/`find_*`/`export_*`/`lookup_*`/`estimate_*`/`compare_*` → `ReadOnly = true`.
+  - `delete_*` → `Destructive = true` (mazání je vždy nevratné, i jako soft delete v DB).
+  - Jiná nevratná akce mimo `delete_*` (vystavení dokladu, odeslání e-mailu) → `Destructive = true`
+    stejně jako `delete_*`, i když jméno nezačíná na `delete_` (`complete_invoice`, `send_invoice_email`).
+  - Zápis, který jen nastaví stav a opakováním nic dalšího nezmění (`mark_*_paid`, `approve_*`,
+    `update_*`) → `Idempotent = true`, `Destructive = false`.
+  - Výjimka: `update_*`, který umí data poškodit, je `Destructive = true` — `update_number_sequence`
+    (snížení `currentNumber` → duplicitní čísla dokladů) a `update_my_company` (seznam adres se
+    přepíše celý → souběžná změna adresy se ztratí). Hlídá `ToolDiscoveryTests.DataRiskyUpdateTools_AreMarkedDestructive`.
+  - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
+  Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
+  podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 49 nástrojů.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
   Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
@@ -1577,12 +1654,62 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   i s textem výjimky. Obecný catch vrací
   `McpToolError.ToJson(ex)`: zaloguje celou výjimku (`McpToolError.Logger`, nastaven z `Program.cs`
   po `Build()` — tool metody jsou statické, takže sdílený logger je jednodušší než `ILogger`
-  parametr v 37 signaturách) a vrátí stabilní `{ "error": "internal_error", "message": "..." }`,
-  **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo API chyby, které do zprávy vkládá
-  `FakvioApiClient.EnsureSuccessAsync` (stack trace, SQL detail, interní ID). Domain-level chyby
-  (404, validace vstupu psaná přímo v těle toolu) tímhle neprochází a zůstávají beze změny.
+  parametr v 37 signaturách). Domain-level chyby (404, validace vstupu psaná přímo v těle toolu)
+  tímhle neprochází a zůstávají beze změny.
+  **Read-only 4xx z API (N2.2, #279 follow-up):** `EnsureSuccessAsync` už nehází holý
+  `HttpRequestException`, ale `FakvioApiClient/FakvioApiException.cs` (dědí z něj, takže stávající
+  `catch (HttpRequestException)` volající kód nerozbije) s `SafeMessage` — domainová hláška z pole
+  `message` API odpovědi (JSON objekt s řetězcovým `message`, nebo bare JSON string — `TaxController`
+  styl), ořízlá na 500 znaků. Syrové tělo zůstává jen v `Message` (log). `McpToolError.ToJson`
+  podle `StatusCode` vrátí `unauthorized` (401, vždy pevný text — klíč je
+  neplatný/expirovaný/revokovaný, vytvořit nový) a **odděleně** `forbidden` (403, vždy pevný text —
+  klíč je platný, ale read-only nebo role bez oprávnění, vytvořit klíč s `read+write` scope; Codex
+  review: dřív sdílely jednu odpověď a rada „vytvořte read+write klíč" byla zavádějící u 401, kde
+  problém není scope, ale sám klíč) — u obou nikdy `SafeMessage`, ten by byl jen API's obecné
+  "Unauthorized"/"Forbidden". Dál `not_found` (404, `SafeMessage ?? "The requested record does not exist."`), `validation_error`
+  (400/409/422, `SafeMessage ?? "The API rejected the input."`); vše ostatní zůstává
+  `internal_error` s obecnou hláškou, **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo
+  API chyby (stack trace, SQL detail, interní ID).
 - Konfigurace klienta: `.mcp.json.sample` (kořen repa) nese **oba** bloky — `fakvio` (stdio, `command` + `env`) a `fakvio-remote` (`"type": "http"`, `url` = adresa HTTP hostu + `/mcp`, klíč v hlavičce `Authorization`). Tytéž dva **režimy**, už s vyplněným klíčem, vypisuje stránka `/settings/integrations` po vytvoření klíče (`Integrations.BuildSnippets`) — když se tvar konfigurace změní, musí se změnit na obou místech. Doslova shodné bloky to nejsou: UI pojmenuje oba servery `fakvio` (sample rozlišuje `fakvio` / `fakvio-remote`) a stdio blok v samplu má navíc prázdné `"args": []`. Jméno serveru je lokální věc klienta, takže funkčně je to jedno — ale kdo si z panelu zkopíruje **oba** bloky do jednoho souboru, vyrobí si duplicitní JSON klíč. Sjednotit jméno v UI by bylo lepší než tuhle poznámku, ale je to produkční kód a tenhle docs task ho nesahá.
-  **`url` v tom vzdáleném bloku čte `Configuration["McpSettings:BaseUrl"]`** (`Fakvio.BlazorUI/wwwroot/appsettings.json`), ne `ApiKeyApiService.ApiBaseUrl` — to byla dřívější chyba (#363): API a MCP HTTP host jsou od #240 dvě různé aplikace na dvou různých adresách, takže adresa API tam nepatří a `/mcp` na ní neexistuje. Dokud `McpSettings:BaseUrl` není nastavené (dnes všude — žádný host ještě neběží, viz #241), snippet místo něj vloží zjevnou ukázkovou hodnotu (`Integration_SnippetHttpUrlPlaceholder`), ne tiše špatnou URL.
+  **`url` v tom vzdáleném bloku čte `Configuration["McpSettings:BaseUrl"]`** (`Fakvio.BlazorUI/wwwroot/appsettings.json`), ne `ApiKeyApiService.ApiBaseUrl` — to byla dřívější chyba (#363): API a MCP HTTP host jsou od #240 dvě různé aplikace na dvou různých adresách, takže adresa API tam nepatří a `/mcp` na ní neexistuje. Produkční hodnota je `https://mcp.fakvio.cz` (N1.1 — `mcp-server.yml` job `mcp-http-prod` ho nasazuje). Když `McpSettings:BaseUrl` není nastavené (např. lokální/test appsettings bez tohoto klíče), snippet místo něj vloží zjevnou ukázkovou hodnotu (`Integration_SnippetHttpUrlPlaceholder`), ne tiše špatnou URL.
+- **`CreateInvoice` (N2.4) resolves model-friendly input to internal IDs before any write call.**
+  `InvoiceTools.CreateInvoice` no longer takes a "JSON string of CreateInvoiceDto" — a model has
+  no way to know an internal `currencyId`/`issuerId`. It now takes typed parameters
+  (`clientId`, `List<CreateInvoiceItemDto> items`, `documentType`, `currency` code, optional
+  `issuerId`, dates, …) and, still ahead of any API call: resolves `currency` (default `CZK`)
+  against `GetActiveCurrenciesAsync`; resolves the issuer via `GetClientByIdAsync(issuerId)` when
+  given, else `GetIssuerAsync()`; and — **only when the resolved issuer `IsVatPayer`** — fills in
+  each item's missing `VatRateId` by matching `VatRatePercentage` against
+  `GetActiveVatRatesAsync(issueDate)`. A non-VAT-payer issuer has no VAT rates to configure at all
+  (readiness never asks for one), so its items are left exactly as sent — mirrors the rule
+  `InvoiceService.CreateInvoiceAsync` (`Fakvio.Infrastructure/Service/InvoiceService.cs:401-411`)
+  already applies. An unknown currency code or unmatched VAT percentage returns a domain error
+  listing the valid values and never reaches the API. **Matching is exact-or-explicit, never
+  "pick the first one" (Codex review follow-up):** if more than one active rate shares the same
+  percentage (e.g. two overlapping validity periods during a rate change), the tool returns an
+  error naming every candidate (`id`, name, validity) instead of guessing — the model resolves it
+  by setting `vatRateId` on the item directly.
+- **Pravidlo: vstup = typovaný parametr/DTO, nikdy JSON string (N2.5).** `ClientTools.CreateClient`/
+  `UpdateClient`, `ReceivedInvoiceTools.CreateReceivedInvoice`, `TemplateTools.CreateInvoiceFromTemplate`
+  brávaly `string …Json` a deserializovaly ho ručně — nahrazeno typovaným DTO parametrem
+  (`client`, `changes`, `invoice`, `options`); ruční deserializační `try` bloky zmizely, protože
+  je dělá sám SDK. Aby to fungovalo s camelCase názvy a enumy jako řetězci (stejná konvence jako
+  výstup), `McpServerRegistration.AddFakvioMcpServer` předává `WithToolsFromAssembly()` explicitní
+  `Fakvio.McpServer.Tools.McpToolJsonOptions.Default` (camelCase + `JsonStringEnumConverter` +
+  `DefaultJsonTypeInfoResolver` — bez resolveru SDK options odmítne jako read-only). `create_received_invoice`
+  navíc dostal stejný `string? currency` parametr jako `create_invoice` (N2.4) — sdílená
+  `CodeListTools.ResolveCurrencyAsync` helper metoda, žádná nová abstrakce. Guard:
+  `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter` (žádný `string …Json` parametr) a
+  `McpSdkInvocationTests` (enum jako řetězec a vnořené DTO pole projdou přes skutečnou SDK cestu,
+  ne jen přímým voláním metody).
+- **Verze balíčku se bumpuje ve stejném PR jako změna nástroje (N2.6), ne později.**
+  `<Version>` v `Fakvio.McpServer.csproj` — publish na nuget.org je `--skip-duplicate` jen na
+  `master` (`.github/workflows/mcp-server.yml`), takže build se stejným číslem je no-op, ne chyba;
+  bez bumpu tak oprava/nový nástroj nikdy nevyjde (přesně to se stalo #434/#438 → 1.0.3/1.0.4
+  nikdy nevyšly). Změna parametrů existujícího nástroje = major, nový nástroj beze změny
+  stávajících = minor. Handshake verze (`ServerInfo.Version`, `McpServerRegistration.cs`) se čte
+  z `AssemblyInformationalVersionAttribute` assembly, ne z ručně psané konstanty — nemůže se tedy
+  s `<Version>` rozejít, hlídá `ToolDiscoveryTests.HandshakeReports_TheAssemblysRealVersion`.
 - Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
   Uživatelský postup (vytvoření klíče, konfigurace klienta v obou režimech): USERGUIDE §20. Provoz HTTP hostu a jeho bezpečnostní model: ADMINGUIDE §9.
 
@@ -1861,6 +1988,114 @@ do obou `SharedResource*.resx`** — jinak uživatel uvidí obecnou náhradní h
 `SharedResourceLocalizationTests.ReadinessKeys_ShouldBeTranslated_InBothCultures` klíče
 odvozuje reflexí z `ReadinessCodes`, takže chybějící překlad shodí testy, ne produkci.
 
+### 4.13 Opakované faktury (recurring invoices)
+
+**Datový model:** `RecurringInvoiceSchedule` (`Fakvio.Domain/Entities/RecurringInvoiceSchedule.cs`,
+migrace `20260501102443_Add_RecurringInvoiceSchedule_v51`) — FK na `InvoiceTemplate` (Restrict)
+a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quarterly/Yearly),
+`IntervalCount`, `DayOfMonth` (1-28 — záměrně capped, žádné "poslední den v únoru" klamání) nebo
+`DayOfWeek` (jen pro Weekly), `NextRunAt`/`LastRunAt`/`EndDate`/`MaxOccurrences`/`OccurrenceCount`,
+`IsActive`, `AutoSend`, `LastError` (max 2000 znaků), `RowVersion` (xmin).
+
+**Vrstvy:**
+- `IRecurringInvoiceService` (`Fakvio.Application/Service`) — CRUD nad plány + `RunCycleAsync`
+  (stateless service dle §6.1).
+- `RecurringInvoiceService` (`Fakvio.Infrastructure/Service`) — implementace. Validace v service,
+  ne v controlleru (§2.9).
+- `RecurrenceCalculator` (`Fakvio.Infrastructure/Service`, `internal static`) — čistá funkce
+  `Next(from, frequency, intervalCount, dayOfMonth, dayOfWeek)`, žádné DB volání. Weekly počítá
+  celé týdny a pak "snapne" na cílový den v týdnu; Monthly/Quarterly/Yearly přičtou měsíce
+  (`AddMonths`) a nastaví `DayOfMonth` — díky capu 1-28 je výsledný den vždy platný.
+- `RecurringInvoiceWorker : BackgroundService` (`Fakvio.Infrastructure/Service`) — tenká obálka,
+  registrovaná v `Fakvio.API/Program.cs`. Viz §6.3 pro interval a lock key.
+- `RecurringInvoiceController` (`Fakvio.API/Controller`) — REST `api/recurring-invoice`.
+- UI: `RecurringScheduleEditor.razor` (znovupoužitelná komponenta, `Fakvio.UI.Shared/Components/Shared`)
+  + panel na `InvoiceTemplateDetail.razor`.
+
+**Pravidla generování (rozhodnutí ownera 2026-W39, upřesňují story N4):**
+1. **Faktura se rovnou vystaví (Status = Completed).** Číslo dokladu se spotřebuje ihned —
+   žádný koncept, který by po smazání nechal díru v číselné řadě. `AutoSend` řídí JEN to, jestli
+   se vystavená faktura navíc pošle e-mailem (`RecurringInvoiceService`, task N4.5) — nikoli, jestli
+   se vystaví.
+2. **Zmeškaná perioda (výpadek aplikace) se dohání po jedné faktuře za cyklus** — datum vystavení
+   je PLÁNOVANÉ datum (`NextRunAt` v době selhání), ne "teď". Plán se posune jen o jednu periodu
+   dopředu; pokud je pořád v minulosti, doženě se to samé v dalším cyklu workeru (hodinová smyčka).
+   Nikdy se negeneruje víc než jedna faktura za jeden běh `RunCycleAsync` na jeden plán.
+3. **Idempotence:** `RunCycleAsync` přečte plán, vygeneruje fakturu a posune `NextRunAt` **v jedné
+   DB transakci** (`Database.BeginTransactionAsync`). TenantDbContext má `EnableRetryOnFailure`,
+   takže transakce MUSÍ běžet uvnitř `Database.CreateExecutionStrategy().ExecuteAsync(...)` — holé
+   `BeginTransactionAsync` Npgsql odmítne (`NpgsqlRetryingExecutionStrategy does not support
+   user-initiated transactions`). Strategie při přechodné chybě spustí celý delegát znovu, proto se
+   plán čte až uvnitř něj (`GenerateInTransactionAsync`) — když předchozí pokus stihl commit,
+   opakování už plán nevidí jako splatný. InMemory testy tohle nezachytí, kryje to
+   `Fakvio.Tests.Integration/TenantRetryingContextDatabaseTests`. Druhé zavolání `RunCycleAsync` se stejným
+   `nowUtc` už plán nenajde jako splatný (`NextRunAt` je posunuté) → nevytvoří druhou fakturu.
+   Cross-instance vyloučení (dvě App Service repliky) řeší advisory lock ve workeru (§6.2) —
+   `RunCycleAsync` samotné o sobě není bezpečné proti souběžnému volání na STEJNÉM plánu z různých
+   vláken bez locku.
+4. **Chyba jednoho plánu:** transakce rollback + `_context.ChangeTracker.Clear()` (rollback vrátí
+   jen DB, ne trackovaná in-memory data — bez `Clear()` by `RecordFailureAsync` viděl už
+   zmutovaný `OccurrenceCount`/`LastRunAt` z pokusu, který se právě vrátil). `LastError` —
+   **sanitizovaná zpráva** (`SafeErrorMessage`, max 2000 znaků) — se zapíše MIMO rolled-back
+   transakci, notifikace `ENotificationType.RecurringInvoiceFailed` — **jen když se chyba změnila**
+   (první selhání nebo jiná zpráva než v `LastError`). Trvale rozbitý plán (smazaná šablona/klient)
+   se dál zkouší každou hodinu, ale uživatele upozorní jen jednou; úspěšný běh `LastError` vynuluje,
+   takže další selhání po zotavení notifikuje znovu. Sanitizace: `ex.Message`
+   projde jen pro `InvalidOperationException`/`TenantNotReadyException` (naše vlastní doménové
+   výjimky s bezpečnou zprávou), cokoli jiné (DB/SMTP/síťová výjimka) nahradí generický text —
+   celá výjimka jde vždy do logu. `NextRunAt` se **neposouvá** — příští cyklus to zkusí znovu.
+   Ostatní plány v cyklu pokračují (per-plán try/catch, stejný vzor jako `ReminderWorker`
+   per-tenant); `ChangeTracker.Clear()` na začátku každého plánu navíc brání tomu, aby si
+   kontext v jednom dlouhém cyklu nastřádal trackované entity ze všech předchozích plánů.
+5. **AutoSend e-mail** (po commitu, mimo transakci — odeslaný e-mail nejde vrátit) běží
+   **mimo** try/catch transakce z bodu 3/4, aby zrušení (`CancellationToken`) během odesílání
+   nezpůsobilo pokus o rollback už commitnuté transakce.
+6. **Resume** (`SetActiveAsync(true)`) i **Update** s nižším `MaxOccurrences`/dřívějším `EndDate`
+   kontrolují, jestli plán už nesplnil svou ukončovací podmínku (`HasReachedItsEnd`) — jinak by
+   šlo obnovit vyčerpaný plán a worker by vygeneroval ještě jednu fakturu navíc.
+7. **Smazání plánu:** `OccurrenceCount == 0` → hard delete (nikdy nevygeneroval fakturu, nic na
+   něj neodkazuje). Jinak jen deaktivace (`IsActive = false`) — historie (`LastRunAt`,
+   `OccurrenceCount`, vygenerované faktury) zůstává.
+
+**REST endpointy** (`api/recurring-invoice`): `GET` (vše, `?templateId=` filtr), `GET {id}`,
+`POST`, `PUT {id}`, `POST {id}/pause`, `POST {id}/resume`, `DELETE {id}`.
+
+### 4.14 Import z CSV (klienti z Fakturoidu / iDokladu)
+
+Story N6. Cíl: umožnit uživatelům přesun z konkurenčních fakturačních nástrojů bez ručního
+přepisování kontaktů. Reálné exporty z Fakturoidu/iDokladu nebyly při psaní k dispozici, proto je
+parser i mapování sloupců záměrně obecné (auto-detekce, aliasy), ne natvrdo zadrátované na jeden
+formát — testy v `Fakvio.Tests.Unit/CsvTableTests.cs` a `ClientCsvImportServiceTests.cs` používají
+syntetická data.
+
+- **Parser:** `Fakvio.Infrastructure/Import/CsvTable.cs` — `CsvTable.Parse(Stream)`. Žádná nová
+  NuGet závislost (repo nemá CsvHelper a nepotřebuje ho). Detekuje BOM/UTF-8/Windows-1250,
+  oddělovač (`;`, `,`, tab) z první řádky, RFC 4180 uvozovky (zdvojené `""`, nové řádky v poli).
+  Limity: 5 MB / 10 000 řádků — nad limit hodí `CsvParseException` se zprávou bezpečnou pro
+  zobrazení uživateli. Hlavičky se normalizují (`CsvTable.NormalizeHeader`: trim, lower, bez
+  diakritiky), aby mapování na aliasy nezáviselo na přesném zápisu.
+- **Import klientů:** `IClientCsvImportService` (`Fakvio.Application/Service/`) / implementace
+  `ClientCsvImportService` (`Fakvio.Infrastructure/Service/`). Preview/Confirm workflow stejně jako
+  u PDF importu (`4.2`/`ImportController`). Mapování sloupců na `CreateClientDto` je přes statickou
+  tabulku aliasů (`ClientCsvColumnAliases`) — nový alias přidáš tam, zdroj (Fakturoid/iDoklad) se
+  nerozlišuje. Dedup podle IČO: proti DB (`IClientService.GetClientByRegistrationNumberAsync`) i
+  uvnitř souboru. `Confirm` zakládá jen řádky se stavem `New`; opakovaný import stejného souboru
+  proto zafounduje 0 nových klientů.
+- **Délky polí:** preview označí jako `Invalid` řádek, jehož hodnota je delší než DB sloupec
+  (`FindOverLengthField` — limity opsané z `TenantDbContext`, drž je v synchronu; např. PSČ 20,
+  město 200, ulice 500, kontakt 500).
+- **Chyba jednoho řádku neshodí zbytek:** `ClientService.CreateClientAsync` po `DbUpdateException`
+  odpojí z change trackeru všechny `Added` entity (jinak by je každý další `SaveChanges` na stejném
+  scoped kontextu posílal znovu) a unique violation `23505` (souběžně vložené stejné IČO) převede
+  na `InvalidOperationException("… already exists")` — import to počítá jako `Skipped`, REST API
+  vrátí 409.
+- **Endpointy:** `POST api/import/clients/preview`, `POST api/import/clients/confirm`
+  (`ImportController`, multipart upload jako u PDF preview).
+- **UI:** `Fakvio.UI.Shared/Components/Shared/ClientCsvImportDialog.razor`, otevřený z tlačítka na
+  `Clients.razor`. Texty přes `SharedResource*.resx` (klíče `ClientImport_*`).
+- **Fáze 2 (zatím neimplementováno):** import historie vydaných faktur z CSV — čeká na rozhodnutí
+  ownera a reálné exporty (viz Story N6, tasky N6.5/N6.6).
+
 ---
 
 ## 5. Datová vrstva
@@ -1952,6 +2187,7 @@ Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 | Log cleanup (maže logy starší 48 h) | `LogCleanupService` (smyčka v `ExecuteAsync`) | `LogCleanupService` v Infrastructure | každou 1 h | — |
 | Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | `ReminderWorker` v Infrastructure | daily 06:00 UTC, per-tenant | `0x46414B56494F524DL` ("FAKVIORM") |
 | Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | dle `PollIntervalMinutes` (default 30 min) | `0x46414B56494F5059L` |
+| Recurring invoices | `IRecurringInvoiceService.RunCycleAsync` | `RecurringInvoiceWorker` v Infrastructure | hodinově, per-tenant | `0x46414B56494F5249L` ("FAKVIORI") |
 
 ### 6.4 Když přidáš novou periodickou úlohu
 
@@ -2744,8 +2980,8 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
    │      validace vstupu v controlleru a co nejužší DTO. NEdávej [AllowAnonymous]
    │      na tenant-scoped controller — vznikne otevřená proxy.
    │      Vzor: AuthController.FetchFromAres (GET /api/auth/ares/{ico}).
-   │      Rate-limit middleware (`AddRateLimiter`) je od migrace na App Service možný;
-   │      captcha + cache-first lookup fungují v obou hostitelích.
+   │      POVINNĚ i: `[EnableRateLimiting("auth-anon")]` (RC.4, §2.8a) — nezávislá druhá
+   │      vrstva nad captchou, funguje i s `Recaptcha:Enabled=false`.
    │      `action` je druhý argument VerifyAsync a musí být stejný řetězec, jaký
    │      stránka předává `grecaptcha.execute()` ("login", "register", "ares").
    │      Token je na akci vázaný — bez shody by token z registračního formuláře

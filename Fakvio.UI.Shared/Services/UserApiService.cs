@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Text;
 using Fakvio.Contracts.Dto.User;
 using Fakvio.UI.Shared.Models;
@@ -160,6 +161,13 @@ public class UserApiService : ApiClientBase
 
         if (!response.IsSuccessStatusCode)
         {
+            // RC.4 — 429 from the rate limiter is not "invalid or expired token" (the known
+            // gap pinned by SetPasswordAsync_ServerFault_IsReportedAsIfTheTokenFailed_KnownGap
+            // collapses every OTHER non-2xx into PasswordSet=false; 429 gets its own signal
+            // instead of widening that gap further).
+            if (RateLimitExceededException.Matches(response.StatusCode))
+                throw new RateLimitExceededException();
+
             // 400 = invalid or expired token; nothing was changed
             return new SetPasswordResultDto { PasswordSet = false };
         }
@@ -180,7 +188,15 @@ public class UserApiService : ApiClientBase
     {
         // Anonymous endpoint — call the HttpClient directly
         var response = await _httpClient.GetAsync($"/api/user/validate-invitation?token={Uri.EscapeDataString(token)}");
-        if (!response.IsSuccessStatusCode) return false;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // RC.4 — a 429 here is not "invalid token"; SetPassword.razor shows a distinct message.
+            if (RateLimitExceededException.Matches(response.StatusCode))
+                throw new RateLimitExceededException();
+
+            return false;
+        }
 
         var result = await response.Content.ReadFromJsonAsync<InvitationValidationResult>();
         return result?.IsValid ?? false;
@@ -189,12 +205,42 @@ public class UserApiService : ApiClientBase
     /// <summary>
     /// Initiates the "Forgot Password" flow — sends a password reset email.
     /// Anonymous call — no auth header needed.
-    /// Always returns true (server never reveals whether the email exists).
+    /// Always returns true (server never reveals whether the email exists) — EXCEPT for a
+    /// failed reCAPTCHA (RC.3), which throws <see cref="CaptchaException"/> instead. That
+    /// distinction is safe: a failed CAPTCHA says nothing about the email address, only
+    /// that the bot check itself failed, so it does not need the same anti-enumeration
+    /// treatment as every other outcome of this endpoint.
     /// </summary>
-    public async Task<bool> ForgotPasswordAsync(string email)
+    /// <param name="email">Email address to send the reset link to (if it exists).</param>
+    /// <param name="captchaToken">
+    /// reCAPTCHA v3 token from <c>grecaptcha.execute(siteKey, {'{'} action: "forgot_password" {'}'})</c>,
+    /// sent via the same <c>X-Captcha-Token</c> header as login/register/ares.
+    /// </param>
+    public async Task<bool> ForgotPasswordAsync(string email, string? captchaToken = null)
     {
         var dto = new ForgotPasswordDto { Email = email };
-        var response = await _httpClient.PostAsJsonAsync("/api/user/forgot-password", dto);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/user/forgot-password")
+        {
+            Content = JsonContent.Create(dto)
+        };
+        if (!string.IsNullOrEmpty(captchaToken))
+            request.Headers.Add("X-Captcha-Token", captchaToken);
+
+        var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // RC.4 — the "auth-anon" rate limiter answers 429 before this reaches
+            // IUserService.ForgotPasswordAsync; distinct from the CAPTCHA check below.
+            if (RateLimitExceededException.Matches(response.StatusCode))
+                throw new RateLimitExceededException();
+
+            var errorContent = await response.Content.ReadAsStringAsync();
+            if (CaptchaException.Matches(response.StatusCode, errorContent))
+                throw new CaptchaException();
+        }
+
         return response.IsSuccessStatusCode;
     }
 

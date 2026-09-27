@@ -12,6 +12,7 @@
 using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.User;
+using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -42,6 +43,7 @@ public class UserControllerSetPasswordTests
             _userService,
             Substitute.For<IEmailService>(),
             Substitute.For<ISystemConfigurationService>(),
+            Substitute.For<ICaptchaService>(),
             Substitute.For<IConfiguration>(),
             NullLogger<UserController>.Instance);
 
