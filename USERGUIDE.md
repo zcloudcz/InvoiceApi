@@ -1260,3 +1260,25 @@ požadavek AI už neprojde. Vzít zpět to nejde; místo revokovaného klíče s
   přečtěte si, co se chystá udělat.
 - Dává smysl mít **víc klíčů** — jeden na aplikaci či počítač. Když jeden ztratíte, revokujete
   ho bez dopadu na ostatní.
+
+### 20.8 Připojení přes claude.ai / ChatGPT (OAuth) — třetí cesta
+
+Kromě API klíče (§20.1–20.7) jde Fakvio připojit k **claude.ai** a **ChatGPT** i bez klíče —
+stačí v daném klientovi zadat adresu Fakvio MCP serveru a přihlásit se běžným Fakvio účtem
+(heslo, SSO, 2FA — cokoli používáte dnes). Klient se nejdřív zeptá na souhlas: uvidíte, o
+kterou aplikaci jde (podle adresy, ne podle jména, které si aplikace sama zvolila), kam vás po
+povolení pošle, a zvolíte **Jen čtení** (výchozí) nebo **Čtení i zápis**.
+
+> Tahle cesta je v postupném zavádění (uzavřený test) — pokud vám claude.ai/ChatGPT po zadání
+> adresy nenabídne přihlášení, zatím se k vám ještě nedostala; použijte API klíč (§20.1).
+
+**Správa připojených aplikací.** Na stránce **Nastavení → Integrace** přibyla pod klíči sekce
+**Připojené aplikace** — jedna aplikace = jeden řádek (název, oprávnění, kdy vzniklo, kdy
+naposledy použito). Tlačítko **Odebrat** okamžitě ukončí přístup té aplikace — stejně
+neodvolatelně jako revokace API klíče. Když se znovu přihlásíte přes stejnou aplikaci, vznikne
+nové připojení (staré tím zmizí ze seznamu, žádné duplicity).
+
+**Souvislost s heslem a 2FA.** Změna nebo reset hesla a vypnutí dvoufázového ověření odpojí
+**všechny** vaše připojené aplikace najednou (API klíče zůstávají beze změny — jsou to jiný,
+samostatně spravovaný typ přístupu). Po takové změně je tedy potřeba se v claude.ai/ChatGPT
+znovu přihlásit.

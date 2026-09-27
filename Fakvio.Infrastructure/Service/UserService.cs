@@ -20,17 +20,20 @@ public class UserService : IUserService
     private readonly MasterDbContext _context;
     private readonly IAuthService _authService;
     private readonly ITenantProvisioningService _provisioningService;
+    private readonly IOAuthService _oauthService;
     private readonly ILogger<UserService> _logger;
 
     public UserService(
         MasterDbContext context,
         IAuthService authService,
         ITenantProvisioningService provisioningService,
+        IOAuthService oauthService,
         ILogger<UserService> logger)
     {
         _context = context;
         _authService = authService;
         _provisioningService = provisioningService;
+        _oauthService = oauthService;
         _logger = logger;
     }
 
@@ -342,6 +345,11 @@ public class UserService : IUserService
 
         await _context.SaveChangesAsync(cancellationToken);
 
+        // Q6 (ADR 0001, docs/adr/0001-mcp-oauth21.md §9): a credential change revokes every
+        // OAuth grant of this user — a stolen-but-unused password no longer implies a still-live
+        // MCP connector. API keys are a separate, explicit credential and are untouched.
+        await _oauthService.RevokeAllGrantsForUserAsync(userId, EOAuthGrantRevokedReason.CredentialChanged, cancellationToken);
+
         return true;
     }
 
@@ -363,6 +371,9 @@ public class UserService : IUserService
         user.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Q6 — same reasoning as ChangePasswordAsync above.
+        await _oauthService.RevokeAllGrantsForUserAsync(userId, EOAuthGrantRevokedReason.CredentialChanged, cancellationToken);
 
         return true;
     }
@@ -497,6 +508,11 @@ public class UserService : IUserService
         user.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Q6 — this path also serves "forgot password" resets (not just first-time invitation
+        // set-up), so an existing user's OAuth grants must be revoked here too. A no-op for a
+        // brand-new user, who has none yet.
+        await _oauthService.RevokeAllGrantsForUserAsync(user.Id, EOAuthGrantRevokedReason.CredentialChanged, cancellationToken);
 
         // Users without a company (SysAdmin) have no tenant schema — nothing to provision,
         // so their workspace is ready by definition.

@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Dto.OAuth;
 using Fakvio.Domain.Enums;
 
 namespace Fakvio.Application.Service;
@@ -63,6 +64,18 @@ public interface IOAuthService
     /// reconnect, and the user-initiated "Odebrat" action (N5.7).
     /// </summary>
     Task RevokeGrantAsync(long grantId, EOAuthGrantRevokedReason reason, long? revokedByUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// "Připojené aplikace" (ADR §4.8) — the user's own live (non-revoked) grants, newest first.
+    /// </summary>
+    Task<IReadOnlyList<OAuthGrantDto>> GetGrantsAsync(long userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// User-initiated "Odebrat". Ownership-checked here (unlike <see cref="RevokeGrantAsync"/>):
+    /// returns false for an unknown id, someone else's grant, or an already-revoked one — the
+    /// same "indistinguishable from not found" shape as <c>ApiKeyService.RevokeAsync</c>.
+    /// </summary>
+    Task<bool> RevokeGrantForUserAsync(long userId, long grantId, CancellationToken ct = default);
 
     /// <summary>
     /// Revokes every non-revoked grant of a user (Q6 — password change/reset or 2FA disable

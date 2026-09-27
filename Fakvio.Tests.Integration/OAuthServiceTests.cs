@@ -531,4 +531,71 @@ public class OAuthServiceTests : IAsyncLifetime
         await using var readContext = CreateMasterContext();
         (await readContext.OAuthGrant.Where(g => g.UserId == OwnerUserId).AllAsync(g => g.RevokedAt != null)).ShouldBeTrue();
     }
+
+    // ─── "Připojené aplikace" (N5.7) ─────────────────────────────────────────
+
+    [SkippableFact]
+    public async Task GetGrantsAsync_ReturnsOnlyThatUsersLiveGrants()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        await IssueAndExchangeAsync();
+
+        // A revoked grant of the same user must not appear either.
+        await using (var context = CreateMasterContext())
+        {
+            var revoked = await context.OAuthGrant.SingleAsync(g => g.UserId == OwnerUserId);
+            await CreateService(context).RevokeGrantAsync(revoked.Id, EOAuthGrantRevokedReason.User, OwnerUserId);
+        }
+
+        await IssueAndExchangeAsync(); // a second, still-live grant
+
+        await using var readContext = CreateMasterContext();
+        var grants = await CreateService(readContext).GetGrantsAsync(OwnerUserId);
+
+        grants.Count.ShouldBe(1);
+        grants[0].ClientId.ShouldBe(ClientId);
+    }
+
+    [SkippableFact]
+    public async Task RevokeGrantForUserAsync_ByTheOwner_RevokesTheGrantAndItsTokens()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var initial = await IssueAndExchangeAsync();
+        long grantId;
+        await using (var context = CreateMasterContext())
+            grantId = (await context.OAuthGrant.SingleAsync(g => g.UserId == OwnerUserId)).Id;
+
+        bool result;
+        await using (var context = CreateMasterContext())
+            result = await CreateService(context).RevokeGrantForUserAsync(OwnerUserId, grantId);
+
+        result.ShouldBeTrue();
+
+        await using var readContext = CreateMasterContext();
+        (await readContext.OAuthGrant.SingleAsync(g => g.Id == grantId)).RevokedAt.ShouldNotBeNull();
+        (await readContext.ApiKey.SingleAsync(k => k.OAuthGrantId == grantId)).RevokedAt.ShouldNotBeNull();
+        initial.AccessToken.ShouldNotBeNullOrEmpty(); // sanity: the token this asserts on actually exists
+    }
+
+    [SkippableFact]
+    public async Task RevokeGrantForUserAsync_BySomeoneElse_ReturnsFalseAndLeavesItActive()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        await IssueAndExchangeAsync();
+        long grantId;
+        await using (var context = CreateMasterContext())
+            grantId = (await context.OAuthGrant.SingleAsync(g => g.UserId == OwnerUserId)).Id;
+
+        bool result;
+        await using (var context = CreateMasterContext())
+            result = await CreateService(context).RevokeGrantForUserAsync(OwnerUserId + 999, grantId);
+
+        result.ShouldBeFalse();
+
+        await using var readContext = CreateMasterContext();
+        (await readContext.OAuthGrant.SingleAsync(g => g.Id == grantId)).RevokedAt.ShouldBeNull();
+    }
 }

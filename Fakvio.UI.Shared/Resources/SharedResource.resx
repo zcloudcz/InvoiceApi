@@ -1811,4 +1811,11 @@
   <data name="OAuthConsent_InvalidTicket" xml:space="preserve"><value>Tento odkaz je neplatný nebo vypršel. Zkuste připojení znovu z aplikace.</value></data>
   <data name="OAuthConsent_Error" xml:space="preserve"><value>Souhlas se nepodařilo zpracovat. Zkuste to prosím znovu.</value></data>
   <data name="OAuthConsent_ErrorGeneric" xml:space="preserve"><value>Souhlas se nepodařilo zpracovat: {0}</value></data>
+  <data name="Integration_ConnectedAppsTitle" xml:space="preserve"><value>Připojené aplikace</value></data>
+  <data name="Integration_ConnectedAppsSubtitle" xml:space="preserve"><value>Aplikace, kterým jste přes OAuth povolili přístup k vašemu účtu (Claude.ai, ChatGPT, …).</value></data>
+  <data name="Integration_ConnectedAppClient" xml:space="preserve"><value>Aplikace</value></data>
+  <data name="Integration_ConnectedAppRemove" xml:space="preserve"><value>Odebrat</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmTitle" xml:space="preserve"><value>Odebrat připojenou aplikaci?</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmText" xml:space="preserve"><value>Aplikace {0} ztratí přístup k vašemu účtu. Tuto akci nelze vrátit zpět.</value></data>
+  <data name="Integration_ConnectedAppRemoveSuccess" xml:space="preserve"><value>Aplikace byla odpojena.</value></data>
 </root>

@@ -35,6 +35,7 @@ public class TwoFactorService : ITwoFactorService
     private readonly IEmailService _emailService;
     private readonly IContentTemplateService _contentTemplateService;
     private readonly IConfiguration _configuration;
+    private readonly IOAuthService _oauthService;
     private readonly ILogger<TwoFactorService> _logger;
 
     // Data Protection purposes — unique string scopes for different encryption needs
@@ -54,6 +55,7 @@ public class TwoFactorService : ITwoFactorService
         IEmailService emailService,
         IContentTemplateService contentTemplateService,
         IConfiguration configuration,
+        IOAuthService oauthService,
         ILogger<TwoFactorService> logger)
     {
         _context = context;
@@ -62,6 +64,7 @@ public class TwoFactorService : ITwoFactorService
         _emailService = emailService;
         _contentTemplateService = contentTemplateService;
         _configuration = configuration;
+        _oauthService = oauthService;
         _logger = logger;
     }
 
@@ -332,6 +335,11 @@ public class TwoFactorService : ITwoFactorService
         ClearAllTwoFactorData(user);
         await _context.SaveChangesAsync(ct);
 
+        // Q6 (ADR 0001 §9) — turning off 2FA revokes all of this user's OAuth grants, same as
+        // a password change: it is a weakening of the account's own credential, and an OAuth
+        // client that was trusted under the stronger posture should not silently keep working.
+        await _oauthService.RevokeAllGrantsForUserAsync(userId, EOAuthGrantRevokedReason.CredentialChanged, ct);
+
         _logger.LogInformation("2FA disabled by user {UserId}", userId);
     }
 
@@ -346,6 +354,9 @@ public class TwoFactorService : ITwoFactorService
 
         ClearAllTwoFactorData(user);
         await _context.SaveChangesAsync(ct);
+
+        // Q6 — same reasoning as the self-service disable above.
+        await _oauthService.RevokeAllGrantsForUserAsync(userId, EOAuthGrantRevokedReason.CredentialChanged, ct);
 
         _logger.LogWarning(
             "2FA force-disabled for user {UserId} by admin {AdminUserId}",

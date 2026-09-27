@@ -92,6 +92,8 @@ public static class ServiceCollectionExtensions
 
         // OAuth 2.1 consent screen (ADR 0001) — page /oauth/consent.
         services.AddApiClient<OAuthConsentApiService>();
+        // "Připojené aplikace" (ADR 0001 §4.8) — page /settings/integrations.
+        services.AddApiClient<OAuthGrantsApiService>();
 
         // User preferences — API client + session cache used by FakvioGrid (page size)
         services.AddApiClient<UserPreferencesApiService>();

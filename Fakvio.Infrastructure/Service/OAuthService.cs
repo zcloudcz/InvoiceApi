@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.OAuth;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Authentication.OAuth;
@@ -368,6 +369,41 @@ public class OAuthService : IOAuthService
 
         foreach (var grantId in grantIds)
             await RevokeGrantAsync(grantId, reason, null, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<OAuthGrantDto>> GetGrantsAsync(long userId, CancellationToken ct = default)
+    {
+        return await _context.OAuthGrant
+            .AsNoTracking()
+            .Where(g => g.UserId == userId && g.RevokedAt == null)
+            .OrderByDescending(g => g.CreatedAt)
+            .Select(g => new OAuthGrantDto
+            {
+                Id = g.Id,
+                ClientId = g.ClientId,
+                ClientName = g.ClientName,
+                Scopes = g.Scopes,
+                CreatedAt = g.CreatedAt,
+                LastUsedAt = g.LastUsedAt
+            })
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> RevokeGrantForUserAsync(long userId, long grantId, CancellationToken ct = default)
+    {
+        // UserId is part of the predicate, so someone else's id is indistinguishable from a
+        // non-existent one — same pattern as ApiKeyService.RevokeAsync.
+        var owned = await _context.OAuthGrant
+            .AsNoTracking()
+            .AnyAsync(g => g.Id == grantId && g.UserId == userId && g.RevokedAt == null, ct);
+
+        if (!owned)
+            return false;
+
+        await RevokeGrantAsync(grantId, EOAuthGrantRevokedReason.User, userId, ct);
+        return true;
     }
 
     // ─── Eligibility (allowlist + Q9) ───────────────────────────────────────

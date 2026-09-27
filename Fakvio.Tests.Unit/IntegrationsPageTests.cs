@@ -108,6 +108,11 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(factory);
         Services.AddSingleton(Substitute.For<AuthenticationStateProvider>());
         Services.AddSingleton<ApiKeyApiService>();
+        // OAuthGrantsApiService — the stub 404s on /api/oauth/grants (unhandled route),
+        // which the service turns into an empty list, same as the API does with the feature
+        // flag off. This page's own tests are about API keys, not OAuth grants (see
+        // OAuthGrantsSectionTests for those).
+        Services.AddSingleton<OAuthGrantsApiService>();
 
         // The page reports failures through the shared handler; a substitute keeps the
         // test output clean without hiding anything the assertions look at.
