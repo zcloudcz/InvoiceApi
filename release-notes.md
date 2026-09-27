@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.28 — 2026-09-28
+
 - **#445** — Balíček `Fakvio.McpServer` se na nuget.org publikuje přes Trusted Publishing (OIDC, bez uloženého klíče); dřív publikace kvůli chybějícímu klíči tiše přeskakovala a na nuget.org zůstala verze 1.0.2. (PR #445, `9d7c9da`)
 - **#444** — Opakované faktury: plán automaticky vystaví (a volitelně odešle) fakturu podle šablony; trvale selhávající plán notifikuje jen při změně chyby. (PR #444, `2d89b73`)
 - **#444** — Hromadný import klientů z CSV s náhledem; příliš dlouhé hodnoty jsou označené jako neplatné, jeden vadný řádek už neshodí zbytek importu, duplicitní IČO se přeskočí. (PR #444, `2d89b73`)
