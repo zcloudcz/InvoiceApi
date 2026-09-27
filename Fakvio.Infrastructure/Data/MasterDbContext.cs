@@ -83,6 +83,19 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<ApiKey> ApiKey { get; set; }
 
     /// <summary>
+    /// OAuth 2.1 consents ("Připojené aplikace") — see ADR 0001 (docs/adr/0001-mcp-oauth21.md).
+    /// Master DB for the same reason as <see cref="ApiKey"/>: the token endpoint must resolve
+    /// the credential before any tenant schema is known.
+    /// </summary>
+    public DbSet<OAuthGrant> OAuthGrant { get; set; }
+
+    /// <summary>Single-use authorization codes from the consent flow (§4.2/§4.3).</summary>
+    public DbSet<OAuthAuthorizationCode> OAuthAuthorizationCode { get; set; }
+
+    /// <summary>Rotating refresh tokens, one active row per grant at a time (§4.2/§4.3).</summary>
+    public DbSet<OAuthRefreshToken> OAuthRefreshToken { get; set; }
+
+    /// <summary>
     /// Companies (Client records where IsIssuer = true).
     /// In the master DB, we only store issuer/company records — customers live in tenant DBs.
     /// NOTE: The Client table schema is the same, but master DB only contains IsIssuer = true records.
@@ -222,6 +235,9 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         ConfigureUser(modelBuilder);
         ConfigureUserPreferences(modelBuilder);
         ConfigureApiKey(modelBuilder);
+        ConfigureOAuthGrant(modelBuilder);
+        ConfigureOAuthAuthorizationCode(modelBuilder);
+        ConfigureOAuthRefreshToken(modelBuilder);
         ConfigureClient(modelBuilder);
         ConfigureAddress(modelBuilder);
         ConfigureContact(modelBuilder);
@@ -293,6 +309,98 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
             entity.Property(e => e.KeyPrefix).IsRequired().HasMaxLength(16);
             entity.Property(e => e.KeyHash).IsRequired().HasMaxLength(64);
             entity.Property(e => e.Scopes).IsRequired().HasMaxLength(64);
+
+            // Links an OAuth-minted access token back to the grant it belongs to (ADR 0001,
+            // §4.3). Cascade: deleting/removing a grant removes the access tokens under it —
+            // Restrict would leave orphaned rows the cleanup service would have to hunt for.
+            entity.HasOne(e => e.OAuthGrant)
+                .WithMany()
+                .HasForeignKey(e => e.OAuthGrantId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired(false);
+
+            entity.HasIndex(e => e.OAuthGrantId);
+        });
+    }
+
+    /// <summary>
+    /// OAuthGrant — see ADR 0001 (docs/adr/0001-mcp-oauth21.md) §4.3.
+    /// </summary>
+    private void ConfigureOAuthGrant(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OAuthGrant>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Listing "my connected apps" and finding the grant to supersede on reconnect.
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.ClientId, e.Resource });
+
+            entity.Property(e => e.ClientId).IsRequired().HasMaxLength(2048);
+            entity.Property(e => e.ClientName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Scopes).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Resource).IsRequired().HasMaxLength(2048);
+            entity.Property(e => e.RevokedReason).HasConversion<int?>();
+        });
+    }
+
+    /// <summary>
+    /// OAuthAuthorizationCode — see ADR 0001 (docs/adr/0001-mcp-oauth21.md) §4.2/§4.3.
+    /// </summary>
+    private void ConfigureOAuthAuthorizationCode(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OAuthAuthorizationCode>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The authentication lookup at the token endpoint. Unique doubles as a collision guard.
+            entity.HasIndex(e => e.CodeHash).IsUnique();
+
+            entity.Property(e => e.CodeHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.ClientId).IsRequired().HasMaxLength(2048);
+            entity.Property(e => e.ClientName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.RedirectUri).IsRequired().HasMaxLength(2048);
+            entity.Property(e => e.CodeChallenge).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.Scopes).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Resource).IsRequired().HasMaxLength(2048);
+
+            // No FK to OAuthGrant on purpose: GrantId is only set after redemption, and the
+            // grant can legitimately outlive/precede this row's cleanup — a plain nullable
+            // column keeps that independent of ordering, cleanup reads it by value only.
+        });
+    }
+
+    /// <summary>
+    /// OAuthRefreshToken — see ADR 0001 (docs/adr/0001-mcp-oauth21.md) §4.2/§4.3.
+    /// </summary>
+    private void ConfigureOAuthRefreshToken(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OAuthRefreshToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.Grant)
+                .WithMany()
+                .HasForeignKey(e => e.GrantId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The authentication lookup at the token endpoint. Unique doubles as a collision guard.
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+
+            // Reuse detection needs "every token of this grant", newest first.
+            entity.HasIndex(e => e.GrantId);
+
+            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64);
         });
     }
 

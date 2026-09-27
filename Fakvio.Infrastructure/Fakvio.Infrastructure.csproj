@@ -3,6 +3,9 @@
   <!-- Allow test project to access internal members (e.g., ParseAiResponse for unit testing) -->
   <ItemGroup>
     <InternalsVisibleTo Include="Fakvio.Tests.Unit" />
+    <!-- OAuthDatabaseConstraintTests drives OAuthCleanupService.RunOnceAsync directly against a
+         real PostgreSQL schema, without waiting an hour for the BackgroundService loop. -->
+    <InternalsVisibleTo Include="Fakvio.Tests.Integration" />
   </ItemGroup>
 
   <ItemGroup>

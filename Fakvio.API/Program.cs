@@ -44,6 +44,9 @@ builder.Services.AddHostedService<LogFlushService>();
 builder.Services.AddHostedService<LogCleanupService>();
 builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddHostedService<RecurringInvoiceWorker>();
+// OAuthCleanupService: sweeps expired OAuth rows every hour (ADR 0001, §4.3). Registered
+// unconditionally — with McpOAuth:Enabled=false there is simply nothing for it to delete.
+builder.Services.AddHostedService<OAuthCleanupService>();
 
 // ── Application Insights ────────────────────────────────────────────────────
 // Reads APPLICATIONINSIGHTS_CONNECTION_STRING from the App Service settings; without it
