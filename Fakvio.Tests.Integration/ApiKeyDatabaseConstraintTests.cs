@@ -79,6 +79,17 @@ public class ApiKeyDatabaseConstraintTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Must run before anything touches Npgsql's type mapping — same rule and same fix as
+        // Fakvio.Tests.Unit.DatabaseConnectivitySmokeTests. Both production hosts set this
+        // switch at startup (see class remarks), but whether it is already set *in this test
+        // process* depends on whether a WebApplicationFactory-based test class happened to run
+        // first — xUnit gives no such ordering guarantee, collections execute in parallel. Left
+        // unset, SeedOwnerAsync's Kind=Utc DateTimes are rejected by the 'timestamp without time
+        // zone' columns (Npgsql's non-legacy default), which is exactly the "21 transient
+        // failures on first run" observed before this fix: whichever collection happened to
+        // reach PostgreSQL before any API host booted hit the non-legacy branch and failed.
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
         // The real factory in password mode — the same object graph production builds, so
         // the per-schema search_path handling under test is the production one.
         _dataSourceFactory = new NpgsqlDataSourceFactory(new DatabaseOptions

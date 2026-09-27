@@ -171,4 +171,87 @@ public class CsvTableTests
 
         Should.Throw<CsvParseException>(() => CsvTable.Parse(ToStream(csv)));
     }
+
+    [Fact]
+    public void Parse_HeaderOnlyFile_ReturnsEmptyRows_DoesNotThrow()
+    {
+        // A file with a header and zero data rows is a valid (if pointless) import, not malformed
+        // input — it must not be confused with the empty-file / no-rows-at-all case above.
+        var table = CsvTable.Parse(ToStream("Name;City\r\n"));
+
+        table.Headers.ShouldBe(new[] { "name", "city" });
+        table.Rows.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Parse_RowWithFewerFieldsThanHeader_MissingTrailingColumnsAreAbsent()
+    {
+        // A hand-edited or truncated export can have a short row. The reader must not throw or
+        // pad it — a missing column simply has no key, exactly like a well-formed row that left
+        // an optional field blank.
+        var csv = "Name;City;Email\r\nAcme\r\n";
+
+        var table = CsvTable.Parse(ToStream(csv));
+
+        table.Rows[0]["name"].ShouldBe("Acme");
+        table.Rows[0].ContainsKey("city").ShouldBeFalse();
+        table.Rows[0].ContainsKey("email").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Parse_RowWithMoreFieldsThanHeader_ExtraTrailingFieldsAreIgnored()
+    {
+        // The opposite malformation: a row with extra unlabeled trailing fields (e.g. a stray
+        // delimiter typed by hand). Extra fields are silently dropped rather than throwing —
+        // MaxFieldCount is the only hard ceiling on row width.
+        var csv = "Name;City\r\nAcme;Praha;ExtraJunk;MoreJunk\r\n";
+
+        var table = CsvTable.Parse(ToStream(csv));
+
+        table.Rows.Count.ShouldBe(1);
+        table.Rows[0]["name"].ShouldBe("Acme");
+        table.Rows[0]["city"].ShouldBe("Praha");
+    }
+
+    [Fact]
+    public void Parse_LoneCarriageReturnLineEndings_AreTreatedAsRowBreaks()
+    {
+        // Old Mac-style line endings (bare \r, no \n) are a realistic "malformed" upload from a
+        // legacy export tool. The tokenizer's \r branch must end the record even without a
+        // following \n, not swallow the rest of the file into one field.
+        var csv = "Name;City\rAcme;Praha\rBeta;Brno\r";
+
+        var table = CsvTable.Parse(ToStream(csv));
+
+        table.Rows.Count.ShouldBe(2);
+        table.Rows[0]["name"].ShouldBe("Acme");
+        table.Rows[1]["name"].ShouldBe("Beta");
+    }
+
+    [Fact]
+    public void Parse_ArbitraryBinaryUpload_NeverThrowsAnUnhandledException()
+    {
+        // A user uploading the wrong file (e.g. a PNG renamed to .csv, or anything non-text) is
+        // an untrusted-input path, not a "can't happen". Windows-1250 has a mapping for every
+        // byte, so DecodeText never throws here — the file decodes to a wall of near-random
+        // characters, which this class treats as a (weird but well-formed) one-column CSV
+        // instead of erroring. Either outcome — a caller-safe CsvParseException, or a CsvTable
+        // full of garbage strings — is acceptable; anything else (an unrelated exception type
+        // escaping to the controller as an unhandled 500) is not.
+        var pngMagicBytesRepeated = Enumerable.Range(0, 1000)
+            .SelectMany(_ => new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xFE, 0x00, 0x01 })
+            .ToArray();
+
+        Should.NotThrow(() =>
+        {
+            try
+            {
+                CsvTable.Parse(new MemoryStream(pngMagicBytesRepeated));
+            }
+            catch (CsvParseException)
+            {
+                // Expected, safe outcome — the caller turns this into a 400 with a user-facing message.
+            }
+        });
+    }
 }

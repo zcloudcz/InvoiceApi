@@ -84,6 +84,105 @@ public class AuthAnonRateLimitTests
     }
 
     /// <summary>
+    /// The flip side of the previous test: "auth-anon" is ONE policy shared by every
+    /// decorated endpoint (login, register, ares, forgot-password, set-password,
+    /// validate-invitation, 2FA verify), partitioned by caller IP — not one independent
+    /// counter per route. Starving the bucket via login must therefore also 429 register,
+    /// for the SAME caller, even though register was never itself called enough times to
+    /// trip its own count. Without this, an attacker could round-robin across the seven
+    /// decorated endpoints and get PermitLimit attempts on EACH instead of PermitLimit total.
+    /// </summary>
+    [Fact]
+    public async Task Login_ExceedsPermitLimit_AlsoRejectsRegister_SharedPartitionAcrossEndpoints()
+    {
+        using var factory = new TightRateLimitFactory();
+        var client = factory.CreateClient();
+        var loginRequest = new LoginRequest { Email = "nobody3@example.com", Password = "wrong" };
+
+        for (var i = 0; i < PermitLimit; i++)
+        {
+            await client.PostAsJsonAsync("/api/auth/login", loginRequest);
+        }
+
+        // The bucket is now exactly at its limit — register on the same (test-host) IP must
+        // be rejected on its very FIRST call, never having been counted against itself.
+        var registerResponse = await client.PostAsJsonAsync("/api/auth/register", new { });
+
+        registerResponse.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+    }
+
+    /// <summary>
+    /// RC.4's partition key is the caller's IP — after <c>UseForwardedHeaders</c> with
+    /// <c>ForwardLimit = 1</c> resolves it from X-Forwarded-For. Two callers behind different
+    /// forwarded IPs must get independent buckets: proves the partition key is actually
+    /// per-IP and not one process-wide bucket in disguise.
+    /// </summary>
+    [Fact]
+    public async Task Login_TwoDifferentForwardedIps_GetIndependentRateLimitBuckets()
+    {
+        using var factory = new TightRateLimitFactory();
+        var client = factory.CreateClient();
+        var loginRequest = new LoginRequest { Email = "nobody4@example.com", Password = "wrong" };
+
+        for (var i = 0; i < PermitLimit; i++)
+        {
+            await SendLoginAsync(client, loginRequest, forwardedFor: "203.0.113.10");
+        }
+
+        // A fresh IP must still have its full, untouched quota — the previous IP's exhausted
+        // bucket must not have been shared.
+        var freshIpResponse = await SendLoginAsync(client, loginRequest, forwardedFor: "203.0.113.20");
+
+        freshIpResponse.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
+            "a different forwarded IP must have its own independent bucket");
+    }
+
+    /// <summary>
+    /// <c>ForwardLimit = 1</c> means only the RIGHT-MOST X-Forwarded-For entry is trusted —
+    /// the one Azure's own edge appends — because everything to its LEFT was supplied by the
+    /// client and is trivially spoofable. Without this limit, an attacker could prepend a
+    /// fresh random IP to X-Forwarded-For on every request and get a brand-new rate-limit
+    /// bucket each time, defeating RC.4 entirely. This test proves that changing only the
+    /// spoofable left-most entry, while keeping the trusted right-most one fixed, still hits
+    /// ONE shared bucket.
+    /// </summary>
+    [Fact]
+    public async Task Login_SpoofedLeftmostForwardedForEntry_DoesNotBypassRateLimit()
+    {
+        using var factory = new TightRateLimitFactory();
+        var client = factory.CreateClient();
+        var loginRequest = new LoginRequest { Email = "nobody5@example.com", Password = "wrong" };
+        const string realEdgeAppendedIp = "203.0.113.30";
+
+        for (var i = 0; i < PermitLimit; i++)
+        {
+            // A different forged left-most entry on every request, as an attacker trying to
+            // dodge the limiter would send — but the real, right-most entry never changes.
+            var spoofedChain = $"198.51.100.{i}, {realEdgeAppendedIp}";
+            var response = await SendLoginAsync(client, loginRequest, forwardedFor: spoofedChain);
+            response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
+                $"request #{i + 1} of {PermitLimit} is within the permit limit");
+        }
+
+        var rejected = await SendLoginAsync(
+            client, loginRequest, forwardedFor: $"198.51.100.999, {realEdgeAppendedIp}");
+
+        rejected.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests,
+            "spoofing only the left-most (client-supplied) hop must not grant a fresh bucket");
+    }
+
+    private static async Task<HttpResponseMessage> SendLoginAsync(
+        HttpClient client, LoginRequest loginRequest, string forwardedFor)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/login")
+        {
+            Content = JsonContent.Create(loginRequest)
+        };
+        request.Headers.Add("X-Forwarded-For", forwardedFor);
+        return await client.SendAsync(request);
+    }
+
+    /// <summary>
     /// Same test host as everything else (real routing/auth pipeline, InMemory database —
     /// see FakvioFactory), but with the auth-anon limiter dialed back down to a size a
     /// unit test can actually exhaust in a handful of requests.
