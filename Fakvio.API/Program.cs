@@ -193,6 +193,18 @@ var oauthTokenRateLimitConfig = builder.Configuration.GetSection("RateLimiting:O
 var oauthTokenPermitLimit = oauthTokenRateLimitConfig.GetValue("PermitLimit", 300);
 var oauthTokenWindowSeconds = oauthTokenRateLimitConfig.GetValue("WindowSeconds", 60);
 
+// /oauth/authorize triggers a CIMD fetch (via IOAuthClientResolver) for any client_id it has
+// not already cached — a much lower ceiling than the token endpoint, matching ADR §4.10.
+var oauthAuthorizeRateLimitConfig = builder.Configuration.GetSection("RateLimiting:OAuthAuthorize");
+var oauthAuthorizePermitLimit = oauthAuthorizeRateLimitConfig.GetValue("PermitLimit", 60);
+var oauthAuthorizeWindowSeconds = oauthAuthorizeRateLimitConfig.GetValue("WindowSeconds", 60);
+
+// /api/oauth/consent* is authenticated (JWT), so it is partitioned by UserId rather than IP —
+// several users legitimately sharing an office/NAT IP must not share this bucket.
+var oauthConsentRateLimitConfig = builder.Configuration.GetSection("RateLimiting:OAuthConsent");
+var oauthConsentPermitLimit = oauthConsentRateLimitConfig.GetValue("PermitLimit", 30);
+var oauthConsentWindowSeconds = oauthConsentRateLimitConfig.GetValue("WindowSeconds", 60);
+
 builder.Services.AddRateLimiter(options =>
 {
     // 429 + Retry-After (RFC 6585) — the Blazor UI checks for 429 specifically to show
@@ -230,6 +242,26 @@ builder.Services.AddRateLimiter(options =>
             {
                 PermitLimit = oauthTokenPermitLimit,
                 Window = TimeSpan.FromSeconds(oauthTokenWindowSeconds),
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("oauth-authorize", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientIpPartitionKey(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = oauthAuthorizePermitLimit,
+                Window = TimeSpan.FromSeconds(oauthAuthorizeWindowSeconds),
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("oauth-consent", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = oauthConsentPermitLimit,
+                Window = TimeSpan.FromSeconds(oauthConsentWindowSeconds),
                 QueueLimit = 0
             }));
 });

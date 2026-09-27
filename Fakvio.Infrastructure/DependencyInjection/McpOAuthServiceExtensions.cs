@@ -23,6 +23,10 @@ public static class McpOAuthServiceExtensions
         // Scoped like ApiKeyService — both hold a MasterDbContext, which is itself scoped.
         services.AddScoped<IOAuthService, OAuthService>();
 
+        // Stateless (just wraps IDataProtectionProvider, itself a singleton) — no reason to
+        // build a new one per request.
+        services.AddSingleton<IOAuthAuthorizeTicketProtector, OAuthAuthorizeTicketProtector>();
+
         // Dedicated named HttpClient for CIMD fetches, wired to the SSRF-safe connect callback
         // (SsrfSafeConnect) instead of the framework default. A dedicated client — not a shared
         // one — is deliberate: nothing else in the process may ever reuse this handler for a

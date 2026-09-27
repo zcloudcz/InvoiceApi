@@ -138,6 +138,8 @@ public class FakvioFactory : WebApplicationFactory<Program>
         // Same escape hatch for the "oauth-token" policy (ADR 0001 §4.10) — a test class
         // ABOUT that limiter overrides it back down (see OAuthTokenRateLimitTests).
         builder.UseSetting("RateLimiting:OAuthToken:PermitLimit", "1000000");
+        builder.UseSetting("RateLimiting:OAuthAuthorize:PermitLimit", "1000000");
+        builder.UseSetting("RateLimiting:OAuthConsent:PermitLimit", "1000000");
 
         // ── Configure database auth mode for AddDatabaseContexts ──────────────
         // AddDatabaseContexts now builds its NpgsqlDataSource singleton EAGERLY (inside

@@ -73,6 +73,19 @@ public class OAuthService : IOAuthService
     }
 
     /// <inheritdoc />
+    public async Task<OAuthConsentUserInfo> GetConsentUserInfoAsync(long userId, CancellationToken ct = default)
+    {
+        var user = await _context.User.AsNoTracking()
+            .Include(u => u.Company)
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        if (user is null)
+            throw new OAuthErrorException(OAuthErrorException.AccessDenied, $"user {userId} not found");
+
+        return new OAuthConsentUserInfo(user.Email, $"{user.FirstName} {user.LastName}".Trim(), user.Company?.CompanyName, IsEligible(user));
+    }
+
+    /// <inheritdoc />
     public async Task<string> IssueAuthorizationCodeAsync(IssueAuthorizationCodeRequest request, CancellationToken ct = default)
     {
         var user = await _context.User.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.UserId, ct);

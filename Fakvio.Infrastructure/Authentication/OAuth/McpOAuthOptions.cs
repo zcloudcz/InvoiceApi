@@ -42,6 +42,12 @@ public class McpOAuthOptions
     public string? Resource { get; set; }
 
     /// <summary>
+    /// Base URL of the consent page on the WASM app, e.g. <c>https://app.fakvio.cz/oauth/consent</c>
+    /// (ADR §4.1 "Consent"). <c>GET /oauth/authorize</c> redirects here with a <c>?ticket=</c> query param.
+    /// </summary>
+    public string? ConsentUrl { get; set; }
+
+    /// <summary>
     /// Shared secret between the API and the MCP host (ADR §4.4 — the "resource proof" header
     /// that keeps a leaked OAuth token from working directly against the REST API). Key Vault
     /// reference in production; see ADMINGUIDE runbook.

@@ -15,6 +15,9 @@ public sealed record ExchangeAuthorizationCodeRequest(string Code, string Redire
 /// <summary>Input to <see cref="IOAuthService.RefreshAsync"/> — the token endpoint's <c>grant_type=refresh_token</c> request.</summary>
 public sealed record RefreshTokenRequest(string RefreshToken, string? Scope, string? Resource);
 
+/// <summary>Everything the consent screen needs to know about the signed-in user (ADR §4.9).</summary>
+public sealed record OAuthConsentUserInfo(string Email, string FullName, string? CompanyName, bool IsEligible);
+
 /// <summary>
 /// The OAuth 2.1 authorization server core: authorization-code issuance/exchange, refresh
 /// rotation with reuse detection, and revocation. Per ADR 0001
@@ -66,6 +69,13 @@ public interface IOAuthService
     /// revokes all of that user's OAuth grants; API keys are untouched).
     /// </summary>
     Task RevokeAllGrantsForUserAsync(long userId, EOAuthGrantRevokedReason reason, CancellationToken ct = default);
+
+    /// <summary>
+    /// Consent-screen display data + the eligibility check (ADR §5.1 allowlist, Q9 SysAdmin)
+    /// evaluated fresh — the consent screen must reflect the CURRENT allowlist state, not
+    /// whatever it was when the authorize redirect happened.
+    /// </summary>
+    Task<OAuthConsentUserInfo> GetConsentUserInfoAsync(long userId, CancellationToken ct = default);
 
     /// <summary>
     /// Pure validation helper shared with the authorize endpoint (N5.4): missing/empty →

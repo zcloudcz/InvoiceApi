@@ -1,0 +1,198 @@
+@page "/oauth/consent"
+@using Fakvio.Contracts.Dto.OAuth
+@using Fakvio.UI.Shared.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject OAuthConsentApiService ConsentApi
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IStringLocalizer<SharedResource> L
+
+@* ── Anti-clickjacking (ADR 0001 §4.9, threat T9) ──────────────────────────────
+   The actual defense is server-side response headers (Content-Security-Policy:
+   frame-ancestors 'none' + X-Frame-Options: DENY, staticwebapp.config.json
+   globalHeaders — those cannot be set from inside a page). This page carries no
+   client-side "busting" logic on top of that: a JS-based frame-buster is
+   trivially defeated and would be false confidence. See ADMINGUIDE runbook for
+   the header verification step (N5.8). *@
+
+<PageTitle>@L["OAuthConsent_Title"] - Fakvio</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8">
+        @if (_loading)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <MudProgressCircular Indeterminate="true" />
+            </MudStack>
+        }
+        else if (_ticketInvalid)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@L["OAuthConsent_InvalidTicket"]</MudAlert>
+        }
+        else if (_info is not null)
+        {
+            <MudStack Spacing="4">
+                <MudStack Spacing="1" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Filled.Security" Size="Size.Large" Color="Color.Primary" />
+                    @* The host client_id URL is the headline — never the self-asserted
+                       client_name (ADR §4.9: "jmenovat host client_id URL, ne client_name"). *@
+                    <MudText Typo="Typo.h6" Align="Align.Center">
+                        @string.Format(L["OAuthConsent_HeadingFormat"].Value, _info.ClientId)
+                    </MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">@_info.ClientName</MudText>
+                    @if (_info.IsTrustedClient)
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Verified">
+                            @L["OAuthConsent_VerifiedApp"]
+                        </MudChip>
+                    }
+                </MudStack>
+
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                    @string.Format(L["OAuthConsent_RedirectsTo"].Value, _info.RedirectUri)
+                </MudAlert>
+
+                @if (_info.IsLoopbackRedirect)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                        @L["OAuthConsent_LoopbackWarning"]
+                    </MudAlert>
+                }
+
+                <MudText Typo="Typo.body2">
+                    @string.Format(L["OAuthConsent_SignedInAs"].Value, _info.UserEmail, _info.CompanyName ?? "—")
+                </MudText>
+
+                @if (!_info.IsEligible)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Filled">@L["OAuthConsent_ClosedBeta"]</MudAlert>
+                }
+                else
+                {
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.subtitle2">@L["OAuthConsent_ChooseScope"]</MudText>
+                        <MudRadioGroup T="string" @bind-Value="_selectedScope">
+                            <MudRadio T="string" Value="@("read")">@L["OAuthConsent_ScopeRead"]</MudRadio>
+                            @if (_info.RequestedScopes.Contains("write"))
+                            {
+                                <MudRadio T="string" Value="@("read,write")">@L["OAuthConsent_ScopeReadWrite"]</MudRadio>
+                            }
+                        </MudRadioGroup>
+                    </MudStack>
+                }
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+                }
+
+                <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd">
+                    <MudButton Variant="Variant.Text" Disabled="@_deciding" OnClick="@(() => DecideAsync(allow: false))">
+                        @L["Btn_Deny"]
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_deciding || !_info.IsEligible)"
+                               OnClick="@(() => DecideAsync(allow: true))">
+                        @if (_deciding)
+                        {
+                            <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                        }
+                        @L["Btn_Allow"]
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private OAuthConsentInfoDto? _info;
+    private string _selectedScope = "read";
+    private bool _loading = true;
+    private bool _deciding;
+    private bool _ticketInvalid;
+    private string? _errorMessage;
+    private string? _ticket;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        _ticket = query["ticket"];
+
+        if (string.IsNullOrEmpty(_ticket))
+        {
+            _ticketInvalid = true;
+            _loading = false;
+            return;
+        }
+
+        var isAuthenticated = AuthenticationState is not null
+            && (await AuthenticationState).User.Identity?.IsAuthenticated == true;
+
+        if (!isAuthenticated)
+        {
+            // Stash the ticket and detour through login (ADR §4.2 step 1) — NOT a general
+            // returnUrl, see OAuthConsentReturnStorage docs. forceLoad so the login page's own
+            // OnInitializedAsync runs against a clean auth state.
+            await OAuthConsentReturnStorage.StoreAsync(JS, _ticket);
+            Navigation.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        _info = await ConsentApi.DescribeAsync(_ticket);
+        _loading = false;
+
+        if (_info is null)
+        {
+            _ticketInvalid = true;
+            return;
+        }
+
+        // Default to the widest requested scope being pre-selected is deliberately NOT done —
+        // "Jen čtení" stays the default per ADR §4.9 regardless of what was requested.
+        _selectedScope = "read";
+    }
+
+    private async Task DecideAsync(bool allow)
+    {
+        if (_ticket is null) return;
+
+        _deciding = true;
+        _errorMessage = null;
+        try
+        {
+            var result = await ConsentApi.DecideAsync(new OAuthConsentDecisionDto
+            {
+                Ticket = _ticket,
+                Allow = allow,
+                Scope = allow ? _selectedScope : null
+            });
+
+            if (result is null)
+            {
+                _errorMessage = L["OAuthConsent_Error"].Value;
+                return;
+            }
+
+            // The API already validated this is the client's own registered redirect_uri —
+            // navigating the browser there is the whole point of the flow.
+            Navigation.NavigateTo(result.RedirectUrl, forceLoad: true);
+        }
+        catch (InvalidOperationException)
+        {
+            // NavigateTo with forceLoad can throw after initiating navigation — expected.
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = string.Format(L["OAuthConsent_ErrorGeneric"].Value, ex.Message);
+        }
+        finally
+        {
+            _deciding = false;
+        }
+    }
+}

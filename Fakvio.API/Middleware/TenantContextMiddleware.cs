@@ -37,6 +37,7 @@ public class TenantContextMiddleware
         "/api/auth",
         "/api/user",
         "/api/api-key",              // API keys live in master DB (auth must resolve them before the tenant is known)
+        "/api/oauth",                // OAuth grants/consent/authorize (ADR 0001) — master DB, same reasoning as API keys
         "/api/company",
         "/api/system-configuration", // SMTP + JWT settings — master DB, SysAdmin only
         "/api/dashboard/sysadmin",   // SysAdmin dashboard — master DB, no tenant needed
