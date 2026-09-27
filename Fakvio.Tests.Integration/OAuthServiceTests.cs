@@ -598,4 +598,68 @@ public class OAuthServiceTests : IAsyncLifetime
         await using var readContext = CreateMasterContext();
         (await readContext.OAuthGrant.SingleAsync(g => g.Id == grantId)).RevokedAt.ShouldBeNull();
     }
+
+    // ─── T14 — no raw secret ever reaches the logger ────────────────────────
+
+    /// <summary>
+    /// Drives the full happy path (issue → exchange → refresh → revoke) with a logger that
+    /// captures every formatted message, then asserts none of them contain the raw
+    /// authorization code, access token, or refresh token — only the metadata OAuthService's
+    /// log statements are supposed to carry (grant id, client_id, error code).
+    /// </summary>
+    [SkippableFact]
+    public async Task NoOperation_EverLogsARawSecret()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var capturedMessages = new List<string>();
+        var capturingLogger = new CapturingLogger(capturedMessages);
+
+        var (code, verifier) = await IssueCodeAsync();
+
+        OAuthTokenResult exchanged;
+        await using (var context = CreateMasterContext())
+        {
+            var service = new OAuthService(context, Options.Create(DefaultOptions()), capturingLogger);
+            exchanged = await service.ExchangeAuthorizationCodeAsync(
+                new ExchangeAuthorizationCodeRequest(code, RedirectUri, ClientId, verifier, Resource));
+        }
+
+        OAuthTokenResult refreshed;
+        await using (var context = CreateMasterContext())
+        {
+            var service = new OAuthService(context, Options.Create(DefaultOptions()), capturingLogger);
+            refreshed = await service.RefreshAsync(new RefreshTokenRequest(exchanged.RefreshToken, null, null));
+        }
+
+        await using (var context = CreateMasterContext())
+        {
+            var service = new OAuthService(context, Options.Create(DefaultOptions()), capturingLogger);
+            await service.RevokeAsync(refreshed.RefreshToken, "refresh_token");
+        }
+
+        var secrets = new[] { code, verifier, exchanged.AccessToken, exchanged.RefreshToken, refreshed.AccessToken, refreshed.RefreshToken };
+
+        foreach (var message in capturedMessages)
+        {
+            foreach (var secret in secrets)
+                message.ShouldNotContain(secret, customMessage: $"log message leaked a raw secret: {message}");
+        }
+
+        capturedMessages.ShouldNotBeEmpty("the capturing logger itself must have seen something, or this test proves nothing");
+    }
+
+    /// <summary>Minimal <see cref="ILogger{OAuthService}"/> that records every formatted message, for T14.</summary>
+    private sealed class CapturingLogger(List<string> messages) : Microsoft.Extensions.Logging.ILogger<OAuthService>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            messages.Add(formatter(state, exception));
+        }
+    }
 }

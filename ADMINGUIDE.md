@@ -609,6 +609,83 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 
 Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
+### MCP OAuth 2.1 — zapnutí a rollback (ADR 0001)
+
+Kompletní návrh a threat model: `docs/adr/0001-mcp-oauth21.md`. Kód je hotový a beze změny
+chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled` /
+`FAKVIO_MCP_OAUTH_ENABLED` defaultují na `false`.
+
+**Lidský úkol před prvním zapnutím (kód s tím nepočítá automaticky):**
+
+1. **Vlastní doména `api.fakvio.cz`** — CNAME u Forpsi na `fakvio-api`, managed certifikát v
+   App Service (stejný postup jako u `mcp.fakvio.cz` výše). Bez ní nemá `McpOAuth:Issuer` na co
+   ukazovat a klienti (claude.ai, ChatGPT) by si zafixovali issuer na `*.azurewebsites.net`.
+2. **Sdílené tajemství `ResourceProofSecret`** — vygenerujte 32+ náhodných bytů
+   (`openssl rand -base64 32`) a uložte je **stejné** na obou web appech:
+   - `fakvio-api`: app setting `McpOAuth__ResourceProofSecret`
+   - `fakvio-mcp-web`: app setting `FAKVIO_MCP_RESOURCE_PROOF_SECRET`
+   Doporučeno přes Key Vault referenci (`@Microsoft.KeyVault(SecretUri=…)`), ne jako čitelný
+   app setting — je to důvěryhodnostní hranice mezi MCP hostem a API (ADR §4.4, T6).
+3. **Allowlist** — na začátek jen owner (Q8): `McpOAuth__AllowedUserIds__0` = vaše `User.Id`.
+
+**App settings na `fakvio-api`:**
+
+| Klíč | Hodnota |
+|---|---|
+| `McpOAuth__Enabled` | `true` |
+| `McpOAuth__Issuer` | `https://api.fakvio.cz` |
+| `McpOAuth__Resource` | `https://mcp.fakvio.cz/mcp` |
+| `McpOAuth__ResourceProofSecret` | Key Vault reference — musí sedět s MCP hostem |
+| `McpOAuth__TrustedClientHosts__0` / `__1` | `claude.ai` / `chatgpt.com` (výchozí, měnit jen vědomě) |
+| `McpOAuth__AllowedUserIds__0` | vaše `User.Id`, dokud `AllowAll` není `true` |
+
+**App settings na `fakvio-mcp-web`:**
+
+| Klíč | Hodnota |
+|---|---|
+| `FAKVIO_MCP_OAUTH_ENABLED` | `true` |
+| `FAKVIO_MCP_PUBLIC_URL` | `https://mcp.fakvio.cz` |
+| `FAKVIO_OAUTH_ISSUER` | `https://api.fakvio.cz` |
+| `FAKVIO_MCP_RESOURCE_PROOF_SECRET` | stejná hodnota jako `McpOAuth__ResourceProofSecret` výše |
+
+**Ověření po zapnutí (ADR §5.2 — ruční E2E, protože chybí TEST-ENV):**
+
+1. `GET https://api.fakvio.cz/.well-known/oauth-authorization-server` → 200 s `issuer`.
+2. `GET https://mcp.fakvio.cz/.well-known/oauth-protected-resource/mcp` → 200 s `resource`.
+3. V claude.ai (Nastavení → Konektory) zadejte `https://mcp.fakvio.cz/mcp` jako vlastní
+   konektor — mělo by nabídnout přihlášení, ne 401 bez OAuth náznaku.
+4. Přihlaste se jako owner, na consentu zvolte **Jen čtení**, povolte → ověřte, že zápisový
+   nástroj vrátí čitelnou chybu, ne 500.
+5. Na `/settings/integrations` → **Připojené aplikace** → **Odebrat** → další request z
+   claude.ai musí okamžitě dostat 401 (bez čekání na cache).
+6. Zaznamenejte sem skutečné `client_id` URL, které claude.ai/ChatGPT při připojení použily
+   (z logu `OAuth.ConsentGranted`) — ADR je nemá ověřené, jen odhadnuté ze spec dokumentace.
+7. **T9 (clickjacking):** `curl -sI https://app.fakvio.cz/oauth/consent` → hlavičky musí
+   obsahovat `content-security-policy: frame-ancestors 'none'` a `x-frame-options: DENY`.
+   Kontrola po KAŽDÉM deployi `Fakvio.BlazorUI` — `staticwebapp.config.json` je statický soubor,
+   změna hostingu (jiný Static Web Apps plán, CDN před ním) ho může přebít.
+
+**Rozšíření z uzavřeného testu (Q8):** po 1–2 týdnech bez incidentu a ≥ 5 aktivních grantech
+nastavte `McpOAuth__AllowAll=true` (allowlist se pak ignoruje).
+
+**Rollback:**
+
+- **Rychlý** (nic není kompromitované, jen potřebujete vypnout): `McpOAuth__Enabled=false` +
+  `FAKVIO_MCP_OAUTH_ENABLED=false` na obou web appech → restart → všechny OAuth tokeny
+  okamžitě 401, discovery 404. Platné refresh tokeny po opětovném zapnutí fungují dál (nic se
+  nemaže). API klíče (`fak_live_…`) nejsou zapnutím ani vypnutím OAuth nijak dotčené.
+- **Tvrdý** (podezření na kompromitaci — např. unikl `ResourceProofSecret` nebo se objevil
+  neznámý `client_id`): SQL proti master schématu, než stihnete vypnout flag:
+  ```sql
+  UPDATE "OAuthGrant" SET "RevokedAt" = now(), "RevokedReason" = 3 WHERE "RevokedAt" IS NULL;
+  UPDATE "ApiKey" SET "RevokedAt" = now() WHERE "OAuthGrantId" IS NOT NULL AND "RevokedAt" IS NULL;
+  ```
+  (`RevokedReason = 3` = `Admin`, viz `EOAuthGrantRevokedReason`.) Pak vygenerujte nový
+  `ResourceProofSecret`, nastavte na obou web appech a restartujte je — starý únik tím přestává
+  být použitelný i kdyby OAuth zůstal zapnutý.
+- **Kódový:** migrace `AddMcpOAuth_N5_2` je čistě aditivní (nové tabulky + nullable sloupec) —
+  revert commitu a `Down` migrace jsou bezpečné, nic existujícího nemažou.
+
 ### Data Protection (CredentialProtector)
 
 - Šifruje: SMTP hesla, IMAP hesla, AI API klíče uložené v DB

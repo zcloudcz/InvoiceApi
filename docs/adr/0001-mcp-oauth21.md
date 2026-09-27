@@ -414,23 +414,23 @@ může nabídnout OAuth přihlášení. Stránka Integrace dál nabízí oba sni
 
 ## 6. Threat model
 
-| # | Hrozba | Mitigace | Test (task) |
+| # | Hrozba | Mitigace | Test (implementace) |
 |---|---|---|---|
-| T1 | **Phishing consent** — útočník pošle odkaz na authorize s vlastním klientem, oběť klikne Povolit | Allowlist hostů klientů (early access); consent jmenuje host `client_id` a host `redirect_uri`, ne `client_name`; štítek „ověřená aplikace“; výchozí scope jen čtení; Warning log `ConsentGranted`; revokace na Integracích | bUnit: zobrazení hostů a varování; unit: klient mimo allowlist → chyba (N5.4, N5.5) |
-| T2 | **Open redirect** přes `redirect_uri` | Přesná shoda s CIMD dokumentem (loopback jen bez portu); neplatný `client_id`/`redirect_uri` → chybová stránka, nikdy redirect; žádný obecný `returnUrl` v UI | unit: mismatch, jiné schéma, fragment, loopback s cestou navíc → žádný 302 (N5.4) |
-| T3 | **Krádež / injekce authorization code** | PKCE S256 povinné (plain odmítnuto), kód 60 s, jednorázový (atomický update), reuse → revokace grantu, vazba na `client_id` + `redirect_uri` + `resource`; `iss` v odpovědi (mix-up) | unit: špatný verifier, prošlý, použitý, jiný redirect, reuse revokuje (N5.3) |
-| T4 | **Krádež access tokenu** | TTL 1 h; hash v DB; nikdy v logu ani v URL; funguje jen přes MCP host (resource proof, §4.4); okamžitá revokace | unit: `fak_oat_` bez proof hlavičky → 401 na API; integration: revokace → 401 (N5.3, N5.7) |
-| T5 | **Krádež refresh tokenu** | Rotace při každém použití; reuse → revokace celé rodiny (`invalid_grant`); klouzavých 30 dní + absolutní strop; revokace při změně hesla | unit: rotace, reuse starého tokenu zneplatní i nový (N5.3) |
-| T6 | **Confused deputy / token passthrough** | Tokeny s audience MCP API přijme jen s interní proof hlavičkou; MCP gate kontroluje `Resource` z `/me`; API klíče jsou vědomá výjimka (§4.4) | unit: token s jiným `Resource` → MCP 401 (N5.6) |
-| T7 | **SSRF přes CIMD fetch** | Jen https:443 s cestou; DNS resolve + blokace privátních/loopback/link-local/metadata rozsahů v `ConnectCallback` a připojení na ověřenou IP; bez redirectů; 5 s; 64 kB; allowlist hostů; souběh 1 + negativní cache | unit: localhost, 127.x, 10.x, 172.16.x, 192.168.x, 169.254.169.254, `[::1]`, `[::ffff:10.0.0.1]`, DNS jméno → privátní IP, 302, 65 kB, nevalidní JSON, `client_id` mismatch (N5.5) |
-| T8 | **CSRF na consent decision** | Decision nese JWT v hlavičce (ne cookie) → prohlížeč ho cizímu webu nepřiloží; ticket chráněný Data Protection s expirací | unit: decision bez JWT → 401; zfalšovaný/prošlý ticket → 400 (N5.4) |
-| T9 | **Clickjacking consentu** | `frame-ancestors 'none'` + `X-Frame-Options: DENY` pro `app.fakvio.cz` | kontrola hlaviček po deployi (N5.8) |
-| T10 | **Loopback impersonace** (lokální proces předstírá Claude Code) | Varování na consentu u loopback-only; PKCE; allowlist hostů CIMD | bUnit varování (N5.4) |
-| T11 | **Eskalace tenantu / impersonace** | Tenant z `User.CompanyId`; SysAdmin/bez firmy grant nedostane; `X-Company-Id` ignorován pro OAuth principal | unit: SysAdmin consent odmítnut; OAuth + `X-Company-Id` → vlastní tenant (N5.3) |
-| T12 | **Eskalace scope** | Scope z grantu, ne z requestu; refresh nesmí scope rozšířit (jen zúžit); `ApiKeyRequestGuard` beze změny; OAuth tokenem nejde spravovat klíče ani granty | unit: refresh s `scope=write` u read grantu → `invalid_scope` (N5.3) |
-| T13 | **DoS / brute force** | Rate limiter; 256bit tokeny; indexované hash lookupy | unit/integration: 429 nad limit (N5.3) |
-| T14 | **Únik tokenů v logu** | Log jen prefix; `/oauth/*` bez query v request logu; `Cache-Control: no-store` | review + test logování (N5.8) |
-| T15 | **Chyba na produkci bez test env** | Flag default off, allowlist, testy „flag off = dnešní chování“, rychlý rollback | (N5.3, N5.6, N5.8) |
+| T1 | **Phishing consent** — útočník pošle odkaz na authorize s vlastním klientem, oběť klikne Povolit | Allowlist hostů klientů (early access); consent jmenuje host `client_id` a host `redirect_uri`, ne `client_name`; štítek „ověřená aplikace“; výchozí scope jen čtení; Warning log `ConsentGranted`; revokace na Integracích | `Fakvio.Tests.Unit/OAuthConsentPageTests.cs` (`Heading_NamesTheHostClientIdUrl_NotJustTheSelfAssertedName`, `UntrustedClient_DoesNotShowTheVerifiedBadge`, `TrustedClient_ShowsTheVerifiedBadge`); `Fakvio.Tests.Unit/OAuthClientResolverTests.cs` (`ResolveAsync_RejectsHostOutsideAllowlist_WithoutFetching`, `ResolveAsync_DoesNotAllowSubdomainOfTrustedHost`) |
+| T2 | **Open redirect** přes `redirect_uri` | Přesná shoda s CIMD dokumentem (loopback jen bez portu); neplatný `client_id`/`redirect_uri` → chybová odpověď, nikdy redirect; žádný obecný `returnUrl` v UI | `Fakvio.Tests.Integration/OAuthAuthorizeAndConsentTests.cs` (`UnresolvableClientId_NeverRedirects`, `MismatchedRedirectUri_NeverRedirects`) |
+| T3 | **Krádež / injekce authorization code** | PKCE S256 povinné (plain odmítnuto), kód 60 s, jednorázový (atomický update), reuse → revokace grantu, vazba na `client_id` + `redirect_uri` + `resource`; `iss` v odpovědi (mix-up) | `Fakvio.Tests.Integration/OAuthServiceTests.cs` (`ExchangeAuthorizationCodeAsync_ReusedCode_RevokesTheGrantItProduced`, `ExchangeAuthorizationCodeAsync_WrongCodeVerifier_IsRejected`, `ExchangeAuthorizationCodeAsync_MismatchedRedirectUri_IsRejected`, `ExchangeAuthorizationCodeAsync_ExpiredCode_IsRejected`) |
+| T4 | **Krádež access tokenu** | TTL 1 h; hash v DB; nikdy v logu ani v URL; funguje jen přes MCP host (resource proof, §4.4); okamžitá revokace | `Fakvio.Tests.Unit/ApiKeyAuthenticatorOAuthTests.cs` (celá třída); `Fakvio.Tests.Integration/OAuthServiceTests.cs` (`RevokeAsync_AccessToken_RevokesOnlyThatToken`) |
+| T5 | **Krádež refresh tokenu** | Rotace při každém použití; reuse → revokace celé rodiny (`invalid_grant`) — s Q5 10s grace oknem pro souběžný refresh; klouzavých 30 dní + absolutní strop; revokace při změně hesla (Q6) | `Fakvio.Tests.Integration/OAuthServiceTests.cs` (`RefreshAsync_HappyPath_RotatesToken`, `RefreshAsync_ReuseWithinGraceWindow_FailsWithoutRevokingTheGrant`, `RefreshAsync_ReuseAfterGraceWindow_RevokesTheWholeGrant`); `Fakvio.Tests.Unit/UserServiceOAuthGrantRevocationTests.cs`, `TwoFactorServiceTests.DisableTwoFactor_RevokesAllOAuthGrants` |
+| T6 | **Confused deputy / token passthrough** | Tokeny s audience MCP API přijme jen s interní proof hlavičkou (constant-time); MCP gate kontroluje `Resource` z `/me`; API klíče jsou vědomá výjimka (§4.4) | `Fakvio.Tests.Unit/ApiKeyAuthenticatorOAuthTests.cs` (proof hlavička); `Fakvio.Tests.Unit/McpServer/McpHttpTransportTests.cs` (`WhenOAuthEnabled_TokenWithWrongResource_IsRejectedWith401`, `WhenOAuthEnabled_TokenWithMatchingResource_Authenticates`, `WhenOAuthEnabled_PlainApiKeyWithNoOAuthResource_StillAuthenticates`) |
+| T7 | **SSRF přes CIMD fetch** | Jen https:443 s cestou; DNS resolve + blokace privátních/loopback/link-local/CGNAT/ULA/metadata rozsahů v `ConnectCallback` a připojení na ověřenou IP; bez redirectů; 5 s; 64 kB; allowlist hostů; souběh 1 + negativní cache | `Fakvio.Tests.Unit/SsrfSafeConnectTests.cs` (IP tabulka); `Fakvio.Tests.Unit/OAuthClientResolverTests.cs` (shape/allowlist/dokument/velikost/cache) |
+| T8 | **CSRF na consent decision** | Decision nese JWT v hlavičce (ne cookie) → prohlížeč ho cizímu webu nepřiloží; ticket chráněný Data Protection s expirací | `Fakvio.Tests.Integration/OAuthAuthorizeAndConsentTests.cs` (`Consent_WithoutAuthentication_Returns401`, `Consent_WithApiKeyInsteadOfJwt_Returns403`) |
+| T9 | **Clickjacking consentu** | `frame-ancestors 'none'` + `X-Frame-Options: DENY` pro `app.fakvio.cz` (`staticwebapp.config.json` globalHeaders) | `Fakvio.BlazorUI/wwwroot/staticwebapp.config.json`; ruční `curl -sI` kontrola hlaviček po deployi, ADMINGUIDE §9 runbook krok 7 (nelze pokrýt unit testem — hlavičky servíruje hosting, ne appka) |
+| T10 | **Loopback impersonace** (lokální proces předstírá Claude Code) | Varování na consentu u loopback-only; PKCE; allowlist hostů CIMD | `Fakvio.Tests.Unit/OAuthConsentPageTests.cs` (`LoopbackRedirect_ShowsTheLocalhostWarning`, `HttpsRedirect_DoesNotShowTheLocalhostWarning`) |
+| T11 | **Eskalace tenantu / impersonace** | Tenant z `User.CompanyId`; SysAdmin/bez firmy grant nedostane; `X-Company-Id` ignorován pro OAuth principal | `Fakvio.Tests.Integration/OAuthServiceTests.cs` (`IssueAuthorizationCodeAsync_SysAdminWithoutCompany_IsDenied`); `Fakvio.Tests.Unit/ImpersonationMiddlewareTests.cs` (`OAuthPrincipal_WithHeader_IgnoresHeaderEvenAsSysAdmin`) |
+| T12 | **Eskalace scope** | Scope z grantu, ne z requestu; refresh nesmí scope rozšířit (jen zúžit); `ApiKeyRequestGuard` beze změny; OAuth tokenem nejde spravovat klíče ani granty | `Fakvio.Tests.Integration/OAuthServiceTests.cs` (`RefreshAsync_RequestingWiderScopeThanGranted_IsRejected`, `RefreshAsync_RequestingNarrowerScope_Succeeds`); `Fakvio.Tests.Unit/ApiKeyRequestGuardTests.cs` (`ApiKeyOrOAuthToken_CannotManageOAuthGrants`) |
+| T13 | **DoS / brute force** | Rate limiter (`oauth-token`/`oauth-authorize`/`oauth-consent`); 256bit tokeny; indexované hash lookupy | `Fakvio.Tests.Integration/OAuthControllerTests.cs` (`TokenEndpoint_ExceedsRateLimit_Returns429`) |
+| T14 | **Únik tokenů v logu** | Log jen prefix/metadata (grant id, client_id, error kód); žádný generický request-access-log, který by zapisoval query string; `Cache-Control: no-store` na token endpointu | `Fakvio.Tests.Integration/OAuthServiceTests.cs` (`NoOperation_EverLogsARawSecret` — zachytává formátované log zprávy přes celý issue→exchange→refresh→revoke běh a ověřuje, že žádná neobsahuje syrový kód/token/verifier) |
+| T15 | **Chyba na produkci bez test env** | Flag default off (`McpOAuth:Enabled`, `FAKVIO_MCP_OAUTH_ENABLED`), allowlist, testy „flag off = dnešní chování“ na každém novém endpointu, rychlý i tvrdý rollback (ADMINGUIDE §9) | `Fakvio.Tests.Integration/OAuthControllerTests.cs`, `OAuthGrantsControllerTests.cs` (`WhenFlagIsOff_*`); `Fakvio.Tests.Unit/McpServer/McpHttpTransportTests.cs` (`WhenOAuthDisabled_*`) |
 
 ---
 
@@ -477,6 +477,30 @@ Owner schválil ADR a všechny otázky podle doporučení:
 - **Q7 — Proof hlavička:** ano, OAuth token platí jen přes MCP host (§4.4).
 - **Q8 — Allowlist:** na začátku jen owner; `AllowAll=true` po 2 týdnech bez incidentu a ≥ 5 aktivních grantech.
 - **Q9 — SysAdmin:** OAuth grant nedostane; impersonace přes OAuth token zakázaná.
+
+---
+
+## 9a. Odchylky při implementaci (N5.2–N5.8)
+
+Podle pravidla "když ADR neodpovídá kódu, řiď se kódem" — zápis rozdílů oproti návrhu v §4,
+zjištěných až při psaní testů proti reálnému Postgresu:
+
+- **§4.2 krok 2, chybová stránka.** ADR mluví o "chybové stránce" pro neplatný `client_id`/
+  `redirect_uri`. `OAuthAuthorizeController` vrací `400` s malým JSON tělem
+  (`{"error":"invalid_request","message":"…"}`), ne vyrenderovanou HTML stránku — API host
+  nemá (a nemá mít) HTML view engine. Bezpečnostně jde o totéž: same-origin odpověď, žádný
+  redirect na neověřenou adresu (T2). Pokud by bylo žádoucí hezčí UX, patří sem vlastní
+  chybová stránka na `app.fakvio.cz`, kterou by autorize endpoint teprve musel serve.
+- **`EOAuthGrantRevokedReason` má šestou hodnotu, `CredentialChanged` (= 5).** §4.3 v návrhu
+  vyjmenovává jen `User`, `RefreshReuse`, `CodeReuse`, `Admin`, `Superseded` — Q6 (revokace při
+  změně hesla/2FA) do nich nezapadá jako žádná z nich beze zbytku, takže `IOAuthService.
+  RevokeAllGrantsForUserAsync` volaný z `UserService`/`TwoFactorService` používá vlastní důvod
+  místo přetěžování `Admin`.
+- **`OAuthGrantsController` a `OAuthConsentController` navíc 404ují, když `McpOAuth:Enabled`
+  je `false`**, i když §5.1 tabulka configu tento konkrétní endpoint nejmenuje — přidáno kvůli
+  konzistenci s ostatním povrchem (T15: dokud je vlajka vypnutá, nic nového není objevitelné).
+- **`OAuthCleanupService` běží od startu procesu, ne až po první hodině** (stejný vzor jako
+  `RecurringInvoiceWorker`, ne jako `LogCleanupService`, který čeká) — ADR to nerozlišuje.
 
 ---
 
