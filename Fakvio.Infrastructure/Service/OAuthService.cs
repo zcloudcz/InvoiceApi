@@ -218,7 +218,7 @@ public class OAuthService : IOAuthService
         _logger.LogInformation("OAuth.TokenIssued: grant {GrantId} client {ClientId} user {UserId} scope {Scope}",
             grant.Id, grant.ClientId, grant.UserId, grant.Scopes);
 
-        return new OAuthTokenResult(rawAccess, rawRefresh, (int)AccessTokenLifetime.TotalSeconds, grant.Scopes);
+        return new OAuthTokenResult(rawAccess, rawRefresh, ExpiresInSeconds(accessEntity), grant.Scopes);
     }
 
     /// <inheritdoc />
@@ -243,17 +243,37 @@ public class OAuthService : IOAuthService
         // set and refuses).
         await using var transaction = await _context.Database.BeginTransactionAsync(ct);
 
-        var token = await _context.OAuthRefreshToken.FirstOrDefaultAsync(t => t.TokenHash == hash, ct);
-        if (token is null)
+        // Codex review, round 2 (high — the round-1 fix was incomplete): only the GrantId is
+        // resolved before the lock, via an untracked projection. The token row itself is loaded
+        // AFTER the grant lock is held, not before — loading it first (as round 1 did) let two
+        // concurrent refreshes of the SAME token each capture their own "ConsumedAt == null"
+        // snapshot before either one waited on anything, so both could still pass the
+        // token.ConsumedAt check further down even though the grant lock now serialized
+        // everything else. Nothing else in this class ever reads-then-writes
+        // OAuthRefreshToken.ConsumedAt without first holding this same grant lock, so loading
+        // the token after acquiring it is what actually makes the read authoritative.
+        var tokenGrantId = await _context.OAuthRefreshToken.AsNoTracking()
+            .Where(t => t.TokenHash == hash)
+            .Select(t => (long?)t.GrantId)
+            .FirstOrDefaultAsync(ct);
+
+        if (tokenGrantId is null)
             throw new OAuthErrorException(OAuthErrorException.InvalidGrant, "unknown refresh token");
 
         var grant = (await _context.OAuthGrant
-                .FromSqlInterpolated($"SELECT * FROM \"OAuthGrant\" WHERE \"Id\" = {token.GrantId} FOR UPDATE")
+                .FromSqlInterpolated($"SELECT * FROM \"OAuthGrant\" WHERE \"Id\" = {tokenGrantId.Value} FOR UPDATE")
                 .ToListAsync(ct))
             .SingleOrDefault();
 
         if (grant is null)
             throw new OAuthErrorException(OAuthErrorException.InvalidGrant, "grant no longer exists");
+
+        // Loaded only NOW, with the grant's exclusive lock already held — see the comment above
+        // for why this ordering (not a second row lock on the token itself) is what closes the
+        // same-token concurrent-refresh race.
+        var token = await _context.OAuthRefreshToken.FirstOrDefaultAsync(t => t.TokenHash == hash, ct);
+        if (token is null)
+            throw new OAuthErrorException(OAuthErrorException.InvalidGrant, "unknown refresh token");
 
         // PostgresDateTime.ToUtc on every stored timestamp compared against UtcNow below —
         // see that helper's docs for why (issue #236-class bug: Npgsql.EnableLegacyTimestampBehavior).
@@ -320,7 +340,7 @@ public class OAuthService : IOAuthService
 
         _logger.LogInformation("OAuth.Refreshed: grant {GrantId} scope {Scope}", grant.Id, scope);
 
-        return new OAuthTokenResult(rawAccess, rawRefresh, (int)AccessTokenLifetime.TotalSeconds, scope);
+        return new OAuthTokenResult(rawAccess, rawRefresh, ExpiresInSeconds(accessEntity), scope);
     }
 
     /// <inheritdoc />
@@ -457,6 +477,16 @@ public class OAuthService : IOAuthService
     }
 
     // ─── Token/code generation + validation ─────────────────────────────────
+
+    /// <summary>
+    /// Codex review finding (low): the token response must report the access token's ACTUAL
+    /// remaining lifetime, not the nominal one hour — <see cref="CreateAccessToken"/> caps
+    /// <c>ExpiresAt</c> at the grant's absolute expiry (Q4), and a refresh minted in the last
+    /// hour before that boundary would otherwise advertise <c>expires_in=3600</c> for a token
+    /// that is actually only good for a few seconds or minutes.
+    /// </summary>
+    private static int ExpiresInSeconds(ApiKeyEntity accessToken)
+        => Math.Max(0, (int)(accessToken.ExpiresAt!.Value - DateTime.UtcNow).TotalSeconds);
 
     private static (string Raw, ApiKeyEntity Entity) CreateAccessToken(OAuthGrant grant, string scope)
     {

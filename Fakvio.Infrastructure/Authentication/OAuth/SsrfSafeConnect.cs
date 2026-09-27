@@ -75,6 +75,14 @@ public static class SsrfSafeConnect
                 && bytes[4] == 0 && bytes[5] == 0 && bytes[6] == 0 && bytes[7] == 0
                 && bytes[8] == 0 && bytes[9] == 0 && bytes[10] == 0 && bytes[11] == 0)
                 return true;
+            // 64:ff9b:1::/48 — RFC 8215 "Local-Use" NAT64 prefix (a second reviewer pass found
+            // this one still slipping through: same idea as the /96 well-known prefix above,
+            // but reserved for network operators' own translation and therefore not globally
+            // meaningful either — only the first 48 bits are fixed, the rest carries the
+            // embedded address).
+            if (bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xFF && bytes[3] == 0x9B
+                && bytes[4] == 0x00 && bytes[5] == 0x01)
+                return true;
         }
 
         // Azure instance metadata service — reachable from every App Service/VM, must never be

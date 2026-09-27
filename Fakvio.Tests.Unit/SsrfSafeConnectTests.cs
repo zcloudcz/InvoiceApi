@@ -33,6 +33,7 @@ public class SsrfSafeConnectTests
     [InlineData("255.255.255.255")] // limited broadcast
     [InlineData("fec0::1")]        // deprecated IPv6 site-local fec0::/10
     [InlineData("64:ff9b::1.1.1.1")] // well-known NAT64 prefix 64:ff9b::/96
+    [InlineData("64:ff9b:1::1")]     // RFC 8215 local-use NAT64 prefix 64:ff9b:1::/48
     public void IsForbidden_BlocksPrivateAndSpecialUseAddresses(string ip)
     {
         SsrfSafeConnect.IsForbidden(IPAddress.Parse(ip)).ShouldBeTrue();

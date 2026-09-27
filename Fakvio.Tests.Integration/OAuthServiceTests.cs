@@ -200,7 +200,10 @@ public class OAuthServiceTests : IAsyncLifetime
 
         result.AccessToken.ShouldStartWith("fak_oat_");
         result.RefreshToken.ShouldNotBeNullOrEmpty();
-        result.ExpiresIn.ShouldBe(3600);
+        // ~3600, not exactly — ExpiresInSeconds computes the token's ACTUAL remaining lifetime
+        // at response time (Codex review round 2), so a few milliseconds of test execution
+        // between minting the token and this assertion are expected to shave a little off.
+        result.ExpiresIn.ShouldBeInRange(3595, 3600);
         result.Scope.ShouldBe("read");
     }
 
@@ -525,6 +528,58 @@ public class OAuthServiceTests : IAsyncLifetime
         // A live token here would mean refresh's insert happened invisibly to revoke's sweep.
         (await readContext.ApiKey.Where(k => k.OAuthGrantId == grantId).AllAsync(k => k.RevokedAt != null))
             .ShouldBeTrue("a refresh that raced with a revoke of the same grant left a live access token behind");
+    }
+
+    /// <summary>
+    /// Codex review, round 2 finding (high): fires the SAME refresh token from two separate
+    /// DbContexts truly concurrently. The round-1 fix locked the GRANT row but loaded the
+    /// refresh-token row itself BEFORE waiting on that lock — so two concurrent callers could
+    /// each capture their own "not yet consumed" snapshot before either one blocked, and both
+    /// would then pass the (stale) ConsumedAt check after acquiring the lock in turn. The
+    /// round-2 fix loads the token row only AFTER the grant lock is held. Pins that at most one
+    /// of two truly concurrent uses of the same refresh token can ever succeed.
+    /// </summary>
+    [SkippableFact]
+    public async Task RefreshAsync_TrueConcurrentUseOfTheSameToken_OnlyOneEverSucceeds()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var initial = await IssueAndExchangeAsync();
+
+        async Task<OAuthTokenResult?> AttemptAsync()
+        {
+            await using var context = CreateMasterContext();
+            try
+            {
+                return await CreateService(context).RefreshAsync(new RefreshTokenRequest(initial.RefreshToken, null, null));
+            }
+            catch (OAuthErrorException)
+            {
+                return null;
+            }
+        }
+
+        var results = await Task.WhenAll(AttemptAsync(), AttemptAsync());
+
+        // Exactly one of the two truly concurrent uses of the SAME refresh token may succeed —
+        // never both (T5: that would be two live token pairs minted from one credential).
+        results.Count(r => r is not null).ShouldBe(1);
+
+        // And the reuse the loser triggered must have revoked the grant outright (outside the
+        // Q5 grace window is irrelevant here — the two calls race hard enough in practice that
+        // the loser's own read happens well after the winner's write completes and commits).
+        await using var readContext = CreateMasterContext();
+        var grantAfter = await readContext.OAuthGrant.SingleAsync(g => g.UserId == OwnerUserId);
+
+        // Either the loser was still inside the Q5 grace window (benign, no revoke) or outside
+        // it (revoked) — both are correct outcomes of the FIX under test, which is "never two
+        // successes", already asserted above. This assertion only guards against a NEW kind of
+        // corruption: a grant that is revoked must still show every access token dead with it.
+        if (grantAfter.RevokedAt is not null)
+        {
+            (await readContext.ApiKey.Where(k => k.OAuthGrantId == grantAfter.Id).AllAsync(k => k.RevokedAt != null))
+                .ShouldBeTrue();
+        }
     }
 
     [SkippableFact]
