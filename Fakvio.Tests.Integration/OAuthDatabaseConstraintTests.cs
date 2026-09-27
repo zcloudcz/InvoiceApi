@@ -353,7 +353,7 @@ public class OAuthDatabaseConstraintTests : IAsyncLifetime
             await context.SaveChangesAsync();
 
             // Force CreatedAt into the past — BaseEntity sets it on save, so update afterward.
-            await context.Database.ExecuteSqlRawAsync(
+            await context.Database.ExecuteSqlAsync(
                 $"UPDATE \"OAuthAuthorizationCode\" SET \"CreatedAt\" = now() - interval '2 days' WHERE \"Id\" = {oldCode.Id}");
         }
 

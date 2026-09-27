@@ -39,7 +39,10 @@ public class ApiKeyAuthenticatorTests : IDisposable
     {
         _context = CreateContext();
         _service = new ApiKeyService(_context, Substitute.For<ILogger<ApiKeyService>>());
-        _authenticator = new ApiKeyAuthenticator(_context, Substitute.For<ILogger<ApiKeyAuthenticator>>());
+        _authenticator = new ApiKeyAuthenticator(
+            _context,
+            Substitute.For<ILogger<ApiKeyAuthenticator>>(),
+            Microsoft.Extensions.Options.Options.Create(new Fakvio.Infrastructure.Authentication.OAuth.McpOAuthOptions()));
 
         _context.User.AddRange(
             NewUser(OwnerUserId, "owner@test.cz", EUserRole.User, companyId: OwnerCompanyId, isActive: true),

@@ -36,4 +36,17 @@ public class ApiKeyIdentityDto
 
     /// <summary>Id of the authenticating API key, or null for a JWT session.</summary>
     public long? ApiKeyId { get; set; }
+
+    /// <summary>
+    /// Id of the OAuth grant behind this credential (ADR 0001, docs/adr/0001-mcp-oauth21.md
+    /// §4.3), or null for a manually created API key or a JWT session.
+    /// </summary>
+    public long? OAuthGrantId { get; set; }
+
+    /// <summary>
+    /// The RFC 8707 resource this OAuth access token was issued for, or null when the
+    /// credential is not an OAuth token. The MCP host's gate refuses a token whose resource is
+    /// not its own canonical URL (ADR §4.4/§4.6) — preparation for a future second resource server.
+    /// </summary>
+    public string? OAuthResource { get; set; }
 }

@@ -1,9 +1,13 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using Fakvio.Application.Service;
+using Fakvio.Infrastructure.Authentication.OAuth;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ApiKeyEntity = Fakvio.Domain.Entities.ApiKey;
 
 namespace Fakvio.Infrastructure.Authentication;
@@ -25,15 +29,17 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
 
     private readonly MasterDbContext _context;
     private readonly ILogger<ApiKeyAuthenticator> _logger;
+    private readonly McpOAuthOptions _oauthOptions;
 
-    public ApiKeyAuthenticator(MasterDbContext context, ILogger<ApiKeyAuthenticator> logger)
+    public ApiKeyAuthenticator(MasterDbContext context, ILogger<ApiKeyAuthenticator> logger, IOptions<McpOAuthOptions> oauthOptions)
     {
         _context = context;
         _logger = logger;
+        _oauthOptions = oauthOptions.Value;
     }
 
     /// <inheritdoc />
-    public async Task<ClaimsPrincipal?> AuthenticateAsync(string rawKey, CancellationToken ct = default)
+    public async Task<ClaimsPrincipal?> AuthenticateAsync(string rawKey, string? resourceProofHeader = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(rawKey)
             || !rawKey.StartsWith(ApiKeyAuthenticationDefaults.RawKeyPrefix, StringComparison.Ordinal))
@@ -46,6 +52,7 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
 
         var key = await _context.ApiKey
             .Include(k => k.User)
+            .Include(k => k.OAuthGrant)
             .FirstOrDefaultAsync(k => k.KeyHash == hash, ct);
 
         if (key is null)
@@ -60,9 +67,44 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
         if (!IsUsable(key))
             return null;
 
+        // Confused-deputy guard (ADR 0001, docs/adr/0001-mcp-oauth21.md §4.4, threat T6): an
+        // OAuth-issued access token (fak_oat_…) only authenticates when the caller also proves
+        // it is the MCP host — a shared secret neither the OAuth client nor a party that merely
+        // stole the bearer token can produce. A manually created "fak_live_…" key has no such
+        // requirement; the whole point is that OAuth tokens are strictly MORE restricted, not
+        // a parallel unrestricted credential.
+        if (key.OAuthGrantId is not null && !HasValidResourceProof(resourceProofHeader))
+        {
+            _logger.LogWarning(
+                "API key authentication failed: OAuth access token {KeyPrefix} presented without a valid resource proof",
+                key.KeyPrefix);
+            return null;
+        }
+
         await TouchLastUsedAsync(key, ct);
 
         return BuildPrincipal(key);
+    }
+
+    /// <summary>
+    /// Constant-time comparison against <c>McpOAuth:ResourceProofSecret</c> — timing must not
+    /// leak how many leading bytes of the guess were correct. An unconfigured secret means the
+    /// operator has not finished the OAuth rollout (ADMINGUIDE runbook), so it fails closed
+    /// rather than treating "no secret configured" as "no proof required".
+    /// </summary>
+    private bool HasValidResourceProof(string? presented)
+    {
+        if (string.IsNullOrEmpty(_oauthOptions.ResourceProofSecret) || string.IsNullOrEmpty(presented))
+            return false;
+
+        var expected = Encoding.UTF8.GetBytes(_oauthOptions.ResourceProofSecret);
+        var actual = Encoding.UTF8.GetBytes(presented);
+
+        // CryptographicOperations.FixedTimeEquals requires equal-length spans, but its own
+        // early-return-on-length-mismatch is itself constant with respect to CONTENT (only
+        // depends on length, which is not the secret) — so comparing length first leaks
+        // nothing an attacker does not already know from having to guess the whole secret.
+        return expected.Length == actual.Length && CryptographicOperations.FixedTimeEquals(expected, actual);
     }
 
     /// <summary>
@@ -149,6 +191,15 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
         // lets ImpersonationMiddleware fill the claim in from X-Company-Id.
         if (user.CompanyId.HasValue)
             claims.Add(new Claim("CompanyId", user.CompanyId.Value.ToString()));
+
+        // OAuth-specific claims (ADR 0001 §4.5/§4.7) — absent for a manually created key.
+        // oauth_grant_id is what ImpersonationMiddleware and ApiKeyRequestGuard key off of to
+        // deny X-Company-Id impersonation and grant-management access to an OAuth principal.
+        if (key.OAuthGrant is { } grant)
+        {
+            claims.Add(new Claim(ApiKeyAuthenticationDefaults.OAuthGrantIdClaimType, grant.Id.ToString()));
+            claims.Add(new Claim(ApiKeyAuthenticationDefaults.OAuthResourceClaimType, grant.Resource));
+        }
 
         var identity = new ClaimsIdentity(
             claims,

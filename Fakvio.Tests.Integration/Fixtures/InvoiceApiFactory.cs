@@ -93,6 +93,15 @@ public class FakvioFactory : WebApplicationFactory<Program>
             // that happens to cross 06:00 UTC must not start a dunning pass against InMemory.
             RemoveHostedService<ImapPollWorker>(services);
             RemoveHostedService<ReminderWorker>(services);
+            // OAuthCleanupService: uses ExecuteUpdateAsync/ExecuteDeleteAsync, which the
+            // InMemory EF Core provider used by this factory does not support at all (throws
+            // NotSupportedException). The service itself already catches every exception per
+            // cycle, so leaving it registered would not break tests — but it would spam an
+            // error into the log on every single test host startup for no benefit. OAuthService
+            // (which uses the same EF Core operations for its atomicity guarantees) is instead
+            // exercised against real PostgreSQL — see Fakvio.Tests.Integration/OAuthServiceTests.cs,
+            // same pattern as ApiKeyDatabaseConstraintTests.
+            RemoveHostedService<OAuthCleanupService>(services);
 
             // ── Remove DatabaseLoggerProvider ─────────────────────────────────
             // This provider enqueues log entries to a ConcurrentQueue that
@@ -125,6 +134,10 @@ public class FakvioFactory : WebApplicationFactory<Program>
         // AuthAnonRateLimitTests) — exactly like AnonymousAresLookupTests substitutes
         // ICaptchaService instead of relying on the disabled-by-default gate.
         builder.UseSetting("RateLimiting:AuthAnon:PermitLimit", "1000000");
+
+        // Same escape hatch for the "oauth-token" policy (ADR 0001 §4.10) — a test class
+        // ABOUT that limiter overrides it back down (see OAuthTokenRateLimitTests).
+        builder.UseSetting("RateLimiting:OAuthToken:PermitLimit", "1000000");
 
         // ── Configure database auth mode for AddDatabaseContexts ──────────────
         // AddDatabaseContexts now builds its NpgsqlDataSource singleton EAGERLY (inside

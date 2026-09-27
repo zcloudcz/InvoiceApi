@@ -1,5 +1,6 @@
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.Authentication.OAuth;
+using Fakvio.Infrastructure.Service;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -18,6 +19,9 @@ public static class McpOAuthServiceExtensions
         services.Configure<McpOAuthOptions>(configuration.GetSection(McpOAuthOptions.SectionName));
 
         services.AddSingleton<IOAuthClientResolver, OAuthClientResolver>();
+
+        // Scoped like ApiKeyService — both hold a MasterDbContext, which is itself scoped.
+        services.AddScoped<IOAuthService, OAuthService>();
 
         // Dedicated named HttpClient for CIMD fetches, wired to the SSRF-safe connect callback
         // (SsrfSafeConnect) instead of the framework default. A dedicated client — not a shared

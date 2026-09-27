@@ -43,6 +43,31 @@ public static class ApiKeyAuthenticationDefaults
     public const string KeyIdClaimType = "api_key_id";
 
     /// <summary>
+    /// Present only when the authenticating credential is an OAuth-issued access token
+    /// (ADR 0001, docs/adr/0001-mcp-oauth21.md §4.3/§4.5/§4.7) — i.e. the underlying
+    /// <c>ApiKey.OAuthGrantId</c> is not null. Used to: (a) block OAuth principals from
+    /// impersonating a company via X-Company-Id (<c>ImpersonationMiddleware</c>), and
+    /// (b) block them from <c>/api/api-key</c> and <c>/api/oauth/grants</c> management
+    /// endpoints, same as any other API-key-scoped principal.
+    /// </summary>
+    public const string OAuthGrantIdClaimType = "oauth_grant_id";
+
+    /// <summary>
+    /// The RFC 8707 <c>resource</c> the authenticating OAuth grant was issued for. Only present
+    /// alongside <see cref="OAuthGrantIdClaimType"/>. <c>GET /api/api-key/me</c> returns it so
+    /// the MCP gate (§4.4/§4.6 in the ADR) can refuse a token whose resource is not its own
+    /// canonical URL — preparation for a future second resource server.
+    /// </summary>
+    public const string OAuthResourceClaimType = "oauth_resource";
+
+    /// <summary>
+    /// Internal header the MCP host adds to every request it forwards to the API (ADR 0001
+    /// §4.4). Its value is the shared secret <c>McpOAuth:ResourceProofSecret</c> — proof that
+    /// the caller is the MCP host, not the raw internet. Only checked for OAuth-issued tokens.
+    /// </summary>
+    public const string ResourceProofHeaderName = "X-Fakvio-Resource-Proof";
+
+    /// <summary>
     /// The scope required to perform a state-changing request. Lower case because that
     /// is the canonical stored form (<c>EApiKeyScope</c> persisted by <c>ApiKeyService</c>).
     /// </summary>

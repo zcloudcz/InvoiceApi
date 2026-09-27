@@ -401,6 +401,31 @@ turn je desítky tool callů a každý z nich by jinak byl zápis do master DB.
 
 ---
 
+### 2.11 MCP OAuth 2.1 (ADR 0001, story N5)
+
+Kompletní návrh, threat model a rozhodnutí ownera: `docs/adr/0001-mcp-oauth21.md`. Tady jen
+mapa na kód.
+
+| Co | Kde |
+|---|---|
+| Entity | `Fakvio.Domain/Entities/OAuthGrant.cs`, `OAuthAuthorizationCode.cs`, `OAuthRefreshToken.cs`; `ApiKey.OAuthGrantId` (nullable FK) | 
+| Migrace | `Fakvio.Infrastructure/Migrations/Master/…_AddMcpOAuth_N5_2.cs` — čistě aditivní |
+| Úklid | `Fakvio.Infrastructure/Service/OAuthCleanupService.cs` (`BackgroundService`, hodinově — vzor `LogCleanupService`) |
+| CIMD resolver (SSRF-safe) | `Fakvio.Infrastructure/Authentication/OAuth/OAuthClientResolver.cs` + `SsrfSafeConnect.cs` — DNS resolve + blokace privátních/loopback/link-local/CGNAT/ULA rozsahů a Azure metadata adres v `SocketsHttpHandler.ConnectCallback`, žádné redirecty, 5s timeout, 64 kB limit, 1 souběžný fetch/`client_id`, pozitivní i negativní `IMemoryCache` |
+| AS core | `IOAuthService` (`Fakvio.Application/Service`) + `OAuthService` (`Fakvio.Infrastructure/Service`) — vydání/výměna authorization code, refresh rotace + reuse detekce (Q5 — 10s grace okno), revokace grantu |
+| Endpointy | `Fakvio.API/Controller/OAuthController.cs` — `/.well-known/oauth-authorization-server`, `/oauth/token`, `/oauth/revoke`; anonymní, `[EnableRateLimiting("oauth-token")]`, 404 když `McpOAuth:Enabled=false` |
+| Proof hlavička (T6) | `ApiKeyAuthenticator.HasValidResourceProof` — OAuth token (`fak_oat_…`) bez `X-Fakvio-Resource-Proof` hlavičky (shoda s `McpOAuth:ResourceProofSecret`, constant-time) neautentizuje |
+| Claims | `oauth_grant_id`, `oauth_resource` (`ApiKeyAuthenticationDefaults`) — `ImpersonationMiddleware` ignoruje `X-Company-Id` pro OAuth principal (Q9); `ApiKeyRequestGuard` odmítá OAuth/API-key principal na `/api/oauth/grants*` stejně jako na `/api/api-key*` |
+| `/api/api-key/me` | Nově vrací `OAuthGrantId` + `OAuthResource` — MCP host podle nich (N5.6) odmítne token s cizím resource |
+| Feature flag | `McpOAuth:Enabled` (default `false`) — `OAuthController` i AS metadata 404, dokud není zapnuto. Viz `McpOAuthOptions` pro celou konfiguraci (`AllowAll`, `AllowedUserIds/CompanyIds`, `TrustedClientHosts`, `Issuer`, `Resource`, `ResourceProofSecret`) |
+| Rate limiting | Politika `oauth-token` (`Program.cs`, vzor `auth-anon` z RC.4) — per-IP fixed window, default 300/60s (`RateLimiting:OAuthToken`) |
+| Testy | `Fakvio.Tests.Integration/OAuthDatabaseConstraintTests.cs` (DDL/cascade/cleanup), `OAuthServiceTests.cs` (T3/T5/T11/T12/Q5, vše proti reálnému PG — `ExecuteUpdateAsync`/`ExecuteDeleteAsync` na InMemory házejí `NotSupportedException`), `Fakvio.Tests.Unit/OAuthClientResolverTests.cs` + `SsrfSafeConnectTests.cs` (T7), `ApiKeyAuthenticatorOAuthTests.cs` (T6 proof hlavička) |
+
+**Konsent, autorizační endpoint a UI stránka "Připojené aplikace" ještě nejsou implementované**
+(N5.4/N5.7) — do té doby `IOAuthService.IssueAuthorizationCodeAsync` nemá volajícího mimo testy.
+
+---
+
 ## 3. Multi-tenant — jak data oddělujeme
 
 ### 3.1 Big picture

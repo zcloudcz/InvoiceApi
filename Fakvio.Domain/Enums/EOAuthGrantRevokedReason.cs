@@ -17,7 +17,11 @@ public enum EOAuthGrantRevokedReason
     /// <summary>An already-consumed authorization code was presented again (§4.2, T3).</summary>
     CodeReuse = 2,
 
-    /// <summary>A SysAdmin revoked the grant (not exposed via API yet — reserved for future admin tooling).</summary>
+    /// <summary>
+    /// System-triggered administrative revocation: either a SysAdmin action (not exposed via
+    /// API yet — reserved for future admin tooling), or the token endpoint discovering at
+    /// refresh time that the grant's owner has since been deactivated (§4.7).
+    /// </summary>
     Admin = 3,
 
     /// <summary>Replaced by a newer grant for the same user + client_id + resource (§4.3 — "Reconnect" must not pile up rows).</summary>

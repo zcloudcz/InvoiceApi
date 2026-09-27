@@ -177,6 +177,28 @@ public class ApiKeyRequestGuardTests
             .ShouldNotBeNull();
     }
 
+    // ─── OAuth grant management is JWT-only (ADR 0001 §4.5) ─────────────────
+
+    [Theory]
+    [InlineData("GET", "/api/oauth/grants")]
+    [InlineData("POST", "/api/oauth/grants/7/revoke")]
+    public void ApiKeyOrOAuthToken_CannotManageOAuthGrants(string method, string path)
+    {
+        // Same reasoning as the /api/api-key lockout above: neither a manually created key
+        // nor an OAuth-issued access token (both carry a scope claim) may list or revoke
+        // OAuth grants — that stays a first-party (JWT) operation.
+        ApiKeyRequestGuard.GetDenialReason(Principal(ReadWrite), method, path)
+            .ShouldNotBeNull();
+    }
+
+    [Theory]
+    [InlineData("POST", "/api/invoice")]
+    public void OAuthGrantLockout_DoesNotAffectUnrelatedPaths(string method, string path)
+    {
+        ApiKeyRequestGuard.GetDenialReason(Principal(ReadWrite), method, path)
+            .ShouldBeNull();
+    }
+
     // ─── JWT is untouched ────────────────────────────────────────────────────
 
     [Theory]

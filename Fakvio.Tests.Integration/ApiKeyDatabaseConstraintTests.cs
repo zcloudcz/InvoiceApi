@@ -566,7 +566,7 @@ public class ApiKeyDatabaseConstraintTests : IAsyncLifetime
         await InsertApiKeyAsync(key);
 
         await using var context = CreateMasterContext();
-        var authenticator = new ApiKeyAuthenticator(context, NullLogger<ApiKeyAuthenticator>.Instance);
+        var authenticator = new ApiKeyAuthenticator(context, NullLogger<ApiKeyAuthenticator>.Instance, Microsoft.Extensions.Options.Options.Create(new Fakvio.Infrastructure.Authentication.OAuth.McpOAuthOptions()));
 
         (await authenticator.AuthenticateAsync(rawKey)).ShouldBeNull();
     }
@@ -586,7 +586,7 @@ public class ApiKeyDatabaseConstraintTests : IAsyncLifetime
         await InsertApiKeyAsync(key);
 
         await using var context = CreateMasterContext();
-        var authenticator = new ApiKeyAuthenticator(context, NullLogger<ApiKeyAuthenticator>.Instance);
+        var authenticator = new ApiKeyAuthenticator(context, NullLogger<ApiKeyAuthenticator>.Instance, Microsoft.Extensions.Options.Options.Create(new Fakvio.Infrastructure.Authentication.OAuth.McpOAuthOptions()));
 
         (await authenticator.AuthenticateAsync(rawKey)).ShouldNotBeNull();
     }

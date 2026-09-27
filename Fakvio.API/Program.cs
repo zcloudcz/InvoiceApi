@@ -182,13 +182,31 @@ var authAnonRateLimitConfig = builder.Configuration.GetSection("RateLimiting:Aut
 var authAnonPermitLimit = authAnonRateLimitConfig.GetValue("PermitLimit", 10);
 var authAnonWindowSeconds = authAnonRateLimitConfig.GetValue("WindowSeconds", 60);
 
+// ── Rate limiting for MCP OAuth endpoints (ADR 0001 §4.10) ───────────────────
+// Same fixed-window-per-IP shape as "auth-anon" above, but with a much higher ceiling:
+// claude.ai and ChatGPT call /oauth/token from a shared egress range (§1.3 "Claude" —
+// 160.79.104.0/21), so every user of those products behind that range shares one
+// partition. The limit exists to bound a single misbehaving/malicious caller and to
+// protect the database, not to throttle legitimate traffic — hence 300/min rather than
+// the 10/min used for human login attempts.
+var oauthTokenRateLimitConfig = builder.Configuration.GetSection("RateLimiting:OAuthToken");
+var oauthTokenPermitLimit = oauthTokenRateLimitConfig.GetValue("PermitLimit", 300);
+var oauthTokenWindowSeconds = oauthTokenRateLimitConfig.GetValue("WindowSeconds", 60);
+
 builder.Services.AddRateLimiter(options =>
 {
     // 429 + Retry-After (RFC 6585) — the Blazor UI checks for 429 specifically to show
-    // its own localized "too many attempts" message instead of a generic error.
+    // its own localized "too many attempts" message instead of a generic error. The window
+    // reported is read off the limiter's own lease metadata (falls back to the auth-anon
+    // window only if a limiter implementation ever omits it) so each policy reports its own
+    // window instead of every rejection claiming the auth-anon one.
     options.OnRejected = async (context, cancellationToken) =>
     {
-        context.HttpContext.Response.Headers.RetryAfter = authAnonWindowSeconds.ToString();
+        var retryAfterSeconds = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
+            ? (int)retryAfter.TotalSeconds
+            : authAnonWindowSeconds;
+
+        context.HttpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString();
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         await context.HttpContext.Response.WriteAsJsonAsync(
             new { message = "Too many attempts. Please try again later." },
@@ -203,6 +221,16 @@ builder.Services.AddRateLimiter(options =>
                 PermitLimit = authAnonPermitLimit,
                 Window = TimeSpan.FromSeconds(authAnonWindowSeconds),
                 QueueLimit = 0 // Reject immediately once the window is full — do not make callers wait in a queue.
+            }));
+
+    options.AddPolicy("oauth-token", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientIpPartitionKey(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = oauthTokenPermitLimit,
+                Window = TimeSpan.FromSeconds(oauthTokenWindowSeconds),
+                QueueLimit = 0
             }));
 });
 
