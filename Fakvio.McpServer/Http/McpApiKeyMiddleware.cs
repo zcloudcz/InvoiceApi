@@ -45,7 +45,14 @@ public static class McpApiKeyMiddleware
         // Protected Resource Metadata is how an MCP client discovers the authorization server
         // BEFORE it has any credential at all (ADR 0001 §1.3 "Discovery") — gating it would be
         // a chicken-and-egg problem, not a security boundary.
-        if (context.Request.Path.StartsWithSegments("/.well-known"))
+        //
+        // Matched by EXACT path (GET only — the two PRM routes are GET-mapped in McpHttpHost),
+        // not a "/.well-known" prefix (Codex review finding): this host serves nothing else
+        // today, but a prefix bypass would silently make any FUTURE endpoint placed under that
+        // namespace public too, without anyone touching this file to notice.
+        if (HttpMethods.IsGet(context.Request.Method) &&
+            (context.Request.Path.Equals("/.well-known/oauth-protected-resource/mcp", StringComparison.OrdinalIgnoreCase) ||
+             context.Request.Path.Equals("/.well-known/oauth-protected-resource", StringComparison.OrdinalIgnoreCase)))
         {
             await next(context);
             return;
@@ -78,8 +85,14 @@ public static class McpApiKeyMiddleware
         // for the resource it was granted for. A manually created API key (OAuthGrantId null)
         // has no resource binding at all and skips this — it is a deliberate exception (§4.4),
         // not an oversight.
+        //
+        // Deliberately NOT gated on this host's own OAuthEnabled flag (Codex review finding):
+        // the API is what decided this credential is OAuth-backed, so if it says so, the
+        // audience must hold regardless of whether THIS host's local discovery/challenge flag
+        // happens to be on — two independently misconfigured flags must not turn into "one of
+        // them being off silently disables an unrelated security check."
         var settings = context.RequestServices.GetRequiredService<McpServerSettings>();
-        if (settings.OAuthEnabled && identity.OAuthGrantId is not null)
+        if (identity.OAuthGrantId is not null)
         {
             var ownResource = $"{settings.PublicUrl?.TrimEnd('/')}{McpHttpHost.EndpointPath}";
             if (!string.Equals(identity.OAuthResource, ownResource, StringComparison.Ordinal))

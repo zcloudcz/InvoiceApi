@@ -208,6 +208,14 @@ public class OAuthClientResolver : IOAuthClientResolver
             if (!response.IsSuccessStatusCode)
                 return (null, default, $"CIMD endpoint returned {(int)response.StatusCode}");
 
+            // Codex review finding: enforce the JSON content type the CIMD spec requires,
+            // rather than trying to parse whatever came back regardless — a host that answers
+            // any GET with an HTML/error page would otherwise get exactly as far into this
+            // resolver as one serving a genuine CIMD document.
+            var mediaType = response.Content.Headers.ContentType?.MediaType;
+            if (!string.Equals(mediaType, "application/json", StringComparison.OrdinalIgnoreCase))
+                return (null, default, $"CIMD endpoint returned Content-Type '{mediaType ?? "(none)"}', expected application/json");
+
             byte[] body;
             try
             {

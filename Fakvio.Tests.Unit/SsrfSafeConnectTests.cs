@@ -25,6 +25,14 @@ public class SsrfSafeConnectTests
     [InlineData("fe80::1")]        // link-local IPv6
     [InlineData("fc00::1")]        // unique local IPv6
     [InlineData("::ffff:10.0.0.1")] // IPv4-mapped IPv6 of a blocked range
+    [InlineData("0.0.0.1")]        // "this network" 0.0.0.0/8
+    [InlineData("192.0.0.1")]      // IETF protocol assignments / NAT64-DNS64 192.0.0.0/24
+    [InlineData("198.18.0.1")]     // benchmarking 198.18.0.0/15
+    [InlineData("198.19.255.254")] // benchmarking 198.18.0.0/15, upper bound
+    [InlineData("240.0.0.1")]      // reserved "Class E" 240.0.0.0/4
+    [InlineData("255.255.255.255")] // limited broadcast
+    [InlineData("fec0::1")]        // deprecated IPv6 site-local fec0::/10
+    [InlineData("64:ff9b::1.1.1.1")] // well-known NAT64 prefix 64:ff9b::/96
     public void IsForbidden_BlocksPrivateAndSpecialUseAddresses(string ip)
     {
         SsrfSafeConnect.IsForbidden(IPAddress.Parse(ip)).ShouldBeTrue();

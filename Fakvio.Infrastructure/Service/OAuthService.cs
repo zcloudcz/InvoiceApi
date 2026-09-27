@@ -116,7 +116,24 @@ public class OAuthService : IOAuthService
     public async Task<OAuthTokenResult> ExchangeAuthorizationCodeAsync(ExchangeAuthorizationCodeRequest request, CancellationToken ct = default)
     {
         var hash = ApiKeyService.ComputeHash(request.Code);
-        var code = await _context.OAuthAuthorizationCode.FirstOrDefaultAsync(c => c.CodeHash == hash, ct);
+
+        // Codex review finding (high, T3): the previous version consumed the code with an
+        // atomic ExecuteUpdateAsync, but linked it to the grant it produced (code.GrantId) in a
+        // SEPARATE later statement. That left a window where a concurrent redeemer could see
+        // "already consumed" (ConsumedAt set) WITHOUT yet seeing GrantId — so the reuse it just
+        // detected had nothing to revoke. A `SELECT … FOR UPDATE` inside an explicit transaction
+        // closes that window completely: a second request for the SAME code blocks on this
+        // query until the first one's transaction commits (or rolls back), and by the time it
+        // is unblocked it sees either "not consumed" (first request failed/rolled back) or
+        // "consumed AND linked to a grant" (first request succeeded) — never the in-between
+        // state. This also means the ConsumedAt write below is a plain property assignment, not
+        // a conditional ExecuteUpdateAsync — the row lock is what makes it safe.
+        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+
+        var code = (await _context.OAuthAuthorizationCode
+                .FromSqlInterpolated($"SELECT * FROM \"OAuthAuthorizationCode\" WHERE \"CodeHash\" = {hash} FOR UPDATE")
+                .ToListAsync(ct))
+            .SingleOrDefault();
 
         if (code is null)
             throw new OAuthErrorException(OAuthErrorException.InvalidGrant, "unknown authorization code");
@@ -139,26 +156,30 @@ public class OAuthService : IOAuthService
         if (PostgresDateTime.ToUtc(code.ExpiresAt) <= DateTime.UtcNow)
             throw new OAuthErrorException(OAuthErrorException.InvalidGrant, "authorization code has expired");
 
-        // Atomic single-use consumption (T3): only one caller can win this UPDATE.
-        var consumedCount = await _context.OAuthAuthorizationCode
-            .Where(c => c.Id == code.Id && c.ConsumedAt == null)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ConsumedAt, DateTime.UtcNow), ct);
-
-        if (consumedCount == 0)
+        if (code.ConsumedAt is not null)
         {
-            // Reuse — the code was already redeemed (by this request or a concurrent one).
+            // Reuse (T3) — thanks to the row lock above, GrantId here is guaranteed to be the
+            // FINAL value the winning redemption wrote (never an in-between null), so this
+            // always has something to revoke when a grant was actually produced.
             _logger.LogWarning("OAuth.CodeReuseDetected: authorization code for user {UserId} client {ClientId} reused",
                 code.UserId, code.ClientId);
 
             if (code.GrantId is { } existingGrantId)
                 await RevokeGrantAsync(existingGrantId, EOAuthGrantRevokedReason.CodeReuse, null, ct);
 
+            await transaction.CommitAsync(ct); // persist the revoke-on-reuse side effect above
             throw new OAuthErrorException(OAuthErrorException.InvalidGrant, "authorization code has already been used");
         }
 
+        code.ConsumedAt = DateTime.UtcNow; // plain assignment — safe under the exclusive row lock
+
         var user = await _context.User.FirstOrDefaultAsync(u => u.Id == code.UserId, ct);
         if (user is null || !IsEligible(user))
+        {
+            await _context.SaveChangesAsync(ct); // persist the consumption so a denied code cannot be retried
+            await transaction.CommitAsync(ct);
             throw new OAuthErrorException(OAuthErrorException.AccessDenied, "user is not eligible for OAuth (inactive, no company, or not allowlisted)");
+        }
 
         // Supersede any existing grant for the same (user, client, resource) — ADR §4.3: a
         // reconnect must not pile up rows in "Připojené aplikace".
@@ -181,11 +202,9 @@ public class OAuthService : IOAuthService
             ExpiresAt = DateTime.UtcNow.Add(GrantAbsoluteLifetime)
         };
         _context.OAuthGrant.Add(grant);
-        await _context.SaveChangesAsync(ct); // flush to obtain grant.Id
+        await _context.SaveChangesAsync(ct); // flush (still inside the transaction) to obtain grant.Id
 
-        await _context.OAuthAuthorizationCode
-            .Where(c => c.Id == code.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.GrantId, grant.Id), ct);
+        code.GrantId = grant.Id;
 
         var (rawAccess, accessEntity) = CreateAccessToken(grant, grant.Scopes);
         var (rawRefresh, refreshEntity) = CreateRefreshToken(grant);
@@ -193,6 +212,8 @@ public class OAuthService : IOAuthService
         _context.ApiKey.Add(accessEntity);
         _context.OAuthRefreshToken.Add(refreshEntity);
         await _context.SaveChangesAsync(ct);
+
+        await transaction.CommitAsync(ct);
 
         _logger.LogInformation("OAuth.TokenIssued: grant {GrantId} client {ClientId} user {UserId} scope {Scope}",
             grant.Id, grant.ClientId, grant.UserId, grant.Scopes);
@@ -204,15 +225,35 @@ public class OAuthService : IOAuthService
     public async Task<OAuthTokenResult> RefreshAsync(RefreshTokenRequest request, CancellationToken ct = default)
     {
         var hash = ApiKeyService.ComputeHash(request.RefreshToken);
-        var token = await _context.OAuthRefreshToken
-            .Include(t => t.Grant)
-            .ThenInclude(g => g.User)
-            .FirstOrDefaultAsync(t => t.TokenHash == hash, ct);
 
+        // Codex review finding (high, T5): the previous version read the grant's RevokedAt
+        // OUTSIDE any lock, then — much later, after creating and saving new tokens — had no
+        // way to notice a revocation that landed in between. A concurrent RevokeGrantAsync
+        // could finish its two ExecuteUpdateAsync statements (grant + existing access tokens)
+        // entirely inside that window and never see the brand-new access token this refresh
+        // was about to insert, leaving a live token under a "revoked" grant for up to 1h.
+        //
+        // Locking the GRANT row with `FOR UPDATE` inside an explicit transaction serializes
+        // refresh against revoke completely: RevokeGrantAsync's own ExecuteUpdateAsync on the
+        // same row (same table, same PK) is a normal UPDATE, and Postgres blocks a normal
+        // UPDATE against a row until whoever holds `FOR UPDATE` on it commits or rolls back.
+        // So the two operations can no longer interleave — either refresh finishes first (and
+        // revoke's later sweep sees and revokes the new token too), or revoke finishes first
+        // (and refresh's own re-read of the row, taken under the lock, sees RevokedAt already
+        // set and refuses).
+        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+
+        var token = await _context.OAuthRefreshToken.FirstOrDefaultAsync(t => t.TokenHash == hash, ct);
         if (token is null)
             throw new OAuthErrorException(OAuthErrorException.InvalidGrant, "unknown refresh token");
 
-        var grant = token.Grant;
+        var grant = (await _context.OAuthGrant
+                .FromSqlInterpolated($"SELECT * FROM \"OAuthGrant\" WHERE \"Id\" = {token.GrantId} FOR UPDATE")
+                .ToListAsync(ct))
+            .SingleOrDefault();
+
+        if (grant is null)
+            throw new OAuthErrorException(OAuthErrorException.InvalidGrant, "grant no longer exists");
 
         // PostgresDateTime.ToUtc on every stored timestamp compared against UtcNow below —
         // see that helper's docs for why (issue #236-class bug: Npgsql.EnableLegacyTimestampBehavior).
@@ -230,31 +271,40 @@ public class OAuthService : IOAuthService
         var scope = NormalizeRequestedScope(request.Scope, grant.Scopes);
 
         if (token.ConsumedAt is not null)
-            await HandleRefreshReuseAsync(token.Id, grant.Id, PostgresDateTime.ToUtc(token.ConsumedAt.Value), ct);
-
-        var consumedCount = await _context.OAuthRefreshToken
-            .Where(t => t.Id == token.Id && t.ConsumedAt == null)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.ConsumedAt, DateTime.UtcNow), ct);
-
-        if (consumedCount == 0)
         {
-            // Lost a race against a concurrent refresh that consumed it a moment ago —
-            // re-read the timestamp the winner just wrote and apply the same Q5 window.
-            var actualConsumedAt = await _context.OAuthRefreshToken
-                .AsNoTracking()
-                .Where(t => t.Id == token.Id)
-                .Select(t => t.ConsumedAt)
-                .FirstAsync(ct);
+            // Reuse — with the grant row locked (and this SAME token row already loaded in
+            // this transaction), "already consumed" here is the true, final state: no
+            // concurrent refresh of the SAME token could still be in flight once we hold the
+            // grant's lock, because every refresh of this grant takes that same lock first.
+            var elapsed = DateTime.UtcNow - PostgresDateTime.ToUtc(token.ConsumedAt.Value);
 
-            await HandleRefreshReuseAsync(token.Id, grant.Id, PostgresDateTime.ToUtc(actualConsumedAt!.Value), ct);
+            if (elapsed <= ConcurrentRefreshGraceWindow)
+            {
+                // Q5 — benign concurrent-refresh race, no revocation.
+                throw new OAuthErrorException(OAuthErrorException.InvalidGrant,
+                    "refresh token already used (concurrent refresh within the grace window)");
+            }
+
+            _logger.LogWarning("OAuth.RefreshReuseDetected: grant {GrantId} refresh token {TokenId} reused after the grace window",
+                grant.Id, token.Id);
+
+            await RevokeGrantAsync(grant.Id, EOAuthGrantRevokedReason.RefreshReuse, null, ct);
+            await transaction.CommitAsync(ct); // persist the revoke-on-reuse side effect above
+
+            throw new OAuthErrorException(OAuthErrorException.InvalidGrant,
+                "refresh token reuse detected outside the grace window — grant revoked");
         }
 
-        var user = grant.User;
+        token.ConsumedAt = DateTime.UtcNow; // plain assignment — safe under the grant's exclusive row lock
+
+        var user = await _context.User.FirstOrDefaultAsync(u => u.Id == grant.UserId, ct);
         if (user is null || !IsEligible(user))
         {
             if (user is not null && !user.IsActive)
                 await RevokeGrantAsync(grant.Id, EOAuthGrantRevokedReason.Admin, null, ct);
 
+            await _context.SaveChangesAsync(ct); // persist the consumption regardless
+            await transaction.CommitAsync(ct);
             throw new OAuthErrorException(OAuthErrorException.AccessDenied, "user is no longer eligible for OAuth");
         }
 
@@ -266,34 +316,11 @@ public class OAuthService : IOAuthService
         grant.LastUsedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
 
+        await transaction.CommitAsync(ct);
+
         _logger.LogInformation("OAuth.Refreshed: grant {GrantId} scope {Scope}", grant.Id, scope);
 
         return new OAuthTokenResult(rawAccess, rawRefresh, (int)AccessTokenLifetime.TotalSeconds, scope);
-    }
-
-    /// <summary>
-    /// Always throws — either a quiet <c>invalid_grant</c> (Q5 grace window) or, outside the
-    /// window, a full grant revocation (T5) followed by <c>invalid_grant</c>.
-    /// </summary>
-    private async Task HandleRefreshReuseAsync(long tokenId, long grantId, DateTime consumedAt, CancellationToken ct)
-    {
-        var elapsed = DateTime.UtcNow - consumedAt;
-
-        if (elapsed <= ConcurrentRefreshGraceWindow)
-        {
-            // Benign — e.g. Claude fired two refreshes for the same token concurrently. The
-            // other request already returned the new tokens; this one simply fails.
-            throw new OAuthErrorException(OAuthErrorException.InvalidGrant,
-                "refresh token already used (concurrent refresh within the grace window)");
-        }
-
-        _logger.LogWarning("OAuth.RefreshReuseDetected: grant {GrantId} refresh token {TokenId} reused after the grace window",
-            grantId, tokenId);
-
-        await RevokeGrantAsync(grantId, EOAuthGrantRevokedReason.RefreshReuse, null, ct);
-
-        throw new OAuthErrorException(OAuthErrorException.InvalidGrant,
-            "refresh token reuse detected outside the grace window — grant revoked");
     }
 
     /// <inheritdoc />
@@ -418,6 +445,12 @@ public class OAuthService : IOAuthService
     {
         if (!user.IsActive) return false;
         if (!user.CompanyId.HasValue) return false;
+        // Explicit on top of the CompanyId check above (Codex review): SysAdmin accounts are
+        // supposed to have no CompanyId at all, so the check above already excludes the normal
+        // case — this is defense in depth against a data-inconsistent SysAdmin that somehow
+        // does have one, closing the gap outright rather than relying on an invariant held
+        // elsewhere.
+        if (user.Role == Domain.Enums.EUserRole.SysAdmin) return false;
         if (_options.AllowAll) return true;
         if (_options.AllowedUserIds.Contains(user.Id)) return true;
         return user.CompanyId.HasValue && _options.AllowedCompanyIds.Contains(user.CompanyId.Value);
@@ -429,6 +462,13 @@ public class OAuthService : IOAuthService
     {
         var raw = AccessTokenPrefix + Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
 
+        // Capped by the grant's absolute expiry (Q4), same reasoning as CreateRefreshToken below
+        // (Codex review finding) — an access token minted in the last hour before the grant's
+        // 180-day ceiling must not outlive the grant itself.
+        var normalExpiry = DateTime.UtcNow.Add(AccessTokenLifetime);
+        var grantExpiresAtUtc = PostgresDateTime.ToUtc(grant.ExpiresAt);
+        var expiresAt = normalExpiry < grantExpiresAtUtc ? normalExpiry : grantExpiresAtUtc;
+
         var entity = new ApiKeyEntity
         {
             UserId = grant.UserId,
@@ -437,7 +477,7 @@ public class OAuthService : IOAuthService
             KeyHash = ApiKeyService.ComputeHash(raw),
             Scopes = scope,
             OAuthGrantId = grant.Id,
-            ExpiresAt = DateTime.UtcNow.Add(AccessTokenLifetime)
+            ExpiresAt = expiresAt
         };
 
         return (raw, entity);

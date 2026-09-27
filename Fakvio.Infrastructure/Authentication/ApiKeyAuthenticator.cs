@@ -134,6 +134,30 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
             return false;
         }
 
+        // Codex review finding (critical): the ADR's "quick rollback" (McpOAuth:Enabled=false)
+        // must terminate every OAuth-issued token immediately, not just hide the discovery/
+        // token endpoints — otherwise a still-unexpired fak_oat_ token (up to 1h old) keeps
+        // authenticating after the flag flip, which defeats the whole point of a "flip a flag,
+        // everything OAuth stops" rollback story (ADR §5.3, T4/T6/T15).
+        if (key.OAuthGrantId is not null && !_oauthOptions.Enabled)
+        {
+            _logger.LogWarning("API key authentication failed: OAuth access token {KeyPrefix} presented while McpOAuth:Enabled is false", key.KeyPrefix);
+            return false;
+        }
+
+        // Same review finding, second half: the grant's own state is authoritative, not just
+        // the individual access-token row. RevokeGrantAsync sweeps every ApiKey row under a
+        // grant when the grant is revoked, so key.RevokedAt above already covers that case in
+        // practice — this is the belt for that suspenders, and it is what catches the grant's
+        // 180-day ABSOLUTE cap (Q4), which nothing proactively pushes onto individual
+        // already-issued access-token rows the way revocation does.
+        if (key.OAuthGrant is { } grant &&
+            (grant.RevokedAt is not null || ToUtc(grant.ExpiresAt) <= DateTime.UtcNow))
+        {
+            _logger.LogWarning("API key authentication failed: OAuth access token {KeyPrefix} belongs to a revoked/expired grant", key.KeyPrefix);
+            return false;
+        }
+
         return true;
     }
 

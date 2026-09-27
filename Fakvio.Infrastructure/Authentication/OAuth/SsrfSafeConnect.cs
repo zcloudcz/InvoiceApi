@@ -19,9 +19,12 @@ public static class SsrfSafeConnect
     /// <summary>
     /// True when <paramref name="address"/> must never be dialed from server-side code: loopback,
     /// private (RFC 1918), link-local (including IPv6 fe80::/10), CGNAT (100.64.0.0/10), unique
-    /// local IPv6 (fc00::/7), multicast, unspecified (0.0.0.0 / ::), or the two well-known Azure
-    /// metadata endpoints. IPv4-mapped IPv6 addresses (::ffff:10.0.0.1) are unwrapped first so
-    /// they cannot smuggle a blocked IPv4 range past a check that only looks at the IPv6 shape.
+    /// local IPv6 (fc00::/7) and the deprecated site-local fec0::/10, multicast, unspecified
+    /// (0.0.0.0 / ::), "this network" (0.0.0.0/8), IETF protocol assignments incl. NAT64/DNS64
+    /// (192.0.0.0/24), benchmarking (198.18.0.0/15), reserved/"Class E" (240.0.0.0/4), the
+    /// well-known NAT64 prefix (64:ff9b::/96), or the two well-known Azure metadata endpoints.
+    /// IPv4-mapped IPv6 addresses (::ffff:10.0.0.1) are unwrapped first so they cannot smuggle a
+    /// blocked IPv4 range past a check that only looks at the IPv6 shape.
     /// </summary>
     public static bool IsForbidden(IPAddress address)
     {
@@ -46,6 +49,16 @@ public static class SsrfSafeConnect
             if (bytes[0] == 100 && bytes[1] is >= 64 and <= 127) return true;
             // Multicast 224.0.0.0/4
             if (bytes[0] is >= 224 and <= 239) return true;
+            // Codex review finding: additional IANA special-purpose ranges (RFC 6890) that are
+            // not globally routable and must not be treated as "public" either.
+            // 0.0.0.0/8 ("this network" — only 0.0.0.0 itself was covered above)
+            if (bytes[0] == 0) return true;
+            // 192.0.0.0/24 (IETF protocol assignments, incl. NAT64/DNS64 well-known prefixes)
+            if (bytes[0] == 192 && bytes[1] == 0 && bytes[2] == 0) return true;
+            // 198.18.0.0/15 (benchmarking)
+            if (bytes[0] == 198 && bytes[1] is 18 or 19) return true;
+            // 240.0.0.0/4 (reserved/"Class E") + 255.255.255.255 broadcast
+            if (bytes[0] >= 240) return true;
         }
         else if (addr.AddressFamily == AddressFamily.InterNetworkV6)
         {
@@ -54,6 +67,14 @@ public static class SsrfSafeConnect
             var bytes = addr.GetAddressBytes();
             // fc00::/7 — unique local addresses
             if ((bytes[0] & 0xFE) == 0xFC) return true;
+            // fec0::/10 — deprecated IPv6 site-local (RFC 3879), still special-use
+            if (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0xC0) return true;
+            // 64:ff9b::/96 — well-known NAT64 translation prefix (RFC 6052): a translated
+            // address here is exactly the IPv4-mapped smuggling trick, one level removed.
+            if (bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xFF && bytes[3] == 0x9B
+                && bytes[4] == 0 && bytes[5] == 0 && bytes[6] == 0 && bytes[7] == 0
+                && bytes[8] == 0 && bytes[9] == 0 && bytes[10] == 0 && bytes[11] == 0)
+                return true;
         }
 
         // Azure instance metadata service — reachable from every App Service/VM, must never be

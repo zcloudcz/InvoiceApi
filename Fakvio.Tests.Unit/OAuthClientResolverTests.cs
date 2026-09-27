@@ -221,6 +221,31 @@ public class OAuthClientResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_RejectsWrongContentType()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(ValidDocument, Encoding.UTF8, "text/html")
+        };
+        var resolver = CreateResolver(out _, response: response);
+
+        (await resolver.ResolveAsync(ClientId)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RejectsMissingContentType()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(Encoding.UTF8.GetBytes(ValidDocument))
+        };
+        response.Content.Headers.ContentType = null;
+        var resolver = CreateResolver(out _, response: response);
+
+        (await resolver.ResolveAsync(ClientId)).ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ResolveAsync_RejectsRedirectResponse()
     {
         var redirect = new HttpResponseMessage(HttpStatusCode.Found);

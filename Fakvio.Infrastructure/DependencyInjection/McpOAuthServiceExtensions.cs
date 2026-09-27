@@ -35,6 +35,14 @@ public static class McpOAuthServiceExtensions
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
                 AllowAutoRedirect = false,
+                // Codex review finding: without this, a system-wide proxy configured on the
+                // host (env vars, machine config) could make SocketsHttpHandler hand
+                // ConnectCallback the PROXY's address instead of the CIMD target's — the
+                // SSRF guard would then faithfully validate the proxy's address and never see
+                // the real target at all. Disabling proxying outright is what makes "connect to
+                // the address ResolveSafeAddressAsync just validated" an actual guarantee.
+                UseProxy = false,
+                Proxy = null,
                 ConnectCallback = async (context, ct) =>
                 {
                     var safeAddress = await SsrfSafeConnect.ResolveSafeAddressAsync(context.DnsEndPoint.Host, ct);

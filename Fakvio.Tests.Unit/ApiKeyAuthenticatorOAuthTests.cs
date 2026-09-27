@@ -39,7 +39,7 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
         _authenticator = new ApiKeyAuthenticator(
             _context,
             Substitute.For<ILogger<ApiKeyAuthenticator>>(),
-            Options.Create(new McpOAuthOptions { ResourceProofSecret = ResourceProofSecret }));
+            Options.Create(new McpOAuthOptions { Enabled = true, ResourceProofSecret = ResourceProofSecret }));
 
         _context.User.Add(new User
         {
@@ -136,5 +136,51 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
             _context, Substitute.For<ILogger<ApiKeyAuthenticator>>(), Options.Create(new McpOAuthOptions()));
 
         (await authenticatorWithoutSecret.AuthenticateAsync(RawToken, resourceProofHeader: "anything")).ShouldBeNull();
+    }
+
+    /// <summary>
+    /// Codex review finding (critical, T4/T6/T15): the ADR's "quick rollback"
+    /// (McpOAuth:Enabled=false) must terminate every OAuth-issued token immediately, not just
+    /// hide the discovery/token endpoints. Before this fix, a still-unexpired fak_oat_ token
+    /// kept authenticating after the flag flip as long as the resource-proof secret stayed
+    /// configured — this pins that the rollback actually works.
+    /// </summary>
+    [Fact]
+    public async Task OAuthToken_WhenMcpOAuthDisabled_IsRejectedEvenWithACorrectProofHeader()
+    {
+        SeedOAuthAccessToken();
+
+        var authenticatorWithFlagOff = new ApiKeyAuthenticator(
+            _context, Substitute.For<ILogger<ApiKeyAuthenticator>>(),
+            Options.Create(new McpOAuthOptions { Enabled = false, ResourceProofSecret = ResourceProofSecret }));
+
+        (await authenticatorWithFlagOff.AuthenticateAsync(RawToken, resourceProofHeader: ResourceProofSecret)).ShouldBeNull();
+    }
+
+    /// <summary>Belt for the suspenders in <see cref="OAuthCleanupService"/>/<c>RevokeGrantAsync</c>'s sweep: the grant's own state is authoritative too.</summary>
+    [Fact]
+    public async Task OAuthToken_WhoseGrantIsRevoked_IsRejected_EvenIfTheAccessTokenRowItselfIsNot()
+    {
+        var grant = new OAuthGrant
+        {
+            UserId = UserId, ClientId = "https://claude.ai/oauth/claude-code-client-metadata",
+            ClientName = "Claude Code", Scopes = "read", Resource = CanonicalResource,
+            ExpiresAt = DateTime.UtcNow.AddDays(180), RevokedAt = DateTime.UtcNow, RevokedReason = EOAuthGrantRevokedReason.User
+        };
+        _context.OAuthGrant.Add(grant);
+        _context.SaveChanges();
+
+        // Deliberately NOT revoked at the ApiKey row level — simulates the row existing
+        // between RevokeGrantAsync's two statements (grant, then the ApiKey sweep), or any
+        // future code path that revokes a grant without remembering to sweep its tokens.
+        _context.ApiKey.Add(new ApiKey
+        {
+            UserId = UserId, Name = "OAuth: Claude Code", KeyPrefix = RawToken[..12],
+            KeyHash = ApiKeyService.ComputeHash(RawToken), Scopes = "read",
+            OAuthGrantId = grant.Id, ExpiresAt = DateTime.UtcNow.AddHours(1)
+        });
+        _context.SaveChanges();
+
+        (await _authenticator.AuthenticateAsync(RawToken, resourceProofHeader: ResourceProofSecret)).ShouldBeNull();
     }
 }

@@ -233,6 +233,57 @@ public class OAuthServiceTests : IAsyncLifetime
         accessToken.RevokedAt.ShouldNotBeNull();
     }
 
+    /// <summary>
+    /// Fires the SAME code redemption from two separate DbContexts (i.e. two separate
+    /// connections, exactly like two real concurrent HTTP requests) at once, instead of
+    /// sequentially. Pins the fix for the Codex review finding: the `FOR UPDATE` row lock in
+    /// <see cref="OAuthService.ExchangeAuthorizationCodeAsync"/> must serialize the two
+    /// attempts so the loser ALWAYS observes the winner's final <c>GrantId</c> — never the
+    /// in-between state where <c>ConsumedAt</c> is set but <c>GrantId</c> is still null, which
+    /// would make the reuse it detects impossible to revoke.
+    /// </summary>
+    [SkippableFact]
+    public async Task ExchangeAuthorizationCodeAsync_TrueConcurrentRedemption_AlwaysRevokesTheWinningGrant()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var (code, verifier) = await IssueCodeAsync();
+        var request = new ExchangeAuthorizationCodeRequest(code, RedirectUri, ClientId, verifier, Resource);
+
+        async Task<OAuthErrorException?> RedeemAsync()
+        {
+            await using var context = CreateMasterContext();
+            try
+            {
+                await CreateService(context).ExchangeAuthorizationCodeAsync(request);
+                return null; // this attempt won
+            }
+            catch (OAuthErrorException ex)
+            {
+                return ex; // this attempt lost (or something else went wrong)
+            }
+        }
+
+        var results = await Task.WhenAll(RedeemAsync(), RedeemAsync());
+
+        // Exactly one of the two must have won (returned null) and the other must have lost
+        // with invalid_grant — never both winning, never both losing.
+        var losers = results.Where(ex => ex is not null).ToList();
+        losers.Count.ShouldBe(1);
+        losers[0]!.ErrorCode.ShouldBe(OAuthErrorException.InvalidGrant);
+
+        await using var readContext = CreateMasterContext();
+        var grant = await readContext.OAuthGrant.SingleAsync(g => g.UserId == OwnerUserId);
+
+        // The whole point of the fix: the loser must have been able to find and revoke the
+        // grant the winner produced — not silently do nothing because GrantId was still null.
+        grant.RevokedAt.ShouldNotBeNull();
+        grant.RevokedReason.ShouldBe(EOAuthGrantRevokedReason.CodeReuse);
+
+        var accessToken = await readContext.ApiKey.SingleAsync(k => k.OAuthGrantId == grant.Id);
+        accessToken.RevokedAt.ShouldNotBeNull();
+    }
+
     [SkippableFact]
     public async Task ExchangeAuthorizationCodeAsync_WrongCodeVerifier_IsRejected()
     {
@@ -420,6 +471,60 @@ public class OAuthServiceTests : IAsyncLifetime
 
         // Every access token under the grant must die with it (T5/T6 — "najednou").
         (await readContext.ApiKey.Where(k => k.OAuthGrantId == grant.Id).AllAsync(k => k.RevokedAt != null)).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Fires a legitimate refresh and a revoke of the SAME grant truly concurrently (separate
+    /// DbContexts/connections). Pins the fix for the Codex review finding: the grant row's
+    /// `FOR UPDATE` lock in <see cref="OAuthService.RefreshAsync"/> must serialize the two
+    /// operations completely, so there is never a moment where the access token refresh just
+    /// created survives a revoke that logically "already happened" — whichever operation wins
+    /// the race, the other one's effects must be consistent with it, never silently lost.
+    /// </summary>
+    [SkippableFact]
+    public async Task RefreshAsync_TrueConcurrentWithRevoke_NeverLeavesALiveTokenUnderARevokedGrant()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var initial = await IssueAndExchangeAsync();
+        long grantId;
+        await using (var context = CreateMasterContext())
+            grantId = (await context.OAuthGrant.SingleAsync(g => g.UserId == OwnerUserId)).Id;
+
+        async Task RefreshAttemptAsync()
+        {
+            await using var context = CreateMasterContext();
+            try
+            {
+                await CreateService(context).RefreshAsync(new RefreshTokenRequest(initial.RefreshToken, null, null));
+            }
+            catch (OAuthErrorException)
+            {
+                // Fine — revoke may have won the race and refused this refresh. The assertions
+                // below are what actually prove the invariant, not which side "won".
+            }
+        }
+
+        async Task RevokeAttemptAsync()
+        {
+            await using var context = CreateMasterContext();
+            await CreateService(context).RevokeGrantAsync(grantId, EOAuthGrantRevokedReason.User, null);
+        }
+
+        await Task.WhenAll(RefreshAttemptAsync(), RevokeAttemptAsync());
+
+        await using var readContext = CreateMasterContext();
+        var grant = await readContext.OAuthGrant.SingleAsync(g => g.Id == grantId);
+
+        // The revoke always "wins" eventually (it has no eligibility/expiry checks to fail),
+        // so the grant must end up revoked either way.
+        grant.RevokedAt.ShouldNotBeNull();
+
+        // The invariant the fix protects: whatever access tokens exist under this grant right
+        // now — including one a concurrent refresh may have just minted — must ALL be revoked.
+        // A live token here would mean refresh's insert happened invisibly to revoke's sweep.
+        (await readContext.ApiKey.Where(k => k.OAuthGrantId == grantId).AllAsync(k => k.RevokedAt != null))
+            .ShouldBeTrue("a refresh that raced with a revoke of the same grant left a live access token behind");
     }
 
     [SkippableFact]
