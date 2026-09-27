@@ -340,6 +340,114 @@ public class McpHttpTransportTests
         return string.Concat(result.Content.OfType<TextContentBlock>().Select(block => block.Text));
     }
 
+    // ─── MCP OAuth 2.1 (ADR 0001, task N5.6) ────────────────────────────────
+
+    private static McpServerSettings OAuthSettings() => new()
+    {
+        OAuthEnabled = true,
+        PublicUrl = "https://mcp.fakvio.test",
+        OAuthIssuer = "https://api.fakvio.test"
+    };
+
+    /// <summary>Flag off — today's PRM (none at all) is unchanged (T15).</summary>
+    [Fact]
+    public async Task WhenOAuthDisabled_ProtectedResourceMetadataIs404()
+    {
+        await using var host = await McpHttpTestHost.StartAsync();
+
+        var response = await host.GetAsync("/.well-known/oauth-protected-resource/mcp");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    /// <summary>Flag off — the challenge is the bare "Bearer" it always was (T15).</summary>
+    [Fact]
+    public async Task WhenOAuthDisabled_ChallengeHasNoResourceMetadata()
+    {
+        await using var host = await McpHttpTestHost.StartAsync();
+
+        using var response = await host.PostInitializeAsync(apiKey: null);
+
+        response.Headers.WwwAuthenticate.ToString().ShouldBe("Bearer");
+    }
+
+    [Theory]
+    [InlineData("/.well-known/oauth-protected-resource/mcp")]
+    [InlineData("/.well-known/oauth-protected-resource")]
+    public async Task WhenOAuthEnabled_ProtectedResourceMetadata_IsServedWithoutAuth_OnBothPaths(string path)
+    {
+        await using var host = await McpHttpTestHost.StartAsync(settings: OAuthSettings());
+
+        var response = await host.GetAsync(path);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.ShouldContain("\"resource\":\"https://mcp.fakvio.test/mcp\"");
+        body.ShouldContain("\"authorization_servers\":[\"https://api.fakvio.test\"]");
+    }
+
+    [Fact]
+    public async Task WhenOAuthEnabled_UnauthenticatedRequestToAnotherPath_Still401s()
+    {
+        // PRM is the one deliberate exception — everything else stays gated exactly as before.
+        await using var host = await McpHttpTestHost.StartAsync(settings: OAuthSettings());
+
+        using var response = await host.PostInitializeAsync(apiKey: null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task WhenOAuthEnabled_ChallengeAdvertisesResourceMetadataAndScope()
+    {
+        await using var host = await McpHttpTestHost.StartAsync(settings: OAuthSettings());
+
+        using var response = await host.PostInitializeAsync(apiKey: null);
+
+        var challenge = response.Headers.WwwAuthenticate.ToString();
+        challenge.ShouldContain("resource_metadata=\"https://mcp.fakvio.test/.well-known/oauth-protected-resource/mcp\"");
+        challenge.ShouldContain("scope=\"read write\"");
+    }
+
+    /// <summary>T6 — an OAuth token minted for a DIFFERENT resource server must not authenticate here.</summary>
+    [Fact]
+    public async Task WhenOAuthEnabled_TokenWithWrongResource_IsRejectedWith401()
+    {
+        await using var host = await McpHttpTestHost.StartAsync(settings: OAuthSettings());
+        const string wrongResourceKey = "fak_oat_wrong_resource";
+        host.Api.RegisterOAuthToken(wrongResourceKey, "Wrong Resource Ltd", "https://someone-elses-mcp.example.com/mcp");
+
+        using var response = await host.PostInitializeAsync(wrongResourceKey);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    /// <summary>The matching-resource counterpart — an OAuth token minted for THIS server authenticates normally.</summary>
+    [Fact]
+    public async Task WhenOAuthEnabled_TokenWithMatchingResource_Authenticates()
+    {
+        await using var host = await McpHttpTestHost.StartAsync(settings: OAuthSettings());
+        const string rightResourceKey = "fak_oat_right_resource";
+        host.Api.RegisterOAuthToken(rightResourceKey, "Right Resource s.r.o.", "https://mcp.fakvio.test/mcp");
+
+        await using var client = await host.ConnectAsync(rightResourceKey);
+        var answer = await CallReadinessAsync(client);
+
+        answer.ShouldContain("Right Resource s.r.o.");
+    }
+
+    /// <summary>A manually created API key has no resource binding at all and is exempt from the audience check (ADR §4.4).</summary>
+    [Fact]
+    public async Task WhenOAuthEnabled_PlainApiKeyWithNoOAuthResource_StillAuthenticates()
+    {
+        await using var host = await McpHttpTestHost.StartAsync(settings: OAuthSettings());
+
+        await using var client = await host.ConnectAsync(TenantAKey);
+        var answer = await CallReadinessAsync(client);
+
+        answer.ShouldContain(TenantAIssuer);
+    }
+
     /// <summary>
     /// The MCP HTTP server under test, hosted in memory, with <see cref="FakvioApiStub"/> wired in
     /// as the far end of the outbound HTTP pipeline.
@@ -359,7 +467,7 @@ public class McpHttpTransportTests
         /// <summary>The stand-in REST API, so a test can revoke a key or count its calls.</summary>
         public FakvioApiStub Api { get; }
 
-        public static async Task<McpHttpTestHost> StartAsync(int releaseReadinessAfter = 1)
+        public static async Task<McpHttpTestHost> StartAsync(int releaseReadinessAfter = 1, McpServerSettings? settings = null)
         {
             var api = new FakvioApiStub(releaseReadinessAfter);
 
@@ -372,10 +480,10 @@ public class McpHttpTransportTests
             builder.Services.ConfigureHttpClientDefaults(http =>
                 http.ConfigurePrimaryHttpMessageHandler(() => api));
 
-            McpHttpHost.ConfigureServices(builder.Services, new McpServerSettings
-            {
-                ApiBaseUrl = "https://api.test.invalid"
-            });
+            settings ??= new McpServerSettings();
+            settings.ApiBaseUrl = "https://api.test.invalid";
+
+            McpHttpHost.ConfigureServices(builder.Services, settings);
 
             var app = builder.Build();
             McpHttpHost.MapEndpoints(app);
@@ -494,6 +602,19 @@ public class McpHttpTransportTests
         /// <summary>Makes the key unknown from the next request on, exactly like a revocation.</summary>
         public void Revoke(string apiKey) => _issuerByKey.TryRemove(apiKey, out _);
 
+        /// <summary>
+        /// Registers <paramref name="apiKey"/> as an OAuth-issued access token bound to
+        /// <paramref name="resource"/> — the identity response then carries OAuthGrantId/
+        /// OAuthResource, which is what the gate's audience check (T6) reads.
+        /// </summary>
+        public void RegisterOAuthToken(string apiKey, string issuer, string resource)
+        {
+            _issuerByKey[apiKey] = issuer;
+            _oauthResourceByKey[apiKey] = resource;
+        }
+
+        private readonly ConcurrentDictionary<string, string> _oauthResourceByKey = new();
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -512,9 +633,19 @@ public class McpHttpTransportTests
                 if (IdentityStatusOverride is { } forcedStatus)
                     return new HttpResponseMessage(forcedStatus);
 
-                return IssuerOf(presentedKey) is null
-                    ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
-                    : Json(new ApiKeyIdentityDto { UserId = 1, Email = "machine@test.invalid", Scopes = "read" });
+                if (IssuerOf(presentedKey) is null)
+                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+
+                var oauthResource = presentedKey is not null && _oauthResourceByKey.TryGetValue(presentedKey, out var resource) ? resource : null;
+
+                return Json(new ApiKeyIdentityDto
+                {
+                    UserId = 1,
+                    Email = "machine@test.invalid",
+                    Scopes = "read",
+                    OAuthGrantId = oauthResource is null ? null : 1,
+                    OAuthResource = oauthResource
+                });
             }
 
             if (path.EndsWith("/api/readiness", StringComparison.Ordinal))

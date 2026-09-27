@@ -155,6 +155,7 @@ public class AuthHeaderPipelineTests
     {
         var services = new ServiceCollection();
         registerTokenProvider(services);
+        services.AddSingleton(new Fakvio.McpServer.Configuration.McpServerSettings());
         services.AddTransient<AuthHeaderHandler>();
         services.AddHttpClient(ClientName)
             .ConfigurePrimaryHttpMessageHandler(() => primaryHandler)
