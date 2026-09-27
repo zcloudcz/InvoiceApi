@@ -1,6 +1,6 @@
 # ADR 0001 — OAuth 2.1 autorizace MCP hostu `mcp.fakvio.cz`
 
-- **Stav:** Proposed (čeká na schválení ownerem; implementační tasky N5.2–N5.8 se nespouštějí před „Accepted“)
+- **Stav:** Accepted (owner, 2026-09-27) — rozhodnutí k otázkám v §9
 - **Datum:** 2026-09-26
 - **Story / task:** N5 / N5.1 (`research/plan-2026-W39-specs.md`)
 - **Dotčené projekty:** `Fakvio.API`, `Fakvio.Infrastructure`, `Fakvio.Domain`, `Fakvio.McpServer`, `Fakvio.UI.Shared`, `Fakvio.BlazorUI`
@@ -464,17 +464,19 @@ SDK 2.x ji podporuje (host je už stateless). Kompatibilitu s aktuálním claude
 
 ---
 
-## 9. Otevřené otázky pro ownera
+## 9. Rozhodnutí ownera (2026-09-27)
 
-- **Q1 — Issuer doména:** zřídit `api.fakvio.cz` (CNAME na `fakvio-api` + managed cert) jako issuer? Doporučeno ano. Alternativa: `fakvio-api.azurewebsites.net` (funguje, ale horší důvěra a pozdější změna = reconnect všech).
-- **Q2 — DCR:** souhlas, že v1 bude jen CIMD a DCR se přidá až podle E2E? (Claude i ChatGPT CIMD podporují.)
-- **Q3 — Otevřenost klientům:** během early access jen `claude.ai` a `chatgpt.com` (včetně Claude Code a Codex)? Kdy a zda pustit libovolné CIMD klienty (Cursor, VS Code, …) s varováním?
-- **Q4 — Životnosti:** access 1 h, refresh 30 dní klouzavě, absolutní strop grantu 180 dní (pak nový souhlas) — OK?
-- **Q5 — Souběžný refresh:** Claude refreshuje proaktivně i reaktivně; souběh dvou refreshů by spustil detekci reuse a odpojil uživatele. V1 bez tolerance (bezpečnější); pokud E2E ukáže falešná odpojení, přidat krátké okno (≤ 10 s), kdy druhé použití vrátí `invalid_grant` **bez** revokace rodiny. Souhlas?
-- **Q6 — Změna hesla:** revokovat při změně/resetu hesla všechny OAuth granty (navrženo ano) — a také API klíče? (Dnes se neruší; mimo scope N5, jen upozornění.)
-- **Q7 — Proof hlavička (§4.4):** souhlas s omezením OAuth tokenů jen na cestu přes MCP host (sdílené tajemství mezi web appy)? Alternativa „token platí na celém API jako API klíč“ je jednodušší o jeden app setting, ale porušuje audience binding.
-- **Q8 — Allowlist při rolloutu:** kdo kromě ownera (ID uživatelů/firem) a jaké kritérium pro `AllowAll=true` (návrh: 2 týdny bez incidentu a ≥ 5 aktivních grantů)?
-- **Q9 — SysAdmin:** potvrdit, že SysAdmin OAuth grant nedostane a impersonace přes OAuth token je zakázaná.
+Owner schválil ADR a všechny otázky podle doporučení:
+
+- **Q1 — Issuer:** `https://api.fakvio.cz` (CNAME na `fakvio-api` + managed cert — lidský úkol v N5.8). Issuer je konfigurovatelný (`McpOAuth:Issuer`), OAuth se nezapne, dokud doména neběží.
+- **Q2 — DCR:** v1 jen CIMD; DCR (N5.5b) jen pokud E2E ukáže klienta bez CIMD.
+- **Q3 — Klienti:** během early access jen hosty `claude.ai` a `chatgpt.com`; otevření dalším CIMD klientům = samostatné rozhodnutí.
+- **Q4 — Životnosti:** access 1 h, refresh 30 dní klouzavě, absolutní strop grantu 180 dní.
+- **Q5 — Souběžný refresh:** **od v1** okno 10 s: druhé použití téhož refresh tokenu do 10 s od rotace vrátí `invalid_grant` **bez** revokace rodiny; po 10 s = reuse → revokace celého grantu. Důvod: Claude refreshuje souběžně, bez okna by docházelo k falešným odpojením.
+- **Q6 — Změna/reset hesla:** revokuje všechny OAuth granty uživatele; API klíče se neruší.
+- **Q7 — Proof hlavička:** ano, OAuth token platí jen přes MCP host (§4.4).
+- **Q8 — Allowlist:** na začátku jen owner; `AllowAll=true` po 2 týdnech bez incidentu a ≥ 5 aktivních grantech.
+- **Q9 — SysAdmin:** OAuth grant nedostane; impersonace přes OAuth token zakázaná.
 
 ---
 
