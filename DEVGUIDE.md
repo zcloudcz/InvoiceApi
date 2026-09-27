@@ -2666,9 +2666,12 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
   **tentýž `.nupkg`**, na kterém build job ověřil `FrameworkReference` — ne nový build, takže
   publikuje se přesně to, co prošlo kontrolou. Test build se veřejným balíčkem nikdy stát
   nemůže, proto jen `master`.
-  - **Vypínač je uvnitř kroku, ne v `if:`** — `secrets` context v job-level `if` k dispozici
-    není. Bez `NUGET_API_KEY` krok vypíše notice a skončí zeleně, takže job je do doplnění
-    klíče neškodný.
+  - **Žádný API klíč v secrets — nuget.org Trusted Publishing.** Krok `NuGet/login@v1`
+    vymění OIDC token běhu (`id-token: write`) za krátkodobý (1 h) klíč. Na nuget.org
+    (účet `zahy`) je policy `fakvio-mcp`: repo `zcloudcz/InvoiceApi`, workflow `mcp-server.yml`,
+    balíček `Fakvio.McpServer`, scope „push only new versions". Nic se nerotuje; když policy
+    chybí nebo nesedí (přejmenované repo / workflow), job skončí **červeně** — dřív bez klíče
+    tiše přeskočil a balíček nevycházel. Přejmenováváš workflow nebo repo → uprav i policy.
   - **Verze se zvedá ručně** v `<Version>` v `Fakvio.McpServer.csproj` a push jde
     s `--skip-duplicate`. Bez toho flagu by nuget.org vracel 409 a merge, který verzi
     nesáhl, by shodil build. Důsledek, který je potřeba znát: **zapomenutý bump znamená,
