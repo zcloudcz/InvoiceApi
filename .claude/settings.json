@@ -21,6 +21,6 @@
     "MAX_PARALLEL_DEVS": "3",
     "MAX_PARALLEL_REVIEWERS": "3",
     "MAX_PARALLEL_TESTERS": "3",
-    "AGENTIC_FOCUS": "db-switch,ai-first"
+    "AGENTIC_FOCUS": "db-switch,ai-first,growth"
   }
 }

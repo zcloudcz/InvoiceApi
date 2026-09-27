@@ -85,6 +85,7 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<EmailAdminApiService>();
         services.AddApiClient<FileAttachmentApiService>();
         services.AddApiClient<ReminderApiService>();
+        services.AddApiClient<RecurringInvoiceApiService>();
 
         // Personal API keys for AI clients (MCP) — page /settings/integrations.
         services.AddApiClient<ApiKeyApiService>();

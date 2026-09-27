@@ -98,11 +98,25 @@
 
         // Get a reCAPTCHA token for the given action (e.g., "login", "register").
         // Returns empty string if reCAPTCHA is not initialized (dev mode).
+        //
+        // RC.2: an ad blocker can let the api.js loader script through while silently
+        // blocking a sub-resource grecaptcha.execute() depends on — in that case the
+        // returned promise never settles, and the caller (Login/Register button) would
+        // be stuck forever. The 5s timeout guarantees an empty token instead, which
+        // CaptchaService then rejects with the same "CAPTCHA verification failed"
+        // message a missing script produces — never a hang.
         window.getRecaptchaToken = function (action) {
             if (typeof grecaptcha === 'undefined' || !window._recaptchaSiteKey) {
                 return Promise.resolve('');
             }
-            return grecaptcha.execute(window._recaptchaSiteKey, { action: action });
+            var timeout = new Promise(function (resolve) {
+                setTimeout(function () { resolve(''); }, 5000);
+            });
+            return Promise.race([
+                grecaptcha.execute(window._recaptchaSiteKey, { action: action })
+                    .catch(function () { return ''; }),
+                timeout
+            ]);
         };
     </script>
 </body>

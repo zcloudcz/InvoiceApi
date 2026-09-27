@@ -74,7 +74,17 @@ public class TwoFactorApiService : ApiClientBase
             }
 
             _logger.LogWarning("2FA verify failed with status {StatusCode}", response.StatusCode);
+
+            // RC.4 — a 429 from the rate limiter is not "invalid code"; the caller shows a
+            // distinct message instead of the generic 2FA failure.
+            if (RateLimitExceededException.Matches(response.StatusCode))
+                throw new RateLimitExceededException();
+
             return null;
+        }
+        catch (RateLimitExceededException)
+        {
+            throw; // Already logged above.
         }
         catch (Exception ex)
         {

@@ -176,6 +176,9 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IReminderService, ReminderService>();
         services.AddSingleton<IInterestCalculator, InterestCalculator>();
 
+        // Recurring invoices — schedule CRUD + generation cycle (RecurringInvoiceWorker calls RunCycleAsync).
+        services.AddScopedWithLogging<IRecurringInvoiceService, RecurringInvoiceService>();
+
         // Tax estimation — calculates income tax, social/health insurance for CZ/SK self-employed.
         services.AddScopedWithLogging<ITaxEstimationService, TaxEstimationService>();
 
@@ -253,6 +256,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IInvoiceAiExtractor, InvoiceAiExtractorService>();
         services.AddScopedWithLogging<IInvoiceTextExtractor, InvoiceTextExtractorService>();
         services.AddScopedWithLogging<IInvoiceImportService, InvoiceImportService>();
+        services.AddScopedWithLogging<IClientCsvImportService, ClientCsvImportService>();
 
         // ── AI Chat ────────────────────────────────────────────────────────
         AddAiProviders(services, configuration);

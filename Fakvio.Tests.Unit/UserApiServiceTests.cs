@@ -160,6 +160,65 @@ public class UserApiServiceTests
         result.WorkspaceReady.ShouldBeFalse();
     }
 
+    // ── ForgotPasswordAsync (RC.3) ────────────────────────────────────────────
+
+    /// <summary>
+    /// A failed CAPTCHA on forgot-password must surface as <see cref="CaptchaException"/>,
+    /// not the plain success/failure boolean every other outcome of this endpoint gets
+    /// (anti-enumeration — see DEVGUIDE §2.5 and ForgotPasswordCaptchaTests).
+    /// </summary>
+    [Fact]
+    public async Task ForgotPasswordAsync_CaptchaFailure_ThrowsCaptchaException()
+    {
+        var svc = CreateService(JsonResponse(HttpStatusCode.BadRequest,
+            new { message = "CAPTCHA verification failed. Please try again." }));
+
+        await Should.ThrowAsync<CaptchaException>(() => svc.ForgotPasswordAsync("a@b.cz", "token"));
+    }
+
+    [Fact]
+    public async Task ForgotPasswordAsync_Success_ReturnsTrue()
+    {
+        var svc = CreateService(JsonResponse(HttpStatusCode.OK,
+            new { message = "If the email exists, a password reset link has been sent." }));
+
+        var result = await svc.ForgotPasswordAsync("a@b.cz", "token");
+
+        result.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// RC.4 — same distinction for the rate limiter: a 429 must not collapse into "false".
+    /// </summary>
+    [Fact]
+    public async Task ForgotPasswordAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var svc = CreateService(JsonResponse(HttpStatusCode.TooManyRequests,
+            new { message = "Too many attempts. Please try again later." }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(() => svc.ForgotPasswordAsync("a@b.cz", "token"));
+    }
+
+    // ── SetPasswordAsync / ValidateInvitationTokenAsync (RC.4) ───────────────
+
+    [Fact]
+    public async Task SetPasswordAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var svc = CreateService(JsonResponse(HttpStatusCode.TooManyRequests,
+            new { message = "Too many attempts. Please try again later." }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(() => svc.SetPasswordAsync(AnyRequest));
+    }
+
+    [Fact]
+    public async Task ValidateInvitationTokenAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var svc = CreateService(JsonResponse(HttpStatusCode.TooManyRequests,
+            new { message = "Too many attempts. Please try again later." }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(() => svc.ValidateInvitationTokenAsync("some-token"));
+    }
+
     /// <summary>HttpMessageHandler stub returning a fixed response for any request.</summary>
     private sealed class StubHttpMessageHandler(HttpResponseMessage response) : HttpMessageHandler
     {

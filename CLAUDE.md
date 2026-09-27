@@ -62,6 +62,7 @@ App Service má **Always On** povoleno — bez něj by idle recycle ukončil Bac
 - `LogCleanupService` (BackgroundService) — každou hodinu maže Debug/Info logy starší 48 h.
 - `ImapPollWorker` (BackgroundService) — čte emaily IMAP v intervalu `PollIntervalMinutes` (default 30 min); advisory lock.
 - `ReminderWorker` (BackgroundService) — dunning denně v 06:00 UTC, per-tenant scope, jedno selhání ostatní nezastaví; advisory lock.
+- `RecurringInvoiceWorker` (BackgroundService) — opakované faktury, hodinově, per-tenant scope, advisory lock; viz DEVGUIDE §4.13.
 
 ## Dokumentace — povinná údržba
 

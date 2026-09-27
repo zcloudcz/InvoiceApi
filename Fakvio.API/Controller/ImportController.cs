@@ -1,19 +1,21 @@
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Import;
+using Fakvio.Infrastructure.Import;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Fakvio.API.Controller;
 
 /// <summary>
-/// Controller for importing invoices from PDF files.
+/// Controller for importing invoices from PDF files, and clients from a CSV export
+/// (Fakturoid/iDoklad — see DEVGUIDE.md §4.14).
 ///
 /// The import follows a 2-step workflow:
-/// 1. POST /preview — Upload 1-N PDFs, get extraction results + validation
-/// 2. POST /confirm — Submit reviewed/edited data to create invoices
+/// 1. POST /preview — Upload 1-N PDFs (or 1 CSV), get extraction results + validation
+/// 2. POST /confirm — Submit reviewed/edited data to create invoices/clients
 ///
-/// The preview endpoint accepts multipart/form-data with PDF files.
-/// The confirm endpoint accepts JSON with user-confirmed invoice data.
+/// The preview endpoints accept multipart/form-data with files.
+/// The confirm endpoints accept JSON with user-confirmed data.
 ///
 /// Both issued and received invoices are supported via the "target" parameter.
 /// </summary>
@@ -24,13 +26,16 @@ namespace Fakvio.API.Controller;
 public class ImportController : ControllerBase
 {
     private readonly IInvoiceImportService _importService;
+    private readonly IClientCsvImportService _clientCsvImportService;
     private readonly ILogger<ImportController> _logger;
 
     public ImportController(
         IInvoiceImportService importService,
+        IClientCsvImportService clientCsvImportService,
         ILogger<ImportController> logger)
     {
         _importService = importService;
+        _clientCsvImportService = clientCsvImportService;
         _logger = logger;
     }
 
@@ -145,5 +150,75 @@ public class ImportController : ControllerBase
 
         var results = await _importService.ConfirmImportAsync(request, ct);
         return Ok(results);
+    }
+
+    // ─── Client CSV import (N6) ───────────────────────────────────────────
+
+    /// <summary>
+    /// Previews a client CSV import: parses the file, maps columns via header aliases, and flags
+    /// rows as New/Duplicate/Invalid (duplicate = same IČO already in the DB or earlier in the file).
+    /// Nothing is saved — the user reviews the preview and calls /clients/confirm with the rows to keep.
+    ///
+    /// Accepts multipart/form-data with a single "file" (CSV export from Fakturoid or iDoklad).
+    /// </summary>
+    [HttpPost("clients/preview")]
+    // Generous transport ceiling (multipart boundary/header overhead on top of the file itself) —
+    // the actual "file too big" rule is the explicit check below, which returns our own 400
+    // { message } body. Without this margin, ASP.NET Core's own request-size middleware would
+    // reject an at-the-limit file with a bare 413 before this action even runs.
+    [RequestSizeLimit(CsvTable.MaxFileSizeBytes * 2)]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<ClientImportPreviewDto>> PreviewClients(IFormFile? file, CancellationToken ct)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "No file uploaded." });
+        }
+
+        if (file.Length > CsvTable.MaxFileSizeBytes)
+        {
+            return BadRequest(new { message = $"The file exceeds the maximum size of {CsvTable.MaxFileSizeBytes / (1024 * 1024)} MB." });
+        }
+
+        _logger.LogInformation("Client CSV import preview requested: {FileName} ({Size} bytes)", file.FileName, file.Length);
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var preview = await _clientCsvImportService.PreviewAsync(stream, ct);
+            return Ok(preview);
+        }
+        catch (CsvParseException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Confirms a client CSV import: creates the clients the user kept from the preview.
+    /// Duplicates are re-checked at this point and skipped rather than failing the whole request.
+    /// </summary>
+    [HttpPost("clients/confirm")]
+    public async Task<ActionResult<ClientImportResultDto>> ConfirmClients(
+        [FromBody] ClientImportConfirmDto request,
+        CancellationToken ct)
+    {
+        if (request.Clients == null || request.Clients.Count == 0)
+        {
+            return BadRequest(new { message = "No clients to import." });
+        }
+
+        // Confirm accepts a plain JSON list, so it isn't bounded by CsvTable's own row limit —
+        // enforce the same cap here, otherwise an authenticated caller could submit an arbitrarily
+        // large batch (up to the general request-body limit) directly, bypassing the CSV parser entirely.
+        if (request.Clients.Count > CsvTable.MaxRowCount)
+        {
+            return BadRequest(new { message = $"Too many clients in one request (max {CsvTable.MaxRowCount})." });
+        }
+
+        _logger.LogInformation("Client CSV import confirm requested: {Count} client(s)", request.Clients.Count);
+
+        var result = await _clientCsvImportService.ConfirmAsync(request, ct);
+        return Ok(result);
     }
 }

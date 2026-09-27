@@ -89,6 +89,13 @@
                     }
                     else
                     {
+                        @* CAPTCHA failure is the one outcome of this form that is safe to show
+                           distinctly — it says nothing about whether the email exists. Every
+                           other failure still falls through to "sent" below (anti-enumeration). *@
+                        @if (!string.IsNullOrEmpty(_forgotPasswordError))
+                        {
+                            <MudAlert Severity="Severity.Error">@_forgotPasswordError</MudAlert>
+                        }
                         <MudText Typo="Typo.body2" Color="Color.Secondary">@L["ForgotPassword_Subtitle"]</MudText>
                         <MudTextField @bind-Value="_forgotEmail"
                                       Label="@L["Label_Email"].Value"
@@ -172,6 +179,7 @@
     private string _forgotEmail = "";
     private bool _isSendingReset;
     private bool _forgotPasswordSent;
+    private string? _forgotPasswordError;
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationState { get; set; }
@@ -240,6 +248,18 @@
         {
             // NavigateTo with forceLoad can throw after initiating navigation — this is expected
         }
+        catch (CaptchaException)
+        {
+            // Distinct from "wrong password" — the user did nothing wrong here. Common cause:
+            // an ad blocker stopped Google's reCAPTCHA script from loading (RC.2).
+            _errorMessage = L["Captcha_VerificationFailed"].Value;
+        }
+        catch (RateLimitExceededException)
+        {
+            // RC.4 — the per-IP rate limiter rejected this attempt (429), independent of
+            // whether the credentials or the CAPTCHA token were valid.
+            _errorMessage = L["RateLimit_TooManyAttempts"].Value;
+        }
         catch (Exception ex)
         {
             _errorMessage = string.Format(L["Login_ErrorGeneric"].Value, ex.Message);
@@ -252,21 +272,37 @@
 
     /// <summary>
     /// Handles the "Forgot Password" form submission.
-    /// Calls the anonymous endpoint which always returns success (no email enumeration).
+    /// Calls the anonymous endpoint which always returns success (no email enumeration) —
+    /// with one exception: a failed CAPTCHA is shown as such (RC.3), because that reveals
+    /// nothing about the email address, only that the bot check itself failed.
     /// </summary>
     private async Task HandleForgotPasswordAsync()
     {
         if (string.IsNullOrWhiteSpace(_forgotEmail)) return;
 
         _isSendingReset = true;
+        _forgotPasswordError = null;
         try
         {
-            await UserApiService.ForgotPasswordAsync(_forgotEmail.Trim());
+            // Get reCAPTCHA v3 token (empty string if not configured — dev mode)
+            var captchaToken = await JS.InvokeAsync<string>("getRecaptchaToken", "forgot_password");
+
+            await UserApiService.ForgotPasswordAsync(_forgotEmail.Trim(), captchaToken);
             _forgotPasswordSent = true;
+        }
+        catch (CaptchaException)
+        {
+            _forgotPasswordError = L["Captcha_VerificationFailed"].Value;
+        }
+        catch (RateLimitExceededException)
+        {
+            // RC.4 — same reasoning as CaptchaException above: a 429 says nothing about
+            // whether the email exists, only that this IP is sending too many requests.
+            _forgotPasswordError = L["RateLimit_TooManyAttempts"].Value;
         }
         catch
         {
-            // Even on error, show success — don't reveal anything to potential attacker
+            // Even on any other error, show success — don't reveal anything to potential attacker
             _forgotPasswordSent = true;
         }
         finally

@@ -1,0 +1,131 @@
+@*
+    RecurringScheduleEditor — reusable form for creating/editing a recurring invoice schedule.
+
+    Dumb form component: it only edits the bound Model in place, it does not call the API
+    itself. The parent (InvoiceTemplateDetail's "Recurring schedule" panel) builds the
+    Create/UpdateRecurringInvoiceScheduleDto from the model and calls RecurringInvoiceApiService.
+
+    "End" and "Max occurrences" are mutually presented but not mutually exclusive in the API —
+    the UI nudges the common case (pick one) via radio-style toggle, matching the story's
+    "end OR occurrence count" wording without hiding the other field entirely.
+*@
+@using Fakvio.Contracts.Dto.Client
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Models
+@inject IStringLocalizer<SharedResource> L
+
+<MudGrid>
+    <MudItem xs="12" sm="6">
+        <MudSelect T="long" Value="Model.ClientId" ValueChanged="OnClientIdChanged"
+                   Label="@L["Recurring_Client"].Value" Required="true">
+            @foreach (var client in Clients)
+            {
+                <MudSelectItem T="long" Value="@client.Id">@client.CompanyName</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+
+    <MudItem xs="12" sm="6">
+        <EnumSelect TEnum="ERecurrenceFrequency" Value="Model.Frequency" ValueChanged="OnFrequencyChanged"
+                    Label="@L["Recurring_Frequency"].Value" Required="true" Variant="Variant.Text" />
+    </MudItem>
+
+    <MudItem xs="12" sm="6">
+        <MudNumericField T="int" @bind-Value="Model.IntervalCount" Min="1" Max="100"
+                          Label="@L["Recurring_IntervalCount"].Value"
+                          HelperText="@L["Recurring_IntervalCountHelp"].Value" />
+    </MudItem>
+
+    @if (Model.Frequency == ERecurrenceFrequency.Weekly)
+    {
+        <MudItem xs="12" sm="6">
+            <MudSelect T="DayOfWeek?" @bind-Value="Model.DayOfWeekValue" Label="@L["Recurring_DayOfWeek"].Value" Required="true">
+                @foreach (var day in Enum.GetValues<DayOfWeek>())
+                {
+                    <MudSelectItem T="DayOfWeek?" Value="@((DayOfWeek?)day)">@L[$"DayOfWeek_{day}"].Value</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+    }
+    else
+    {
+        <MudItem xs="12" sm="6">
+            <MudNumericField T="int?" @bind-Value="Model.DayOfMonthValue" Min="1" Max="28"
+                              Label="@L["Recurring_DayOfMonth"].Value"
+                              HelperText="@L["Recurring_DayOfMonthHelp"].Value" />
+        </MudItem>
+    }
+
+    <MudItem xs="12" sm="6">
+        <MudDatePicker @bind-Date="Model.StartDate" Label="@L["Recurring_StartDate"].Value" Required="true" Editable="true" />
+    </MudItem>
+
+    <MudItem xs="12" sm="6">
+        <MudSelect T="string" Value="@Model.EndMode" ValueChanged="OnEndModeChanged" Label="@L["Recurring_EndMode"].Value">
+            <MudSelectItem Value="@("none")">@L["Recurring_EndMode_None"]</MudSelectItem>
+            <MudSelectItem Value="@("date")">@L["Recurring_EndMode_Date"]</MudSelectItem>
+            <MudSelectItem Value="@("count")">@L["Recurring_EndMode_Count"]</MudSelectItem>
+        </MudSelect>
+    </MudItem>
+
+    @if (Model.EndMode == "date")
+    {
+        <MudItem xs="12" sm="6">
+            <MudDatePicker @bind-Date="Model.EndDate" Label="@L["Recurring_EndDate"].Value" Editable="true" />
+        </MudItem>
+    }
+    else if (Model.EndMode == "count")
+    {
+        <MudItem xs="12" sm="6">
+            <MudNumericField T="int?" @bind-Value="Model.MaxOccurrences" Min="1"
+                              Label="@L["Recurring_MaxOccurrences"].Value" />
+        </MudItem>
+    }
+
+    @if (ShowAutoSend)
+    {
+        <MudItem xs="12">
+            <MudSwitch T="bool" @bind-Value="Model.AutoSend" Color="Color.Primary"
+                       Label="@L["Recurring_AutoSend"].Value" />
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">@L["Recurring_AutoSendHelp"]</MudText>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    /// <summary>The schedule being created or edited. Mutated directly by this component.</summary>
+    [Parameter, EditorRequired]
+    public RecurringScheduleFormModel Model { get; set; } = null!;
+
+    /// <summary>Clients available for selection (from ClientApiService.GetAllAsync, active only).</summary>
+    [Parameter, EditorRequired]
+    public List<ClientDto> Clients { get; set; } = [];
+
+    /// <summary>
+    /// Whether to show the "auto-send" switch. Hidden by default — story N4.4 introduces the
+    /// panel before N4.5 wires up automatic completion + e-mailing, so the flag would otherwise
+    /// silently do nothing yet.
+    /// </summary>
+    [Parameter]
+    public bool ShowAutoSend { get; set; } = true;
+
+    private void OnClientIdChanged(long value) => Model.ClientId = value;
+
+    private void OnFrequencyChanged(ERecurrenceFrequency value)
+    {
+        Model.Frequency = value;
+        // Switching frequency family clears the field that no longer applies —
+        // prevents submitting a stale DayOfMonth/DayOfWeek from before the switch.
+        if (value == ERecurrenceFrequency.Weekly)
+            Model.DayOfMonthValue = null;
+        else
+            Model.DayOfWeekValue = null;
+    }
+
+    private void OnEndModeChanged(string value)
+    {
+        Model.EndMode = value;
+        if (value != "date") Model.EndDate = null;
+        if (value != "count") Model.MaxOccurrences = null;
+    }
+}

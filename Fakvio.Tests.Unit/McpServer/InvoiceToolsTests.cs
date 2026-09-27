@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Tools;
@@ -185,54 +187,252 @@ public class InvoiceToolsTests
         var created = new InvoiceDto { Id = 10, Status = EInvoiceStatus.Draft };
         _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
             .Returns(created);
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsIssuer = true, IsVatPayer = false });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" }, new() { Id = 3, Code = "EUR" } });
 
-        var invoiceJson = JsonSerializer.Serialize(new
+        var items = new List<CreateInvoiceItemDto>
         {
-            documentType = "Invoice",
-            clientId = 1,
-            issuerId = 2,
-            currencyId = 1,
-            invoiceItem = new[]
-            {
-                new { description = "Test", quantity = 1, unitPrice = 100, vatRatePercentage = 21 }
-            }
-        });
+            new() { Description = "Test", Quantity = 1, Unit = "pcs", UnitPrice = 100, VatRatePercentage = 21 }
+        };
 
-        // Act
-        var json = await InvoiceTools.CreateInvoice(_api, invoiceJson);
+        // Act — no issuerId, no currency: defaults to the authenticated issuer and CZK.
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items);
 
         // Assert
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("id").GetInt64().ShouldBe(10);
-        await _api.Received(1).CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+        await _api.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.ClientId == 1 && d.IssuerId == 2 && d.CurrencyId == 1),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task CreateInvoice_ReturnsError_OnInvalidJson()
+    public async Task CreateInvoice_AcceptsCurrencyCode_ResolvesToCurrencyId()
     {
-        // Act: pass invalid JSON
-        var json = await InvoiceTools.CreateInvoice(_api, "this is not json");
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto { Id = 11 });
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = false });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" }, new() { Id = 3, Code = "EUR" } });
 
-        // Assert
+        var items = new List<CreateInvoiceItemDto>
+        {
+            new() { Description = "Consulting", Quantity = 1, Unit = "pcs", UnitPrice = 100 }
+        };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items, currency: "eur");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(11);
+        await _api.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.CurrencyId == 3), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_UnknownCurrency_ReturnsErrorWithoutCallingApi()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = false });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+
+        var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items, currency: "XYZ");
+
         var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("error").GetString().ShouldContain("Invalid JSON");
+        doc.RootElement.GetProperty("error").GetString().ShouldContain("Unknown currency 'XYZ'");
+        doc.RootElement.GetProperty("error").GetString().ShouldContain("CZK");
+        await _api.DidNotReceive().CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_VatPayer_ResolvesVatRateIdFromPercentage()
+    {
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto { Id = 12 });
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = true });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+        _api.GetActiveVatRatesAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VatRateDto> { new() { Id = 7, Rate = 21m }, new() { Id = 8, Rate = 0m } });
+
+        var items = new List<CreateInvoiceItemDto>
+        {
+            new() { Description = "Consulting", Quantity = 1, UnitPrice = 100, VatRatePercentage = 21 }
+        };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(12);
+        await _api.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.InvoiceItem.Single().VatRateId == 7),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Codex review: two active rates at the same percentage (e.g. overlapping validity periods
+    /// during a rate change) must not resolve to an arbitrary one via FirstOrDefault — the model
+    /// gets an explicit error naming both candidates and must disambiguate via item.vatRateId.
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoice_VatPayer_DuplicatePercentage_ReturnsAmbiguousErrorWithoutCallingApi()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = true });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+        _api.GetActiveVatRatesAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VatRateDto>
+            {
+                new() { Id = 7, Rate = 21m, Name = "DPH 21% (staré období)", ValidFrom = new DateTime(2025, 1, 1) },
+                new() { Id = 9, Rate = 21m, Name = "DPH 21% (nové období)", ValidFrom = new DateTime(2026, 1, 1) }
+            });
+
+        var items = new List<CreateInvoiceItemDto>
+        {
+            new() { Description = "Consulting", Quantity = 1, UnitPrice = 100, VatRatePercentage = 21 }
+        };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items);
+
+        var doc = JsonDocument.Parse(json);
+        var error = doc.RootElement.GetProperty("error").GetString();
+        error.ShouldContain("2 active VAT rates match 21%");
+        error.ShouldContain("id=7");
+        error.ShouldContain("id=9");
+        error.ShouldContain("vatRateId");
+        await _api.DidNotReceive().CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_VatPayer_UnknownPercentage_ReturnsErrorWithoutCallingApi()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = true });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+        _api.GetActiveVatRatesAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VatRateDto> { new() { Id = 7, Rate = 21m } });
+
+        var items = new List<CreateInvoiceItemDto>
+        {
+            new() { Description = "Consulting", Quantity = 1, UnitPrice = 100, VatRatePercentage = 15 }
+        };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldContain("No active VAT rate matches 15%");
+        await _api.DidNotReceive().CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_NonVatPayer_LeavesItemsAsIs_NoVatRateLookup()
+    {
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto { Id = 13 });
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = false });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+
+        var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(13);
+        await _api.DidNotReceive().GetActiveVatRatesAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_ExplicitIssuerId_UsesGetClientById_NotGetIssuer()
+    {
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto { Id = 14 });
+        _api.GetClientByIdAsync(9, Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 9, IsVatPayer = false });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+
+        var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items, issuerId: 9);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(14);
+        await _api.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.IssuerId == 9), Arg.Any<CancellationToken>());
+        await _api.DidNotReceive().GetIssuerAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_CreditNote_PassesOriginalInvoiceId()
+    {
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto { Id = 15 });
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = false });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+
+        var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };
+
+        var json = await InvoiceTools.CreateInvoice(
+            _api, clientId: 1, items: items, documentType: "CreditNote", originalInvoiceId: 42);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(15);
+        await _api.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.DocumentType == EDocumentType.CreditNote && d.OriginalInvoiceId == 42),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_UnknownDocumentType_ReturnsErrorWithoutCallingApi()
+    {
+        var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items, documentType: "Nonsense");
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldContain("Unknown documentType");
+        await _api.DidNotReceive().CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_NoIssuerConfigured_ReturnsError()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>()).Returns((ClientDto?)null);
+
+        var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldContain("No issuer");
     }
 
     [Fact]
     public async Task CreateInvoice_ReturnsSanitizedError_WhenTheApiResponseCannotBeDeserialized()
     {
-        // The "Invalid JSON format" branch above must cover ONLY the JSON the model sent.
-        // FakvioApiClient deserializes the API *response* as well, so a JsonException raised
-        // there has to reach the sanitized catch-all instead of being echoed back as if the
-        // model's input were malformed — together with the exception text, which carries the
-        // JSON path and byte position of the response body (issue #279).
+        // A JsonException raised while FakvioApiClient deserializes the API *response* must
+        // reach the sanitized catch-all, not be echoed back as if the model's own input were
+        // malformed (issue #279) — even though this tool no longer has a "parse the model's
+        // JSON" step of its own.
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = false });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
         _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
             .Throws(new JsonException(
                 "The JSON value could not be converted to System.Int64. " +
                 "Path: $.id | LineNumber: 0 | BytePositionInLine: 12."));
 
-        var json = await InvoiceTools.CreateInvoice(
-            _api, "{\"documentType\":\"Invoice\",\"clientId\":1,\"issuerId\":2}");
+        var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items);
 
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
@@ -464,16 +664,16 @@ public class InvoiceToolsTests
     }
 
     [Fact]
-    public async Task CreateClient_DeserializesAndCreates()
+    public async Task CreateClient_CreatesFromTypedDto()
     {
         // Arrange
         var created = new ClientDto { Id = 5, CompanyName = "Acme s.r.o." };
         _api.CreateClientAsync(Arg.Any<CreateClientDto>(), Arg.Any<CancellationToken>())
             .Returns(created);
 
-        // Act
+        // Act — N2.5: typed DTO parameter, no more "JSON string of CreateClientDto".
         var json = await ClientTools.CreateClient(_api,
-            "{\"companyName\":\"Acme s.r.o.\",\"registrationNumber\":\"12345678\"}");
+            new CreateClientDto { CompanyName = "Acme s.r.o.", RegistrationNumber = "12345678" });
 
         // Assert
         var doc = JsonDocument.Parse(json);
@@ -569,9 +769,9 @@ public class InvoiceToolsTests
         _api.CreateInvoiceFromTemplateAsync(5, Arg.Any<CreateInvoiceFromTemplateDto>(), Arg.Any<CancellationToken>())
             .Returns(created);
 
-        // Act
+        // Act — N2.5: typed DTO parameter, no more "JSON string with creation options".
         var json = await TemplateTools.CreateInvoiceFromTemplate(_api, 5,
-            "{\"clientId\":10,\"autoComplete\":false}");
+            new CreateInvoiceFromTemplateDto { ClientId = 10, AutoComplete = false });
 
         // Assert
         var doc = JsonDocument.Parse(json);
@@ -601,7 +801,7 @@ public class InvoiceToolsTests
 
         // Act
         var json = await TemplateTools.CreateInvoiceFromTemplate(_api, 5,
-            "{\"clientId\":10,\"autoComplete\":true}");
+            new CreateInvoiceFromTemplateDto { ClientId = 10, AutoComplete = true });
 
         // Assert
         var doc = JsonDocument.Parse(json);

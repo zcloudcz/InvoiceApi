@@ -115,6 +115,17 @@ public class FakvioFactory : WebApplicationFactory<Program>
         // instead (see AnonymousAresLookupTests.AresStubFactory).
         builder.UseSetting("Recaptcha:Enabled", "false");
 
+        // ── Widen the auth-anon rate limiter (RC.4) ──────────────────────────
+        // AuthHelper.LoginAsync (and friends) is called many times per test class across
+        // the whole suite, and TestServer requests all share one partition key (no real
+        // client IP — see GetClientIpPartitionKey in Program.cs), so the production
+        // default of 10 requests/60s would make unrelated test classes fail with 429.
+        // Same escape-hatch shape as Recaptcha:Enabled above: opt OUT explicitly here,
+        // and tests that are ABOUT the limiter override it back down (see
+        // AuthAnonRateLimitTests) — exactly like AnonymousAresLookupTests substitutes
+        // ICaptchaService instead of relying on the disabled-by-default gate.
+        builder.UseSetting("RateLimiting:AuthAnon:PermitLimit", "1000000");
+
         // ── Configure database auth mode for AddDatabaseContexts ──────────────
         // AddDatabaseContexts now builds its NpgsqlDataSource singleton EAGERLY (inside
         // DatabaseOptions.Validate() + the NpgsqlDataSourceFactory constructor), before any

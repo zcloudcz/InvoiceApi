@@ -4,6 +4,7 @@ using Fakvio.Application.Service;
 using Fakvio.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
@@ -143,6 +144,7 @@ public class TwoFactorController : ControllerBase
     /// </summary>
     [HttpPost("verify")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-anon")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<LoginResponse>> VerifyTwoFactorCode(
