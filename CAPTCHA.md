@@ -91,8 +91,10 @@ Azure Functions use the same double-underscore notation for nested config.
 
 ### Deployment order (RC story, 2026-W39)
 
-As of this writing `Recaptcha__Enabled=false` on `fakvio-api` — the gate is off in
-production, and the UI's `SiteKey` is empty. Turning it on is **strictly ordered**:
+Status 2026-09-28: keys created (domains `app.fakvio.cz`, `localhost`); the site key is
+committed in `Fakvio.BlazorUI/wwwroot/appsettings.json` and reaches production with the next
+release to `master`. `Recaptcha__Enabled` stays `false` on `fakvio-api` until step 3.
+Turning it on is **strictly ordered**:
 
 1. **RC.1 (human, needs:human)** — create the reCAPTCHA v3 keys in the admin console,
    set `Recaptcha__SecretKey` and `Recaptcha__AllowedHostnames__0` on `fakvio-api`.
