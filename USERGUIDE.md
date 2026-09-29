@@ -487,7 +487,9 @@ Správa faktur, které vaše firma přijala od dodavatelů.
 
 Dvě možnosti:
 1. **Ruční zadání:** „+ Nová přijatá faktura" → formulář
-2. **Import:** „Import" → `/received-invoices/import?target=ReceivedInvoice` → nahrání souboru (PDF/XML)
+2. **Import:** „Import" → `/received-invoices/import?target=ReceivedInvoice` → nahrání souboru
+   (PDF, ISDOC, nebo UBL/Peppol BIS XML — viz kap. 18 „Podporované formáty příloh" pro detaily
+   o rozpoznání UBL faktur a dobropisů)
 
 ### Stavy přijatých faktur
 
@@ -946,9 +948,10 @@ Systém umožňuje automatický příjem a zpracování faktur zaslaných emaile
 
 ### Jak to funguje
 
-1. Dodavatel (nebo vy) pošle email s fakturou (PDF nebo ISDOC příloha) na vygenerovanou adresu
+1. Dodavatel (nebo vy) pošle email s fakturou (PDF, ISDOC nebo UBL/Peppol XML příloha) na vygenerovanou adresu
 2. Systém automaticky:
-   - Rozpozná typ dokumentu z příloh (ISDOC má přednost před PDF)
+   - Rozpozná typ dokumentu z příloh (ISDOC a UBL mají přednost před PDF — jsou to strukturovaná
+     data bez potřeby AI, takže rozpoznání je spolehlivější)
    - Určí, zda jde o **přijatou fakturu** (od dodavatele) nebo **vydanou fakturu** (naši) — porovnáním IČO
    - Pokud dodavatel v systému neexistuje, automaticky ho založí (z ARES dle IČO)
    - Pokud faktura se stejným číslem již existuje, přidá přílohy k existujícímu dokladu
@@ -1010,8 +1013,15 @@ V sekci **Nastavení firmy** máte k dispozici:
 |--------|-------------|-------|
 | ISDOC (.isdoc) | Nejvyšší | Český standard pro elektronické faktury — strukturovaný XML |
 | ISDOCX (.isdocx) | Nejvyšší | ZIP kontejner s ISDOC XML uvnitř |
+| UBL / Peppol BIS (.xml) | Nejvyšší | Evropský standard elektronické fakturace (EN 16931) — používá se v síti Peppol, povinný pro SK plátce DPH od 1. 1. 2027. Podporuje faktury i dobropisy. |
 | PDF | Vysoká | Rozpoznání přes QR kód, AI, nebo textovou analýzu |
 | Email bez příloh | Nízká | Pokus o rozpoznání z těla emailu (pouze AI) |
+
+**Poznámka k UBL:** faktura se rozpozná podle IČO/DIČ dodavatele (dohledá se existující
+klient, jinak se založí nový), načtou se položky, DPH, splatnost, variabilní symbol a
+IBAN přímo z XML — bez použití AI. Nevalidní nebo poškozený UBL soubor se bezpečně
+odmítne (čitelná chybová hláška) a nezpůsobí pád zpracování; pokud email obsahuje i jinou
+přílohu (např. PDF), ta se zpracuje samostatně beze změny.
 
 
 ---

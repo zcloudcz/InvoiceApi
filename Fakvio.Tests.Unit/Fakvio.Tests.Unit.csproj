@@ -35,6 +35,14 @@
     </None>
   </ItemGroup>
 
+  <!-- UBL/Peppol sample invoices for UblImportParserTests (F1.10). Origin and license
+       are documented in Ubl/ImportFixtures/README.md. -->
+  <ItemGroup>
+    <None Include="Ubl\ImportFixtures\*.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Fakvio.Domain\Fakvio.Domain.csproj" />
     <ProjectReference Include="..\Fakvio.Application\Fakvio.Application.csproj" />

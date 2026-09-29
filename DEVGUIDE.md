@@ -1777,6 +1777,7 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
 | Processor | `InvoiceEmailProcessor.cs` | Orchestrátor: archiv → extract → classify → import → notify |
 | Classifier | `InvoiceEmailClassifier.cs` | AI klasifikace směru (přijatá/vydaná) s IČO fast path |
 | ISDOC parser | `IsdocImportParser.cs` | ISDOC 6.0.2 XML → `InvoiceExtractedData` (bez AI) |
+| UBL parser (F1.10) | `UblImportParser.cs` | UBL 2.1 / Peppol BIS Billing 3.0 (`Invoice`/`CreditNote` root) → `InvoiceExtractedData` (bez AI); viz §4.10a |
 | Mailbox CRUD | `InvoiceMailboxService.cs` | Activate/deactivate/regenerate alias |
 | API | `InvoiceMailboxController.cs`, `InboundInvoiceEmailController.cs` | Mailbox management + inbox list/detail/retry/ignore |
 | UI | `InvoiceMailboxCard.razor`, `InboundInvoiceEmails.razor` | Company Settings card + inbox stránka |
@@ -1787,10 +1788,11 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
 1. Guard (mailbox active, email within ActiveFrom window)
 2. Dedup: SHA-256(mailboxId | messageId | imapUid)
 3. Archive: persist InboundInvoiceEmail (status=Pending)
-4. Extract attachments: PDF bytes + ISDOC XML z MimeMessage
-5. Parse invoice data (priority chain):
+4. Extract attachments: PDF bytes + ISDOC/UBL XML z MimeMessage
+5. Parse invoice data (priority chain, per attachment — jeden email může obsahovat víc dokladů):
    a. ISDOC XML → IsdocImportParser (.isdoc plain + .isdocx ZIP)
-   b. PDF → InvoiceImportService pipeline (QR → AI → regex)
+   b. UBL/Peppol XML → UblImportParser (.xml, F1.10 — viz §4.10a)
+   c. PDF → InvoiceImportService pipeline (QR → AI → regex)
 6. Duplicate detection: DocumentNumber + supplier IČO → existující doklad?
    → YES: přidat přílohy k existujícímu, notifikace "Příloha přidána"
    → NO: pokračovat na krok 7
@@ -1799,7 +1801,7 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
    b. AI fallback (IInvoiceEmailClassifier)
 8. Auto-create client (IClientService + ARES)
 9. Create doklad: ReceivedInvoice nebo Invoice
-10. Attach PDF/ISDOC jako FileAttachment
+10. Attach PDF/ISDOC/UBL jako FileAttachment
 11. Notify: CreateForAllUsersAsync (InvoiceEmailImported / InvoiceEmailNeedsReview)
 ```
 
@@ -1812,6 +1814,67 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
 **Klíčový DI pattern:** `ImapPollService` konstruuje `InvoiceEmailProcessor` ručně s explicitním `TenantDbContext` (ne z DI scope). DI scope nemá tenant schema nastavené — stejný pattern jako `InboundEmailProcessor` pro platby.
 
 **Pokud přidáváš nový typ emailového zpracování:** rozšiř `EMailboxType`, přidej nový processor, a přidej branch do `ImapPollService.HandleMessageAsync`.
+
+### 4.10a UBL / Peppol BIS import do přijatých faktur (F1.10)
+
+Import UBL 2.1 / Peppol BIS Billing 3.0 e-faktur (`Invoice`/`CreditNote` root) — SK povinná
+e-fakturace od 1. 1. 2027, viz `docs/adr/0002-sk-einvoicing-peppol.md`. Dvě vstupní cesty, jeden
+parser:
+
+| Cesta | Kde | Jak |
+|---|---|---|
+| Email | `InvoiceEmailProcessor` (§4.10) | Příloha `.xml` (nebo content-type obsahující `xml`, kromě ISDOC) → `IUblImportParser.Parse(byte[])`, priorita jako ISDOC, před PDF |
+| Ruční upload | `ImportController.Preview` → `InvoiceImportService.PreviewStructuredImportAsync` | `.xml`/`.isdoc`/`.isdocx` obchází QR/AI/regex pipeline úplně — buď se dokument rozpozná deterministicky, nebo se vrátí `InvoiceImportPreviewDto` s `ExtractionSource="Error"` a jednou `Error` validací (žádná výjimka) |
+
+**`UblImportParser` (`Fakvio.Infrastructure/Service/UblImportParser.cs`, `internal`-free pure XML
+deserializer, žádné AI, žádné síťové volání):**
+
+- Rozliší kořen podle namespace: `.../Invoice-2` (`InvoiceTypeCode` 380 = Invoice, 386 =
+  TaxReceiptForAdvance) nebo `.../CreditNote-2` → `CreditNote`. Jiný kořen → `null`.
+- Mapuje hlavičku, `AccountingSupplierParty`/`AccountingCustomerParty` (IČO z
+  `PartyLegalEntity/CompanyID`, DIČ z `PartyTaxScheme/CompanyID`), `LegalMonetaryTotal`,
+  `TaxTotal`, `PaymentMeans` (VS, IBAN, BIC), a řádky (`InvoiceLine`/`CreditNoteLine`, přímo pod
+  kořenem — na rozdíl od ISDOC bez obalového elementu).
+- **Dobropis (`CreditNote` root):** `ReceivedInvoice` nemá vlastní příznak „toto je dobropis" —
+  proto se množství na řádcích při importu **znaménkově otočí** (Peppol BIS má na CreditNote vždy
+  kladná množství; Fakvio si dobropis interně reprezentuje jako zápornou položku). Zrcadlí (v
+  opačném směru) chování exportního mapperu z F1.1/F1.4.
+- **Mapovací detaily, na kterých šlo snadno šlápnout vedle (a proto mají vlastní testy):**
+  `TaxableSupplyDate` (DUZP) čte `cbc:TaxPointDate` (BT-7) na kořeni, **ne**
+  `cac:Delivery/cbc:ActualDeliveryDate` (BT-72, jiné pole) — to je jen fallback, když
+  `TaxPointDate` chybí. `DueDate` u `CreditNote` **není** na kořeni (na rozdíl od `Invoice`) —
+  čte se z `cac:PaymentMeans/cbc:PaymentDueDate`. Cena položky se nepočítá přímo z
+  `cac:Price/cbc:PriceAmount` (to je jen fallback), ale z `LineExtensionAmount / množství` —
+  `PriceAmount` může být "cena za `BaseQuantity` kusů" nebo zahrnovat řádkovou slevu/přirážku,
+  `LineExtensionAmount` (skutečná čistá částka řádku) tyhle efekty už zahrnuje. `TaxTotal` a
+  `PartyTaxScheme` mohou být na dokladu dva (měna dokladu/účetní měna; DPH schéma/zastoupení) —
+  vybírá se podle `currencyID`/`TaxScheme/ID`, ne první nalezený.
+- **Bezpečnost (netriviální vstup z e-mailu/uploadu):** `XmlReaderSettings.DtdProcessing =
+  Prohibit` (blokuje XXE i "billion laughs" — obojí vyžaduje DOCTYPE s ENTITY, takže zákaz
+  DOCTYPE stačí), `XmlResolver = null` (žádné externí zdroje), tvrdý limit velikosti
+  `MaxXmlSizeBytes = 2 MB` před parsováním (reálné Peppol faktury jsou řádově stovky kB;
+  menší strop než obecný 10 MB limit uploadu v `ImportController` schválně omezuje i
+  "DOM bombu" — validní XML s milionem drobných elementů, který by bez limitu velikosti
+  DTD zákaz neřešil). `.isdocx` (ZIP) navíc řeší **decompression bombu** — sdílený
+  `IsdocZipReader` (`Fakvio.Infrastructure/Service/IsdocZipReader.cs`, používá ho ISDOC
+  branch obou pipeline, email i upload) čte ZIP entry přes bounded stream a počítá
+  *skutečné* rozbalené bajty (ne `ZipArchiveEntry.Length`, ten je součástí ZIP hlavičky a
+  útočník ho může nastavit špatně), zastaví se nad `IsdocZipReader.MaxDecompressedBytes`
+  (2 MB). Cokoliv nevalidní/neznámé/moc velké → `null`, nikdy výjimka ven z `Parse`.
+
+**Sdílené konverzní tabulky (jednotky, kategorie DPH, země) s F1.1 (export) zatím NEJSOU:**
+F1.10 vznikl paralelně s F1.1–F1.9 v jiném worktree a používá jen to málo, co import potřebuje
+(čtení hodnot přímo z XML, žádné odvozování kódů). Po mergi obou větví zvážit sjednocení, pokud
+se objeví duplicitní logika — zatím žádná není, `UblImportParser` a plánovaný `UblCodes`/`UblMapper`
+(F1.1) se nepřekrývají.
+
+**Testy:** `UblImportParserTests.cs` — reálné Peppol příklady (`Ubl/ImportFixtures/`, origin/licence
+v `README.md` tamtéž) + hand-crafted XXE/entity-bomb/oversize testy. `InvoiceEmailProcessorUblTests.cs`
+— integrace přes InMemory `TenantDbContext`. `InvoiceImportServiceTests.cs` — routing `.xml` vs
+`.isdoc`/`.isdocx`, ZIP unwrap, error preview na `null`.
+
+**DB změna: žádná** — F1.10 je bezmigrační (jediná plánovaná DB změna fáze 1, `Client.PeppolId`,
+patří do F1.8).
 
 ### 4.11 EPO XML export (DPHDP3 + DPHKH1)
 

@@ -1241,8 +1241,8 @@
   <data name="Import_SelectTarget" xml:space="preserve"><value>Select Import Target</value></data>
   <data name="Import_IssuedInvoice" xml:space="preserve"><value>Issued Invoice</value></data>
   <data name="Import_ReceivedInvoice" xml:space="preserve"><value>Received Invoice</value></data>
-  <data name="Import_UploadFiles" xml:space="preserve"><value>Upload PDF Files</value></data>
-  <data name="Import_SelectPdfs" xml:space="preserve"><value>Select PDF Files</value></data>
+  <data name="Import_UploadFiles" xml:space="preserve"><value>Upload files (PDF, ISDOC, UBL)</value></data>
+  <data name="Import_SelectPdfs" xml:space="preserve"><value>Select files</value></data>
   <data name="Import_Analyze" xml:space="preserve"><value>Analyze</value></data>
   <data name="Import_Preview" xml:space="preserve"><value>Preview Extracted Data</value></data>
   <data name="Import_FileName" xml:space="preserve"><value>File Name</value></data>

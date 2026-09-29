@@ -1,3 +1,4 @@
+using System.Text;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Client;
@@ -36,6 +37,8 @@ public class InvoiceImportServiceTests
     private readonly IInvoiceService _invoiceService;
     private readonly IReceivedInvoiceService _receivedInvoiceService;
     private readonly ICurrencyService _currencyService;
+    private readonly IIsdocImportParser _isdocParser;
+    private readonly IUblImportParser _ublParser;
     private readonly InvoiceImportService _service;
 
     // Test data constants
@@ -52,6 +55,8 @@ public class InvoiceImportServiceTests
         _invoiceService = Substitute.For<IInvoiceService>();
         _receivedInvoiceService = Substitute.For<IReceivedInvoiceService>();
         _currencyService = Substitute.For<ICurrencyService>();
+        _isdocParser = Substitute.For<IIsdocImportParser>();
+        _ublParser = Substitute.For<IUblImportParser>();
         var logger = Substitute.For<ILogger<InvoiceImportService>>();
 
         // Create an in-memory TenantDbContext with a test schema name.
@@ -64,7 +69,7 @@ public class InvoiceImportServiceTests
         _service = new InvoiceImportService(
             tenantContext, _qrExtractor, _aiExtractor, _textExtractor, _pdfReader,
             _clientService, _invoiceService, _receivedInvoiceService,
-            _currencyService, logger);
+            _currencyService, logger, _isdocParser, _ublParser);
 
         // Default mock setup: issuer exists with IČO 12345678
         _clientService.GetIssuerAsync(Arg.Any<CancellationToken>())
@@ -610,5 +615,114 @@ public class InvoiceImportServiceTests
         // Assert
         results[0].Success.ShouldBeFalse();
         results[0].ErrorMessage.ShouldContain("Duplicate VS");
+    }
+
+    // ─── PreviewStructuredImportAsync (F1.10 — ISDOC/UBL manual upload) ──
+
+    [Fact]
+    public async Task PreviewStructuredImportAsync_XmlFile_RoutesToUblParser()
+    {
+        // Arrange: a .xml file must go through the UBL parser, not ISDOC.
+        _ublParser.Parse(Arg.Any<byte[]>()).Returns(new InvoiceExtractedData
+        {
+            DocumentNumber = "UBL-001",
+            IssuerRegistrationNumber = ClientIco,
+            RecipientRegistrationNumber = IssuerIco,
+            TotalAmount = 1000m,
+            Currency = "EUR",
+            Source = EExtractionSource.Merged,
+        });
+
+        // Act
+        var preview = await _service.PreviewStructuredImportAsync(
+            [1, 2, 3], "invoice.xml", EImportTarget.ReceivedInvoice);
+
+        // Assert
+        preview.DocumentNumber.ShouldBe("UBL-001");
+        preview.Currency.ShouldBe("EUR");
+        preview.TotalAmount.ShouldBe(1000m);
+        _isdocParser.DidNotReceive().Parse(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task PreviewStructuredImportAsync_UblParserReturnsNull_ReturnsErrorPreview()
+    {
+        // Arrange: malformed/unrecognized UBL — parser returns null (never throws).
+        _ublParser.Parse(Arg.Any<byte[]>()).Returns((InvoiceExtractedData?)null);
+
+        // Act
+        var preview = await _service.PreviewStructuredImportAsync(
+            [1, 2, 3], "not-really-ubl.xml", EImportTarget.ReceivedInvoice);
+
+        // Assert: readable error, not an exception — this is the trust-boundary contract.
+        preview.ExtractionSource.ShouldBe("Error");
+        preview.Validations.ShouldContain(v => v.Severity == EImportValidationSeverity.Error
+                                             && v.Message.Contains("UBL"));
+    }
+
+    [Fact]
+    public async Task PreviewStructuredImportAsync_IsdocFile_RoutesToIsdocParser()
+    {
+        // Arrange: a plain .isdoc file (not a ZIP) must go through the ISDOC parser.
+        _isdocParser.Parse(Arg.Any<string>()).Returns(new InvoiceExtractedData
+        {
+            DocumentNumber = "ISDOC-001",
+            IssuerRegistrationNumber = ClientIco,
+            RecipientRegistrationNumber = IssuerIco,
+            TotalAmount = 500m,
+            Currency = "CZK",
+            Source = EExtractionSource.Merged,
+        });
+        var isdocBytes = Encoding.UTF8.GetBytes("<Invoice xmlns=\"http://isdoc.cz/namespace/2013\"></Invoice>");
+
+        // Act
+        var preview = await _service.PreviewStructuredImportAsync(
+            isdocBytes, "faktura.isdoc", EImportTarget.ReceivedInvoice);
+
+        // Assert
+        preview.DocumentNumber.ShouldBe("ISDOC-001");
+        _ublParser.DidNotReceive().Parse(Arg.Any<byte[]>());
+        _isdocParser.Received(1).Parse(Arg.Is<string>(s => s.Contains("isdoc.cz")));
+    }
+
+    [Fact]
+    public async Task PreviewStructuredImportAsync_IsdocxZip_UnwrapsAndParses()
+    {
+        // Arrange: .isdocx is a ZIP container with a .isdoc entry inside — build one in memory.
+        const string innerXml = "<Invoice xmlns=\"http://isdoc.cz/namespace/2013\"><ID>Z-1</ID></Invoice>";
+        using var zipBuffer = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            var entry = archive.CreateEntry("invoice.isdoc");
+            using var entryStream = entry.Open();
+            using var writer = new StreamWriter(entryStream, Encoding.UTF8);
+            writer.Write(innerXml);
+        }
+
+        _isdocParser.Parse(Arg.Any<string>()).Returns(new InvoiceExtractedData { DocumentNumber = "Z-1" });
+
+        // Act
+        var preview = await _service.PreviewStructuredImportAsync(
+            zipBuffer.ToArray(), "faktura.isdocx", EImportTarget.ReceivedInvoice);
+
+        // Assert: the parser received the unwrapped XML text, not the raw ZIP bytes.
+        preview.DocumentNumber.ShouldBe("Z-1");
+        _isdocParser.Received(1).Parse(Arg.Is<string>(s => s.Contains("Z-1") && s.Contains("isdoc.cz")));
+    }
+
+    [Fact]
+    public async Task PreviewStructuredImportAsync_UnsupportedExtension_RoutesToUblParser()
+    {
+        // Arrange: anything that isn't .isdoc/.isdocx is treated as UBL (the only other
+        // structured format ImportController accepts for this method — see its own
+        // .xml/.isdoc/.isdocx extension check before calling this method at all).
+        _ublParser.Parse(Arg.Any<byte[]>()).Returns((InvoiceExtractedData?)null);
+
+        // Act
+        await _service.PreviewStructuredImportAsync([1], "weird-name.dat", EImportTarget.ReceivedInvoice);
+
+        // Assert
+        _ublParser.Received(1).Parse(Arg.Any<byte[]>());
+        _isdocParser.DidNotReceive().Parse(Arg.Any<string>());
     }
 }
