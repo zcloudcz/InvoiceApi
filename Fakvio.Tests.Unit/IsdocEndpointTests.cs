@@ -44,6 +44,7 @@ public class IsdocEndpointTests
             _invoiceService,
             _pdfExportService,
             _isdocExportService,
+            Substitute.For<IUblExportService>(),
             _emailService,
             _qrPaymentService,
             _cloudStorage,

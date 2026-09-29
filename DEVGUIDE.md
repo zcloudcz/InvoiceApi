@@ -541,17 +541,32 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
    `GET /api/invoice/bulk/isdoc?ids=`, `GET /api/received-invoice/{id}/isdoc`,
    `GET /api/received-invoice/bulk/isdoc?ids=` (bulk = ZIP `.isdoc` souborů,
    selhané kusy se přeskakují; každý má Functions wrapper).
-4. **Render template** pro tělo emailu: `IContentTemplateService.RenderTemplateAsync` (`ContentTemplateService.cs:235-252`) — placeholdery v subjectu i body.
-5. **SMTP settings — 3-tier resolution** (`EmailService.cs:409-483`):
+4. **UBL 2.1 / Peppol BIS Billing 3.0** (SK e-fakturace 2027 + ViDA 2030, ADR 0002 N7):
+   `IUblExportService` → XML, jen pro vydané faktury/dobropisy (`UblMapper.cs`, vzor
+   `IsdocMapper.cs` — stejný přístup, žádná nová abstrakce). Před mapováním běží
+   per-doklad pre-flight `UblPreflight.Check` (Draft/Proforma odmítnout, Peppol ID
+   prodávajícího/odběratele, adresa, platební účet, mix `OutOfScope`, DIČ pro PDP, SK
+   měna ≠ EUR — kódy `EINVOICE_*` v `ReadinessCodes`) — blokující nález vyhodí
+   `TenantNotReadyException` stejně jako ostatní readiness brány (`ToBadRequestResult()`
+   → 400 `{code, issues}`). `BillingReference` (dobropis → původní faktura; konečná
+   faktura s odpočtem zálohy → daňové doklady k záloze) dohledává `UblExportService`
+   v DB a předává mapperu jako `precedingDocumentNumbers`. Endpointy:
+   `GET /api/invoice/{id}/ubl`, `GET /api/invoice/bulk/ubl?ids=` (bulk = ZIP `.xml`
+   souborů, stejné chování jako ISDOC bulk). Validace (XSD + CEN/Peppol schematron)
+   běží jen v `Fakvio.Tests.Unit` (`Ubl/UblTestValidator.cs`, artefakty a jejich
+   původ/licence v `Ubl/Vendored/README.md`) — runtime žádnou schematron validaci
+   nedělá, chyby tvaru XML jsou bugy mapperu odchycené testy.
+5. **Render template** pro tělo emailu: `IContentTemplateService.RenderTemplateAsync` (`ContentTemplateService.cs:235-252`) — placeholdery v subjectu i body.
+6. **SMTP settings — 3-tier resolution** (`EmailService.cs:409-483`):
    1. `CompanySystemSettings.SmtpPasswordEncrypted` (master DB) — per-company SMTP, decrypt přes `ICredentialProtector`.
    2. `SystemConfiguration` (master DB) — system-wide SMTP přes `ISystemConfigurationService.GetSmtpPasswordAsync`.
    3. `appsettings.json` `SmtpSettings` — fallback.
-6. **MailKit** (`EmailService.cs:273-366`):
+7. **MailKit** (`EmailService.cs:273-366`):
    - Port → SocketOptions: 465 → `SslOnConnect`, 587 → `StartTls`, jiné → `None`.
    - Certificate validation s **CRL tolerance** — akceptuje self-signed pokud CRL nedostupné.
    - **SASL mechanism strip** (řádek 338-339): odstraní XOAUTH2 + NTLM kvůli Seznam.cz (jinak hlásí UnAuthenticated).
    - UTF-8 encoding pro PLAIN/LOGIN auth.
-7. Build `MimeMessage` s PDF + ISDOC attachments → `SmtpClient.SendAsync`.
+8. Build `MimeMessage` s PDF + ISDOC (+ UBL pro SK odběratele, F1.9) attachments → `SmtpClient.SendAsync`.
 
 **Pokud měníš SMTP/Seznam config** → ověř SASL strip + CRL tolerance, nesahej na ně bez testu proti všem tří providerům (Gmail, Outlook, Seznam).
 

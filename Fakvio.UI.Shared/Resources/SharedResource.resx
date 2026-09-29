@@ -1706,6 +1706,18 @@
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Vlastní firma nemá bankovní účet, na faktuře by chybělo, kam zaplatit.</value></data>
   <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>Pro tento typ dokladu není aktivní žádná číselná řada.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>Nejsou vyplněny hlavičkové údaje EPO, bez nich nepůjde vyexportovat přiznání k DPH.</value></data>
+  <!-- UBL / Peppol e-faktura export (ADR 0002, F1.5) — kódy EINVOICE_* jsou per-doklad, ne tenant-wide. -->
+  <data name="Readiness_Code_EINVOICE_DRAFT" xml:space="preserve"><value>Doklad je zatím jen koncept (Draft) — před exportem e-faktury ho nejdřív vystavte.</value></data>
+  <data name="Readiness_Code_EINVOICE_PROFORMA_NOT_SUPPORTED" xml:space="preserve"><value>Zálohová faktura (proforma) není daňový doklad a e-fakturu z ní vystavit nelze.</value></data>
+  <data name="Readiness_Code_EINVOICE_BUYER_MISSING" xml:space="preserve"><value>Doklad nemá vyplněného odběratele.</value></data>
+  <data name="Readiness_Code_EINVOICE_SELLER_ENDPOINT_MISSING" xml:space="preserve"><value>Z údajů vaší firmy nejde odvodit Peppol adresu (chybí DIČ nebo země).</value></data>
+  <data name="Readiness_Code_EINVOICE_BUYER_ENDPOINT_MISSING" xml:space="preserve"><value>Z údajů odběratele nejde odvodit Peppol adresu (chybí DIČ nebo země).</value></data>
+  <data name="Readiness_Code_EINVOICE_ADDRESS_INCOMPLETE" xml:space="preserve"><value>Adresa (ulice, město, PSČ nebo země) není úplná.</value></data>
+  <data name="Readiness_Code_EINVOICE_PAYMENT_ACCOUNT_MISSING" xml:space="preserve"><value>Doklad má platbu bankovním převodem, ale chybí IBAN nebo číslo účtu.</value></data>
+  <data name="Readiness_Code_EINVOICE_OUT_OF_SCOPE_MIXED" xml:space="preserve"><value>Doklad kombinuje řádky mimo předmět DPH s běžnými řádky, což e-faktura neumožňuje.</value></data>
+  <data name="Readiness_Code_EINVOICE_REVERSE_CHARGE_VAT_ID_MISSING" xml:space="preserve"><value>Doklad má řádek s přenesenou daňovou povinností, ale chybí IČ DPH vaší firmy nebo odběratele.</value></data>
+  <data name="Readiness_Code_EINVOICE_SK_NON_EUR_CURRENCY" xml:space="preserve"><value>Slovenský vystavitel může e-fakturu zatím vystavit jen v EUR.</value></data>
+  <data name="Readiness_Code_EINVOICE_NO_LINES" xml:space="preserve"><value>Doklad nemá žádné položky k vyfakturování.</value></data>
   <!-- Setup checklist on the dashboard (issue #210) -->
   <data name="SetupChecklist_Title" xml:space="preserve"><value>Dokončit nastavení</value></data>
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Připomenout později</value></data>

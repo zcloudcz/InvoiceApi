@@ -36,4 +36,52 @@ public static class ReadinessCodes
     /// (see <c>VatReportController</c>) — reused deliberately so the UI has one mapping.
     /// </summary>
     public const string EpoHeaderIncomplete = "EPO_HEADER_INCOMPLETE";
+
+    // ─── UBL / Peppol eInvoice export (ADR 0002, F1.5) ─────────────────────────────
+    // Per-document pre-flight for GET /api/invoice/{id}/ubl — unlike the codes above (tenant
+    // readiness, checked once for the whole tenant), these depend on the specific invoice being
+    // exported, so they are raised directly by UblExportService instead of ITenantReadinessService.
+
+    /// <summary>The invoice is still a Draft — it has no final document number yet.</summary>
+    public const string EinvoiceDraft = "EINVOICE_DRAFT";
+
+    /// <summary>Pro-forma invoices are not tax documents and cannot be exported as an eInvoice ([FAQ] I/34).</summary>
+    public const string EinvoiceProformaNotSupported = "EINVOICE_PROFORMA_NOT_SUPPORTED";
+
+    /// <summary>The invoice has no buyer (Client) — cannot build AccountingCustomerParty.</summary>
+    public const string EinvoiceBuyerMissing = "EINVOICE_BUYER_MISSING";
+
+    /// <summary>No Peppol endpoint ID could be derived for the seller (PEPPOL-EN16931-R020).</summary>
+    public const string EinvoiceSellerEndpointMissing = "EINVOICE_SELLER_ENDPOINT_MISSING";
+
+    /// <summary>No Peppol endpoint ID could be derived for the buyer (PEPPOL-EN16931-R010).</summary>
+    public const string EinvoiceBuyerEndpointMissing = "EINVOICE_BUYER_ENDPOINT_MISSING";
+
+    /// <summary>
+    /// Seller's or buyer's postal address is missing street, city, postal code or a resolvable
+    /// ISO country. <see cref="ReadinessIssueDto.MissingFields"/> carries the empty parts.
+    /// </summary>
+    public const string EinvoiceAddressIncomplete = "EINVOICE_ADDRESS_INCOMPLETE";
+
+    /// <summary>Bank transfer selected but the invoice has neither an IBAN nor an account number.</summary>
+    public const string EinvoicePaymentAccountMissing = "EINVOICE_PAYMENT_ACCOUNT_MISSING";
+
+    /// <summary>
+    /// A VAT-payer issuer mixed an out-of-scope (category O) line with a chargeable line —
+    /// forbidden by BR-O-11..14 (a document cannot carry two contradictory VAT categories
+    /// where one says "no VAT applies at all").
+    /// </summary>
+    public const string EinvoiceOutOfScopeMixed = "EINVOICE_OUT_OF_SCOPE_MIXED";
+
+    /// <summary>A reverse-charge line exists but seller's or buyer's VAT ID is missing (both are mandatory).</summary>
+    public const string EinvoiceReverseChargeVatIdMissing = "EINVOICE_REVERSE_CHARGE_VAT_ID_MISSING";
+
+    /// <summary>
+    /// A Slovak seller's invoice is not in EUR — phase 1 has no stored exchange rate for
+    /// BT-6/BT-111, so it cannot be exported yet (ADR 0002 §4.1.4).
+    /// </summary>
+    public const string EinvoiceSkNonEurCurrency = "EINVOICE_SK_NON_EUR_CURRENCY";
+
+    /// <summary>The invoice has no billable lines at all.</summary>
+    public const string EinvoiceNoLines = "EINVOICE_NO_LINES";
 }

@@ -1706,6 +1706,18 @@
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Your company has no bank account, so invoices would not say where to pay.</value></data>
   <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>There is no active number sequence for this document type.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>EPO header data is missing, so the VAT return cannot be exported.</value></data>
+  <!-- UBL / Peppol eInvoice export (ADR 0002, F1.5) — EINVOICE_* codes are per-document, not tenant-wide. -->
+  <data name="Readiness_Code_EINVOICE_DRAFT" xml:space="preserve"><value>The document is still a draft — complete it before exporting the eInvoice.</value></data>
+  <data name="Readiness_Code_EINVOICE_PROFORMA_NOT_SUPPORTED" xml:space="preserve"><value>A pro-forma invoice is not a tax document and cannot be exported as an eInvoice.</value></data>
+  <data name="Readiness_Code_EINVOICE_BUYER_MISSING" xml:space="preserve"><value>The document has no buyer set.</value></data>
+  <data name="Readiness_Code_EINVOICE_SELLER_ENDPOINT_MISSING" xml:space="preserve"><value>A Peppol address could not be derived from your company's data (missing VAT number or country).</value></data>
+  <data name="Readiness_Code_EINVOICE_BUYER_ENDPOINT_MISSING" xml:space="preserve"><value>A Peppol address could not be derived from the buyer's data (missing VAT number or country).</value></data>
+  <data name="Readiness_Code_EINVOICE_ADDRESS_INCOMPLETE" xml:space="preserve"><value>The address (street, city, postal code or country) is incomplete.</value></data>
+  <data name="Readiness_Code_EINVOICE_PAYMENT_ACCOUNT_MISSING" xml:space="preserve"><value>The document uses bank transfer, but neither an IBAN nor an account number is set.</value></data>
+  <data name="Readiness_Code_EINVOICE_OUT_OF_SCOPE_MIXED" xml:space="preserve"><value>The document mixes out-of-scope lines with regular lines, which the eInvoice format does not allow.</value></data>
+  <data name="Readiness_Code_EINVOICE_REVERSE_CHARGE_VAT_ID_MISSING" xml:space="preserve"><value>The document has a reverse-charge line, but your company's or the buyer's VAT number is missing.</value></data>
+  <data name="Readiness_Code_EINVOICE_SK_NON_EUR_CURRENCY" xml:space="preserve"><value>A Slovak issuer can currently only export an eInvoice in EUR.</value></data>
+  <data name="Readiness_Code_EINVOICE_NO_LINES" xml:space="preserve"><value>The document has no billable lines.</value></data>
   <!-- Setup checklist on the dashboard (issue #210) -->
   <data name="SetupChecklist_Title" xml:space="preserve"><value>Finish setup</value></data>
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Remind me later</value></data>
