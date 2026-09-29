@@ -38,6 +38,11 @@ Ukázka staré (1.0.2) a nové (2.0.0) volby `create_invoice`:
 **2.1.0** je jen doplnění nástrojů (story N3 — nastavení, platby, upomínky), zpětně
 kompatibilní — žádné volání ze 2.0.0 se neláme.
 
+**2.2.0** doplňuje 7 nástrojů nad opakovanými fakturami (`Tools/RecurringTools.cs`, DEVGUIDE
+§4.13) — `list_recurring_schedules`, `get_recurring_schedule`, `create_recurring_schedule`,
+`update_recurring_schedule`, `pause_recurring_schedule`, `resume_recurring_schedule`,
+`delete_recurring_schedule`. Zpětně kompatibilní, žádné volání ze 2.1.0 se neláme.
+
 ---
 
 Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
@@ -259,7 +264,7 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (49)
+## Dostupné nástroje (56)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
@@ -273,6 +278,7 @@ dostane, klíč revokujte na `/settings/integrations` — přestane platit okam�
 | `Tools/CodeListTools.cs` | 1 | ListCurrencies |
 | `Tools/SettingsTools.cs` | 6 | ListNumberSequences, ListVatRates, CreateNumberSequence, UpdateNumberSequence, UpdateMyCompany, AddBankAccount |
 | `Tools/PaymentTools.cs` | 4 | ListPayments, GetPayment, ListReminders, GetReminderSettings |
+| `Tools/RecurringTools.cs` | 7 | ListRecurringSchedules, GetRecurringSchedule, CreateRecurringSchedule, UpdateRecurringSchedule, PauseRecurringSchedule, ResumeRecurringSchedule, DeleteRecurringSchedule |
 
 Zdroj pravdy je vždy kód — atributy `[McpServerTool]` v `Tools/`:
 

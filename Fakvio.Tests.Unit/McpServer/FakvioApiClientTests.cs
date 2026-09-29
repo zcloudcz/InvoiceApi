@@ -12,6 +12,7 @@ using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
@@ -676,6 +677,131 @@ public class FakvioApiClientTests : IDisposable
         _handler.CancelWhenSending = cts;
 
         await Should.ThrowAsync<OperationCanceledException>(() => _sut.GetReadinessAsync(ct: cts.Token));
+    }
+
+    // ── Recurring invoice schedule tests ─────────────────────────────────
+
+    [Fact]
+    public async Task GetRecurringSchedulesAsync_NoTemplateId_NoQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<RecurringInvoiceScheduleDto>());
+
+        await _sut.GetRecurringSchedulesAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/recurringinvoice");
+    }
+
+    [Fact]
+    public async Task GetRecurringSchedulesAsync_WithTemplateId_AppendsQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<RecurringInvoiceScheduleDto>());
+
+        await _sut.GetRecurringSchedulesAsync(7);
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/recurringinvoice?templateId=7");
+    }
+
+    [Fact]
+    public async Task GetRecurringSchedulesAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        // Same N2.2 guard as every other list endpoint: GetJsonAsync routes list reads through
+        // EnsureSuccessAsync, so a read-only key on a 403 becomes a FakvioApiException, not a
+        // bare HttpRequestException that McpToolError cannot classify.
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        await Should.ThrowAsync<FakvioApiException>(() => _sut.GetRecurringSchedulesAsync());
+    }
+
+    [Fact]
+    public async Task GetRecurringScheduleByIdAsync_Found_ReturnsSchedule()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new RecurringInvoiceScheduleDto { Id = 5, TemplateId = 1 });
+
+        var result = await _sut.GetRecurringScheduleByIdAsync(5);
+
+        result!.Id.ShouldBe(5);
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/recurringinvoice/5");
+    }
+
+    [Fact]
+    public async Task GetRecurringScheduleByIdAsync_NotFound_ReturnsNull()
+    {
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "not found" });
+
+        var result = await _sut.GetRecurringScheduleByIdAsync(999);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task CreateRecurringScheduleAsync_PostsAndReturnsCreated()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new RecurringInvoiceScheduleDto { Id = 9, TemplateId = 1 });
+
+        var result = await _sut.CreateRecurringScheduleAsync(
+            new CreateRecurringInvoiceScheduleDto { TemplateId = 1, ClientId = 2, StartDate = DateTimeOffset.UtcNow });
+
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Post);
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/recurringinvoice");
+        result.Id.ShouldBe(9);
+    }
+
+    [Fact]
+    public async Task CreateRecurringScheduleAsync_On400_ThrowsWithSafeMessage()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new { message = "Client does not belong to this tenant." });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.CreateRecurringScheduleAsync(
+            new CreateRecurringInvoiceScheduleDto { TemplateId = 1, ClientId = 2, StartDate = DateTimeOffset.UtcNow }));
+
+        ex.SafeMessage.ShouldBe("Client does not belong to this tenant.");
+    }
+
+    [Fact]
+    public async Task UpdateRecurringScheduleAsync_PutsToScheduleRoute()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new RecurringInvoiceScheduleDto { Id = 5, IntervalCount = 2 });
+
+        var result = await _sut.UpdateRecurringScheduleAsync(5, new UpdateRecurringInvoiceScheduleDto { IntervalCount = 2 });
+
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Put);
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/recurringinvoice/5");
+        result.IntervalCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task PauseRecurringScheduleAsync_PostsToPauseRoute()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new RecurringInvoiceScheduleDto { Id = 5, IsActive = false });
+
+        var result = await _sut.PauseRecurringScheduleAsync(5);
+
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Post);
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/recurringinvoice/5/pause");
+        result.IsActive.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ResumeRecurringScheduleAsync_PostsToResumeRoute()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new RecurringInvoiceScheduleDto { Id = 5, IsActive = true });
+
+        var result = await _sut.ResumeRecurringScheduleAsync(5);
+
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Post);
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/recurringinvoice/5/resume");
+        result.IsActive.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task DeleteRecurringScheduleAsync_SendsDeleteToScheduleRoute()
+    {
+        _handler.SetupResponse(HttpStatusCode.NoContent);
+
+        await _sut.DeleteRecurringScheduleAsync(5);
+
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Delete);
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/recurringinvoice/5");
     }
 
     // ── Error handling tests ───────────────────────────────────────────

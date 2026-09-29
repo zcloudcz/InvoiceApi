@@ -1075,8 +1075,8 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 49 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
-výpočty, šablony, měny, nastavení, platby a upomínky.
+volání Fakvia. Nabízí 56 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
 
@@ -1221,6 +1221,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
 | Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury, vypsat platné měny (pro vystavení faktury v cizí měně), vypsat i založit/upravit číselné řady, vypsat platné sazby DPH, upravit údaje o firmě a adresu, přidat bankovní účet |
 | Platby a upomínky | Vypsat bankovní platby a jejich stav spárování, zobrazit detail platby, vypsat odeslané upomínky (i k jedné faktuře), zobrazit nastavení upomínek |
+| Opakované faktury | Vypsat a zobrazit plány (i pro konkrétní šablonu), založit nový plán, upravit frekvenci/datum/limity, pozastavit a obnovit, smazat |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“

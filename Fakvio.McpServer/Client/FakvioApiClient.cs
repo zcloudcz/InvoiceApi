@@ -12,6 +12,7 @@ using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
@@ -516,6 +517,60 @@ public class FakvioApiClient : IFakvioApiClient
 
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<ReadinessReportDto>(JsonOptions, ct);
+    }
+
+    // ── Recurring invoice schedule endpoints (DEVGUIDE §4.13) ────────────
+
+    public async Task<List<RecurringInvoiceScheduleDto>> GetRecurringSchedulesAsync(
+        long? templateId = null, CancellationToken ct = default)
+    {
+        var query = templateId.HasValue ? $"?templateId={templateId.Value}" : string.Empty;
+        var result = await GetJsonAsync<List<RecurringInvoiceScheduleDto>>(_http, $"api/recurringinvoice{query}", ct);
+        return result ?? [];
+    }
+
+    public async Task<RecurringInvoiceScheduleDto?> GetRecurringScheduleByIdAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/recurringinvoice/{id}", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<RecurringInvoiceScheduleDto>(JsonOptions, ct);
+    }
+
+    public async Task<RecurringInvoiceScheduleDto> CreateRecurringScheduleAsync(
+        CreateRecurringInvoiceScheduleDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/recurringinvoice", dto, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<RecurringInvoiceScheduleDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<RecurringInvoiceScheduleDto> UpdateRecurringScheduleAsync(
+        long id, UpdateRecurringInvoiceScheduleDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"api/recurringinvoice/{id}", dto, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<RecurringInvoiceScheduleDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<RecurringInvoiceScheduleDto> PauseRecurringScheduleAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"api/recurringinvoice/{id}/pause", null, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<RecurringInvoiceScheduleDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<RecurringInvoiceScheduleDto> ResumeRecurringScheduleAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"api/recurringinvoice/{id}/resume", null, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<RecurringInvoiceScheduleDto>(JsonOptions, ct))!;
+    }
+
+    public async Task DeleteRecurringScheduleAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.DeleteAsync($"api/recurringinvoice/{id}", ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     // ── Query string builders ────────────────────────────────────────────
