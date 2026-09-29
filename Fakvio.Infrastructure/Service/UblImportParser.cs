@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using Fakvio.Application.QrPayment;
@@ -113,9 +114,13 @@ public class UblImportParser : IUblImportParser
 
         // DueDate (BT-9) only exists as a root element on Invoice — CreditNote's UBL
         // schema has no root cbc:DueDate at all; its (optional, rarely populated)
-        // equivalent lives one level down, under PaymentMeans.
+        // equivalent lives one level down, under PaymentMeans. A document can legally
+        // carry more than one PaymentMeans, and only one of them may carry a
+        // PaymentDueDate, so scan all of them rather than only the first.
         var dueDate = isCreditNote
-            ? Date(root.Element(Cac + "PaymentMeans"), Cbc, "PaymentDueDate")
+            ? root.Elements(Cac + "PaymentMeans")
+                .Select(pm => Date(pm, Cbc, "PaymentDueDate"))
+                .FirstOrDefault(d => d.HasValue)
             : Date(root, Cbc, "DueDate");
 
         var result = new InvoiceExtractedData
@@ -301,6 +306,13 @@ public class UblImportParser : IUblImportParser
     {
         if (str == null) return null;
 
+        // xsd:decimal's whitespace facet is "collapse", so leading/trailing whitespace
+        // (rare, but schema-valid) must not fail the parse — Str() already trims values
+        // read via the Str()/Dec() helpers, but a raw element .Value (e.g. quantity, read
+        // directly to preserve its original sign before the CreditNote flip) does not.
+        str = str.Trim();
+        if (str.Length == 0) return null;
+
         // Restricted styles on purpose: UBL/Peppol amounts are always plain
         // InvariantCulture decimals ("1656.25", "-3"), never grouped ("1,656.25").
         // NumberStyles.Any would also accept AllowThousands, silently misreading a
@@ -310,17 +322,27 @@ public class UblImportParser : IUblImportParser
         return decimal.TryParse(str, styles, CultureInfo.InvariantCulture, out var val) ? val : null;
     }
 
+    /// <summary>
+    /// Matches a whole xsd:date value: "YYYY-MM-DD" with an optional trailing timezone
+    /// ("Z" or "+02:00"/"-05:00") and nothing else. Anchored on both ends on purpose —
+    /// see <see cref="Date"/> for why a partial match (e.g. just checking a prefix) isn't
+    /// safe here.
+    /// </summary>
+    private static readonly Regex XsdDatePattern = new(@"^(\d{4}-\d{2}-\d{2})(?:Z|[+-]\d{2}:\d{2})?$", RegexOptions.Compiled);
+
     private static DateTime? Date(XElement? parent, XNamespace ns, string element)
     {
         var str = Str(parent, ns, element);
         if (str == null) return null;
 
         // UBL dates are xsd:date: "YYYY-MM-DD", optionally followed by a timezone offset
-        // ("2026-06-15+02:00"). Take just the date part and parse it with ParseExact — a
-        // general DateTime.TryParse would also accept ambiguous, non-ISO forms (e.g.
-        // "01/02/2026", which UBL never actually produces) depending on the host culture.
-        var datePart = str.Length >= 10 ? str[..10] : str;
-        return DateTime.TryParseExact(datePart, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+        // ("2026-06-15+02:00"). Validate the *whole* string against that shape before
+        // parsing — truncating to the first 10 characters and parsing just that would
+        // silently accept garbage like "2026-01-01whatever" as a valid date.
+        var match = XsdDatePattern.Match(str);
+        if (!match.Success) return null;
+
+        return DateTime.TryParseExact(match.Groups[1].Value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
                 DateTimeStyles.None, out var val)
             // DateTimeStyles.None parses the clock value as-is (Kind=Unspecified); SpecifyKind
             // just labels it Utc without shifting it, unlike DateTimeStyles.AssumeUniversal

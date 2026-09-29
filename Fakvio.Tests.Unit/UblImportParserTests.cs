@@ -391,6 +391,62 @@ public class UblImportParserTests
         result.IssueDate.ShouldBeNull();
     }
 
+    [Fact]
+    public void Parse_DateWithTrailingGarbage_ReturnsNullRatherThanTruncating()
+    {
+        // A naive "take the first 10 characters" implementation would happily accept this
+        // as 2026-01-01 -- the whole string must be validated, not just a prefix.
+        var xml = MinimalInvoiceXml(typeCode: "380").Replace("2026-01-01", "2026-01-01garbage");
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.IssueDate.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Parse_QuantityWithSchemaValidWhitespace_ParsesCorrectly()
+    {
+        // xsd:decimal's whitespace facet is "collapse" -- leading/trailing whitespace
+        // around a numeric value is schema-valid and must still parse.
+        var xml = MinimalInvoiceWithLine(quantity: " 3 ", lineExtensionAmount: "300", priceAmount: "100", baseQuantity: null);
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.Items![0].Quantity.ShouldBe(3m);
+    }
+
+    [Fact]
+    public void Parse_CreditNoteWithMultiplePaymentMeans_FindsDueDateOnEither()
+    {
+        // A document can legally carry more than one PaymentMeans; only one of them may
+        // carry a PaymentDueDate -- it must not be assumed to be the first.
+        var xml = """
+            <CreditNote xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2">
+                <cbc:ID>CN-2</cbc:ID>
+                <cbc:IssueDate>2026-01-01</cbc:IssueDate>
+                <cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>
+                <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+                <cac:PaymentMeans><cbc:PaymentMeansCode>30</cbc:PaymentMeansCode></cac:PaymentMeans>
+                <cac:PaymentMeans>
+                    <cbc:PaymentMeansCode>58</cbc:PaymentMeansCode>
+                    <cbc:PaymentDueDate>2026-02-01</cbc:PaymentDueDate>
+                </cac:PaymentMeans>
+                <cac:LegalMonetaryTotal>
+                    <cbc:PayableAmount currencyID="EUR">50</cbc:PayableAmount>
+                </cac:LegalMonetaryTotal>
+            </CreditNote>
+            """;
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.DueDate.ShouldBe(new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc));
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────────
 
     /// <summary>
