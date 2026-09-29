@@ -20,6 +20,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.29 — 2026-09-29
+
+- **#452** — Neplátce DPH už nedostává DPH na faktury: formulář předvyplňoval 21 % a server sazbu převzal. Teď se u neplátce DPH vždy vynuluje (UI, MCP, šablony, opakované faktury), formulář i detail DPH nezobrazují a PDF nemá sloupec DPH, rekapitulaci, „Daňový doklad“ ani DUZP — místo toho „Dodavatel není plátcem DPH.“ Starší koncepty se opraví uložením, vystavené faktury vyžadují dobropis. (PR #452, `960b28d`)
+- **#451** — Publikace MCP serveru na nuget.org znovu funguje (rozbitý řádek ve workflow), takže vyjde `Fakvio.McpServer` 2.1.0. (PR #451, `417d631`)
+
 ## 2026.09.28.2 — 2026-09-28
 
 - **#449** — Produkční UI má reCAPTCHA v3 site key, takže přihlášení, registrace, ARES lookup a zapomenuté heslo posílají token. Ověřování na serveru se zapíná až po nasazení (`Recaptcha__Enabled`). Řádek doplněn ručně při release — PR #449 byl mergnut mimo agent-ops. (PR #449, `c9580e0`)

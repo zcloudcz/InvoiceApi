@@ -170,6 +170,25 @@ public class InvoiceTemplateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateTemplateAsync_NonVatPayerWithVatRateSent_ShouldIgnoreVat()
+    {
+        // Arrange — the shared item editor pre-selects the default 21 % rate; the issuer
+        // (Id = 2) is not a VAT payer, so the template (and every invoice generated from it,
+        // e.g. by recurring schedules) must carry no VAT.
+        var dto = CreateValidTemplateDto();
+        dto.InvoiceItem[0].VatRateId = 1;
+        dto.InvoiceItem[0].VatRatePercentage = 21;
+
+        // Act
+        var result = await _templateService.CreateTemplateAsync(dto);
+
+        // Assert
+        result.InvoiceItem[0].VatRateId.ShouldBeNull();
+        result.InvoiceItem[0].VatRatePercentage.ShouldBe(0);
+        result.InvoiceItem[0].VatAmount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task CreateTemplateAsync_InvalidIssuer_ShouldThrow()
     {
         // Arrange — IssuerId 999 does not exist
