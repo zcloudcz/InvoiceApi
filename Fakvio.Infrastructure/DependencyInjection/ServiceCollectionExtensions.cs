@@ -364,6 +364,11 @@ public static class ServiceCollectionExtensions
         // LogFlushService (IHostedService in the API host, every 5 seconds).
         services.AddSingleton<ILoggerProvider>(new DatabaseLoggerProvider(LogLevel.Information));
 
+        // ── MCP OAuth 2.1 (ADR 0001) ─────────────────────────────────────────
+        // Registered unconditionally — McpOAuth:Enabled is checked at the controller/middleware
+        // level, not here (see docs/adr/0001-mcp-oauth21.md §5.1).
+        services.AddMcpOAuth(configuration);
+
         return services;
     }
 

@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using Fakvio.McpServer.Configuration;
 
 namespace Fakvio.McpServer.Client;
 
@@ -21,11 +22,22 @@ namespace Fakvio.McpServer.Client;
 /// </summary>
 public sealed class AuthHeaderHandler : DelegatingHandler
 {
-    private readonly IApiTokenProvider _tokenProvider;
+    /// <summary>
+    /// Name of the internal header proving to the API that a request really came from this MCP
+    /// host (ADR 0001, docs/adr/0001-mcp-oauth21.md §4.4, threat T6 — confused deputy /
+    /// token passthrough). MUST match <c>Fakvio.Infrastructure.Authentication
+    /// .ApiKeyAuthenticationDefaults.ResourceProofHeaderName</c> on the API side exactly;
+    /// duplicated as a literal here because this project has no reference to Fakvio.Infrastructure.
+    /// </summary>
+    internal const string ResourceProofHeaderName = "X-Fakvio-Resource-Proof";
 
-    public AuthHeaderHandler(IApiTokenProvider tokenProvider)
+    private readonly IApiTokenProvider _tokenProvider;
+    private readonly McpServerSettings _settings;
+
+    public AuthHeaderHandler(IApiTokenProvider tokenProvider, McpServerSettings settings)
     {
         _tokenProvider = tokenProvider;
+        _settings = settings;
     }
 
     /// <inheritdoc />
@@ -46,6 +58,15 @@ public sealed class AuthHeaderHandler : DelegatingHandler
         request.Headers.Authorization = string.IsNullOrWhiteSpace(token)
             ? null
             : new AuthenticationHeaderValue("Bearer", token);
+
+        // Added on every outgoing request, not only when the caller's credential happens to be
+        // an OAuth token: the API only enforces this header for OAuth-issued access tokens and
+        // ignores it for a manually created "fak_live_…" key, so there is no case where sending
+        // it is wrong — and a per-request "is this an OAuth token" check would need to inspect
+        // the (opaque) token itself, which this handler has no business doing.
+        request.Headers.Remove(ResourceProofHeaderName);
+        if (!string.IsNullOrEmpty(_settings.ResourceProofSecret))
+            request.Headers.TryAddWithoutValidation(ResourceProofHeaderName, _settings.ResourceProofSecret);
 
         return base.SendAsync(request, cancellationToken);
     }

@@ -240,6 +240,18 @@
             var customAuthStateProvider = (CustomAuthenticationStateProvider)AuthStateProvider;
             await customAuthStateProvider.MarkUserAsAuthenticatedAsync(response);
 
+            // OAuth consent detour (ADR 0001 §4.2): if the user arrived here via
+            // /oauth/consent while signed out, OAuthConsent.razor stashed the ticket before
+            // sending them to /login. Send them right back instead of home — the ONE place
+            // this app returns anywhere other than "/" after login, and deliberately not a
+            // general returnUrl (see OAuthConsentReturnStorage docs).
+            var pendingOAuthTicket = await OAuthConsentReturnStorage.ConsumeAsync(JS);
+            if (!string.IsNullOrEmpty(pendingOAuthTicket))
+            {
+                Navigation.NavigateTo($"/oauth/consent?ticket={Uri.EscapeDataString(pendingOAuthTicket)}", forceLoad: true);
+                return;
+            }
+
             // Redirect to home page
             // Use forceLoad to ensure full page reload with new auth state
             Navigation.NavigateTo("/", forceLoad: true);

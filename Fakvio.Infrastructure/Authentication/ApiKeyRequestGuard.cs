@@ -41,6 +41,14 @@ public static class ApiKeyRequestGuard
     private const string ManagementPathPrefix = "/api/api-key";
 
     /// <summary>
+    /// Path prefix of the OAuth grant-management endpoints ("Připojené aplikace" —
+    /// ADR 0001 §4.5/§4.8). Same reasoning as <see cref="ManagementPathPrefix"/>: a
+    /// credential authenticated via scope (API key OR OAuth access token) must not be
+    /// able to list or revoke grants — only a first-party user session (JWT) may.
+    /// </summary>
+    private const string OAuthGrantManagementPathPrefix = "/api/oauth/grants";
+
+    /// <summary>
     /// Returns the reason the request must be refused, or null when it may proceed.
     /// Pure function — the middlewares only translate a non-null result into a 403.
     /// </summary>
@@ -57,6 +65,9 @@ public static class ApiKeyRequestGuard
         if (normalizedPath.StartsWith(ManagementPathPrefix, StringComparison.Ordinal)
             && !normalizedPath.Equals(SelfDescribePath, StringComparison.Ordinal))
             return "API keys cannot manage API keys. Use a user session (JWT) to create or revoke keys.";
+
+        if (normalizedPath.StartsWith(OAuthGrantManagementPathPrefix, StringComparison.Ordinal))
+            return "OAuth grants can only be managed with a user session (JWT), not an API key or OAuth access token.";
 
         if (!RequiresWriteScope(method, normalizedPath))
             return null;

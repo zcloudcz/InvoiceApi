@@ -401,6 +401,31 @@ turn je desítky tool callů a každý z nich by jinak byl zápis do master DB.
 
 ---
 
+### 2.11 MCP OAuth 2.1 (ADR 0001, story N5)
+
+Kompletní návrh, threat model a rozhodnutí ownera: `docs/adr/0001-mcp-oauth21.md`. Tady jen
+mapa na kód.
+
+| Co | Kde |
+|---|---|
+| Entity | `Fakvio.Domain/Entities/OAuthGrant.cs`, `OAuthAuthorizationCode.cs`, `OAuthRefreshToken.cs`; `ApiKey.OAuthGrantId` (nullable FK) | 
+| Migrace | `Fakvio.Infrastructure/Migrations/Master/…_AddMcpOAuth_N5_2.cs` — čistě aditivní |
+| Úklid | `Fakvio.Infrastructure/Service/OAuthCleanupService.cs` (`BackgroundService`, hodinově — vzor `LogCleanupService`) |
+| CIMD resolver (SSRF-safe) | `Fakvio.Infrastructure/Authentication/OAuth/OAuthClientResolver.cs` + `SsrfSafeConnect.cs` — DNS resolve + blokace privátních/loopback/link-local/CGNAT/ULA rozsahů a Azure metadata adres v `SocketsHttpHandler.ConnectCallback`, žádné redirecty, 5s timeout, 64 kB limit, 1 souběžný fetch/`client_id`, pozitivní i negativní `IMemoryCache` |
+| AS core | `IOAuthService` (`Fakvio.Application/Service`) + `OAuthService` (`Fakvio.Infrastructure/Service`) — vydání/výměna authorization code, refresh rotace + reuse detekce (Q5 — 10s grace okno), revokace grantu |
+| Endpointy | `Fakvio.API/Controller/OAuthController.cs` — `/.well-known/oauth-authorization-server`, `/oauth/token`, `/oauth/revoke`; anonymní, `[EnableRateLimiting("oauth-token")]`, 404 když `McpOAuth:Enabled=false` |
+| Proof hlavička (T6) | `ApiKeyAuthenticator.HasValidResourceProof` — OAuth token (`fak_oat_…`) bez `X-Fakvio-Resource-Proof` hlavičky (shoda s `McpOAuth:ResourceProofSecret`, constant-time) neautentizuje |
+| Claims | `oauth_grant_id`, `oauth_resource` (`ApiKeyAuthenticationDefaults`) — `ImpersonationMiddleware` ignoruje `X-Company-Id` pro OAuth principal (Q9); `ApiKeyRequestGuard` odmítá OAuth/API-key principal na `/api/oauth/grants*` stejně jako na `/api/api-key*` |
+| `/api/api-key/me` | Nově vrací `OAuthGrantId` + `OAuthResource` — MCP host podle nich (N5.6) odmítne token s cizím resource |
+| Feature flag | `McpOAuth:Enabled` (default `false`) — `OAuthController` i AS metadata 404, dokud není zapnuto. Viz `McpOAuthOptions` pro celou konfiguraci (`AllowAll`, `AllowedUserIds/CompanyIds`, `TrustedClientHosts`, `Issuer`, `Resource`, `ResourceProofSecret`) |
+| Rate limiting | Politika `oauth-token` (`Program.cs`, vzor `auth-anon` z RC.4) — per-IP fixed window, default 300/60s (`RateLimiting:OAuthToken`) |
+| Testy | `Fakvio.Tests.Integration/OAuthDatabaseConstraintTests.cs` (DDL/cascade/cleanup), `OAuthServiceTests.cs` (T3/T5/T11/T12/Q5, vše proti reálnému PG — `ExecuteUpdateAsync`/`ExecuteDeleteAsync` na InMemory házejí `NotSupportedException`), `Fakvio.Tests.Unit/OAuthClientResolverTests.cs` + `SsrfSafeConnectTests.cs` (T7), `ApiKeyAuthenticatorOAuthTests.cs` (T6 proof hlavička) |
+
+**Konsent, autorizační endpoint a UI stránka "Připojené aplikace" ještě nejsou implementované**
+(N5.4/N5.7) — do té doby `IOAuthService.IssueAuthorizationCodeAsync` nemá volajícího mimo testy.
+
+---
+
 ## 3. Multi-tenant — jak data oddělujeme
 
 ### 3.1 Big picture
@@ -1621,7 +1646,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **Validace každý request přes `GET /api/api-key/me`** (`McpApiKeyMiddleware`), **bez cache** — cache by udělala z revokace eventually-consistent věc (zákaz ze story #144). Chybějící hlavička se odmítne rovnou, bez round-tripu na API. Transportní selhání API se **nepřevádí** na 401: „API je nedostupné" a „tvůj klíč neplatí" jsou dvě různé diagnózy, tak to padá jako 500.
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
-  - **Mimo scope (story #144):** OAuth 2.1 / dynamic client registration pro Claude.ai konektory (hlavičku dodává uživatel ručně), per-area scopes (jen read/write), cache API klíčů.
+  - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
 - **49 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.

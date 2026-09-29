@@ -1796,4 +1796,26 @@
   <data name="Recurring_NoSchedules" xml:space="preserve"><value>No recurring schedules yet.</value></data>
   <data name="Recurring_SaveSuccess" xml:space="preserve"><value>Recurring schedule saved.</value></data>
   <data name="Recurring_DeleteSuccess" xml:space="preserve"><value>Recurring schedule deleted.</value></data>
+  <data name="Btn_Allow" xml:space="preserve"><value>Allow</value></data>
+  <data name="Btn_Deny" xml:space="preserve"><value>Deny</value></data>
+  <data name="OAuthConsent_Title" xml:space="preserve"><value>Grant access</value></data>
+  <data name="OAuthConsent_HeadingFormat" xml:space="preserve"><value>{0} wants to access your Fakvio account</value></data>
+  <data name="OAuthConsent_VerifiedApp" xml:space="preserve"><value>Verified application</value></data>
+  <data name="OAuthConsent_RedirectsTo" xml:space="preserve"><value>After you allow, you will be redirected to: {0}</value></data>
+  <data name="OAuthConsent_LoopbackWarning" xml:space="preserve"><value>This application is running on your computer (localhost).</value></data>
+  <data name="OAuthConsent_SignedInAs" xml:space="preserve"><value>Signed in as {0} — company {1}</value></data>
+  <data name="OAuthConsent_ClosedBeta" xml:space="preserve"><value>OAuth is currently in closed testing and your account does not have access yet.</value></data>
+  <data name="OAuthConsent_ChooseScope" xml:space="preserve"><value>Choose access scope</value></data>
+  <data name="OAuthConsent_ScopeRead" xml:space="preserve"><value>Read only</value></data>
+  <data name="OAuthConsent_ScopeReadWrite" xml:space="preserve"><value>Read and write (issue, send, mark paid, delete)</value></data>
+  <data name="OAuthConsent_InvalidTicket" xml:space="preserve"><value>This link is invalid or has expired. Please try connecting again from the application.</value></data>
+  <data name="OAuthConsent_Error" xml:space="preserve"><value>Could not process your consent. Please try again.</value></data>
+  <data name="OAuthConsent_ErrorGeneric" xml:space="preserve"><value>Could not process your consent: {0}</value></data>
+  <data name="Integration_ConnectedAppsTitle" xml:space="preserve"><value>Connected apps</value></data>
+  <data name="Integration_ConnectedAppsSubtitle" xml:space="preserve"><value>Applications you have granted OAuth access to your account (Claude.ai, ChatGPT, …).</value></data>
+  <data name="Integration_ConnectedAppClient" xml:space="preserve"><value>Application</value></data>
+  <data name="Integration_ConnectedAppRemove" xml:space="preserve"><value>Remove</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmTitle" xml:space="preserve"><value>Remove this connected app?</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmText" xml:space="preserve"><value>{0} will lose access to your account. This cannot be undone.</value></data>
+  <data name="Integration_ConnectedAppRemoveSuccess" xml:space="preserve"><value>The application has been disconnected.</value></data>
 </root>

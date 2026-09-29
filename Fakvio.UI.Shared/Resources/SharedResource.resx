@@ -1796,4 +1796,26 @@
   <data name="Recurring_NoSchedules" xml:space="preserve"><value>Zatím žádný plán opakování.</value></data>
   <data name="Recurring_SaveSuccess" xml:space="preserve"><value>Plán opakování byl uložen.</value></data>
   <data name="Recurring_DeleteSuccess" xml:space="preserve"><value>Plán opakování byl smazán.</value></data>
+  <data name="Btn_Allow" xml:space="preserve"><value>Povolit</value></data>
+  <data name="Btn_Deny" xml:space="preserve"><value>Zamítnout</value></data>
+  <data name="OAuthConsent_Title" xml:space="preserve"><value>Souhlas s přístupem</value></data>
+  <data name="OAuthConsent_HeadingFormat" xml:space="preserve"><value>{0} chce přístup k vašemu Fakviu</value></data>
+  <data name="OAuthConsent_VerifiedApp" xml:space="preserve"><value>Ověřená aplikace</value></data>
+  <data name="OAuthConsent_RedirectsTo" xml:space="preserve"><value>Po povolení budete přesměrováni na: {0}</value></data>
+  <data name="OAuthConsent_LoopbackWarning" xml:space="preserve"><value>Tato aplikace běží na vašem počítači (localhost).</value></data>
+  <data name="OAuthConsent_SignedInAs" xml:space="preserve"><value>Přihlášen jako {0} — firma {1}</value></data>
+  <data name="OAuthConsent_ClosedBeta" xml:space="preserve"><value>OAuth je zatím v uzavřeném testu a váš účet zatím nemá přístup.</value></data>
+  <data name="OAuthConsent_ChooseScope" xml:space="preserve"><value>Zvolte rozsah přístupu</value></data>
+  <data name="OAuthConsent_ScopeRead" xml:space="preserve"><value>Jen čtení</value></data>
+  <data name="OAuthConsent_ScopeReadWrite" xml:space="preserve"><value>Čtení i zápis (vystavit, odeslat, označit zaplaceno, smazat)</value></data>
+  <data name="OAuthConsent_InvalidTicket" xml:space="preserve"><value>Tento odkaz je neplatný nebo vypršel. Zkuste připojení znovu z aplikace.</value></data>
+  <data name="OAuthConsent_Error" xml:space="preserve"><value>Souhlas se nepodařilo zpracovat. Zkuste to prosím znovu.</value></data>
+  <data name="OAuthConsent_ErrorGeneric" xml:space="preserve"><value>Souhlas se nepodařilo zpracovat: {0}</value></data>
+  <data name="Integration_ConnectedAppsTitle" xml:space="preserve"><value>Připojené aplikace</value></data>
+  <data name="Integration_ConnectedAppsSubtitle" xml:space="preserve"><value>Aplikace, kterým jste přes OAuth povolili přístup k vašemu účtu (Claude.ai, ChatGPT, …).</value></data>
+  <data name="Integration_ConnectedAppClient" xml:space="preserve"><value>Aplikace</value></data>
+  <data name="Integration_ConnectedAppRemove" xml:space="preserve"><value>Odebrat</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmTitle" xml:space="preserve"><value>Odebrat připojenou aplikaci?</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmText" xml:space="preserve"><value>Aplikace {0} ztratí přístup k vašemu účtu. Tuto akci nelze vrátit zpět.</value></data>
+  <data name="Integration_ConnectedAppRemoveSuccess" xml:space="preserve"><value>Aplikace byla odpojena.</value></data>
 </root>

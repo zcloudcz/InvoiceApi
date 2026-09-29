@@ -130,6 +130,10 @@ Server se konfiguruje **jen proměnnými prostředí** (žádný `appsettings.js
 | `FAKVIO_API_TOKEN` | jen pro `stdio` | – | Bearer credential — API klíč `fak_live_…` (doporučeno) nebo JWT token. Posílá se beze změny v hlavičce `Authorization`; API rozliší obojí podle prefixu (`fak_` vs `eyJ`), takže server nemusí vědět, co drží. Chybí-li ve stdio režimu, vypíše chybu na stderr a skončí s exit code 1. V HTTP režimu se nepoužívá. |
 | `FAKVIO_API_URL` | ne | `https://localhost:7047` | Base URL API, např. `https://localhost:7047` (lokální `Fakvio.API`, viz `Fakvio.API/Properties/launchSettings.json`) nebo `https://api.fakvio.cz`. |
 | `ASPNETCORE_URLS` | ne | Kestrel default | Jen `http` režim — na čem server poslouchá, standardní ASP.NET Core proměnná. |
+| `FAKVIO_MCP_OAUTH_ENABLED` | ne | `false` | Jen `http` režim (ADR 0001, `docs/adr/0001-mcp-oauth21.md`). `true` = zveřejní Protected Resource Metadata na `/.well-known/oauth-protected-resource(/mcp)` a přidá `resource_metadata`/`scope` do 401 challenge. `false` = dnešní chování beze změny. |
+| `FAKVIO_MCP_PUBLIC_URL` | jen s OAuth | – | Vlastní veřejná adresa hostu, např. `https://mcp.fakvio.cz` — použije se pro `resource` v PRM i pro `resource_metadata` v challenge. |
+| `FAKVIO_OAUTH_ISSUER` | jen s OAuth | – | Issuer autorizačního serveru, např. `https://api.fakvio.cz` — zveřejní se v PRM jako `authorization_servers`. |
+| `FAKVIO_MCP_RESOURCE_PROOF_SECRET` | jen s OAuth | – | Sdílené tajemství s API (`McpOAuth:ResourceProofSecret`) — posílá se v hlavičce `X-Fakvio-Resource-Proof` na každém odchozím requestu; bez něj API odmítne OAuth tokeny (T6, confused deputy). |
 
 ### HTTP režim
 

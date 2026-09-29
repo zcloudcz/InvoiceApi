@@ -28,7 +28,8 @@ public class ImpersonationMiddlewareTests
         string? role = null,
         string? companyId = null,
         string? headerCompanyId = null,
-        bool isAuthenticated = true)
+        bool isAuthenticated = true,
+        bool isOAuthPrincipal = false)
     {
         var context = new DefaultHttpContext();
 
@@ -43,6 +44,11 @@ public class ImpersonationMiddlewareTests
             if (companyId != null)
             {
                 claims.Add(new Claim("CompanyId", companyId));
+            }
+
+            if (isOAuthPrincipal)
+            {
+                claims.Add(new Claim(Fakvio.Infrastructure.Authentication.ApiKeyAuthenticationDefaults.OAuthGrantIdClaimType, "1"));
             }
 
             var identity = new ClaimsIdentity(claims, "TestAuth");
@@ -159,6 +165,22 @@ public class ImpersonationMiddlewareTests
 
         // Assert: No claims should be added
         context.User.Identity?.IsAuthenticated.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// T11 (ADR 0001, docs/adr/0001-mcp-oauth21.md §4.7/§4.9) — an OAuth-issued credential must
+    /// never be able to impersonate a company via X-Company-Id, even if it somehow carried the
+    /// SysAdmin role (defense in depth: SysAdmin accounts do not receive OAuth grants at all, Q9).
+    /// </summary>
+    [Fact]
+    public async Task OAuthPrincipal_WithHeader_IgnoresHeaderEvenAsSysAdmin()
+    {
+        var context = CreateHttpContext(role: "SysAdmin", headerCompanyId: "42", isOAuthPrincipal: true);
+        var middleware = new ImpersonationMiddleware(_ => Task.CompletedTask, _logger);
+
+        await middleware.InvokeAsync(context);
+
+        context.User.FindFirst("CompanyId").ShouldBeNull();
     }
 
     [Fact]

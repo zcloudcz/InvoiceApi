@@ -79,4 +79,19 @@ public class ApiKey : BaseEntity
     /// Who revoked the key (the owner today; an admin once admin revocation exists).
     /// </summary>
     public long? RevokedByUserId { get; set; }
+
+    /// <summary>
+    /// Null = a manually created key (the only kind before OAuth). Non-null = this row IS an
+    /// OAuth access token (<c>fak_oat_…</c>) minted by the token endpoint for the referenced
+    /// <see cref="OAuthGrant"/> — see ADR 0001 (docs/adr/0001-mcp-oauth21.md) §4.3.
+    ///
+    /// Reusing the ApiKey table (instead of a parallel "OAuthAccessToken" table) means the
+    /// entire existing pipeline — <c>FakvioBearer</c> scheme selector, <c>ApiKeyAuthenticator</c>,
+    /// <c>ApiKeyRequestGuard</c>, the MCP host's <c>/api/api-key/me</c> gate, immediate
+    /// soft-revocation — applies to OAuth tokens with zero changes. Cascade delete follows the
+    /// grant: revoking or deleting a grant removes its access tokens too.
+    /// </summary>
+    public long? OAuthGrantId { get; set; }
+
+    public OAuthGrant? OAuthGrant { get; set; }
 }
