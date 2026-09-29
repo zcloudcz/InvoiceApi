@@ -703,43 +703,11 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
 
     /// <summary>
     /// Extracts ISDOC XML from an attachment. Handles both plain .isdoc (XML)
-    /// and .isdocx (ZIP container with .isdoc inside).
+    /// and .isdocx (ZIP container with .isdoc inside) — see <see cref="IsdocZipReader"/>
+    /// (shared with the manual-upload pipeline, including its ZIP-bomb protection).
     /// </summary>
     private string? ExtractIsdocXml(EmailAttachment att)
-    {
-        // ZIP files start with PK header (0x504B0304)
-        if (att.Content.Length >= 4
-            && att.Content[0] == 0x50 && att.Content[1] == 0x4B
-            && att.Content[2] == 0x03 && att.Content[3] == 0x04)
-        {
-            try
-            {
-                using var zipStream = new MemoryStream(att.Content);
-                using var archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Read);
-
-                var isdocEntry = archive.Entries
-                    .FirstOrDefault(e => e.Name.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase));
-
-                if (isdocEntry == null)
-                {
-                    _logger.LogDebug("ISDOCX ZIP contains no .isdoc file");
-                    return null;
-                }
-
-                using var entryStream = isdocEntry.Open();
-                using var reader = new StreamReader(entryStream, Encoding.UTF8);
-                return reader.ReadToEnd();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to extract ISDOC from ZIP container");
-                return null;
-            }
-        }
-
-        // Plain .isdoc XML
-        return Encoding.UTF8.GetString(att.Content);
-    }
+        => IsdocZipReader.ExtractXmlText(att.Content, _logger, att.FileName);
 
     private static bool IsIsdoc(EmailAttachment att)
         => att.FileName.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase)

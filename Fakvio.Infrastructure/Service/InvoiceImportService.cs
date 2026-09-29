@@ -1,5 +1,3 @@
-using System.IO.Compression;
-using System.Text;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Client;
@@ -159,7 +157,7 @@ public class InvoiceImportService : IInvoiceImportService
         InvoiceExtractedData? data;
         if (isIsdoc)
         {
-            var xmlText = ExtractIsdocXmlText(fileBytes, fileName);
+            var xmlText = IsdocZipReader.ExtractXmlText(fileBytes, _logger, fileName);
             data = xmlText != null ? _isdocParser.Parse(xmlText) : null;
         }
         else
@@ -185,43 +183,6 @@ public class InvoiceImportService : IInvoiceImportService
             fileName, sourceLabel, preview.IsValid, preview.Validations.Count);
 
         return preview;
-    }
-
-    /// <summary>
-    /// Extracts ISDOC XML text from raw bytes — handles both plain .isdoc (XML) and
-    /// .isdocx (ZIP container with a .isdoc entry inside). Mirrors the email pipeline's
-    /// attachment handling (see InvoiceEmailProcessor.ExtractIsdocXml) for manual uploads.
-    /// </summary>
-    private string? ExtractIsdocXmlText(byte[] bytes, string fileName)
-    {
-        // ZIP files start with the PK header (0x504B0304).
-        var isZip = bytes.Length >= 4
-            && bytes[0] == 0x50 && bytes[1] == 0x4B && bytes[2] == 0x03 && bytes[3] == 0x04;
-
-        if (!isZip)
-            return Encoding.UTF8.GetString(bytes);
-
-        try
-        {
-            using var zipStream = new MemoryStream(bytes);
-            using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
-            var entry = archive.Entries
-                .FirstOrDefault(e => e.Name.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase));
-            if (entry == null)
-            {
-                _logger.LogDebug("ISDOCX ZIP contains no .isdoc file ({FileName})", fileName);
-                return null;
-            }
-
-            using var entryStream = entry.Open();
-            using var reader = new StreamReader(entryStream, Encoding.UTF8);
-            return reader.ReadToEnd();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to extract ISDOC from ZIP container {FileName}", fileName);
-            return null;
-        }
     }
 
     // ─── Confirm ─────────────────────────────────────────────────────────

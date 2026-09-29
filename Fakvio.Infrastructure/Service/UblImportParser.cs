@@ -45,11 +45,14 @@ public class UblImportParser : IUblImportParser
 
     /// <summary>
     /// Hard cap on the XML payload, checked before parsing. Real Peppol BIS invoices
-    /// are a few KB to a few hundred KB; 10 MB matches the per-file limit already used
-    /// for PDF uploads (see ImportController) and is generous headroom, not a realistic
-    /// document size.
+    /// are a few KB to a few hundred KB — 2 MB is already generous headroom.
+    /// Kept well below ImportController's general 10 MB per-file limit on purpose:
+    /// banning DOCTYPE blocks entity-expansion attacks, but a well-formed document with
+    /// a huge number of small elements can still make <see cref="XDocument"/>'s DOM
+    /// allocate several times its raw byte size — the smaller this cap, the smaller
+    /// that worst case, without meaningfully constraining any real Peppol invoice.
     /// </summary>
-    internal const int MaxXmlSizeBytes = 10 * 1024 * 1024;
+    internal const int MaxXmlSizeBytes = 2 * 1024 * 1024;
 
     private readonly ILogger<UblImportParser> _logger;
 
@@ -108,15 +111,26 @@ public class UblImportParser : IUblImportParser
             return null;
         }
 
+        // DueDate (BT-9) only exists as a root element on Invoice — CreditNote's UBL
+        // schema has no root cbc:DueDate at all; its (optional, rarely populated)
+        // equivalent lives one level down, under PaymentMeans.
+        var dueDate = isCreditNote
+            ? Date(root.Element(Cac + "PaymentMeans"), Cbc, "PaymentDueDate")
+            : Date(root, Cbc, "DueDate");
+
         var result = new InvoiceExtractedData
         {
             Source = EExtractionSource.Merged,
             DocumentNumber = Str(root, Cbc, "ID"),
             IssueDate = Date(root, Cbc, "IssueDate"),
-            DueDate = Date(root, Cbc, "DueDate"),
-            // UBL/Peppol has no dedicated "date of taxable supply" field — the closest
-            // equivalent is the actual delivery date (BT-72), when present.
-            TaxableSupplyDate = Date(root.Element(Cac + "Delivery"), Cbc, "ActualDeliveryDate"),
+            DueDate = dueDate,
+            // BT-7 (VAT point date, "DUZP" in Czech/Slovak terms) is the direct match for
+            // TaxableSupplyDate and lives at cbc:TaxPointDate on the root. It's rarely
+            // populated (most invoices treat IssueDate as the tax point), so fall back to
+            // the actual delivery date (BT-72) — a reasonable approximation — only if
+            // TaxPointDate itself is absent.
+            TaxableSupplyDate = Date(root, Cbc, "TaxPointDate")
+                                 ?? Date(root.Element(Cac + "Delivery"), Cbc, "ActualDeliveryDate"),
             Currency = Str(root, Cbc, "DocumentCurrencyCode"),
             DetectedDocumentType = documentTypeName,
         };
@@ -128,7 +142,7 @@ public class UblImportParser : IUblImportParser
             result.IssuerRegistrationNumber = Str(supplier, Cac, "PartyLegalEntity", Cbc, "CompanyID");
             result.IssuerName = Str(supplier, Cac, "PartyLegalEntity", Cbc, "RegistrationName")
                                  ?? Str(supplier, Cac, "PartyName", Cbc, "Name");
-            result.IssuerTaxNumber = Str(supplier, Cac, "PartyTaxScheme", Cbc, "CompanyID");
+            result.IssuerTaxNumber = Str(VatTaxScheme(supplier), Cbc, "CompanyID");
         }
 
         // ── Buyer (recipient) ───────────────────────────────────────────
@@ -138,7 +152,7 @@ public class UblImportParser : IUblImportParser
             result.RecipientRegistrationNumber = Str(buyer, Cac, "PartyLegalEntity", Cbc, "CompanyID");
             result.RecipientName = Str(buyer, Cac, "PartyLegalEntity", Cbc, "RegistrationName")
                                     ?? Str(buyer, Cac, "PartyName", Cbc, "Name");
-            result.RecipientTaxNumber = Str(buyer, Cac, "PartyTaxScheme", Cbc, "CompanyID");
+            result.RecipientTaxNumber = Str(VatTaxScheme(buyer), Cbc, "CompanyID");
         }
 
         // ── Totals ───────────────────────────────────────────────────────
@@ -149,7 +163,17 @@ public class UblImportParser : IUblImportParser
             result.TotalAmount = Dec(totals, Cbc, "PayableAmount") ?? Dec(totals, Cbc, "TaxInclusiveAmount");
         }
 
-        var taxTotal = root.Element(Cac + "TaxTotal");
+        // A Peppol invoice with a non-EUR seller can legally carry two <cac:TaxTotal>
+        // elements: one in the document currency (BT-110/BT-111 area) and one in the
+        // seller's accounting currency (BT-6). Picking the first unconditionally would
+        // silently grab the wrong one for those documents, so prefer the TaxTotal whose
+        // TaxAmount currencyID matches DocumentCurrencyCode; fall back to the first
+        // TaxTotal for the (overwhelming majority of) documents that only have one.
+        var taxTotals = root.Elements(Cac + "TaxTotal").ToList();
+        var taxTotal = taxTotals.FirstOrDefault(t =>
+                string.Equals(t.Element(Cbc + "TaxAmount")?.Attribute("currencyID")?.Value,
+                    result.Currency, StringComparison.OrdinalIgnoreCase))
+            ?? taxTotals.FirstOrDefault();
         if (taxTotal != null)
             result.TotalVat = Dec(taxTotal, Cbc, "TaxAmount");
 
@@ -180,22 +204,36 @@ public class UblImportParser : IUblImportParser
             {
                 var item = line.Element(Cac + "Item");
                 var quantityElement = line.Element(Cbc + quantityElementName);
-                var quantity = ParseDecimal(quantityElement?.Value);
+                var rawQuantity = ParseDecimal(quantityElement?.Value);
+
+                // Unit price: prefer LineExtensionAmount / quantity over cac:Price/PriceAmount
+                // directly. PriceAmount alone is only the true unit price when BaseQuantity is
+                // 1 (its default) AND the line has no allowance/charge — both are optional UBL
+                // features that would otherwise silently produce a wrong price (e.g. a price
+                // quoted per 100 units would import 100x too high). LineExtensionAmount (the
+                // line's actual net total) already reflects all of that, so dividing it by the
+                // (signed) quantity recovers the correct effective unit price directly — and,
+                // as a side effect, is naturally positive for both an ordinary line and a
+                // negative-quantity correction line (equal signs cancel out).
+                var lineExtension = Dec(line, Cbc, "LineExtensionAmount");
+                var unitPrice = lineExtension.HasValue && rawQuantity is { } q && q != 0
+                    ? lineExtension.Value / q
+                    : Dec(line.Element(Cac + "Price"), Cbc, "PriceAmount");
 
                 // Fakvio's ReceivedInvoice has no separate "this is a credit note" flag
                 // (see docs/adr/0002-sk-einvoicing-peppol.md F1.10) — a credit is instead
                 // represented as a negative line, mirroring how the (separate) UBL export
                 // mapper normalizes credit notes to positive amounts in the other direction.
                 // Peppol BIS itself always carries positive quantities on a CreditNote, so
-                // we flip the sign here on the way in.
-                if (isCreditNote && quantity.HasValue)
-                    quantity = -quantity;
+                // we flip the sign here on the way in — after computing unitPrice above,
+                // which must use the original (unflipped) quantity to stay correctly signed.
+                var quantity = isCreditNote && rawQuantity.HasValue ? -rawQuantity : rawQuantity;
 
                 return new ExtractedInvoiceItem
                 {
                     Description = Str(item, Cbc, "Description") ?? Str(item, Cbc, "Name"),
                     Quantity = quantity,
-                    UnitPrice = Dec(line.Element(Cac + "Price"), Cbc, "PriceAmount"),
+                    UnitPrice = unitPrice,
                     VatRate = Dec(item?.Element(Cac + "ClassifiedTaxCategory"), Cbc, "Percent"),
                     Unit = quantityElement?.Attribute("unitCode")?.Value,
                     ProductCode = Str(item, Cac, "SellersItemIdentification", Cbc, "ID"),
@@ -241,13 +279,35 @@ public class UblImportParser : IUblImportParser
     private static string? Str(XElement? parent, XNamespace childNs, string child, XNamespace grandchildNs, string grandchild)
         => Str(parent?.Element(childNs + child), grandchildNs, grandchild);
 
+    /// <summary>
+    /// Picks the VAT <c>cac:PartyTaxScheme</c> out of a Party. A Party can legally carry
+    /// more than one (e.g. a domestic VAT scheme plus a fiscal-representative scheme) —
+    /// unconditionally taking the first one would silently pick the wrong CompanyID for
+    /// those (rare) documents, so prefer the one whose TaxScheme/ID is "VAT"; fall back
+    /// to the first for the overwhelming majority of documents that only have one.
+    /// </summary>
+    private static XElement? VatTaxScheme(XElement party)
+    {
+        var schemes = party.Elements(Cac + "PartyTaxScheme").ToList();
+        return schemes.FirstOrDefault(s =>
+                string.Equals(Str(s, Cac, "TaxScheme", Cbc, "ID"), "VAT", StringComparison.OrdinalIgnoreCase))
+            ?? schemes.FirstOrDefault();
+    }
+
     private static decimal? Dec(XElement? parent, XNamespace ns, string element)
         => ParseDecimal(Str(parent, ns, element));
 
     private static decimal? ParseDecimal(string? str)
     {
         if (str == null) return null;
-        return decimal.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var val) ? val : null;
+
+        // Restricted styles on purpose: UBL/Peppol amounts are always plain
+        // InvariantCulture decimals ("1656.25", "-3"), never grouped ("1,656.25").
+        // NumberStyles.Any would also accept AllowThousands, silently misreading a
+        // (technically invalid, but not impossible to encounter from a buggy sender)
+        // comma-decimal value like "1,23" as 123 instead of failing to parse it.
+        const NumberStyles styles = NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign;
+        return decimal.TryParse(str, styles, CultureInfo.InvariantCulture, out var val) ? val : null;
     }
 
     private static DateTime? Date(XElement? parent, XNamespace ns, string element)
@@ -255,13 +315,17 @@ public class UblImportParser : IUblImportParser
         var str = Str(parent, ns, element);
         if (str == null) return null;
 
-        // UBL date fields (BT-1/BT-2/BT-9/BT-72...) are plain calendar dates with no
-        // time-zone offset ("2026-06-15"), so DateTimeStyles.None parses the clock value
-        // as-is (Kind=Unspecified) and SpecifyKind just labels it Utc without shifting it.
-        // (DateTimeStyles.AssumeUniversal would instead convert that value into the local
-        // time zone before we re-label it — silently shifting the date by the host's UTC
-        // offset, which is exactly the bug this comment exists to prevent reintroducing.)
-        return DateTime.TryParse(str, CultureInfo.InvariantCulture, DateTimeStyles.None, out var val)
+        // UBL dates are xsd:date: "YYYY-MM-DD", optionally followed by a timezone offset
+        // ("2026-06-15+02:00"). Take just the date part and parse it with ParseExact — a
+        // general DateTime.TryParse would also accept ambiguous, non-ISO forms (e.g.
+        // "01/02/2026", which UBL never actually produces) depending on the host culture.
+        var datePart = str.Length >= 10 ? str[..10] : str;
+        return DateTime.TryParseExact(datePart, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var val)
+            // DateTimeStyles.None parses the clock value as-is (Kind=Unspecified); SpecifyKind
+            // just labels it Utc without shifting it, unlike DateTimeStyles.AssumeUniversal
+            // (which would convert into the local time zone before we re-label it — silently
+            // shifting the date by the host's UTC offset).
             ? DateTime.SpecifyKind(val, DateTimeKind.Utc)
             : null;
     }

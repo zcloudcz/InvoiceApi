@@ -208,7 +208,230 @@ public class UblImportParserTests
         _sut.Parse(Encoding.UTF8.GetBytes(xml)).ShouldBeNull();
     }
 
+    // ─── Field mapping refinements (Codex review follow-ups) ─────────────
+
+    [Fact]
+    public void Parse_TaxPointDatePresent_PreferredOverActualDeliveryDate()
+    {
+        // BT-7 (TaxPointDate) is the direct match for "date of taxable supply" (DUZP) —
+        // it must win over the Delivery/ActualDeliveryDate (BT-72) fallback when present.
+        var xml = $$"""
+            <Invoice xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">
+                <cbc:ID>TP-1</cbc:ID>
+                <cbc:IssueDate>2026-01-01</cbc:IssueDate>
+                <cbc:TaxPointDate>2026-01-10</cbc:TaxPointDate>
+                <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+                <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+                <cac:Delivery><cbc:ActualDeliveryDate>2026-01-20</cbc:ActualDeliveryDate></cac:Delivery>
+                <cac:LegalMonetaryTotal>
+                    <cbc:TaxExclusiveAmount currencyID="EUR">100</cbc:TaxExclusiveAmount>
+                    <cbc:PayableAmount currencyID="EUR">100</cbc:PayableAmount>
+                </cac:LegalMonetaryTotal>
+            </Invoice>
+            """;
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.TaxableSupplyDate.ShouldBe(new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public void Parse_CreditNoteDueDate_ReadFromPaymentMeansNotRoot()
+    {
+        // CreditNote-2's UBL schema has no root cbc:DueDate at all — only Invoice-2 does.
+        var xml = """
+            <CreditNote xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2">
+                <cbc:ID>CN-1</cbc:ID>
+                <cbc:IssueDate>2026-01-01</cbc:IssueDate>
+                <cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>
+                <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+                <cac:PaymentMeans>
+                    <cbc:PaymentMeansCode>30</cbc:PaymentMeansCode>
+                    <cbc:PaymentDueDate>2026-01-15</cbc:PaymentDueDate>
+                </cac:PaymentMeans>
+                <cac:LegalMonetaryTotal>
+                    <cbc:PayableAmount currencyID="EUR">50</cbc:PayableAmount>
+                </cac:LegalMonetaryTotal>
+            </CreditNote>
+            """;
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.DueDate.ShouldBe(new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public void Parse_LineWithBaseQuantityAndPriceAmount_UnitPriceComesFromLineExtensionAmount()
+    {
+        // Price/PriceAmount here is "per 10 units" (BaseQuantity=10) — naively using it as
+        // the per-unit price would import a price 10x too high. LineExtensionAmount / Quantity
+        // must be used instead: 240 / 3 = 80 per unit, matching what the line actually bills.
+        var xml = MinimalInvoiceWithLine(quantity: "3", lineExtensionAmount: "240", priceAmount: "800", baseQuantity: "10");
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.Items![0].UnitPrice.ShouldBe(80m);
+    }
+
+    [Fact]
+    public void Parse_TwoTaxTotals_PicksTheOneMatchingDocumentCurrency()
+    {
+        // A non-EUR seller may legally report VAT in both the document currency and the
+        // seller's accounting currency (BT-6/BT-111) as two separate TaxTotal elements.
+        var xml = """
+            <Invoice xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">
+                <cbc:ID>TT-1</cbc:ID>
+                <cbc:IssueDate>2026-01-01</cbc:IssueDate>
+                <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+                <cbc:DocumentCurrencyCode>CZK</cbc:DocumentCurrencyCode>
+                <cac:TaxTotal><cbc:TaxAmount currencyID="EUR">21.00</cbc:TaxAmount></cac:TaxTotal>
+                <cac:TaxTotal><cbc:TaxAmount currencyID="CZK">525.00</cbc:TaxAmount></cac:TaxTotal>
+                <cac:LegalMonetaryTotal>
+                    <cbc:PayableAmount currencyID="CZK">2500</cbc:PayableAmount>
+                </cac:LegalMonetaryTotal>
+            </Invoice>
+            """;
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.TotalVat.ShouldBe(525.00m);
+    }
+
+    [Fact]
+    public void Parse_TwoPartyTaxSchemes_PicksTheVatOne()
+    {
+        var xml = """
+            <Invoice xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">
+                <cbc:ID>PTS-1</cbc:ID>
+                <cbc:IssueDate>2026-01-01</cbc:IssueDate>
+                <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+                <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+                <cac:AccountingSupplierParty>
+                    <cac:Party>
+                        <cac:PartyTaxScheme>
+                            <cbc:CompanyID>FR00000000</cbc:CompanyID>
+                            <cac:TaxScheme><cbc:ID>FC</cbc:ID></cac:TaxScheme>
+                        </cac:PartyTaxScheme>
+                        <cac:PartyTaxScheme>
+                            <cbc:CompanyID>SK2020123456</cbc:CompanyID>
+                            <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+                        </cac:PartyTaxScheme>
+                    </cac:Party>
+                </cac:AccountingSupplierParty>
+                <cac:LegalMonetaryTotal>
+                    <cbc:PayableAmount currencyID="EUR">100</cbc:PayableAmount>
+                </cac:LegalMonetaryTotal>
+            </Invoice>
+            """;
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.IssuerTaxNumber.ShouldBe("SK2020123456");
+    }
+
+    [Theory]
+    [InlineData("100.50", 100.50)]
+    [InlineData("-3", -3)]
+    [InlineData("25.0", 25.0)]
+    public void ParseDecimal_ValidUblForms_ParsesCorrectly(string input, double expected)
+    {
+        var xml = MinimalInvoiceWithLine(quantity: input, lineExtensionAmount: null, priceAmount: input, baseQuantity: null);
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.Items![0].UnitPrice.ShouldBe((decimal)expected);
+    }
+
+    [Fact]
+    public void ParseDecimal_ThousandsSeparatorForm_RejectedRatherThanMisparsed()
+    {
+        // "1,23" is not a valid UBL/Peppol decimal (InvariantCulture only, no grouping).
+        // NumberStyles.Any would silently read this as 123 -- it must be rejected instead.
+        var xml = MinimalInvoiceWithLine(quantity: "1", lineExtensionAmount: null, priceAmount: "1,23", baseQuantity: null);
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.Items![0].UnitPrice.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Parse_DateWithTimezoneOffset_ParsesJustTheDatePart()
+    {
+        var xml = MinimalInvoiceXml(typeCode: "380").Replace("2026-01-01", "2026-01-01+02:00");
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.IssueDate.ShouldBe(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public void Parse_NonIsoDateForm_ReturnsNullRatherThanGuessing()
+    {
+        var xml = MinimalInvoiceXml(typeCode: "380").Replace("2026-01-01", "01/02/2026");
+
+        var result = _sut.Parse(Encoding.UTF8.GetBytes(xml));
+
+        result.ShouldNotBeNull();
+        result.IssueDate.ShouldBeNull();
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds a minimal single-line invoice for testing line-level price/quantity parsing.
+    /// <paramref name="lineExtensionAmount"/> and <paramref name="baseQuantity"/> are omitted
+    /// from the XML entirely when null, so a test can isolate the PriceAmount-only fallback.
+    /// </summary>
+    private static string MinimalInvoiceWithLine(
+        string quantity, string? lineExtensionAmount, string? priceAmount, string? baseQuantity)
+    {
+        var lineExtensionXml = lineExtensionAmount != null
+            ? $"""<cbc:LineExtensionAmount currencyID="EUR">{lineExtensionAmount}</cbc:LineExtensionAmount>"""
+            : "";
+        var baseQuantityXml = baseQuantity != null
+            ? $"<cbc:BaseQuantity>{baseQuantity}</cbc:BaseQuantity>"
+            : "";
+
+        return $"""
+            <Invoice xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">
+                <cbc:ID>LN-1</cbc:ID>
+                <cbc:IssueDate>2026-01-01</cbc:IssueDate>
+                <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+                <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+                <cac:LegalMonetaryTotal>
+                    <cbc:PayableAmount currencyID="EUR">100</cbc:PayableAmount>
+                </cac:LegalMonetaryTotal>
+                <cac:InvoiceLine>
+                    <cbc:ID>1</cbc:ID>
+                    <cbc:InvoicedQuantity unitCode="C62">{quantity}</cbc:InvoicedQuantity>
+                    {lineExtensionXml}
+                    <cac:Item><cbc:Description>Item</cbc:Description></cac:Item>
+                    <cac:Price>
+                        <cbc:PriceAmount currencyID="EUR">{priceAmount}</cbc:PriceAmount>
+                        {baseQuantityXml}
+                    </cac:Price>
+                </cac:InvoiceLine>
+            </Invoice>
+            """;
+    }
 
     private static string MinimalInvoiceXml(string typeCode) => $"""
         <Invoice xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"

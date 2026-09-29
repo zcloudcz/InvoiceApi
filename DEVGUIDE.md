@@ -1839,11 +1839,28 @@ deserializer, žádné AI, žádné síťové volání):**
   proto se množství na řádcích při importu **znaménkově otočí** (Peppol BIS má na CreditNote vždy
   kladná množství; Fakvio si dobropis interně reprezentuje jako zápornou položku). Zrcadlí (v
   opačném směru) chování exportního mapperu z F1.1/F1.4.
+- **Mapovací detaily, na kterých šlo snadno šlápnout vedle (a proto mají vlastní testy):**
+  `TaxableSupplyDate` (DUZP) čte `cbc:TaxPointDate` (BT-7) na kořeni, **ne**
+  `cac:Delivery/cbc:ActualDeliveryDate` (BT-72, jiné pole) — to je jen fallback, když
+  `TaxPointDate` chybí. `DueDate` u `CreditNote` **není** na kořeni (na rozdíl od `Invoice`) —
+  čte se z `cac:PaymentMeans/cbc:PaymentDueDate`. Cena položky se nepočítá přímo z
+  `cac:Price/cbc:PriceAmount` (to je jen fallback), ale z `LineExtensionAmount / množství` —
+  `PriceAmount` může být "cena za `BaseQuantity` kusů" nebo zahrnovat řádkovou slevu/přirážku,
+  `LineExtensionAmount` (skutečná čistá částka řádku) tyhle efekty už zahrnuje. `TaxTotal` a
+  `PartyTaxScheme` mohou být na dokladu dva (měna dokladu/účetní měna; DPH schéma/zastoupení) —
+  vybírá se podle `currencyID`/`TaxScheme/ID`, ne první nalezený.
 - **Bezpečnost (netriviální vstup z e-mailu/uploadu):** `XmlReaderSettings.DtdProcessing =
   Prohibit` (blokuje XXE i "billion laughs" — obojí vyžaduje DOCTYPE s ENTITY, takže zákaz
   DOCTYPE stačí), `XmlResolver = null` (žádné externí zdroje), tvrdý limit velikosti
-  `MaxXmlSizeBytes = 10 MB` před parsováním. Cokoliv nevalidní/neznámé/moc velké → `null`,
-  nikdy výjimka ven z `Parse`.
+  `MaxXmlSizeBytes = 2 MB` před parsováním (reálné Peppol faktury jsou řádově stovky kB;
+  menší strop než obecný 10 MB limit uploadu v `ImportController` schválně omezuje i
+  "DOM bombu" — validní XML s milionem drobných elementů, který by bez limitu velikosti
+  DTD zákaz neřešil). `.isdocx` (ZIP) navíc řeší **decompression bombu** — sdílený
+  `IsdocZipReader` (`Fakvio.Infrastructure/Service/IsdocZipReader.cs`, používá ho ISDOC
+  branch obou pipeline, email i upload) čte ZIP entry přes bounded stream a počítá
+  *skutečné* rozbalené bajty (ne `ZipArchiveEntry.Length`, ten je součástí ZIP hlavičky a
+  útočník ho může nastavit špatně), zastaví se nad `IsdocZipReader.MaxDecompressedBytes`
+  (2 MB). Cokoliv nevalidní/neznámé/moc velké → `null`, nikdy výjimka ven z `Parse`.
 
 **Sdílené konverzní tabulky (jednotky, kategorie DPH, země) s F1.1 (export) zatím NEJSOU:**
 F1.10 vznikl paralelně s F1.1–F1.9 v jiném worktree a používá jen to málo, co import potřebuje
