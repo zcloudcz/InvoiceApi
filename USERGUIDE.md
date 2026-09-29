@@ -264,6 +264,36 @@ Dostupný z detailu faktury — viz příslušné tlačítko. ISDOC je český s
 
 **Hromadný ISDOC export:** zaškrtněte faktury → toolbar → „Stáhnout ISDOC" → stáhne se ZIP archiv s `.isdoc` soubory. Koncepty (Draft) se přeskakují — nevydaná faktura nemá právně platný ISDOC.
 
+### 2.8a Export e-faktury (UBL / Peppol BIS)
+
+**Co to je:** od 1. 1. 2027 musí slovenští plátci DPH vystavovat tuzemské (SK→SK) faktury jako
+strukturovanou e-fakturu ve formátu **UBL 2.1 / Peppol BIS Billing 3.0**, posílanou přes síť
+Peppol. Fakvio zatím (fáze 1) e-fakturu neodesílá samo — vygeneruje XML soubor, který nahrajete
+do aplikace svého „digitálního poštáře" (viz seznam certifikovaných poskytovatelů na webu
+Finanční správy SR). I mimo SK je export užitečný jako komfort pro odběratele v Peppol síti a
+příprava na celoevropskou e-fakturaci (ViDA) od 1. 7. 2030.
+
+**Kdy použít:**
+- Vystavujete fakturu slovenskému odběrateli (nebo jinému odběrateli v síti Peppol).
+- Chcete e-fakturu nahrát do aplikace svého poštáře místo ručního přepisování údajů.
+
+**Stažení:** v detailu faktury tlačítko „Stáhnout e-fakturu (UBL)" vedle tlačítka ISDOC. Tlačítko
+je zakázané u konceptů (Draft) a u proforem — proforma není daňový doklad a e-fakturu z ní
+vystavit nejde.
+
+**Hromadný export:** zaškrtněte faktury → toolbar → „Stáhnout e-faktury (UBL)" → stáhne se ZIP
+archiv s `.xml` soubory. Koncepty a proformy se přeskakují stejně jako u ISDOC.
+
+**Co zkontrolovat, když export selže:** Fakvio před vygenerováním XML kontroluje, jestli má
+faktura vše potřebné pro platnou e-fakturu. Když ne, zobrazí se seznam konkrétních problémů
+místo souboru — nejčastěji:
+- **DIČ a země** vaší firmy nebo odběratele — z nich se odvozuje Peppol adresa; když odvození
+  nejde (DPH skupina, neobvyklý formát DIČ), nastavte přepis v poli „Peppol ID" u klienta / na
+  stránce Moje firma (§5, §10).
+- **Adresa** (ulice, město, PSČ, země) musí být kompletní.
+- **Platba bankovním převodem** musí mít IBAN nebo číslo účtu.
+- **Slovenský vystavitel** může zatím e-fakturu vystavit jen v měně **EUR**.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"

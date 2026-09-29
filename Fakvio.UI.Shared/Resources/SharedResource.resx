@@ -64,6 +64,7 @@
   <data name="Btn_Back" xml:space="preserve"><value>Zpět</value></data>
   <data name="Btn_ExportPdf" xml:space="preserve"><value>Export PDF</value></data>
   <data name="Btn_ExportIsdoc" xml:space="preserve"><value>Stáhnout ISDOC</value></data>
+  <data name="Btn_ExportUbl" xml:space="preserve"><value>Stáhnout e-fakturu (UBL)</value></data>
   <data name="Btn_SendEmail" xml:space="preserve"><value>Odeslat e-mailem</value></data>
   <data name="Btn_Preview" xml:space="preserve"><value>Náhled</value></data>
   <data name="Btn_CreateFromTemplate" xml:space="preserve"><value>Vytvořit ze šablony</value></data>
@@ -479,6 +480,8 @@
   <data name="Invoice_PdfFailed" xml:space="preserve"><value>Nepodařilo se vygenerovat PDF</value></data>
   <data name="Invoice_IsdocDownloaded" xml:space="preserve"><value>ISDOC stažen</value></data>
   <data name="Invoice_IsdocFailed" xml:space="preserve"><value>Nepodařilo se exportovat ISDOC</value></data>
+  <data name="Invoice_UblDownloaded" xml:space="preserve"><value>E-faktura (UBL) stažena</value></data>
+  <data name="Invoice_UblFailed" xml:space="preserve"><value>Nepodařilo se exportovat e-fakturu (UBL)</value></data>
   <data name="Invoice_EmailSentTo" xml:space="preserve"><value>Faktura odeslána na {0}</value></data>
   <data name="Invoice_EmailFailed" xml:space="preserve"><value>Nepodařilo se odeslat email</value></data>
   <data name="Invoice_CreatingTemplate" xml:space="preserve"><value>Vytvářím šablonu...</value></data>
@@ -994,6 +997,7 @@
   <data name="Bulk_Email" xml:space="preserve"><value>Odeslat e-mailem</value></data>
   <data name="Bulk_Pdf" xml:space="preserve"><value>Stáhnout PDF</value></data>
   <data name="Bulk_Isdoc" xml:space="preserve"><value>Stáhnout ISDOC</value></data>
+  <data name="Bulk_Ubl" xml:space="preserve"><value>Stáhnout e-faktury (UBL)</value></data>
   <data name="Bulk_ClearSelection" xml:space="preserve"><value>Zrušit výběr</value></data>
   <data name="Bulk_ConfirmTitle" xml:space="preserve"><value>Potvrzení hromadné akce</value></data>
   <data name="Bulk_ConfirmIssue" xml:space="preserve"><value>Opravdu chcete vystavit {0} fakturu/faktur?</value></data>
