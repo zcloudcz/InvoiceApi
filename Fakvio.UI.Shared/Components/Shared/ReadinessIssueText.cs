@@ -27,4 +27,31 @@ public static class ReadinessIssueText
             ? message
             : $"{message} ({issue.IssuerName})";
     }
+
+    /// <summary>
+    /// Localized, comma-separated list of <see cref="ReadinessIssueDto.MissingFields"/>, or an
+    /// empty string when the issue names no field.
+    ///
+    /// The API sends machine names ("CreditNote", "PostalCode") — fine for logs and the AI
+    /// model, wrong for a user who reads Czech. Two key families are needed because the list
+    /// means different things per code:
+    ///  - NUMBER_SEQUENCE_MISSING lists document types (EDocumentType names), which already
+    ///    have labels under "Template_DocumentType{Type}" (the same ones the document-type
+    ///    selects show),
+    ///  - every other rule lists entity property names → "Readiness_Field_{Name}".
+    /// </summary>
+    public static string DescribeMissingFields(IStringLocalizer<SharedResource> localizer, ReadinessIssueDto issue)
+    {
+        var keyPrefix = issue.Code == ReadinessCodes.NumberSequenceMissing
+            ? "Template_DocumentType"
+            : "Readiness_Field_";
+
+        return string.Join(", ", issue.MissingFields.Select(field =>
+        {
+            var text = localizer[keyPrefix + field];
+            // A field the UI has no label for yet (newer API than UI): the raw name is still
+            // more useful to the user than dropping the item from the list.
+            return text.ResourceNotFound ? field : text.Value;
+        }));
+    }
 }

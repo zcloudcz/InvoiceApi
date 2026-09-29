@@ -504,8 +504,10 @@ public class ChatContextBuilderTests : IDisposable
 
         var prompt = await _builder.BuildSystemPromptAsync();
 
+        // Machine names stay (the model may pass them to a tool), document types get words
         prompt.ShouldContain(
-            "- Setup not finished yet: NUMBER_SEQUENCE_MISSING: Invoice, CreditNote (fix at /number-sequences)");
+            "- Setup not finished yet: NUMBER_SEQUENCE_MISSING: Invoice (invoice; Czech: faktura), " +
+            "CreditNote (credit note; Czech: dobropis) (fix at /number-sequences)");
     }
 
     [Fact]

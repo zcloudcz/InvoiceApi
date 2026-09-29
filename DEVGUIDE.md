@@ -1965,7 +1965,7 @@ normální položka reportu (200), s `issuerId` je to 404.
 | Vrstva | Kde | Poznámka |
 |--------|-----|----------|
 | API klient | `Fakvio.UI.Shared/Services/ReadinessApiService.cs` | Chytá **`Exception`**, ne jen `ApiException` — `ApiClientBase.GetAsync` propouští i `HttpRequestException` / `JsonException` a výjimka z lifecycle metody v Blazor WASM shodí celou aplikaci. Při chybě vrací prázdný report; obě komponenty jsou dekorace, nesmí shodit hostitelskou stránku |
-| Text položky | `Fakvio.UI.Shared/Components/Shared/ReadinessIssueText.cs` | `Describe()` — `Readiness_Code_<KÓD>` s fallbackem na `Readiness_Code_Unknown` plus jméno vystavitele. Sdílený, aby obě plochy popsaly týž problém stejně |
+| Text položky | `Fakvio.UI.Shared/Components/Shared/ReadinessIssueText.cs` | `Describe()` — `Readiness_Code_<KÓD>` s fallbackem na `Readiness_Code_Unknown` plus jméno vystavitele. `DescribeMissingFields()` — přeložený seznam `MissingFields`: u `NUMBER_SEQUENCE_MISSING` jsou to typy dokladů → `Template_DocumentType<Typ>`, u ostatních názvy vlastností → `Readiness_Field_<Název>`; neznámé pole zůstane surové. **`MissingFields` se v UI nikdy nevypisuje přímo** (uživatel pak četl „CreditNote"). Sdílený, aby všechny plochy popsaly týž problém stejně |
 | Banner | `Fakvio.UI.Shared/Components/Shared/ReadinessBanner.razor` | Blocking → `Severity.Error`, Warning → `Severity.Warning`, dva oddělené alerty. Prázdný report = nerenderuje nic. Stahuje **jednou na `IssuerId`** (guard `_loadedIssuerId`, stejný idiom jako `_lastTrigger` v `InvoicePaymentsPanel`) — bez něj by každý `StateHasChanged()` hostitelské stránky znamenal další `GET /api/readiness` |
 | Checklist | `Fakvio.UI.Shared/Components/Shared/SetupChecklist.razor` | Karta „Dokončit nastavení" na dashboardu. Stejné dělení jako banner — položky **seskupené podle závažnosti** pod klíči `Readiness_BlockingTitle` / `Readiness_WarningTitle`, barva ikony nadpis jen opakuje. Severita nesmí být nesená jen barvou (odečítač obrazovky z barvy nepřečte nic, červená vs oranžová je navíc nejhorší dvojice pro barvosleposti) — a report z `TenantReadinessService` není řazený, seskupení tedy drží i pořadí. Bez parametrů → stačí `OnInitializedAsync`, **žádný re-fetch guard** (není co znovu spouštět). Odložení = `bool` v localStorage pod klíčem `setupChecklistDeferred` přes `ILocalStorageService`, čtení v `try/catch` (precedens `GridStateService.LoadAsync`) — sbalí kartu na jedno tlačítko, nesmaže ji. **Dokončenost se neukládá nikdy**, počítá se z reportu, takže nemůže zastarat |
 | Zapojení | `Home.razor` → `SetupChecklist` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` → `ReadinessBanner` (jen stav Draft, `IssuerId` dokladu) | Na dashboardu je checklist nástupcem banneru (#210 nahradil i statickou „Quick Start" osu) — **dvě komponenty se stejným reportem na jedné stránce nikdy**. Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync`, tam se odkládat nedá |
@@ -1987,6 +1987,9 @@ Když přidáváš readiness kód, přidej k němu **i lokalizační klíč `Rea
 do obou `SharedResource*.resx`** — jinak uživatel uvidí obecnou náhradní hlášku.
 `SharedResourceLocalizationTests.ReadinessKeys_ShouldBeTranslated_InBothCultures` klíče
 odvozuje reflexí z `ReadinessCodes`, takže chybějící překlad shodí testy, ne produkci.
+Nové pole v `MissingFields` potřebuje klíč `Readiness_Field_<Název>` a řádek v
+`ReadinessFieldAndDocumentTypeKeys_ShouldBeTranslated_InBothCultures`. Pro model (chat tooly)
+nechává `ReadinessIssueFormatter` strojové názvy, u typů dokladů jen připíše slovní popis.
 
 ### 4.13 Opakované faktury (recurring invoices)
 

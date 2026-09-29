@@ -249,6 +249,40 @@ public class SharedResourceLocalizationTests : IDisposable
     }
 
     [Fact]
+    public void ReadinessFieldAndDocumentTypeKeys_ShouldBeTranslated_InBothCultures()
+    {
+        // ReadinessIssueText.DescribeMissingFields turns MissingFields into labels. The field
+        // names are the nameof(...) values TenantReadinessService emits — keep this list in sync
+        // with it. Document types come from the enum itself, so a new EDocumentType value without
+        // a label fails here; the number-sequence grid reads the same Template_DocumentType* keys.
+        var fieldKeys = new[]
+        {
+            "IsIssuer", "Address", "Street", "City", "PostalCode", "Country",
+            "RegistrationNumber", "TaxNumber", "BankAccount",
+            "EpoTaxOfficeCode", "EpoTaxOfficeBranchCode"
+        }.Select(f => $"Readiness_Field_{f}");
+
+        var documentTypeKeys = Enum.GetNames<Fakvio.Domain.Enums.EDocumentType>()
+            .Select(t => $"Template_DocumentType{t}");
+
+        foreach (var key in fieldKeys.Concat(documentTypeKeys))
+        {
+            CultureInfo.CurrentUICulture = new CultureInfo("cs-CZ");
+            var czech = _localizer[key];
+            czech.ResourceNotFound.ShouldBeFalse($"Key '{key}' is missing from the Czech resources.");
+
+            CultureInfo.CurrentUICulture = new CultureInfo("en-US");
+            var english = _localizer[key];
+            english.ResourceNotFound.ShouldBeFalse($"Key '{key}' is missing from the English resources.");
+
+            // Same reason as in ReadinessKeys_ShouldBeTranslated_InBothCultures: a key missing
+            // only from the English file silently falls back to Czech.
+            english.Value.ShouldNotBe(czech.Value,
+                $"Key '{key}' has no English translation — it falls back to the Czech text.");
+        }
+    }
+
+    [Fact]
     public void NonExistentKey_ShouldReturn_ResourceNotFound()
     {
         // Verify that a key that doesn't exist in .resx returns ResourceNotFound = true

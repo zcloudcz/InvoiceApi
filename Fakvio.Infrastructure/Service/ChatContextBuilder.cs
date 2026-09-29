@@ -203,7 +203,9 @@ public class ChatContextBuilder : IChatContextBuilder
             .Where(i => i.Severity == EReadinessSeverity.Blocking)
             .Select(i => i.MissingFields.Count == 0
                 ? $"{i.Code} (fix at {i.FixRoute})"
-                : $"{i.Code}: {string.Join(", ", i.MissingFields)} (fix at {i.FixRoute})")
+                // Same field wording as the chat tools — a bare "CreditNote" in the prompt is
+                // what the model then repeated to the user.
+                : $"{i.Code}: {string.Join(", ", i.MissingFields.Select(f => ChatTools.ReadinessIssueFormatter.DescribeField(i.Code, f)))} (fix at {i.FixRoute})")
             .ToList();
 
         return blocking.Count == 0 ? null : string.Join("; ", blocking);

@@ -157,6 +157,36 @@ public class GetReadinessToolTests
     }
 
     [Fact]
+    public async Task Execute_MissingSequence_NamesTheDocumentTypeInWords_AndKeepsTheMachineName()
+    {
+        // Given only "CreditNote" the model repeated the enum name to a Czech user. The words
+        // are appended, not substituted — the machine name stays for follow-up tool calls.
+        SetupReport(new ReadinessIssueDto
+        {
+            Code = ReadinessCodes.NumberSequenceMissing,
+            Severity = EReadinessSeverity.Blocking,
+            MissingFields = [nameof(EDocumentType.CreditNote)],
+            FixRoute = "/number-sequences"
+        });
+
+        var result = await _sut.ExecuteAsync([]);
+
+        result.OutputText.ShouldContain("Missing: CreditNote (credit note; Czech: dobropis)");
+    }
+
+    [Fact]
+    public async Task Execute_IssuerFields_AreLeftAsTheyAre()
+    {
+        // The document-type words apply to NUMBER_SEQUENCE_MISSING only; property names of
+        // other rules pass through untouched (covered also by the address case above).
+        SetupReport(EpoWarning());
+
+        var result = await _sut.ExecuteAsync([]);
+
+        result.OutputText.ShouldContain("Missing: EpoTaxOfficeCode" + Environment.NewLine);
+    }
+
+    [Fact]
     public async Task Execute_TenantWideIssue_OmitsTheIssuerLabel()
     {
         // Number sequences and EPO settings belong to the tenant, not to one issuer —

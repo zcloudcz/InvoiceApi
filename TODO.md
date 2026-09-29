@@ -1,5 +1,17 @@
 # Fakvio TODO
 
+## In progress (2026-09-11)
+
+### Readiness: "CreditNote" shown raw + credit-note sequence looked configured
+Branch `fix/readiness-document-type-labels`, PR #432.
+- [x] Number-sequence grid labelled every non-invoice type "Dobropis" (Proforma/DPP looked like credit notes) → label per type
+- [x] `ReadinessIssueText.DescribeMissingFields` — banner, checklist and chat welcome translate MissingFields
+- [x] Chat tool formatter and the chat system prompt add words to document-type names for the model
+- [x] NUMBER_SEQUENCE_MISSING text says "active **default** sequence" (the actual rule)
+- [x] PR to develop + review
+- [ ] Tenant data: create a default credit-note sequence in /number-sequences (user action)
+- [ ] Follow-up: `InvoiceTemplates.razor:81` / `InvoiceTemplateDetail.razor:141` have the same Invoice-else-"Dobropis" switch
+
 ## Completed (2026-09-11)
 
 ### Výchozí řazení faktur: od nejnovější ✅
