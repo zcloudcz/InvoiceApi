@@ -22,6 +22,21 @@
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.2" />
     <!-- Localization — needed for SharedResource localization unit tests -->
     <PackageReference Include="Microsoft.Extensions.Localization" Version="10.0.2" />
+    <!-- UBL / Peppol BIS schematron validation (ADR 0002, F1.2) — Saxon-HE 12 (XSLT 2.0) via
+         IKVM, test-project only. The official EN16931/Peppol validation artefacts are
+         precompiled XSLT 2.0, which System.Xml.Xsl (XSLT 1.0 only) cannot run.
+         IKVM.Maven.Sdk enables <MavenReference> below; it does not pull the Saxon-HE Java
+         artifact itself — that has to be requested explicitly. -->
+    <PackageReference Include="SaxonHE12s9apiExtensions" Version="12.10.1" />
+    <PackageReference Include="IKVM.Maven.Sdk" Version="1.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Downloaded from Maven Central at build time (and cached) by IKVM.Maven.Sdk, then
+         compiled to a .NET assembly by IKVM — not a NuGet package, so it does not show up in
+         `dotnet list package`. Version must stay in sync with the JAR SaxonHE12s9apiExtensions
+         12.10.1 was built against (see its README). -->
+    <MavenReference Include="net.sf.saxon:Saxon-HE" Version="12.10" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,6 +54,18 @@
        are documented in Ubl/ImportFixtures/README.md. -->
   <ItemGroup>
     <None Include="Ubl\ImportFixtures\*.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- UBL/Peppol validation artifacts (ADR 0002, F1.2) — vendored XSD/XSLT + example fixtures,
+       see Ubl/Vendored/README.md for provenance. Copied to output so UblTestValidator can read
+       them by relative path at test run time (same pattern as appsettings.json above). -->
+  <ItemGroup>
+    <None Update="Ubl\Vendored\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Ubl\Fixtures\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
