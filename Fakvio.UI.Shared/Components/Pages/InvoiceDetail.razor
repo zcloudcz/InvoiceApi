@@ -489,12 +489,15 @@ else
                     </MudCardHeader>
                     <MudCardContent>
                         <MudList T="string" Dense="true">
+                            @if (IssuerIsVatPayer)
+                            {
                             <MudListItem T="string">
                                 <strong>@L["Invoice_TotalBeforeVat"]:</strong> @_invoice.TotalBeforeVat.ToString("N2") @_invoice.CurrencyCode
                             </MudListItem>
                             <MudListItem T="string">
                                 <strong>@L["Invoice_TotalVat"]:</strong> @_invoice.TotalVat.ToString("N2") @_invoice.CurrencyCode
                             </MudListItem>
+                            }
                             <MudListItem T="string">
                                 <MudText Typo="Typo.h5" Color="Color.Primary">
                                     @_invoice.TotalWithVat.ToString("N2") @_invoice.CurrencyCode
@@ -650,7 +653,10 @@ else
                         <MudTh Style="text-align:right">@L["InvoiceItem_Quantity"]</MudTh>
                         <MudTh>@L["InvoiceItem_Unit"]</MudTh>
                         <MudTh Style="text-align:right">@L["InvoiceItem_UnitPrice"]</MudTh>
-                        <MudTh Style="text-align:right">@L["InvoiceItem_VatRate"]</MudTh>
+                        @if (IssuerIsVatPayer)
+                        {
+                            <MudTh Style="text-align:right">@L["InvoiceItem_VatRate"]</MudTh>
+                        }
                         <MudTh Style="text-align:right">@L["InvoiceItem_Total"]</MudTh>
                     </HeaderContent>
                     <RowTemplate>
@@ -659,7 +665,10 @@ else
                         <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
                         <MudTd>@context.Unit</MudTd>
                         <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
-                        <MudTd Style="text-align:right">@context.VatRatePercentage.ToString("N0")%</MudTd>
+                        @if (IssuerIsVatPayer)
+                        {
+                            <MudTd Style="text-align:right">@context.VatRatePercentage.ToString("N0")%</MudTd>
+                        }
                         <MudTd Style="text-align:right"><strong>@context.TotalWithVat.ToString("N2")</strong></MudTd>
                     </RowTemplate>
                 </MudTable>
@@ -871,6 +880,12 @@ else
     private List<CurrencyDto> _currencies = new();
     private ClientDto? _issuer;
 
+    /// <summary>
+    /// A non-VAT payer's invoice shows no VAT rate column and no VAT totals.
+    /// Unknown issuer (still loading / failed) = show VAT, i.e. today's behaviour.
+    /// </summary>
+    private bool IssuerIsVatPayer => _issuer?.IsVatPayer ?? true;
+
     // Bank account selection state — loaded from issuer's BankAccount collection
     private List<BankAccountDto> _issuerBankAccounts = new();
     private long? _selectedBankAccountId;
@@ -979,7 +994,8 @@ else
             // View/edit mode — load existing invoice (transition from create → view after save)
             _isEditing = false;
             _isDirty = false;
-            await LoadInvoice();
+            // Issuer is needed in view mode too — a non-VAT payer's invoice hides VAT rows.
+            await Task.WhenAll(LoadInvoice(), LoadIssuer());
         }
     }
 
