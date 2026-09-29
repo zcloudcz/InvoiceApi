@@ -13,9 +13,9 @@ namespace Fakvio.Infrastructure.Service.Ubl;
 /// <c>Fakvio.Tests.Unit/Ubl/Vendored/maindoc/</c>) -- getting the order wrong fails XSD
 /// validation even when every individual element is otherwise correct.
 ///
-/// Covers <see cref="EDocumentType.Invoice"/> (InvoiceTypeCode 380) and
-/// <see cref="EDocumentType.TaxReceiptForAdvance"/> (386) — both use the UBL <c>Invoice-2</c>
-/// root. <see cref="EDocumentType.CreditNote"/> (root <c>CreditNote-2</c>) is added in F1.4.
+/// Covers <see cref="EDocumentType.Invoice"/> (InvoiceTypeCode 380),
+/// <see cref="EDocumentType.TaxReceiptForAdvance"/> (386, both UBL <c>Invoice-2</c> root) and
+/// <see cref="EDocumentType.CreditNote"/> (CreditNoteTypeCode 381, UBL <c>CreditNote-2</c> root).
 /// <see cref="EDocumentType.Proforma"/> is not an eInvoice at all ([FAQ] I/34) and is rejected.
 /// </summary>
 internal static class UblMapper
@@ -23,6 +23,7 @@ internal static class UblMapper
     internal static readonly XNamespace CacNs = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
     internal static readonly XNamespace CbcNs = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
     private static readonly XNamespace InvoiceNs = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2";
+    private static readonly XNamespace CreditNoteNs = "urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2";
 
     // Peppol BIS Billing 3.0 identifiers — constant for every document Fakvio produces.
     private const string CustomizationId =
@@ -40,8 +41,9 @@ internal static class UblMapper
     /// <see cref="Invoice.Currency"/> and <see cref="Invoice.InvoiceItem"/> loaded.
     /// </param>
     /// <param name="precedingDocumentNumbers">
-    /// Document numbers this invoice references via <c>cac:BillingReference</c> — e.g. the tax
-    /// receipts for advance a final invoice deducts (F1.4). Null/empty emits no reference.
+    /// Document numbers this invoice references via <c>cac:BillingReference</c> — the original
+    /// invoice for a credit note, or the tax receipts for advance a final invoice deducts (both
+    /// F1.4). Null/empty emits no reference.
     /// </param>
     internal static XDocument Map(Invoice invoice, IReadOnlyList<string>? precedingDocumentNumbers = null)
     {
@@ -51,9 +53,11 @@ internal static class UblMapper
                 "([FAQ] I/34) — the caller must filter it out before calling UblMapper.Map.");
 
         if (invoice.DocumentType == EDocumentType.CreditNote)
-            throw new InvalidOperationException(
-                "Credit notes use the UBL CreditNote-2 root, not Invoice-2 — call the CreditNote " +
-                "overload of UblMapper.Map instead.");
+        {
+            var creditNoteRoot = new XElement(CreditNoteNs + "CreditNote");
+            creditNoteRoot.Add(MapCreditNoteHeader(invoice, precedingDocumentNumbers));
+            return new XDocument(new XDeclaration("1.0", "UTF-8", null), creditNoteRoot);
+        }
 
         var root = new XElement(InvoiceNs + "Invoice");
         root.Add(MapInvoiceHeader(invoice, precedingDocumentNumbers));
@@ -69,6 +73,7 @@ internal static class UblMapper
         var currencyCode = invoice.Currency?.Code ?? "CZK";
         var issuerIsVatPayer = invoice.Issuer?.IsVatPayer == true;
         var language = invoice.Client?.Language ?? "cs";
+        var lines = (invoice.InvoiceItem ?? Enumerable.Empty<InvoiceItem>()).Select(ToLineData).ToList();
 
         yield return new XElement(CbcNs + "CustomizationID", CustomizationId);
         yield return new XElement(CbcNs + "ProfileID", ProfileId);
@@ -80,7 +85,7 @@ internal static class UblMapper
 
         // Text-only rows are not InvoiceLines (they carry no amount) — they surface here as
         // free-text notes instead, one per row, before the user's own invoice note.
-        foreach (var textRowNote in TextRowNotes(invoice))
+        foreach (var textRowNote in TextRowNotes(lines))
             yield return textRowNote;
         if (!string.IsNullOrWhiteSpace(invoice.Notes))
             yield return new XElement(CbcNs + "Note", invoice.Notes);
@@ -103,23 +108,85 @@ internal static class UblMapper
         foreach (var billingReference in MapBillingReferences(precedingDocumentNumbers))
             yield return billingReference;
 
-        yield return MapParty("AccountingSupplierParty", invoice.Issuer, issuerIsVatPayer, invoice.InvoiceItem, language);
-        yield return MapParty("AccountingCustomerParty", invoice.Client, issuerIsVatPayer, invoice.InvoiceItem, language);
+        yield return MapParty("AccountingSupplierParty", invoice.Issuer, issuerIsVatPayer);
+        yield return MapParty("AccountingCustomerParty", invoice.Client, issuerIsVatPayer);
 
         var paymentMeans = MapPaymentMeans(invoice, currencyCode);
         if (paymentMeans != null)
             yield return paymentMeans;
 
-        var vatGroups = GroupLinesByVat(invoice.InvoiceItem, issuerIsVatPayer).ToList();
+        var vatGroups = GroupLinesByVat(lines, issuerIsVatPayer).ToList();
         yield return MapTaxTotal(vatGroups, currencyCode, language);
         yield return MapLegalMonetaryTotal(vatGroups, currencyCode);
 
-        foreach (var line in MapInvoiceLines(invoice.InvoiceItem, issuerIsVatPayer, currencyCode))
+        foreach (var line in MapLines(lines, issuerIsVatPayer, currencyCode, "InvoiceLine", "InvoicedQuantity"))
             yield return line;
     }
 
-    private static IEnumerable<XElement> TextRowNotes(Invoice invoice)
-        => (invoice.InvoiceItem ?? Enumerable.Empty<InvoiceItem>())
+    // --------------------------------------------------------------------------
+    // Header — CreditNote (F1.4)
+    // --------------------------------------------------------------------------
+
+    private static IEnumerable<object> MapCreditNoteHeader(Invoice invoice, IReadOnlyList<string>? precedingDocumentNumbers)
+    {
+        var currencyCode = invoice.Currency?.Code ?? "CZK";
+        var issuerIsVatPayer = invoice.Issuer?.IsVatPayer == true;
+        var language = invoice.Client?.Language ?? "cs";
+
+        // Fakvio does not enforce a sign convention for a credit note's rows (users can enter
+        // either a negative quantity or a negative unit price to express "this reduces the
+        // invoice") — only the stored document total reliably says whether that happened. When
+        // it did, every row is taken by absolute value so the UBL CreditNote carries the
+        // positive amounts Peppol expects (ADR 0002 §4.1.2).
+        var flipSign = invoice.TotalWithVat < 0;
+        var lines = (invoice.InvoiceItem ?? Enumerable.Empty<InvoiceItem>())
+            .Select(i => ToCreditNoteLineData(i, flipSign)).ToList();
+
+        yield return new XElement(CbcNs + "CustomizationID", CustomizationId);
+        yield return new XElement(CbcNs + "ProfileID", ProfileId);
+        yield return new XElement(CbcNs + "ID", invoice.DocumentNumber ?? string.Empty);
+        yield return new XElement(CbcNs + "IssueDate", FormatDate(invoice.IssueDate));
+
+        // CreditNote-2 has no DueDate element at all (UBL 2.1 XSD) — credit notes are not a
+        // payment request, unlike Invoice/TaxReceiptForAdvance.
+        if (invoice.TaxableSupplyDate.HasValue &&
+            invoice.TaxableSupplyDate.Value.Date != invoice.IssueDate?.Date)
+        {
+            yield return new XElement(CbcNs + "TaxPointDate", FormatDate(invoice.TaxableSupplyDate));
+        }
+
+        yield return new XElement(CbcNs + "CreditNoteTypeCode", "381");
+
+        foreach (var textRowNote in TextRowNotes(lines))
+            yield return textRowNote;
+        if (!string.IsNullOrWhiteSpace(invoice.Notes))
+            yield return new XElement(CbcNs + "Note", invoice.Notes);
+
+        yield return new XElement(CbcNs + "DocumentCurrencyCode", currencyCode);
+        yield return new XElement(CbcNs + "BuyerReference", invoice.DocumentNumber ?? string.Empty);
+
+        // The credit note's own BillingReference (the invoice it corrects) — resolved by the
+        // caller (UblExportService, F1.5) from Invoice.OriginalInvoiceId and passed in here.
+        foreach (var billingReference in MapBillingReferences(precedingDocumentNumbers))
+            yield return billingReference;
+
+        yield return MapParty("AccountingSupplierParty", invoice.Issuer, issuerIsVatPayer);
+        yield return MapParty("AccountingCustomerParty", invoice.Client, issuerIsVatPayer);
+
+        var paymentMeans = MapPaymentMeans(invoice, currencyCode);
+        if (paymentMeans != null)
+            yield return paymentMeans;
+
+        var vatGroups = GroupLinesByVat(lines, issuerIsVatPayer).ToList();
+        yield return MapTaxTotal(vatGroups, currencyCode, language);
+        yield return MapLegalMonetaryTotal(vatGroups, currencyCode);
+
+        foreach (var line in MapLines(lines, issuerIsVatPayer, currencyCode, "CreditNoteLine", "CreditedQuantity"))
+            yield return line;
+    }
+
+    private static IEnumerable<XElement> TextRowNotes(IEnumerable<LineData> lines)
+        => lines
             .Where(i => i.IsTextRow && !string.IsNullOrWhiteSpace(i.Description))
             .OrderBy(i => i.OrderIndex)
             .Select(i => new XElement(CbcNs + "Note", i.Description));
@@ -133,7 +200,26 @@ internal static class UblMapper
     };
 
     // --------------------------------------------------------------------------
-    // BillingReference — references to preceding documents (F1.4 populates this for real)
+    // Line data normalization — shared shape for Invoice/CreditNote line & total mapping
+    // --------------------------------------------------------------------------
+
+    private readonly record struct LineData(
+        int OrderIndex, bool IsTextRow, string? Description, decimal Quantity, string? Unit,
+        decimal UnitPrice, decimal TotalBeforeVat, decimal VatRatePercentage, EVatRegime VatRegime,
+        string? ProductCode);
+
+    private static LineData ToLineData(InvoiceItem item) => new(
+        item.OrderIndex, item.IsTextRow, item.Description, item.Quantity, item.Unit,
+        item.UnitPrice, item.TotalBeforeVat, item.VatRatePercentage, item.VatRegime, item.ProductCode);
+
+    private static LineData ToCreditNoteLineData(InvoiceItem item, bool flipSign) => flipSign
+        ? new LineData(item.OrderIndex, item.IsTextRow, item.Description, Math.Abs(item.Quantity), item.Unit,
+            Math.Abs(item.UnitPrice), Math.Abs(item.TotalBeforeVat), item.VatRatePercentage, item.VatRegime,
+            item.ProductCode)
+        : ToLineData(item);
+
+    // --------------------------------------------------------------------------
+    // BillingReference — references to preceding documents (F1.4)
     // --------------------------------------------------------------------------
 
     private static IEnumerable<XElement> MapBillingReferences(IReadOnlyList<string>? precedingDocumentNumbers)
@@ -163,8 +249,7 @@ internal static class UblMapper
     /// accounting information anywhere (ADR 0002 §4.1.2: category O, no BT-31/BT-48).
     /// </summary>
     private static XElement MapParty(
-        string wrapperElementName, Client? party, bool issuerIsVatPayer,
-        ICollection<InvoiceItem>? items, string language)
+        string wrapperElementName, Client? party, bool issuerIsVatPayer)
     {
         party ??= new Client();
 
@@ -304,32 +389,47 @@ internal static class UblMapper
     // Lines
     // --------------------------------------------------------------------------
 
-    private static IEnumerable<XElement> MapInvoiceLines(
-        ICollection<InvoiceItem>? items, bool issuerIsVatPayer, string currencyCode)
+    private static IEnumerable<XElement> MapLines(
+        IEnumerable<LineData> lines, bool issuerIsVatPayer, string currencyCode,
+        string lineElementName, string quantityElementName)
     {
         var lineId = 0;
-        foreach (var item in (items ?? Enumerable.Empty<InvoiceItem>()).Where(i => !i.IsTextRow).OrderBy(i => i.OrderIndex))
+        foreach (var item in lines.Where(i => !i.IsTextRow).OrderBy(i => i.OrderIndex))
         {
             lineId++;
-            yield return MapInvoiceLine(lineId.ToString(CultureInfo.InvariantCulture), item, issuerIsVatPayer, currencyCode);
+            yield return MapLine(
+                lineId.ToString(CultureInfo.InvariantCulture), item, issuerIsVatPayer, currencyCode,
+                lineElementName, quantityElementName);
         }
     }
 
-    private static XElement MapInvoiceLine(string lineId, InvoiceItem item, bool issuerIsVatPayer, string currencyCode)
+    private static XElement MapLine(
+        string lineId, LineData item, bool issuerIsVatPayer, string currencyCode,
+        string lineElementName, string quantityElementName)
     {
         var category = UblCodes.VatCategory(item.VatRegime, item.VatRatePercentage, issuerIsVatPayer);
 
-        return new XElement(CacNs + "InvoiceLine",
+        // A negative unit price (the advance-payment deduction row Invoice/TaxReceiptForAdvance
+        // final invoices carry — Quantity=1, UnitPrice=-deductionBase) would violate BR-27
+        // ("price shall not be negative") if emitted as-is. Per ADR 0002 §4.1.2 the sign moves
+        // to the quantity instead: InvoicedQuantity = -Quantity, PriceAmount = |UnitPrice| — the
+        // product (and therefore LineExtensionAmount, taken independently from TotalBeforeVat)
+        // stays the same negative deduction either way.
+        var isNegativePriceRow = item.UnitPrice < 0;
+        var quantity = isNegativePriceRow ? -item.Quantity : item.Quantity;
+        var unitPrice = isNegativePriceRow ? -item.UnitPrice : item.UnitPrice;
+
+        return new XElement(CacNs + lineElementName,
             new XElement(CbcNs + "ID", lineId),
-            new XElement(CbcNs + "InvoicedQuantity",
+            new XElement(CbcNs + quantityElementName,
                 new XAttribute("unitCode", UblCodes.UnitToRec20(item.Unit)),
-                FormatDecimal(item.Quantity)),
+                FormatDecimal(quantity)),
             AmountElement(CbcNs + "LineExtensionAmount", item.TotalBeforeVat, currencyCode),
             new XElement(CacNs + "Item", MapItem(item, category)),
-            new XElement(CacNs + "Price", AmountElement(CbcNs + "PriceAmount", item.UnitPrice, currencyCode)));
+            new XElement(CacNs + "Price", AmountElement(CbcNs + "PriceAmount", unitPrice, currencyCode)));
     }
 
-    private static IEnumerable<object> MapItem(InvoiceItem item, UblCodes.VatCategoryResult category)
+    private static IEnumerable<object> MapItem(LineData item, UblCodes.VatCategoryResult category)
     {
         var description = item.Description ?? string.Empty;
         // BT-153 (Item name) has no hard length limit in the XSD, but EN 16931 guidance treats
@@ -359,9 +459,9 @@ internal static class UblMapper
     /// <summary>One VAT bucket on the document: a (category, rate) pair and its summed amounts.</summary>
     private readonly record struct VatGroup(UblCodes.VatCategoryResult Category, decimal TaxableAmount, decimal TaxAmount);
 
-    private static IEnumerable<VatGroup> GroupLinesByVat(ICollection<InvoiceItem>? items, bool issuerIsVatPayer)
+    private static IEnumerable<VatGroup> GroupLinesByVat(IEnumerable<LineData> lines, bool issuerIsVatPayer)
     {
-        return (items ?? Enumerable.Empty<InvoiceItem>())
+        return lines
             .Where(i => !i.IsTextRow)
             .Select(i => (Item: i, Category: UblCodes.VatCategory(i.VatRegime, i.VatRatePercentage, issuerIsVatPayer)))
             .GroupBy(x => (x.Category.Code, x.Category.Percent))

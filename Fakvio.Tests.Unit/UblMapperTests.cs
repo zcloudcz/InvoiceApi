@@ -1,3 +1,4 @@
+using System.Globalization;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Service.Ubl;
@@ -7,7 +8,7 @@ using Shouldly;
 namespace Fakvio.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <c>UblMapper</c> (ADR 0002, F1.3). Mirrors <see cref="IsdocExportServiceTests"/>
+/// Unit tests for <c>UblMapper</c> (ADR 0002, F1.3 + F1.4). Mirrors <see cref="IsdocExportServiceTests"/>
 /// in spirit but needs no database — <c>UblMapper.Map</c> is a pure function of an in-memory
 /// <see cref="Invoice"/> graph.
 ///
@@ -139,6 +140,127 @@ public class UblMapperTests
         var cbc = UblMapper.CbcNs;
         document.Root!.Elements(cbc + "Note").ShouldContain(e => e.Value == "Práce provedeny dle smlouvy č. 123");
         document.Root!.Elements(cac + "InvoiceLine").Count().ShouldBe(1);
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    // --------------------------------------------------------------------------
+    // Credit note (F1.4)
+    // --------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_CreditNote_UsesCreditNoteRoot_AndBillingReference_WithPositiveAmounts()
+    {
+        // Rows stored with a negative unit price (one of the sign conventions a user might
+        // enter for a credit note) -> TotalWithVat ends up negative -> mapper must flip
+        // everything to positive amounts in the UBL output.
+        var invoice = BuildInvoice(CzIssuer(), SkClient(), "EUR", [Item(1, "Returned goods", 2, -100m, 21m)]);
+        invoice.DocumentType = EDocumentType.CreditNote;
+        invoice.DocumentNumber = "CN2026001";
+
+        var document = UblMapper.Map(invoice, precedingDocumentNumbers: ["INV2026001"]);
+
+        document.Root!.Name.LocalName.ShouldBe("CreditNote");
+        document.Root!.Element(UblMapper.CbcNs + "CreditNoteTypeCode")!.Value.ShouldBe("381");
+
+        var cac = UblMapper.CacNs;
+        var cbc = UblMapper.CbcNs;
+        var line = document.Root!.Element(cac + "CreditNoteLine")!;
+        decimal.Parse(line.Element(cbc + "CreditedQuantity")!.Value, CultureInfo.InvariantCulture).ShouldBe(2m);
+        decimal.Parse(line.Element(cbc + "LineExtensionAmount")!.Value, CultureInfo.InvariantCulture).ShouldBe(200m);
+        var priceAmount = line.Element(cac + "Price")!.Element(cbc + "PriceAmount")!.Value;
+        decimal.Parse(priceAmount, CultureInfo.InvariantCulture).ShouldBe(100m);
+
+        var billingReference = document.Root!.Element(cac + "BillingReference")!
+            .Element(cac + "InvoiceDocumentReference")!.Element(cbc + "ID")!.Value;
+        billingReference.ShouldBe("INV2026001");
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    // --------------------------------------------------------------------------
+    // Final invoice with an advance-payment deduction row (F1.4)
+    // --------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_FinalInvoiceWithAdvanceDeduction_NegatesQuantity_KeepsPricePositive()
+    {
+        // Mirrors InvoiceService's deduction row: Quantity = 1, UnitPrice = -deductionBase.
+        var deductionRow = Item(2, "Odečet přijaté zálohy / Advance payment deduction", 1, -200m, 21m);
+        var invoice = BuildInvoice(CzIssuer(), SkClient(), "EUR",
+            [Item(1, "Web development", 1, 1000m, 21m), deductionRow]);
+
+        var document = UblMapper.Map(invoice, precedingDocumentNumbers: ["TR2026001"]);
+
+        var cac = UblMapper.CacNs;
+        var cbc = UblMapper.CbcNs;
+        var deductionLine = document.Root!.Elements(cac + "InvoiceLine").Last();
+        decimal.Parse(deductionLine.Element(cbc + "InvoicedQuantity")!.Value, CultureInfo.InvariantCulture).ShouldBe(-1m);
+        var priceAmount = deductionLine.Element(cac + "Price")!.Element(cbc + "PriceAmount")!.Value;
+        decimal.Parse(priceAmount, CultureInfo.InvariantCulture).ShouldBe(200m);
+        decimal.Parse(deductionLine.Element(cbc + "LineExtensionAmount")!.Value, CultureInfo.InvariantCulture).ShouldBe(-200m);
+
+        var billingReference = document.Root!.Element(cac + "BillingReference")!
+            .Element(cac + "InvoiceDocumentReference")!.Element(cbc + "ID")!.Value;
+        billingReference.ShouldBe("TR2026001");
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    // --------------------------------------------------------------------------
+    // Non-VAT-payer issuer (F1.4)
+    // --------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_NonVatPayerIssuer_AllLinesCategoryO_NoPartyTaxScheme()
+    {
+        // A non-VAT-payer still needs a derivable Peppol endpoint ID to be a valid document
+        // (PEPPOL-EN16931-R020) — an SK non-payer's bare 10-digit DIC still derives scheme 0245
+        // (ADR 0002 §4.1.2), it just carries no "SK" prefix because that prefix denotes IC DPH
+        // (VAT registration), which a non-payer does not have.
+        var issuer = SkIssuer();
+        issuer.IsVatPayer = false;
+        issuer.TaxNumber = "2020123456";
+        var invoice = BuildInvoice(issuer, SkClient(), "EUR", [Item(1, "Consulting", 1, 500m, 0m)]);
+
+        var document = UblMapper.Map(invoice);
+
+        var cac = UblMapper.CacNs;
+        var cbc = UblMapper.CbcNs;
+        document.Root!.Descendants(cac + "PartyTaxScheme").ShouldBeEmpty();
+        document.Root!.Element(cac + "InvoiceLine")!.Element(cac + "Item")!
+            .Element(cac + "ClassifiedTaxCategory")!.Element(cbc + "ID")!.Value.ShouldBe("O");
+        document.Root!.Element(cac + "TaxTotal")!.Element(cac + "TaxSubtotal")!
+            .Element(cac + "TaxCategory")!.Element(cbc + "ID")!.Value.ShouldBe("O");
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    // --------------------------------------------------------------------------
+    // Reverse charge / PDP (F1.4)
+    // --------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_ReverseCharge_CategoryAe_BothPartiesCarryVatId()
+    {
+        var item = Item(1, "Construction work", 1, 1000m, 0m);
+        item.VatRegime = EVatRegime.ReverseCharge;
+        var invoice = BuildInvoice(CzIssuer(), SkClient(), "EUR", [item]);
+
+        var document = UblMapper.Map(invoice);
+
+        var cac = UblMapper.CacNs;
+        var cbc = UblMapper.CbcNs;
+        document.Root!.Descendants(cac + "PartyTaxScheme").Count().ShouldBe(2);
+        document.Root!.Element(cac + "InvoiceLine")!.Element(cac + "Item")!
+            .Element(cac + "ClassifiedTaxCategory")!.Element(cbc + "ID")!.Value.ShouldBe("AE");
+        var headerCategory = document.Root!.Element(cac + "TaxTotal")!.Element(cac + "TaxSubtotal")!.Element(cac + "TaxCategory")!;
+        headerCategory.Element(cbc + "ID")!.Value.ShouldBe("AE");
+        headerCategory.Element(cbc + "TaxExemptionReasonCode")!.Value.ShouldBe("VATEX-EU-AE");
 
         UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
         UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
