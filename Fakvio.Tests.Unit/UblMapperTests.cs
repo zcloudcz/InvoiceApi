@@ -307,11 +307,17 @@ public class UblMapperTests
     }
 
     [Fact]
-    public void Map_CreditNote_MixedSignLines_BothLinesBecomePositive()
+    public void Map_CreditNote_MixedSignLines_MapperStillNormalizesEachLineIndependently()
     {
-        // Lines -100 and +20 net to a positive document total (+20 * 1.21 etc.) -- a flip
-        // decided from the document-level sign would have left the -100 line negative in the
-        // exported XML. Every line must be taken by absolute value independently.
+        // UblMapper itself is a pure function that must never crash or emit a negative amount,
+        // regardless of input -- that is what guarantees the document is always schema-valid.
+        // Whether a real export reaches the mapper with mixed-sign lines at all is a *business*
+        // question, answered by UblPreflight (see
+        // UblPreflightTests.CreditNote_MixedSignLines_IsBlocking): mixed positive/negative rows
+        // (e.g. -100 and +20, netting to -80 -- not the +120 a naive per-line abs would sum to)
+        // mean the source data does not agree on whether this is a reduction or an increase, so
+        // UblExportService never lets this reach the mapper in production. This test only pins
+        // the mapper's own low-level guarantee: every line comes out positive, independently.
         var invoice = BuildInvoice(CzIssuer(), SkClient(), "EUR",
             [Item(1, "Returned item", 1, -100m, 21m), Item(2, "Extra charge", 1, 20m, 21m)]);
         invoice.DocumentType = EDocumentType.CreditNote;

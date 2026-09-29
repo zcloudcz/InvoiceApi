@@ -154,6 +154,40 @@ public class UblExportServiceTests : IDisposable
             .Element(cac + "InvoiceDocumentReference")!.Element(cbc + "ID")!.Value.ShouldBe("TR2026001");
     }
 
+    [Fact]
+    public async Task ExportInvoiceAsync_FinalInvoiceClosingProforma_ExcludesDraftTaxReceipts()
+    {
+        // Codex review round 2: a draft tax receipt is not "already issued" yet, so it must not
+        // appear in the final invoice's BillingReference even though it references the same
+        // pro-forma and is not soft-deleted.
+        var proforma = NewInvoice(15, "PRO2026002", EDocumentType.Proforma, EInvoiceStatus.Completed);
+        _context.Invoice.Add(proforma);
+        await _context.SaveChangesAsync();
+
+        var draftTaxReceipt = NewInvoice(16, "TR2026002-DRAFT", EDocumentType.TaxReceiptForAdvance, EInvoiceStatus.Draft);
+        draftTaxReceipt.OriginalInvoiceId = 15;
+        _context.Invoice.Add(draftTaxReceipt);
+
+        var issuedTaxReceipt = NewInvoice(17, "TR2026002", EDocumentType.TaxReceiptForAdvance, EInvoiceStatus.Completed);
+        issuedTaxReceipt.OriginalInvoiceId = 15;
+        _context.Invoice.Add(issuedTaxReceipt);
+
+        var finalInvoice = NewInvoice(18, "INV2026018", EDocumentType.Invoice, EInvoiceStatus.Completed);
+        finalInvoice.OriginalInvoiceId = 15;
+        _context.Invoice.Add(finalInvoice);
+        await _context.SaveChangesAsync();
+
+        var bytes = await _service.ExportInvoiceAsync(18);
+
+        var document = XDocument.Parse(Encoding.UTF8.GetString(bytes));
+        var cac = (XNamespace)"urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
+        var cbc = (XNamespace)"urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
+        var referencedIds = document.Root!.Elements(cac + "BillingReference")
+            .Select(r => r.Element(cac + "InvoiceDocumentReference")!.Element(cbc + "ID")!.Value)
+            .ToList();
+        referencedIds.ShouldBe(["TR2026002"]);
+    }
+
     // --------------------------------------------------------------------------
     // VAT total cross-check (warning only, never blocks the export)
     // --------------------------------------------------------------------------

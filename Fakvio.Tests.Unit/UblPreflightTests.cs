@@ -85,6 +85,21 @@ public class UblPreflightTests
     }
 
     [Fact]
+    public void SellerWithoutTaxNumber_ButWithPeppolIdOverride_StillBlockedOnMissingVatId()
+    {
+        // Codex review round 2: a PeppolId override (F1.8) alone satisfies the endpoint check,
+        // which would otherwise catch a missing TaxNumber -- the seller VAT ID (BT-31) is a
+        // separate requirement that must still be checked on its own.
+        var invoice = ValidInvoice();
+        invoice.Issuer!.TaxNumber = null;
+        invoice.Issuer!.PeppolId = "9929:CZ11223344";
+
+        var issues = UblPreflight.Check(invoice);
+        issues.ShouldNotContain(i => i.Code == ReadinessCodes.EinvoiceSellerEndpointMissing);
+        issues.ShouldContain(i => i.Code == ReadinessCodes.EinvoiceSellerVatIdMissing);
+    }
+
+    [Fact]
     public void BuyerWithUnresolvableCountry_HasNoEndpointId_IsBlocking()
     {
         var invoice = ValidInvoice();
@@ -198,6 +213,37 @@ public class UblPreflightTests
         invoice.InvoiceItem = [new InvoiceItem { IsTextRow = true, Description = "Note only" }];
 
         UblPreflight.Check(invoice).ShouldContain(i => i.Code == ReadinessCodes.EinvoiceNoLines);
+    }
+
+    [Fact]
+    public void CreditNote_MixedSignLines_IsBlocking()
+    {
+        // Codex review round 2: UblMapper takes every line by absolute value, which is only
+        // safe when all lines agree on the sign. -100 and +20 net to -80, not +120 -- exporting
+        // the naive abs() sum would silently misstate the credit note's actual amount.
+        var invoice = ValidInvoice();
+        invoice.DocumentType = EDocumentType.CreditNote;
+        invoice.InvoiceItem =
+        [
+            Item(1, -100m, 21m, EVatRegime.Standard),
+            Item(2, 20m, 21m, EVatRegime.Standard)
+        ];
+
+        UblPreflight.Check(invoice).ShouldContain(i => i.Code == ReadinessCodes.EinvoiceCreditNoteMixedSignLines);
+    }
+
+    [Fact]
+    public void CreditNote_SameSignLines_IsNotBlockedByMixedSignCheck()
+    {
+        var invoice = ValidInvoice();
+        invoice.DocumentType = EDocumentType.CreditNote;
+        invoice.InvoiceItem =
+        [
+            Item(1, -100m, 21m, EVatRegime.Standard),
+            Item(2, -20m, 21m, EVatRegime.Standard)
+        ];
+
+        UblPreflight.Check(invoice).ShouldNotContain(i => i.Code == ReadinessCodes.EinvoiceCreditNoteMixedSignLines);
     }
 
     // --------------------------------------------------------------------------

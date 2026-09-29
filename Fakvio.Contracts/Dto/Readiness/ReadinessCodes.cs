@@ -77,6 +77,15 @@ public static class ReadinessCodes
     public const string EinvoiceReverseChargeVatIdMissing = "EINVOICE_REVERSE_CHARGE_VAT_ID_MISSING";
 
     /// <summary>
+    /// The issuer is a VAT payer with at least one chargeable (non-"O") line, but has no
+    /// TaxNumber to declare as the seller VAT ID (BT-31). Normally a missing TaxNumber already
+    /// fails <see cref="EinvoiceSellerEndpointMissing"/> too (the Peppol address is derived from
+    /// it) — this code exists for the one case where it would not: an explicit
+    /// <c>Client.PeppolId</c> override (F1.8) supplies the address without a TaxNumber.
+    /// </summary>
+    public const string EinvoiceSellerVatIdMissing = "EINVOICE_SELLER_VAT_ID_MISSING";
+
+    /// <summary>
     /// A Slovak seller's invoice is not in EUR — phase 1 has no stored exchange rate for
     /// BT-6/BT-111, so it cannot be exported yet (ADR 0002 §4.1.4).
     /// </summary>
@@ -84,4 +93,13 @@ public static class ReadinessCodes
 
     /// <summary>The invoice has no billable lines at all.</summary>
     public const string EinvoiceNoLines = "EINVOICE_NO_LINES";
+
+    /// <summary>
+    /// A credit note has both positive- and negative-amount lines. Fakvio does not enforce a
+    /// sign convention for credit note rows, so the mapper cannot reliably tell whether the
+    /// document as a whole is a reduction with an extra positive correction line, or genuinely
+    /// inconsistent data — exporting a guessed positive amount for every line would silently
+    /// change the document's financial meaning (e.g. -100 and +20 is a net -80, not +120).
+    /// </summary>
+    public const string EinvoiceCreditNoteMixedSignLines = "EINVOICE_CREDIT_NOTE_MIXED_SIGN_LINES";
 }

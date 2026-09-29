@@ -85,8 +85,16 @@ internal static class UblPreflight
                 .ToList();
             // BR-O-11..14: an out-of-scope line cannot share a document with a chargeable one —
             // the whole invoice must be either entirely out of scope or entirely not.
-            if (categories.Contains("O") && categories.Any(c => c != "O"))
+            var hasChargeableLine = categories.Any(c => c != "O");
+            if (categories.Contains("O") && hasChargeableLine)
                 issues.Add(Issue(ReadinessCodes.EinvoiceOutOfScopeMixed));
+
+            // A chargeable line needs the seller's VAT ID (BT-31). Normally a missing TaxNumber
+            // already fails EinvoiceSellerEndpointMissing too (the Peppol address is derived
+            // from it) — this catches the one case where it would not: an explicit
+            // Client.PeppolId override (F1.8) supplies the address without a TaxNumber.
+            if (hasChargeableLine && string.IsNullOrWhiteSpace(issuer?.TaxNumber))
+                issues.Add(Issue(ReadinessCodes.EinvoiceSellerVatIdMissing, fixRoute: MyCompanyRoute));
 
             var hasReverseCharge = items.Any(i => i.VatRegime == EVatRegime.ReverseCharge);
             if (hasReverseCharge)
@@ -109,6 +117,20 @@ internal static class UblPreflight
 
         if (items.Count == 0)
             issues.Add(Issue(ReadinessCodes.EinvoiceNoLines));
+
+        // Fakvio does not enforce a sign convention for credit note rows — UblMapper takes every
+        // row by absolute value so the export is always schema-valid, but that guess is only
+        // safe when every row agrees on the sign. Mixed rows (e.g. -100 and +20) mean the
+        // document's "reduction" total in the source data does not equal the sum of the
+        // absolute values (-80 vs. +120) — exporting that silently would be financially wrong,
+        // so it is refused here instead of guessed at.
+        if (invoice.DocumentType == EDocumentType.CreditNote)
+        {
+            var hasPositive = items.Any(i => i.TotalBeforeVat > 0);
+            var hasNegative = items.Any(i => i.TotalBeforeVat < 0);
+            if (hasPositive && hasNegative)
+                issues.Add(Issue(ReadinessCodes.EinvoiceCreditNoteMixedSignLines));
+        }
 
         return issues;
     }

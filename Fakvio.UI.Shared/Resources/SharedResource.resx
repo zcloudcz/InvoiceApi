@@ -1723,8 +1723,10 @@
   <data name="Readiness_Code_EINVOICE_PAYMENT_ACCOUNT_MISSING" xml:space="preserve"><value>Doklad má platbu bankovním převodem, ale chybí IBAN nebo číslo účtu.</value></data>
   <data name="Readiness_Code_EINVOICE_OUT_OF_SCOPE_MIXED" xml:space="preserve"><value>Doklad kombinuje řádky mimo předmět DPH s běžnými řádky, což e-faktura neumožňuje.</value></data>
   <data name="Readiness_Code_EINVOICE_REVERSE_CHARGE_VAT_ID_MISSING" xml:space="preserve"><value>Doklad má řádek s přenesenou daňovou povinností, ale chybí IČ DPH vaší firmy nebo odběratele.</value></data>
+  <data name="Readiness_Code_EINVOICE_SELLER_VAT_ID_MISSING" xml:space="preserve"><value>Jste plátce DPH a doklad má zdanitelný řádek, ale vaší firmě chybí IČ DPH.</value></data>
   <data name="Readiness_Code_EINVOICE_SK_NON_EUR_CURRENCY" xml:space="preserve"><value>Slovenský vystavitel může e-fakturu zatím vystavit jen v EUR.</value></data>
   <data name="Readiness_Code_EINVOICE_NO_LINES" xml:space="preserve"><value>Doklad nemá žádné položky k vyfakturování.</value></data>
+  <data name="Readiness_Code_EINVOICE_CREDIT_NOTE_MIXED_SIGN_LINES" xml:space="preserve"><value>Dobropis kombinuje kladné a záporné řádky — opravte znaménka, aby bylo jasné, jestli jde o snížení, nebo navýšení.</value></data>
   <!-- Setup checklist on the dashboard (issue #210) -->
   <data name="SetupChecklist_Title" xml:space="preserve"><value>Dokončit nastavení</value></data>
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Připomenout později</value></data>
