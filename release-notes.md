@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+- **#448** — MCP server umí přihlášení přes OAuth 2.1 (claude.ai / ChatGPT konektor jen adresou + souhlasem, volba čtení vs. zápis, správa „Připojených aplikací“, změna hesla odpojí aplikace). Za přepínačem `McpOAuth:Enabled`, výchozí vypnuto — bez nastavení se nic nemění. (PR #448, `8695c52`)
+
 ## 2026.09.29 — 2026-09-29
 
 - **#452** — Neplátce DPH už nedostává DPH na faktury: formulář předvyplňoval 21 % a server sazbu převzal. Teď se u neplátce DPH vždy vynuluje (UI, MCP, šablony, opakované faktury), formulář i detail DPH nezobrazují a PDF nemá sloupec DPH, rekapitulaci, „Daňový doklad“ ani DUZP — místo toho „Dodavatel není plátcem DPH.“ Starší koncepty se opraví uložením, vystavené faktury vyžadují dobropis. (PR #452, `960b28d`)
