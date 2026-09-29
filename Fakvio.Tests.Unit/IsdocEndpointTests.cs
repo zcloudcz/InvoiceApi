@@ -1,6 +1,7 @@
 using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Tools;
@@ -239,5 +240,89 @@ public class IsdocEndpointTests
         // Assert
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("fileName").GetString().ShouldBe("CreditNote_CN2026001.isdoc");
+    }
+
+    // ── MCP tool tests — ExportInvoiceUbl (ADR 0002, F1.7) ─────────────────────
+
+    [Fact]
+    public async Task ExportInvoiceUbl_ReturnsBase64EncodedXml()
+    {
+        var apiClient = Substitute.For<IFakvioApiClient>();
+        var invoiceId = 5L;
+        var xmlString = "<?xml version=\"1.0\"?><Invoice>ubl data</Invoice>";
+        var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xmlString);
+
+        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
+            .Returns(MakeInvoiceDto(invoiceId, "INV2026005"));
+        apiClient.ExportInvoiceUblAsync(invoiceId, Arg.Any<CancellationToken>())
+            .Returns(xmlBytes);
+
+        var json = await InvoiceTools.ExportInvoiceUbl(apiClient, invoiceId);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("success").GetBoolean().ShouldBeTrue();
+        doc.RootElement.GetProperty("mimeType").GetString().ShouldBe("application/xml");
+        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("Invoice_INV2026005.xml");
+
+        var base64 = doc.RootElement.GetProperty("base64Content").GetString()!;
+        Convert.FromBase64String(base64).ShouldBe(xmlBytes);
+    }
+
+    [Fact]
+    public async Task ExportInvoiceUbl_InvoiceNotFound_ReturnsErrorJson()
+    {
+        var apiClient = Substitute.For<IFakvioApiClient>();
+        var missingId = 777L;
+
+        apiClient.GetInvoiceByIdAsync(missingId, Arg.Any<CancellationToken>())
+            .Returns((InvoiceDto?)null);
+
+        var json = await InvoiceTools.ExportInvoiceUbl(apiClient, missingId);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldContain(missingId.ToString());
+    }
+
+    [Fact]
+    public async Task ExportInvoiceUbl_TenantNotReady_ReturnsStructuredIssues_NotStackTrace()
+    {
+        // Simulates the API's 400 TENANT_NOT_READY response — FakvioApiClient.EnsureSuccessAsync
+        // parses that shape into TenantNotReadyApiException (mirrors CompleteInvoice, #342) so
+        // the tool can hand back the readable EINVOICE_* codes instead of a stack trace.
+        var apiClient = Substitute.For<IFakvioApiClient>();
+        var invoiceId = 8L;
+
+        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
+            .Returns(MakeInvoiceDto(invoiceId, "INV2026008"));
+        apiClient.ExportInvoiceUblAsync(invoiceId, Arg.Any<CancellationToken>())
+            .Throws(new TenantNotReadyApiException(
+                "Tenant is not ready. Unresolved blocking issue(s): EINVOICE_DRAFT.",
+                missingFields: [],
+                issues: [new ReadinessIssueDto { Code = "EINVOICE_DRAFT", Severity = EReadinessSeverity.Blocking }]));
+
+        var json = await InvoiceTools.ExportInvoiceUbl(apiClient, invoiceId);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("code").GetString().ShouldBe("TENANT_NOT_READY");
+        doc.RootElement.GetProperty("issues")[0].GetProperty("code").GetString().ShouldBe("EINVOICE_DRAFT");
+        doc.RootElement.TryGetProperty("stackTrace", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ExportInvoiceUbl_CreditNote_UsesCorrectFileName()
+    {
+        var apiClient = Substitute.For<IFakvioApiClient>();
+        var invoiceId = 21L;
+        var xmlBytes = "<?xml?>"u8.ToArray();
+
+        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
+            .Returns(MakeInvoiceDto(invoiceId, "CN2026002", EDocumentType.CreditNote));
+        apiClient.ExportInvoiceUblAsync(invoiceId, Arg.Any<CancellationToken>())
+            .Returns(xmlBytes);
+
+        var json = await InvoiceTools.ExportInvoiceUbl(apiClient, invoiceId);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("CreditNote_CN2026002.xml");
     }
 }

@@ -43,6 +43,12 @@ kompatibilní — žádné volání ze 2.0.0 se neláme.
 `update_recurring_schedule`, `pause_recurring_schedule`, `resume_recurring_schedule`,
 `delete_recurring_schedule`. Zpětně kompatibilní, žádné volání ze 2.1.0 se neláme.
 
+**2.3.0** doplňuje 1 nástroj — `export_invoice_ubl` (`Tools/InvoiceTools.cs`, ADR 0002 N7) —
+export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace 2027, ViDA
+2030). Vrací base64 XML stejně jako `export_invoice_isdoc`; při nepřipravené faktuře (Draft,
+proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
+žádné volání ze 2.2.0 se neláme.
+
 ---
 
 Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
@@ -264,11 +270,11 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (56)
+## Dostupné nástroje (57)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 10 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, DeleteInvoice |
+| `Tools/InvoiceTools.cs` | 11 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, DeleteInvoice |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
@@ -314,7 +320,7 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 - Deserializace vstupu od modelu má **vlastní menší `try`** před tím hlavním, aby `JsonException`
   z poškozené úspěšné odpovědi API spadla do sanitizované větve, a ne modelu zpátky jako „vstup
   je špatně" i s textem výjimky.
-- `ExportInvoicePdf` a `ExportInvoiceIsdoc` vracejí soubor jako
+- `ExportInvoicePdf`, `ExportInvoiceIsdoc` a `ExportInvoiceUbl` vracejí soubor jako
   `base64Content` + `fileName`, `mimeType`, `sizeBytes`. Uložení souboru
   je na klientovi.
 - Logy jdou **výhradně na stderr** (`LogToStandardErrorThreshold = Trace`).

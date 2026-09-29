@@ -62,6 +62,14 @@ public interface IFakvioApiClient
     /// <summary>GET /api/invoice/{id}/isdoc — export invoice as ISDOC 6.0.2 XML (raw bytes).</summary>
     Task<byte[]> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default);
 
+    /// <summary>
+    /// GET /api/invoice/{id}/ubl — export invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (raw
+    /// bytes). Can 400 with TENANT_NOT_READY when the invoice is not ready for eInvoice export
+    /// (Draft, pro-forma, missing Peppol ID, …) — surfaced to the caller like any other
+    /// FakvioApiException (ADR 0002, F1.7).
+    /// </summary>
+    Task<byte[]> ExportInvoiceUblAsync(long id, CancellationToken ct = default);
+
     // ── Client endpoints ───────────────────────────────────────────────
 
     /// <summary>GET /api/client/paged — paginated client list with filters.</summary>
