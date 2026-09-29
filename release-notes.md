@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.28.2 — 2026-09-28
+
+- **#449** — Produkční UI má reCAPTCHA v3 site key, takže přihlášení, registrace, ARES lookup a zapomenuté heslo posílají token. Ověřování na serveru se zapíná až po nasazení (`Recaptcha__Enabled`). Řádek doplněn ručně při release — PR #449 byl mergnut mimo agent-ops. (PR #449, `c9580e0`)
+
 ## 2026.09.28 — 2026-09-28
 
 - **#445** — Balíček `Fakvio.McpServer` se na nuget.org publikuje přes Trusted Publishing (OIDC, bez uloženého klíče); dřív publikace kvůli chybějícímu klíči tiše přeskakovala a na nuget.org zůstala verze 1.0.2. (PR #445, `9d7c9da`)
