@@ -37,7 +37,7 @@
 
         <MudFileUpload T="IReadOnlyList<IBrowserFile>"
                        FilesChanged="HandleFilesSelected"
-                       Accept=".pdf"
+                       Accept=".pdf,.xml,.isdoc,.isdocx"
                        MaximumFileCount="20">
             <ActivatorContent>
                 <MudButton Variant="Variant.Filled"
@@ -274,8 +274,10 @@
     }
 
     /// <summary>
-    /// Reads selected PDF files into byte arrays.
+    /// Reads selected files (PDF, ISDOC, or UBL/Peppol XML — F1.10, see
+    /// docs/adr/0002-sk-einvoicing-peppol.md) into byte arrays.
     /// Files are read immediately to avoid stale IBrowserFile references after re-render.
+    /// The 10 MB per-file cap here mirrors the server-side limit in ImportController.
     /// </summary>
     private async Task HandleFilesSelected(IReadOnlyList<IBrowserFile> files)
     {

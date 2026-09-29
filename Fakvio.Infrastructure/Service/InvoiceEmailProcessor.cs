@@ -19,16 +19,17 @@ namespace Fakvio.Infrastructure.Service;
 /// Pipeline:
 ///   1. Guard (active mailbox, dedup)
 ///   2. Archive (persist InboundInvoiceEmail)
-///   3. Extract (ISDOC > PDF/QR > PDF/AI > email body AI)
+///   3. Extract (ISDOC > UBL > PDF/QR > PDF/AI > email body AI)
 ///   4. Classify (issuer IČO vs company IČO → direction)
 ///   5. Create (ReceivedInvoice or Invoice)
-///   6. Attach (save PDF/ISDOC as FileAttachment)
+///   6. Attach (save PDF/ISDOC/UBL as FileAttachment)
 ///   7. Notify (all tenant users)
 /// </summary>
 public class InvoiceEmailProcessor : IInvoiceEmailProcessor
 {
     private readonly TenantDbContext _context;
     private readonly IIsdocImportParser _isdocParser;
+    private readonly IUblImportParser _ublParser;
     private readonly IInvoiceEmailClassifier _classifier;
     private readonly IInvoiceImportService _importService;
     private readonly IClientService _clientService;
@@ -44,6 +45,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
     public InvoiceEmailProcessor(
         TenantDbContext context,
         IIsdocImportParser isdocParser,
+        IUblImportParser ublParser,
         IInvoiceEmailClassifier classifier,
         IInvoiceImportService importService,
         IClientService clientService,
@@ -55,6 +57,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
     {
         _context = context;
         _isdocParser = isdocParser;
+        _ublParser = ublParser;
         _classifier = classifier;
         _importService = importService;
         _clientService = clientService;
@@ -121,6 +124,11 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             Status = EInvoiceEmailStatus.Pending,
             AttachmentCount = attachments.Count,
             HasPdf = attachments.Any(a => IsPdf(a)),
+            // Note: no HasUbl flag — InboundInvoiceEmail's Has* columns are a fixed schema
+            // and F1.10 intentionally makes zero DB changes (see ADR §4.1.4: the only
+            // planned schema change in phase 1 is Client.PeppolId, tracked in task F1.8).
+            // UBL attachments are still detected and processed below via IsUbl(); if a
+            // "has UBL" filter becomes useful in the UI, add the column then.
             HasIsdoc = attachments.Any(a => IsIsdoc(a)),
         };
 
@@ -137,7 +145,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         try
         {
             email.ProcessAttempts++;
-            var invoiceAttachments = attachments.Where(a => IsPdf(a) || IsIsdoc(a)).ToList();
+            var invoiceAttachments = attachments.Where(a => IsPdf(a) || IsIsdoc(a) || IsUbl(a)).ToList();
 
             if (invoiceAttachments.Count == 0)
             {
@@ -264,6 +272,12 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             var xml = ExtractIsdocXml(att);
             if (xml != null)
                 data = _isdocParser.Parse(xml);
+        }
+        else if (IsUbl(att))
+        {
+            // Pure XML deserialization, no AI — same trust level as ISDOC.
+            // See UblImportParser for the XXE/DoS hardening applied here.
+            data = _ublParser.Parse(att.Content);
         }
         else if (IsPdf(att))
         {
@@ -583,7 +597,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         CancellationToken ct)
     {
         var attached = 0;
-        foreach (var att in attachments.Where(a => IsPdf(a) || IsIsdoc(a)))
+        foreach (var att in attachments.Where(a => IsPdf(a) || IsIsdoc(a) || IsUbl(a)))
         {
             try
             {
@@ -731,6 +745,17 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         => att.FileName.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase)
         || att.FileName.EndsWith(".isdocx", StringComparison.OrdinalIgnoreCase)
         || att.ContentType.Contains("isdoc", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Detects a UBL/Peppol BIS attachment (F1.10) by file extension or content type.
+    /// A false positive (some unrelated .xml attachment) is harmless: UblImportParser.Parse
+    /// returns null for anything that isn't a recognized Invoice/CreditNote root, and this
+    /// attachment is then simply counted as "no invoice data extracted" like any other
+    /// unreadable attachment — it never crashes the batch.
+    /// </summary>
+    private static bool IsUbl(EmailAttachment att)
+        => att.FileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+        || (att.ContentType.Contains("xml", StringComparison.OrdinalIgnoreCase) && !IsIsdoc(att));
 
     private static InvoiceExtractedData MapPreviewToExtractedData(
         Contracts.Dto.Import.InvoiceImportPreviewDto p) => new()

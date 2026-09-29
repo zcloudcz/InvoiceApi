@@ -1241,8 +1241,8 @@
   <data name="Import_SelectTarget" xml:space="preserve"><value>Vyberte typ importu</value></data>
   <data name="Import_IssuedInvoice" xml:space="preserve"><value>Vydaná faktura</value></data>
   <data name="Import_ReceivedInvoice" xml:space="preserve"><value>Přijatá faktura</value></data>
-  <data name="Import_UploadFiles" xml:space="preserve"><value>Nahrát PDF soubory</value></data>
-  <data name="Import_SelectPdfs" xml:space="preserve"><value>Vybrat PDF soubory</value></data>
+  <data name="Import_UploadFiles" xml:space="preserve"><value>Nahrát soubory (PDF, ISDOC, UBL)</value></data>
+  <data name="Import_SelectPdfs" xml:space="preserve"><value>Vybrat soubory</value></data>
   <data name="Import_Analyze" xml:space="preserve"><value>Analyzovat</value></data>
   <data name="Import_Preview" xml:space="preserve"><value>Náhled extrahovaných dat</value></data>
   <data name="Import_FileName" xml:space="preserve"><value>Název souboru</value></data>

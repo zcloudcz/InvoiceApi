@@ -171,6 +171,9 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IInvoiceEmailProcessor, InvoiceEmailProcessor>();
         services.AddScopedWithLogging<IInvoiceEmailClassifier, InvoiceEmailClassifier>();
         services.AddSingleton<IIsdocImportParser, IsdocImportParser>();
+        // UBL/Peppol BIS Billing 3.0 import (F1.10) — same email pipeline + manual upload,
+        // see docs/adr/0002-sk-einvoicing-peppol.md.
+        services.AddSingleton<IUblImportParser, UblImportParser>();
 
         // Payment reminders (dunning) — settings CRUD, dunning job, manual send/cancel.
         services.AddScopedWithLogging<IReminderService, ReminderService>();

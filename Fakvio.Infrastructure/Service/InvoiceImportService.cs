@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Client;
@@ -36,6 +38,8 @@ public class InvoiceImportService : IInvoiceImportService
     private readonly IInvoiceService _invoiceService;
     private readonly IReceivedInvoiceService _receivedInvoiceService;
     private readonly ICurrencyService _currencyService;
+    private readonly IIsdocImportParser _isdocParser;
+    private readonly IUblImportParser _ublParser;
     private readonly ILogger<InvoiceImportService> _logger;
 
     public InvoiceImportService(
@@ -48,7 +52,9 @@ public class InvoiceImportService : IInvoiceImportService
         IInvoiceService invoiceService,
         IReceivedInvoiceService receivedInvoiceService,
         ICurrencyService currencyService,
-        ILogger<InvoiceImportService> logger)
+        ILogger<InvoiceImportService> logger,
+        IIsdocImportParser isdocParser,
+        IUblImportParser ublParser)
     {
         _context = context;
         _qrExtractor = qrExtractor;
@@ -60,6 +66,8 @@ public class InvoiceImportService : IInvoiceImportService
         _receivedInvoiceService = receivedInvoiceService;
         _currencyService = currencyService;
         _logger = logger;
+        _isdocParser = isdocParser;
+        _ublParser = ublParser;
     }
 
     // ─── Preview ─────────────────────────────────────────────────────────
@@ -126,6 +134,94 @@ public class InvoiceImportService : IInvoiceImportService
             fileName, data.Source, preview.IsValid, preview.Validations.Count);
 
         return preview;
+    }
+
+    // ─── Structured import (ISDOC / UBL, F1.10) ────────────────────────────
+
+    /// <summary>
+    /// Previews the import of a structured invoice document (ISDOC or UBL/Peppol BIS).
+    /// Routed by file extension: .isdoc/.isdocx → ISDOC, anything else (.xml) → UBL.
+    /// No QR/AI/regex waterfall — the parser either recognizes the document or it doesn't.
+    /// Reuses the same preview-building and validation logic as the PDF pipeline
+    /// (<see cref="BuildPreview"/>), so the resulting DTO behaves identically for the
+    /// caller (same client-resolution, duplicate-detection and required-field rules).
+    /// </summary>
+    public async Task<InvoiceImportPreviewDto> PreviewStructuredImportAsync(
+        byte[] fileBytes, string fileName, EImportTarget target, CancellationToken ct = default)
+    {
+        var isIsdoc = fileName.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase)
+                   || fileName.EndsWith(".isdocx", StringComparison.OrdinalIgnoreCase);
+        var sourceLabel = isIsdoc ? "ISDOC" : "UBL";
+
+        _logger.LogInformation("Starting {Source} import preview for {FileName}, target: {Target}",
+            sourceLabel, fileName, target);
+
+        InvoiceExtractedData? data;
+        if (isIsdoc)
+        {
+            var xmlText = ExtractIsdocXmlText(fileBytes, fileName);
+            data = xmlText != null ? _isdocParser.Parse(xmlText) : null;
+        }
+        else
+        {
+            data = _ublParser.Parse(fileBytes);
+        }
+
+        if (data == null)
+        {
+            _logger.LogWarning("Failed to extract {Source} data from {FileName} — not a valid/recognized document",
+                sourceLabel, fileName);
+            return CreateErrorPreview(fileName,
+                $"Could not read this file as a valid {sourceLabel} document. " +
+                "Please check the file, or use the PDF import instead.");
+        }
+
+        // No QR code in a structured XML document — an empty result lets BuildPreview
+        // reuse exactly the same preview/validation path as the PDF pipeline.
+        var preview = await BuildPreview(data, fileName, new QrExtractionResult(), target, ct);
+
+        _logger.LogInformation(
+            "Structured import preview for {FileName}: Source={Source}, Valid={Valid}, Validations={Count}",
+            fileName, sourceLabel, preview.IsValid, preview.Validations.Count);
+
+        return preview;
+    }
+
+    /// <summary>
+    /// Extracts ISDOC XML text from raw bytes — handles both plain .isdoc (XML) and
+    /// .isdocx (ZIP container with a .isdoc entry inside). Mirrors the email pipeline's
+    /// attachment handling (see InvoiceEmailProcessor.ExtractIsdocXml) for manual uploads.
+    /// </summary>
+    private string? ExtractIsdocXmlText(byte[] bytes, string fileName)
+    {
+        // ZIP files start with the PK header (0x504B0304).
+        var isZip = bytes.Length >= 4
+            && bytes[0] == 0x50 && bytes[1] == 0x4B && bytes[2] == 0x03 && bytes[3] == 0x04;
+
+        if (!isZip)
+            return Encoding.UTF8.GetString(bytes);
+
+        try
+        {
+            using var zipStream = new MemoryStream(bytes);
+            using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
+            var entry = archive.Entries
+                .FirstOrDefault(e => e.Name.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase));
+            if (entry == null)
+            {
+                _logger.LogDebug("ISDOCX ZIP contains no .isdoc file ({FileName})", fileName);
+                return null;
+            }
+
+            using var entryStream = entry.Open();
+            using var reader = new StreamReader(entryStream, Encoding.UTF8);
+            return reader.ReadToEnd();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to extract ISDOC from ZIP container {FileName}", fileName);
+            return null;
+        }
     }
 
     // ─── Confirm ─────────────────────────────────────────────────────────
