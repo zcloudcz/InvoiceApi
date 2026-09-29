@@ -33,7 +33,11 @@ internal static class UblPreflight
         if (invoice.Status == EInvoiceStatus.Draft)
             issues.Add(Issue(ReadinessCodes.EinvoiceDraft));
 
-        if (invoice.DocumentType == EDocumentType.Proforma)
+        // Allow-list, not a Proforma-only reject: UblMapper only knows how to map Invoice,
+        // TaxReceiptForAdvance and CreditNote — anything else (Proforma, or a future/invalid
+        // enum value) must be turned into this structured 400 here, before it reaches the mapper
+        // and throws an unhandled InvalidOperationException (a 500) instead.
+        if (invoice.DocumentType is not (EDocumentType.Invoice or EDocumentType.TaxReceiptForAdvance or EDocumentType.CreditNote))
             issues.Add(Issue(ReadinessCodes.EinvoiceProformaNotSupported));
 
         if (invoice.Client is null)

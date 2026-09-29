@@ -40,6 +40,32 @@ public class UblPreflightTests
     }
 
     [Fact]
+    public void UnsupportedOrInvalidDocumentType_IsBlocking_InsteadOfCrashingTheMapper()
+    {
+        // Codex review round 1: the original check only rejected Proforma explicitly, so any
+        // other value UblMapper cannot map (a future document type, or a corrupted/out-of-range
+        // enum value) would sail through preflight and hit UblMapper's own
+        // InvalidOperationException -- a 500, not a structured 400. The allow-list must reject
+        // anything that is not one of the three types UblMapper actually knows how to map.
+        var invoice = ValidInvoice();
+        invoice.DocumentType = (EDocumentType)999;
+
+        UblPreflight.Check(invoice).ShouldContain(i => i.Code == ReadinessCodes.EinvoiceProformaNotSupported);
+    }
+
+    [Theory]
+    [InlineData(EDocumentType.Invoice)]
+    [InlineData(EDocumentType.TaxReceiptForAdvance)]
+    [InlineData(EDocumentType.CreditNote)]
+    public void SupportedDocumentTypes_AreNotBlockedByTheTypeCheck(EDocumentType type)
+    {
+        var invoice = ValidInvoice();
+        invoice.DocumentType = type;
+
+        UblPreflight.Check(invoice).ShouldNotContain(i => i.Code == ReadinessCodes.EinvoiceProformaNotSupported);
+    }
+
+    [Fact]
     public void MissingClient_IsBlocking()
     {
         var invoice = ValidInvoice();

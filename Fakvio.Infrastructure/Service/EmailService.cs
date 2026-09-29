@@ -139,10 +139,18 @@ public class EmailService : IEmailService
                 ublBytes = await _ublExportService.ExportInvoiceAsync(invoiceId, ct);
                 ublFileName = $"{prefix}_{docNumber}.xml";
             }
-            catch (TenantNotReadyException ex)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                _logger.LogWarning(
-                    "UBL attachment skipped for invoice {InvoiceId} email — not ready: {Message}",
+                throw; // A caller-requested cancellation must still abort the whole send.
+            }
+            catch (Exception ex)
+            {
+                // Any UBL failure — not just TenantNotReadyException — must leave the email
+                // unaffected: a mapper bug, a transient DB error, or an unexpected document
+                // type must not cost the recipient their PDF + ISDOC because a comfort
+                // attachment could not be built.
+                _logger.LogWarning(ex,
+                    "UBL attachment skipped for invoice {InvoiceId} email — export failed: {Message}",
                     invoiceId, ex.Message);
             }
         }

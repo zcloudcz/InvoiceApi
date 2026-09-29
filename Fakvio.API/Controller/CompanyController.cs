@@ -292,6 +292,9 @@ public class CompanyController : ControllerBase
                 IsIssuer = true,
                 IsActive = true,
                 LastAresFetchDate = createDto.FetchFromAres ? DateTime.UtcNow : null,
+                // Peppol ID override (ADR 0002, F1.8) — empty means "no override", same
+                // convention as ClientService.CreateClientAsync.
+                PeppolId = string.IsNullOrWhiteSpace(createDto.PeppolId) ? null : createDto.PeppolId,
                 CreatedAt = DateTime.UtcNow,
                 // Initialize nav property collections so addresses/contacts can be added
                 Address = new List<Address>(),
@@ -391,6 +394,10 @@ public class CompanyController : ControllerBase
             if (updateDto.TaxNumber != null) company.TaxNumber = updateDto.TaxNumber;
             if (updateDto.IsVatPayer.HasValue) company.IsVatPayer = updateDto.IsVatPayer.Value;
             if (updateDto.IsActive.HasValue) company.IsActive = updateDto.IsActive.Value;
+            // Peppol ID override (ADR 0002, F1.8) — null = don't change, "" = clear, same
+            // convention as ClientService.UpdateClientAsync.
+            if (updateDto.PeppolId != null)
+                company.PeppolId = string.IsNullOrEmpty(updateDto.PeppolId) ? null : updateDto.PeppolId;
 
             // Replace-all strategy for addresses: remove existing, add new ones from DTO
             if (updateDto.Address != null)

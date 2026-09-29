@@ -410,6 +410,45 @@ public class EmailServiceTests : IDisposable
         await _ublExport.Received(1).ExportInvoiceAsync(3, Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task SendInvoiceEmailAsync_SkBuyer_UblExportThrowsUnexpectedException_StillSendsEmail()
+    {
+        // Codex review round 1: the original code only caught TenantNotReadyException, so a
+        // mapper bug or a transient DB error from IUblExportService would have propagated and
+        // broken the whole email send — not just skipped the comfort attachment. Any exception
+        // (other than cancellation) must be swallowed the same way.
+        SeedSkBuyerInvoice(invoiceId: 5, clientId: 6);
+
+        _pdfExport.GenerateInvoicePdfAsync(5, Arg.Any<CancellationToken>())
+            .Returns(new byte[] { 0x25, 0x50, 0x44, 0x46 });
+        _isdocExport.ExportInvoiceAsync(5, Arg.Any<CancellationToken>())
+            .Returns(System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Invoice/>"));
+        _ublExport.ExportInvoiceAsync(5, Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("simulated mapper bug"));
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        var service = CreateService();
+
+        // If EmailService did NOT catch the UBL export's exception, this exact
+        // InvalidOperationException ("simulated mapper bug") would propagate out of
+        // SendInvoiceEmailAsync — the filter deliberately does not swallow that type (or the
+        // other "something is broken" types), so a regression fails this test loudly instead of
+        // being silently absorbed by the same catch that is meant for the expected SMTP failure.
+        try
+        {
+            await service.SendInvoiceEmailAsync(5, "test@example.com");
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException and not KeyNotFoundException
+                                       and not NullReferenceException)
+        {
+            // Only the expected SMTP connection failure may reach here.
+        }
+
+        await _ublExport.Received(1).ExportInvoiceAsync(5, Arg.Any<CancellationToken>());
+    }
+
     /// <summary>
     /// Tests that SendEmailAsync throws InvalidOperationException
     /// when SMTP is not configured in any of the 3 tiers.

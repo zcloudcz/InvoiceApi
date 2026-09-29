@@ -107,11 +107,15 @@ public class UblExportService : IUblExportService
         // (InvoiceService sets this when generating the closing invoice). Its BillingReference
         // lists every tax receipt for advance already issued against that same pro-forma —
         // the reader needs those to reconcile the deduction row against what was already paid.
+        // Excludes Draft explicitly (not just "DocumentNumber != null" as a proxy for it) —
+        // a draft tax receipt is not "already issued" yet even on the rare path where it somehow
+        // carries a document number.
         var taxReceiptNumbers = await _db.Invoice
             .AsNoTracking()
             .Where(i => i.OriginalInvoiceId == invoice.OriginalInvoiceId
                      && i.DocumentType == EDocumentType.TaxReceiptForAdvance
                      && i.Status != EInvoiceStatus.Deleted
+                     && i.Status != EInvoiceStatus.Draft
                      && i.DocumentNumber != null)
             .OrderBy(i => i.IssueDate)
             .Select(i => i.DocumentNumber!)

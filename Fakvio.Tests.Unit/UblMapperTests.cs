@@ -267,6 +267,115 @@ public class UblMapperTests
     }
 
     // --------------------------------------------------------------------------
+    // Codex round-1 fixes: fractional quantity, VAT-payer all-OutOfScope, mixed-sign
+    // credit note, blank IBAN, unprefixed SK VAT ID
+    // --------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_FractionalQuantity_KeepsFourDecimals_NotRoundedToMoneyPrecision()
+    {
+        // 0.3333 h at 10.00 -> stored TotalBeforeVat 3.33. Rounding the *quantity* to 2 decimals
+        // (like a money amount) would emit 0.33, so InvoicedQuantity * PriceAmount = 3.30 would
+        // silently drift from the stated LineExtensionAmount (PEPPOL-EN16931-R120).
+        var invoice = BuildInvoice(CzIssuer(), SkClient(), "EUR", [Item(1, "Fractional", 0.3333m, 10m, 21m)]);
+
+        var document = UblMapper.Map(invoice);
+
+        var cac = UblMapper.CacNs;
+        var cbc = UblMapper.CbcNs;
+        document.Root!.Element(cac + "InvoiceLine")!.Element(cbc + "InvoicedQuantity")!.Value.ShouldBe("0.3333");
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Map_VatPayer_AllLinesOutOfScope_OmitsPartyTaxScheme()
+    {
+        // BR-O-02: a document whose lines are entirely category O must not carry a seller/buyer
+        // VAT identifier, even though the issuer IS a VAT payer (only the *lines* say "O" here).
+        var item = Item(1, "Non-business recharge", 1, 500m, 0m);
+        item.VatRegime = EVatRegime.OutOfScope;
+        var invoice = BuildInvoice(CzIssuer(), SkClient(), "EUR", [item]);
+
+        var document = UblMapper.Map(invoice);
+
+        document.Root!.Descendants(UblMapper.CacNs + "PartyTaxScheme").ShouldBeEmpty();
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Map_CreditNote_MixedSignLines_BothLinesBecomePositive()
+    {
+        // Lines -100 and +20 net to a positive document total (+20 * 1.21 etc.) -- a flip
+        // decided from the document-level sign would have left the -100 line negative in the
+        // exported XML. Every line must be taken by absolute value independently.
+        var invoice = BuildInvoice(CzIssuer(), SkClient(), "EUR",
+            [Item(1, "Returned item", 1, -100m, 21m), Item(2, "Extra charge", 1, 20m, 21m)]);
+        invoice.DocumentType = EDocumentType.CreditNote;
+        invoice.DocumentNumber = "CN2026002";
+
+        var document = UblMapper.Map(invoice, precedingDocumentNumbers: ["INV2026001"]);
+
+        var cac = UblMapper.CacNs;
+        var cbc = UblMapper.CbcNs;
+        foreach (var line in document.Root!.Elements(cac + "CreditNoteLine"))
+        {
+            decimal.Parse(line.Element(cbc + "CreditedQuantity")!.Value, CultureInfo.InvariantCulture).ShouldBeGreaterThan(0m);
+            var priceAmount = line.Element(cac + "Price")!.Element(cbc + "PriceAmount")!.Value;
+            decimal.Parse(priceAmount, CultureInfo.InvariantCulture).ShouldBeGreaterThan(0m);
+        }
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Map_BlankIban_FallsBackToBankAccountNumber()
+    {
+        // Empty string (not null) IBAN must still fall back to BankAccountNumber, not emit a
+        // blank PayeeFinancialAccount/ID (BR-61).
+        var invoice = BuildInvoice(CzIssuer(), SkClient(), "EUR", [Item(1, "Service", 1, 100m, 21m)]);
+        invoice.IBAN = "";
+        invoice.BankAccountNumber = "1234567890/0100";
+
+        var document = UblMapper.Map(invoice);
+
+        var cac = UblMapper.CacNs;
+        var cbc = UblMapper.CbcNs;
+        var accountId = document.Root!.Element(cac + "PaymentMeans")!
+            .Element(cac + "PayeeFinancialAccount")!.Element(cbc + "ID")!.Value;
+        accountId.ShouldBe("1234567890/0100");
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Map_SkVatPayer_BareTaxNumber_GetsCountryPrefixInPartyTaxScheme()
+    {
+        // BR-CO-09: the VAT ID (BT-31) must carry the ISO country prefix. A bare 10-digit DIC
+        // (the format a non-payer's Peppol endpoint derivation accepts) must not leak into the
+        // VAT ID unprefixed for a VAT-payer whose TaxNumber was entered without "SK".
+        var issuer = SkIssuer();
+        issuer.TaxNumber = "2020123456"; // no "SK" prefix, but IsVatPayer = true
+        var invoice = BuildInvoice(issuer, CzIssuer(), "EUR", [Item(1, "Service", 1, 100m, 21m)]);
+
+        var document = UblMapper.Map(invoice);
+
+        var cac = UblMapper.CacNs;
+        var cbc = UblMapper.CbcNs;
+        var supplierVatId = document.Root!.Element(cac + "AccountingSupplierParty")!.Element(cac + "Party")!
+            .Element(cac + "PartyTaxScheme")!.Element(cbc + "CompanyID")!.Value;
+        supplierVatId.ShouldBe("SK2020123456");
+
+        UblTestValidator.ValidateXsd(document).ShouldBeEmpty();
+        UblTestValidator.ValidateSchematron(document).ShouldBeEmpty();
+    }
+
+    // --------------------------------------------------------------------------
     // Test data builders
     // --------------------------------------------------------------------------
 

@@ -108,8 +108,9 @@ internal static class UblMapper
         foreach (var billingReference in MapBillingReferences(precedingDocumentNumbers))
             yield return billingReference;
 
-        yield return MapParty("AccountingSupplierParty", invoice.Issuer, issuerIsVatPayer);
-        yield return MapParty("AccountingCustomerParty", invoice.Client, issuerIsVatPayer);
+        var declareVatIds = DeclareVatIds(lines, issuerIsVatPayer);
+        yield return MapParty("AccountingSupplierParty", invoice.Issuer, declareVatIds);
+        yield return MapParty("AccountingCustomerParty", invoice.Client, declareVatIds);
 
         var paymentMeans = MapPaymentMeans(invoice, currencyCode);
         if (paymentMeans != null)
@@ -135,12 +136,13 @@ internal static class UblMapper
 
         // Fakvio does not enforce a sign convention for a credit note's rows (users can enter
         // either a negative quantity or a negative unit price to express "this reduces the
-        // invoice") — only the stored document total reliably says whether that happened. When
-        // it did, every row is taken by absolute value so the UBL CreditNote carries the
-        // positive amounts Peppol expects (ADR 0002 §4.1.2).
-        var flipSign = invoice.TotalWithVat < 0;
+        // invoice"). Every row is taken by absolute value, unconditionally and independently of
+        // the others, so the UBL CreditNote always carries positive amounts (ADR 0002 §4.1.2) —
+        // deciding this per-document from the stored total's sign would get a credit note with
+        // mixed-sign rows (e.g. -100 and +20, netting to a positive total) wrong: it would skip
+        // the flip and leak a negative row into the XML.
         var lines = (invoice.InvoiceItem ?? Enumerable.Empty<InvoiceItem>())
-            .Select(i => ToCreditNoteLineData(i, flipSign)).ToList();
+            .Select(ToCreditNoteLineData).ToList();
 
         yield return new XElement(CbcNs + "CustomizationID", CustomizationId);
         yield return new XElement(CbcNs + "ProfileID", ProfileId);
@@ -170,8 +172,9 @@ internal static class UblMapper
         foreach (var billingReference in MapBillingReferences(precedingDocumentNumbers))
             yield return billingReference;
 
-        yield return MapParty("AccountingSupplierParty", invoice.Issuer, issuerIsVatPayer);
-        yield return MapParty("AccountingCustomerParty", invoice.Client, issuerIsVatPayer);
+        var declareVatIds = DeclareVatIds(lines, issuerIsVatPayer);
+        yield return MapParty("AccountingSupplierParty", invoice.Issuer, declareVatIds);
+        yield return MapParty("AccountingCustomerParty", invoice.Client, declareVatIds);
 
         var paymentMeans = MapPaymentMeans(invoice, currencyCode);
         if (paymentMeans != null)
@@ -184,6 +187,20 @@ internal static class UblMapper
         foreach (var line in MapLines(lines, issuerIsVatPayer, currencyCode, "CreditNoteLine", "CreditedQuantity"))
             yield return line;
     }
+
+    /// <summary>
+    /// Whether either party's <c>cac:PartyTaxScheme</c> (BT-31/BT-48, the VAT ID) may appear at
+    /// all on this document. Gated on more than just "is the issuer a VAT payer" (F1.3's
+    /// original rule): BR-O-02 forbids a VAT identifier on a document whose lines are entirely
+    /// category "O" (out of scope), even when the issuer is themselves VAT-registered —
+    /// <see cref="UblPreflight"/> already guarantees the lines cannot be a *mix* of "O" and
+    /// something else, so "any non-O line exists" and "not all lines are O" are equivalent here.
+    /// </summary>
+    private static bool DeclareVatIds(IReadOnlyList<LineData> lines, bool issuerIsVatPayer)
+        => issuerIsVatPayer && lines
+            .Where(i => !i.IsTextRow)
+            .Select(i => UblCodes.VatCategory(i.VatRegime, i.VatRatePercentage, issuerIsVatPayer).Code)
+            .Any(code => code != "O");
 
     private static IEnumerable<XElement> TextRowNotes(IEnumerable<LineData> lines)
         => lines
@@ -212,11 +229,10 @@ internal static class UblMapper
         item.OrderIndex, item.IsTextRow, item.Description, item.Quantity, item.Unit,
         item.UnitPrice, item.TotalBeforeVat, item.VatRatePercentage, item.VatRegime, item.ProductCode);
 
-    private static LineData ToCreditNoteLineData(InvoiceItem item, bool flipSign) => flipSign
-        ? new LineData(item.OrderIndex, item.IsTextRow, item.Description, Math.Abs(item.Quantity), item.Unit,
-            Math.Abs(item.UnitPrice), Math.Abs(item.TotalBeforeVat), item.VatRatePercentage, item.VatRegime,
-            item.ProductCode)
-        : ToLineData(item);
+    private static LineData ToCreditNoteLineData(InvoiceItem item) => new(
+        item.OrderIndex, item.IsTextRow, item.Description, Math.Abs(item.Quantity), item.Unit,
+        Math.Abs(item.UnitPrice), Math.Abs(item.TotalBeforeVat), item.VatRatePercentage, item.VatRegime,
+        item.ProductCode);
 
     // --------------------------------------------------------------------------
     // BillingReference — references to preceding documents (F1.4)
@@ -244,12 +260,13 @@ internal static class UblMapper
 
     /// <summary>
     /// Builds <c>cac:AccountingSupplierParty</c> or <c>cac:AccountingCustomerParty</c>.
-    /// <paramref name="issuerIsVatPayer"/> gates whether *either* party gets a
-    /// <c>cac:PartyTaxScheme</c> at all — a non-VAT-payer issuer's document carries no VAT
-    /// accounting information anywhere (ADR 0002 §4.1.2: category O, no BT-31/BT-48).
+    /// <paramref name="declareVatIds"/> (from <see cref="DeclareVatIds"/>) gates whether *either*
+    /// party gets a <c>cac:PartyTaxScheme</c> at all — a document whose lines are entirely
+    /// category "O" (non-VAT-payer issuer, or a VAT payer whose lines are all out-of-scope)
+    /// carries no VAT accounting information anywhere (BR-O-02: no BT-31/BT-48).
     /// </summary>
     private static XElement MapParty(
-        string wrapperElementName, Client? party, bool issuerIsVatPayer)
+        string wrapperElementName, Client? party, bool declareVatIds)
     {
         party ??= new Client();
 
@@ -268,13 +285,13 @@ internal static class UblMapper
 
         elements.Add(MapPostalAddress(party));
 
-        // A non-VAT-payer issuer's invoice has no VAT accounting at all (category O everywhere) —
+        // A document with no chargeable VAT category anywhere has no VAT accounting at all —
         // omit PartyTaxScheme for both parties rather than declare a VAT ID that would be
-        // meaningless on a document with no VAT category to attach it to.
-        if (issuerIsVatPayer && party.IsVatPayer && !string.IsNullOrWhiteSpace(party.TaxNumber))
+        // meaningless (and BR-O-02-invalid) on it.
+        if (declareVatIds && party.IsVatPayer && !string.IsNullOrWhiteSpace(party.TaxNumber))
         {
             elements.Add(new XElement(CacNs + "PartyTaxScheme",
-                new XElement(CbcNs + "CompanyID", party.TaxNumber),
+                new XElement(CbcNs + "CompanyID", NormalizeVatId(party.TaxNumber, PrimaryCountry(party))),
                 new XElement(CacNs + "TaxScheme", new XElement(CbcNs + "ID", VatTaxSchemeId))));
         }
 
@@ -308,6 +325,23 @@ internal static class UblMapper
     {
         var address = party.Address?.FirstOrDefault(a => a.IsPrimary) ?? party.Address?.FirstOrDefault();
         return UblCodes.CountryToIso2(address?.Country);
+    }
+
+    /// <summary>
+    /// BR-CO-09: a VAT identifier (BT-31/BT-48) must start with the ISO country-code prefix of
+    /// the country that issued it. Fakvio's own VAT-payer data always carries it already (e.g.
+    /// CZ "CZ12345678") — but a Slovak DIC can legitimately be stored as bare 10 digits for a
+    /// non-payer's <see cref="UblCodes.EndpointId"/> derivation, and nothing stops the same bare
+    /// value from ending up on a VAT-payer's <c>TaxNumber</c> by a data-entry mistake. Prepending
+    /// the prefix here — rather than trusting the stored value — means a bare SK DIC still
+    /// produces a schematron-valid VAT ID instead of a silent BR-CO-09 violation.
+    /// </summary>
+    private static string NormalizeVatId(string taxNumber, string? country)
+    {
+        var trimmed = taxNumber.Trim();
+        if (country != null && trimmed.Length > 0 && !char.IsLetter(trimmed[0]))
+            return country + trimmed;
+        return trimmed;
     }
 
     private static XElement MapPostalAddress(Client party)
@@ -370,8 +404,10 @@ internal static class UblMapper
             elements.Add(new XElement(CbcNs + "PaymentID", invoice.VariableSymbol));
 
         // BR-61: a SEPA credit transfer (code 58) must carry an IBAN. Any other bank-transfer
-        // account is emitted with whatever identifier Fakvio has (IBAN preferred).
-        var accountId = invoice.IBAN ?? invoice.BankAccountNumber;
+        // account is emitted with whatever identifier Fakvio has (IBAN preferred). Checked with
+        // IsNullOrWhiteSpace, not "??" — an empty-string IBAN (distinct from null in this model)
+        // must still fall back to BankAccountNumber instead of emitting a blank account ID.
+        var accountId = !string.IsNullOrWhiteSpace(invoice.IBAN) ? invoice.IBAN : invoice.BankAccountNumber;
         if (invoice.PaymentMethod == EPaymentMethod.BankTransfer && !string.IsNullOrWhiteSpace(accountId))
         {
             var accountElements = new List<object> { new XElement(CbcNs + "ID", accountId) };
@@ -423,7 +459,7 @@ internal static class UblMapper
             new XElement(CbcNs + "ID", lineId),
             new XElement(CbcNs + quantityElementName,
                 new XAttribute("unitCode", UblCodes.UnitToRec20(item.Unit)),
-                FormatDecimal(quantity)),
+                FormatQuantity(quantity)),
             AmountElement(CbcNs + "LineExtensionAmount", item.TotalBeforeVat, currencyCode),
             new XElement(CacNs + "Item", MapItem(item, category)),
             new XElement(CacNs + "Price", AmountElement(CbcNs + "PriceAmount", unitPrice, currencyCode)));
@@ -541,6 +577,16 @@ internal static class UblMapper
 
     private static string FormatDecimal(decimal value)
         => value.ToString("F2", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Formats InvoicedQuantity/CreditedQuantity — unlike money amounts, <c>InvoiceItem.Quantity</c>
+    /// stores up to 4 decimal places (column precision 18,4; e.g. 0.3333 hours or kg). Rounding it
+    /// to 2 like a money amount would make InvoicedQuantity * PriceAmount silently drift away from
+    /// the stored LineExtensionAmount and fail PEPPOL-EN16931-R120. "0.####" keeps up to 4 decimals
+    /// and drops trailing zeros (3 stays "3", not "3.0000").
+    /// </summary>
+    private static string FormatQuantity(decimal value)
+        => value.ToString("0.####", CultureInfo.InvariantCulture);
 
     private static string FormatDate(DateTime? date)
         => date.HasValue
