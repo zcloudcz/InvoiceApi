@@ -3,6 +3,8 @@
 @using Fakvio.UI.Shared.Services
 @* Use the typed VatRateApiService instead of raw HttpClient — it handles BaseAddress, auth, and logging *@
 @inject VatRateApiService VatRateService
+@* Issuer lookup — a non-VAT payer gets no VAT column, no VAT totals and 0 % on every row *@
+@inject ClientApiService ClientService
 @inject ISnackbar Snackbar
 @* Localization service for multi-language support *@
 @inject IStringLocalizer<SharedResource> L
@@ -30,7 +32,10 @@
         <MudTh Style="width: 90px;">@L["InvoiceItem_Quantity"]</MudTh>
         <MudTh Style="width: 80px;">@L["InvoiceItem_Unit"]</MudTh>
         <MudTh Style="width: 110px;">@L["InvoiceItem_PricePerUnit"]</MudTh>
-        <MudTh Style="width: 140px;">@L["InvoiceItem_VatRate"]</MudTh>
+        @if (_isVatPayer)
+        {
+            <MudTh Style="width: 140px;">@L["InvoiceItem_VatRate"]</MudTh>
+        }
         <MudTh Style="width: 100px;">@L["InvoiceItem_Total"]</MudTh>
         <MudTh Style="width: 50px;"></MudTh>
     </HeaderContent>
@@ -45,7 +50,7 @@
                                  HideSpinButtons="true" Style="width: 50px;" />
             </MudTd>
             <MudTd></MudTd>
-            <MudTd colspan="5">
+            <MudTd colspan="@(_isVatPayer ? 5 : 4)">
                 <MudTextField T="string" Value="@context.Description"
                               ValueChanged="@(v => { context.Description = v; NotifyChanged(); })"
                               Variant="Variant.Text" Margin="Margin.Dense"
@@ -96,16 +101,19 @@
                                  Variant="Variant.Text" Margin="Margin.Dense" Min="0"
                                  Format="N2" HideSpinButtons="true" />
             </MudTd>
-            <MudTd>
-                <MudSelect T="long?" Value="@context.VatRateId"
-                           ValueChanged="@(v => OnVatRateChanged(context, v))"
-                           Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
-                    @foreach (var vr in _vatRates)
-                    {
-                        <MudSelectItem T="long?" Value="@((long?)vr.Id)">@vr.Rate%</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudTd>
+            @if (_isVatPayer)
+            {
+                <MudTd>
+                    <MudSelect T="long?" Value="@context.VatRateId"
+                               ValueChanged="@(v => OnVatRateChanged(context, v))"
+                               Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                        @foreach (var vr in _vatRates)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)vr.Id)">@vr.Rate%</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudTd>
+            }
             <MudTd>
                 <MudText Typo="Typo.body2" Align="Align.Right">
                     @((context.Quantity * context.UnitPrice).ToString("N2"))
@@ -127,6 +135,18 @@
 {
     <MudPaper Class="pa-4 mt-4">
         <MudGrid>
+            @if (!_isVatPayer)
+            {
+                @* Non-VAT payer: a single total — the invoice must not mention VAT at all *@
+                <MudItem xs="8">
+                    <MudText Typo="Typo.h6" Align="Align.Right"><strong>@L["Label_Total"]:</strong></MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.h6" Align="Align.Right"><strong>@CalculateTotalBeforeVat().ToString("N2")</strong></MudText>
+                </MudItem>
+            }
+            else
+            {
             <MudItem xs="8">
                 <MudText Typo="Typo.h6" Align="Align.Right">@L["Invoice_TotalBeforeVat"]:</MudText>
             </MudItem>
@@ -145,6 +165,7 @@
             <MudItem xs="4">
                 <MudText Typo="Typo.h6" Align="Align.Right"><strong>@CalculateTotalWithVatAll().ToString("N2")</strong></MudText>
             </MudItem>
+            }
         </MudGrid>
     </MudPaper>
 }
@@ -162,9 +183,46 @@
 
     private List<VatRateDto> _vatRates = new();
 
+    /// <summary>
+    /// Whether the issuing company is a VAT payer. Defaults to true until the issuer is
+    /// loaded — if the lookup fails the server still strips VAT for a non-payer, so the
+    /// worst case is a VAT column shown for nothing, never VAT charged.
+    /// </summary>
+    private bool _isVatPayer = true;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadVatRates();
+        await LoadIssuerVatStatus();
+    }
+
+    /// <summary>
+    /// Reads the issuer's VAT status. For a non-VAT payer, rows loaded from an existing
+    /// invoice or template are reset to 0 % so the on-screen totals match what the server
+    /// will store (it ignores VAT for non-payers).
+    /// </summary>
+    private async Task LoadIssuerVatStatus()
+    {
+        try
+        {
+            var issuer = await ClientService.GetIssuerAsync();
+            _isVatPayer = issuer?.IsVatPayer ?? true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+            return;
+        }
+
+        if (!_isVatPayer && Items.Any(i => i.VatRateId.HasValue || i.VatRatePercentage != 0))
+        {
+            foreach (var item in Items)
+            {
+                item.VatRateId = null;
+                item.VatRatePercentage = 0;
+            }
+            NotifyChanged();
+        }
     }
 
     /// <summary>
@@ -189,7 +247,8 @@
     private void AddNewRow()
     {
         var nextOrder = Items.Any() ? Items.Max(i => i.OrderIndex) + 1 : 1;
-        var defaultVatRate = _vatRates.FirstOrDefault(v => v.IsDefault);
+        // A non-VAT payer never gets a VAT rate; a VAT payer starts with the default rate.
+        var defaultVatRate = _isVatPayer ? _vatRates.FirstOrDefault(v => v.IsDefault) : null;
 
         Items.Add(new CreateInvoiceItemDto
         {
@@ -198,7 +257,7 @@
             Quantity = 1,
             UnitPrice = 0,
             VatRateId = defaultVatRate?.Id,
-            VatRatePercentage = defaultVatRate?.Rate ?? 21
+            VatRatePercentage = _isVatPayer ? defaultVatRate?.Rate ?? 21 : 0
         });
 
         NotifyChanged();

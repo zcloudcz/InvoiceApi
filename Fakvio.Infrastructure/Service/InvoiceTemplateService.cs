@@ -205,6 +205,11 @@ public class InvoiceTemplateService : IInvoiceTemplateService
                     $"Found {itemsWithoutVatRate.Count} item(s) without VAT rate.");
             }
         }
+        else
+        {
+            // Non-VAT payer: never charge VAT, whatever the caller sent (see NonVatPayerItems).
+            NonVatPayerItems.StripVat(createDto.InvoiceItem);
+        }
 
         // Create template entity
         var template = new InvoiceTemplate
@@ -365,6 +370,11 @@ public class InvoiceTemplateService : IInvoiceTemplateService
                         "When issuer is a VAT payer, all invoice items must have a VAT rate assigned (VatRateId). " +
                         $"Found {itemsWithoutVatRate.Count} item(s) without VAT rate.");
                 }
+            }
+            else
+            {
+                // Non-VAT payer: never charge VAT, whatever the caller sent (see NonVatPayerItems).
+                NonVatPayerItems.StripVat(updateDto.InvoiceItem);
             }
 
             // Remove old items

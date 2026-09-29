@@ -182,8 +182,19 @@ public class PdfExportService : IPdfExportService
     /// The {{QrCodeImage}} placeholder is replaced with an inline base64 PNG image tag,
     /// or removed entirely if QR code generation failed.
     /// </summary>
-    private static string ReplacePlaceholders(string html, Domain.Entities.Invoice invoice, string? qrCodeBase64 = null)
+    internal static string ReplacePlaceholders(string html, Domain.Entities.Invoice invoice, string? qrCodeBase64 = null)
     {
+        // A non-VAT payer's PDF must not mention VAT — strip the VAT parts of the template
+        // first, so the item rows below know whether the VAT column is still there.
+        // Document language (client's) for localized labels in the PDF.
+        var docLang = invoice.Client?.Language ?? "cs";
+        var showVatColumn = true;
+        if (invoice.Issuer is { IsVatPayer: false })
+        {
+            html = StripVatFromTemplate(html, docLang, out var vatColumnRemoved);
+            showVatColumn = !vatColumnRemoved;
+        }
+
         // Get issuer (company that sends the invoice) and client (recipient) addresses
         var issuerAddress = invoice.Issuer?.Address?.FirstOrDefault();
         var clientAddress = invoice.Client?.Address?.FirstOrDefault();
@@ -196,8 +207,6 @@ public class PdfExportService : IPdfExportService
 
         var clientContact = invoice.Client?.Contact?.FirstOrDefault();
 
-        // Determine the document language for localized labels in the PDF.
-        var docLang = invoice.Client?.Language ?? "cs";
 
         // Localized document type label based on client language
         var documentTypeLabel = GetDocumentTypeLabel(invoice.DocumentType, docLang);
@@ -277,15 +286,18 @@ public class PdfExportService : IPdfExportService
                 {
                     // Text row spans all columns — display-only note, no financial data
                     itemsHtml += $@"<tr>
-                        <td colspan=""6"" style=""font-style:italic;color:#555"">{item.Description}</td>
+                        <td colspan=""{(showVatColumn ? 6 : 5)}"" style=""font-style:italic;color:#555"">{item.Description}</td>
                     </tr>";
                 }
                 else
                 {
+                    var vatCell = showVatColumn
+                        ? $@"<td style=""text-align:center"">{item.VatRatePercentage:N0} %</td>"
+                        : "";
                     itemsHtml += $@"<tr>
                         <td>{item.Description}</td>
                         <td style=""text-align:center"">{item.Unit}</td>
-                        <td style=""text-align:center"">{item.VatRatePercentage:N0} %</td>
+                        {vatCell}
                         <td style=""text-align:center"">{item.Quantity:N0}</td>
                         <td style=""text-align:right"">{item.UnitPrice:N2} {invoice.Currency?.Symbol ?? ""}</td>
                         <td style=""text-align:right"">{item.TotalBeforeVat:N2} {invoice.Currency?.Symbol ?? ""}</td>
@@ -334,6 +346,45 @@ public class PdfExportService : IPdfExportService
             html = html.Replace("{{QrCodeImage}}", "");
         }
 
+        return html;
+    }
+
+    // Markup of the built-in PDF templates (Fakvio.Infrastructure/Templates/*.html). Every tenant's
+    // seeded ContentTemplate rows are copies of those files, so matching the exact snippets covers
+    // them all without a data migration.
+    private const string VatColumnHeader = @"<th style=""text-align:center; width:8%"">DPH</th>";
+    private static readonly System.Text.RegularExpressions.Regex VatRecapTable = new(
+        @"<table class=""vat-summary"">\s*<thead>.*?\{\{VatBreakdown\}\}.*?</table>",
+        System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private const string GrandTotalTable = @"<table class=""vat-summary"" style=""margin-top:0"">";
+    // Only a VAT payer issues a tax document with a taxable supply date (DUZP).
+    private const string TaxDocumentSubtitle = @"<span class=""doc-subtitle"">DAŇOVÝ DOKLAD</span>";
+    private const string TaxableSupplyDateRow =
+        @"<tr><td class=""date-label"">DATUM ZDAN. PLNĚNÍ</td><td class=""date-value"">{{TaxableSupplyDate}}</td></tr>";
+
+    /// <summary>
+    /// Turns a PDF template into its non-VAT-payer form: removes the VAT rate column and the
+    /// VAT recapitulation, the "DAŇOVÝ DOKLAD" subtitle and the taxable supply date row,
+    /// renames "CELKEM BEZ DPH" to "CELKEM" and adds a line that the supplier is not a VAT
+    /// payer (in the client's language).
+    /// ponytail: exact-snippet matching — a template the user rewrote by hand keeps its VAT
+    /// column (showing 0 %). If custom templates become common, add a {{#if VatPayer}} section
+    /// syntax to the template engine instead.
+    /// </summary>
+    /// <param name="vatColumnRemoved">True when the VAT header cell was found and removed —
+    /// item rows must then drop their VAT cell too, or the columns shift.</param>
+    internal static string StripVatFromTemplate(string html, string language, out bool vatColumnRemoved)
+    {
+        vatColumnRemoved = html.Contains(VatColumnHeader);
+        html = html.Replace(VatColumnHeader, "");
+        html = html.Replace(">CELKEM BEZ DPH<", ">CELKEM<");
+        html = VatRecapTable.Replace(html, "", 1);
+        html = html.Replace(TaxDocumentSubtitle, "");
+        html = html.Replace(TaxableSupplyDateRow, "");
+
+        var note = language == "cs" ? "Dodavatel není plátcem DPH." : "The supplier is not a VAT payer.";
+        html = html.Replace(GrandTotalTable,
+            $@"<p style=""margin:8px 0 4px 0; font-style:italic"">{note}</p>" + GrandTotalTable);
         return html;
     }
 

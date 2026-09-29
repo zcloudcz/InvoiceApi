@@ -3019,6 +3019,15 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 
 ## 12. Známé gotchas (rychlý lookup)
 
+### Neplátce DPH (`Client.IsVatPayer = false` na issueru)
+- Server nevěří klientovi: `InvoiceService` i `InvoiceTemplateService` (create + update) volají pro
+  neplátce `NonVatPayerItems.StripVat` — `VatRateId = null`, `VatRatePercentage = 0`, ReverseCharge → Standard.
+  Všechny cesty (UI, MCP, chat, kopie, dobropis, šablona → faktura, opakované faktury) jdou přes tyto služby.
+- PDF: `PdfExportService.StripVatFromTemplate` odstraní z šablony sloupec DPH, rekapitulaci, „DAŇOVÝ DOKLAD“
+  a DUZP podle přesných úryvků výchozích šablon (`Templates/*.html`). Ručně přepsaná šablona si sloupec
+  DPH ponechá (s 0 %). Při změně markupu výchozích šablon uprav i konstanty v `PdfExportService`.
+- UI: `InvoiceItemEditor` si stav načte sám přes `GetIssuerAsync` (nepředává se parametrem).
+
 ### Data Protection
 - **Key persistence je POVINNÁ** — `PersistKeysToDbContext<MasterDbContext>()`. Bez ní každý restart = nový key ring = všechna zašifrovaná hesla ztracena (issue #109). Viz §2.7.
 - `SetApplicationName("Fakvio")` — API i Functions MUSÍ sdílet stejný název, jinak navzájem nedešifrují.

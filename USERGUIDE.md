@@ -663,6 +663,19 @@ Každá položka faktury má DPH regime:
 - Vyberte příslušný kód §92b/c/d/e z číselníku MFČR (pole „Kód přenesené DPH")
 - Faktura se správně zobrazí v kontrolním hlášení (DPHKH1)
 
+### Neplátce DPH
+
+Pokud vaše firma **není plátcem DPH** (Moje firma → „Plátce DPH“ vypnuto), Fakvio DPH
+nikdy neúčtuje:
+
+- ve formuláři faktury i šablony chybí sloupec se sazbou DPH a místo tří součtů je jen **Celkem**,
+- i kdyby položka sazbu nesla (starší šablona, MCP, import), uloží se s 0 % a bez DPH,
+- PDF nemá sloupec DPH, rekapitulaci DPH, nadpis „Daňový doklad“ ani datum zdanitelného plnění
+  a obsahuje větu „Dodavatel není plátcem DPH.“
+
+Faktury vystavené **před** touto opravou (2026-09-29) mohly DPH nést. Koncept stačí otevřít,
+upravit a uložit — DPH se vynuluje. U vystavené faktury vystavte dobropis a fakturu znovu.
+
 ---
 
 ## 12. Přehled DPH + EPO export

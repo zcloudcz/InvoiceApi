@@ -411,6 +411,11 @@ public class InvoiceService : IInvoiceService
                     $"Found {itemsWithoutVatRate.Count} item(s) without VAT rate.");
             }
         }
+        else
+        {
+            // Non-VAT payer: never charge VAT, whatever the caller sent (see NonVatPayerItems).
+            NonVatPayerItems.StripVat(createDto.InvoiceItem);
+        }
 
         // Validate Reverse Charge rules:
         // - ReverseCharge items MUST have ReverseChargeCodeId (identifies the type of supply for EPO).
@@ -629,6 +634,11 @@ public class InvoiceService : IInvoiceService
                         "When issuer is a VAT payer, all invoice items must have a VAT rate assigned (VatRateId). " +
                         $"Found {itemsWithoutVatRate.Count} item(s) without VAT rate.");
                 }
+            }
+            else
+            {
+                // Non-VAT payer: never charge VAT, whatever the caller sent (see NonVatPayerItems).
+                NonVatPayerItems.StripVat(updateDto.InvoiceItem);
             }
 
             // Validate Reverse Charge rules (same as in CreateInvoiceAsync).
