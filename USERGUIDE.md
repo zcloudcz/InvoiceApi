@@ -338,6 +338,10 @@ Kliknutím na řádek nebo ikonu oka otevřete detail klienta.
    - DIČ, plátce DPH (přepínač)
    - Jazyk dokumentů (cs / en) — v tomto jazyce se generují PDF a emaily pro tohoto klienta
    - Barva (volitelná) — barevně označí řádky tohoto klienta v gridu faktur
+   - **Peppol ID (přepis)** — volitelné, nechte prázdné. Fakvio adresu pro e-fakturu (Peppol)
+     odvodí samo z DIČ a země klienta; pole vyplňte jen když odvození nestačí (DPH skupina,
+     zahraniční klient bez SK/CZ DIČ apod.). Formát `schéma:hodnota`, např. `0245:2020123456`
+     (SK) — viz §2.8a Export e-faktury.
 4. Přidejte adresy (fakturační, doručovací…) tlačítkem „+ Adresa"
 5. Přidejte kontakty (email, telefon)
 6. Přidejte bankovní účty
@@ -593,6 +597,9 @@ Správa informací o vaší firmě (vydavatele faktur).
 - IČ — tlačítko „ARES" automaticky doplní z registru
 - Název firmy, obchodní název
 - DIČ, plátce DPH
+- **Peppol ID (přepis)** — volitelné, nechte prázdné. Adresu pro e-fakturu (Peppol) Fakvio
+  odvodí samo z DIČ a země vaší firmy; vyplňte jen když odvození nestačí. Formát
+  `schéma:hodnota`, např. `0245:2020123456` (SK) — viz §2.8a Export e-faktury.
 
 **Adresy:** sídlo, provozovna, fakturační adresa (přes dialog Adresa)
 

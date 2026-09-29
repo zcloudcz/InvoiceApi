@@ -206,20 +206,31 @@ internal static class UblCodes
     private static readonly Regex CzTaxNumber = new(@"^CZ\d{8,10}$", RegexOptions.Compiled);
 
     /// <summary>
-    /// Derives the Peppol endpoint ID (scheme + value, e.g. "0245:2020123456") for a client
-    /// from its country and tax number, per ADR 0002 §4.1.2.
+    /// Derives the Peppol endpoint ID (scheme + value, e.g. "0245:2020123456") for a client.
     ///
-    /// This overload only covers the *derived* cases (2 and 3 in the ADR's numbered list) —
-    /// it does not know about <c>Client.PeppolId</c> yet (that override is added in F1.8).
-    /// <see cref="UblMapper"/> checks the override first once it exists.
+    /// Precedence, per ADR 0002 §4.1.2: (1) <see cref="Client.PeppolId"/> — a manual override
+    /// (F1.8) for cases the automatic derivation gets wrong or cannot reach at all (a VAT
+    /// group, a foreign client outside CZ/SK, …); (2)/(3) derived from the country and tax
+    /// number below.
     ///
-    /// Returns null when the country/tax-number combination gives no reliable scheme — the
-    /// caller (pre-flight, F1.5) turns that into a blocking issue rather than guessing "9950".
+    /// Returns null when neither the override nor the country/tax-number combination gives a
+    /// reliable scheme — the caller (pre-flight, F1.5) turns that into a blocking issue rather
+    /// than guessing "9950".
     /// </summary>
     internal static EndpointIdResult? EndpointId(Client? client)
     {
         if (client is null)
             return null;
+
+        if (!string.IsNullOrWhiteSpace(client.PeppolId))
+        {
+            var separatorIndex = client.PeppolId.IndexOf(':');
+            // The DTO-level [RegularExpression] already rejects a PeppolId without a colon, but
+            // this method has no I/O and must not throw on a value that slipped through some
+            // other path (a direct DB edit, an older row) — fall through to derivation instead.
+            if (separatorIndex > 0)
+                return new EndpointIdResult(client.PeppolId[..separatorIndex], client.PeppolId[(separatorIndex + 1)..]);
+        }
 
         var address = client.Address?.FirstOrDefault(a => a.IsPrimary) ?? client.Address?.FirstOrDefault();
         var country = CountryToIso2(address?.Country);

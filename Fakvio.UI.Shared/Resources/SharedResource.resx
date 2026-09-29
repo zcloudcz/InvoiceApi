@@ -358,6 +358,9 @@
   <data name="Client_FetchFromAres" xml:space="preserve"><value>Načítat z ARES</value></data>
   <data name="Client_Language" xml:space="preserve"><value>Jazyk dokumentů</value></data>
   <data name="Client_Color" xml:space="preserve"><value>Barva klienta</value></data>
+  <data name="Client_PeppolId" xml:space="preserve"><value>Peppol ID (přepis)</value></data>
+  <data name="Client_PeppolIdHelp" xml:space="preserve"><value>Volitelné. Nechte prázdné — Fakvio ho odvodí z DIČ a země. Vyplňte jen když odvození nestačí (formát „schéma:hodnota", např. 0245:2020123456).</value></data>
+  <data name="Client_PeppolIdInvalid" xml:space="preserve"><value>Formát musí být „schéma:hodnota", např. 0245:2020123456.</value></data>
   <data name="Company_Subtitle" xml:space="preserve"><value>Správa společností vystavujících faktury</value></data>
   <data name="Company_NoRecords" xml:space="preserve"><value>Nebyly nalezeny žádné společnosti.</value></data>
   <data name="Company_Detail" xml:space="preserve"><value>Detail společnosti</value></data>

@@ -247,6 +247,46 @@ public class UblCodesTests
     public void EndpointId_NullClient_ReturnsNull()
         => UblCodes.EndpointId(null).ShouldBeNull();
 
+    [Fact]
+    public void EndpointId_PeppolIdOverride_TakesPrecedenceOverDerivation()
+    {
+        // Client is a CZ VAT payer that would derive fine (9929:CZ...), but the explicit
+        // override (F1.8) must still win -- e.g. a VAT group id the derivation cannot express.
+        var client = ClientWith(country: "CZ", taxNumber: "CZ12345678");
+        client.PeppolId = "9930:VATGROUP123";
+
+        var result = UblCodes.EndpointId(client);
+
+        result.ShouldNotBeNull();
+        result!.Value.SchemeId.ShouldBe("9930");
+        result.Value.Value.ShouldBe("VATGROUP123");
+    }
+
+    [Fact]
+    public void EndpointId_PeppolIdOverride_RescuesUnresolvableClient()
+    {
+        // Country cannot be resolved to an ISO code -- derivation alone would return null.
+        var client = ClientWith(country: "Narnia", taxNumber: null);
+        client.PeppolId = "0245:2020123456";
+
+        var result = UblCodes.EndpointId(client);
+
+        result.ShouldNotBeNull();
+        result!.Value.SchemeId.ShouldBe("0245");
+    }
+
+    [Fact]
+    public void EndpointId_BlankPeppolIdOverride_FallsBackToDerivation()
+    {
+        var client = ClientWith(country: "CZ", taxNumber: "CZ12345678");
+        client.PeppolId = "   "; // whitespace-only -- treated as "no override"
+
+        var result = UblCodes.EndpointId(client);
+
+        result.ShouldNotBeNull();
+        result!.Value.SchemeId.ShouldBe("9929");
+    }
+
     private static Client ClientWith(string country, string? taxNumber) => new()
     {
         TaxNumber = taxNumber,

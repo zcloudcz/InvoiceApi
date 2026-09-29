@@ -367,7 +367,8 @@ public class ClientService : IClientService
             IsMainActivity = createDto.IsMainActivity,
             FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(createDto.FlatRateBand, out var band) ? band : null,
             Color = createDto.Color,
-            Language = NormalizeLanguage(createDto.Language) ?? DefaultLanguage
+            Language = NormalizeLanguage(createDto.Language) ?? DefaultLanguage,
+            PeppolId = string.IsNullOrWhiteSpace(createDto.PeppolId) ? null : createDto.PeppolId
         };
 
         // Add addresses — ZMapper handles property mapping (AddressType, Street, City, etc.)
@@ -488,6 +489,11 @@ public class ClientService : IClientService
         // Update display color — empty string clears the color
         if (updateDto.Color != null)
             client.Color = string.IsNullOrEmpty(updateDto.Color) ? null : updateDto.Color;
+
+        // Update Peppol ID override — empty string clears it, falling back to the automatic
+        // derivation from TaxNumber + country (same "" = clear convention as Color above).
+        if (updateDto.PeppolId != null)
+            client.PeppolId = string.IsNullOrEmpty(updateDto.PeppolId) ? null : updateDto.PeppolId;
 
         // Update preferred document language — null OR an unsupported code means "don't change",
         // so a bad value never replaces a working one (see NormalizeLanguage).

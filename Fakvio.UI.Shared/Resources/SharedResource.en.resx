@@ -358,6 +358,9 @@
   <data name="Client_FetchFromAres" xml:space="preserve"><value>Fetch from ARES</value></data>
   <data name="Client_Language" xml:space="preserve"><value>Document language</value></data>
   <data name="Client_Color" xml:space="preserve"><value>Client color</value></data>
+  <data name="Client_PeppolId" xml:space="preserve"><value>Peppol ID (override)</value></data>
+  <data name="Client_PeppolIdHelp" xml:space="preserve"><value>Optional. Leave empty — Fakvio derives it from the tax number and country. Only set it when the derivation is not enough (format "scheme:value", e.g. 0245:2020123456).</value></data>
+  <data name="Client_PeppolIdInvalid" xml:space="preserve"><value>Format must be "scheme:value", e.g. 0245:2020123456.</value></data>
   <data name="Company_Subtitle" xml:space="preserve"><value>Manage invoicing companies</value></data>
   <data name="Company_NoRecords" xml:space="preserve"><value>No companies found.</value></data>
   <data name="Company_Detail" xml:space="preserve"><value>Company detail</value></data>

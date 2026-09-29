@@ -162,4 +162,16 @@ public class Client : BaseEntity
     /// Example: 451 = Finanční úřad pro hl. m. Prahu.
     /// </summary>
     public int? EpoTaxOfficeCode { get; set; }
+
+    /// <summary>
+    /// Manual override of the Peppol network endpoint ID (BT-34/BT-49) used by the UBL/Peppol
+    /// eInvoice export (ADR 0002, F1.8). Format <c>"&lt;scheme&gt;:&lt;value&gt;"</c>, e.g.
+    /// <c>"0245:2020123456"</c> (SK) or <c>"9929:CZ12345678"</c> (CZ) — same shape
+    /// <see cref="Fakvio.Infrastructure.Service.Ubl.UblCodes.EndpointId"/> derives automatically
+    /// from <see cref="TaxNumber"/> and the primary address' country.
+    /// Null (the default) = no override, use the automatic derivation. Only needed when that
+    /// derivation is wrong or insufficient — a VAT group, a foreign client outside CZ/SK, or an
+    /// id that does not follow the usual national DIČ pattern.
+    /// </summary>
+    public string? PeppolId { get; set; }
 }
