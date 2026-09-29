@@ -1481,7 +1481,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 49 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 56 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1550,6 +1550,14 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetPayment` | Read | `get_payment` | ✅ | |
 | `ListReminders` | Read | `list_reminders` | ✅ | |
 | `GetReminderSettings` | Read | `get_reminder_settings` | ✅ | |
+| **Opakované faktury** (`RecurringTools`, 7) |
+| `ListRecurringSchedules` | Read | — | ❌ | zatím bez tasku |
+| `GetRecurringSchedule` | Read | — | ❌ | zatím bez tasku |
+| `CreateRecurringSchedule` | Create | — | ❌ | zatím bez tasku |
+| `UpdateRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
+| `PauseRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
+| `ResumeRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
+| `DeleteRecurringSchedule` | **Destructive** | — | ❌ | zatím bez tasku |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
@@ -1562,9 +1570,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 49 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 7 mezer: daně (5, zatím bez tasku),
-šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`).
+**Součty:** 56 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 14 mezer: daně (5, zatím bez tasku),
+šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
+(7 — celý `RecurringTools`, zatím bez tasku).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1647,7 +1656,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **49 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment (po jednom souboru v `Tools/`).
+- **56 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -1666,7 +1675,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
   Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
   podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
-- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 49 nástrojů.**
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 56 nástrojů.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
   Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
@@ -1727,6 +1736,17 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter` (žádný `string …Json` parametr) a
   `McpSdkInvocationTests` (enum jako řetězec a vnořené DTO pole projdou přes skutečnou SDK cestu,
   ne jen přímým voláním metody).
+- **`RecurringTools` (N4.6, 2.2.0) pokrývá celé CRUD nad recurring schedules** (§4.13), ne jen
+  čtení, jak navrhoval původní task N4.6 — rozšířeno na žádost ownera. `list_recurring_schedules`/
+  `get_recurring_schedule` jsou read-only; `create_recurring_schedule`/`update_recurring_schedule`
+  berou typované DTO (`CreateRecurringInvoiceScheduleDto`/`UpdateRecurringInvoiceScheduleDto`), ne
+  JSON string (stejná N2.5 konvence); `pause_recurring_schedule`/`resume_recurring_schedule` jsou
+  idempotentní (opakované volání na stejném stavu je no-op); `delete_recurring_schedule` je
+  `Destructive = true`. Popisy nástrojů výslovně říkají modelu, že vygenerovaná faktura se rovnou
+  **vystaví** (Status = Completed, ne koncept) a že `autoSend` řídí jen e-mail, ne vystavení —
+  jinak by si model mohl plést chování s `create_invoice_from_template` (tam `autoComplete`
+  skutečně rozhoduje draft vs. completed), a že zmeškaná perioda se dohání po jedné faktuře za
+  cyklus datované na PLÁNOVANÝ den (§4.13 bod 2), ne na dnešek.
 - **Verze balíčku se bumpuje ve stejném PR jako změna nástroje (N2.6), ne později.**
   `<Version>` v `Fakvio.McpServer.csproj` — publish na nuget.org je `--skip-duplicate` jen na
   `master` (`.github/workflows/mcp-server.yml`), takže build se stejným číslem je no-op, ne chyba;
@@ -2033,7 +2053,7 @@ a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quart
   (`AddMonths`) a nastaví `DayOfMonth` — díky capu 1-28 je výsledný den vždy platný.
 - `RecurringInvoiceWorker : BackgroundService` (`Fakvio.Infrastructure/Service`) — tenká obálka,
   registrovaná v `Fakvio.API/Program.cs`. Viz §6.3 pro interval a lock key.
-- `RecurringInvoiceController` (`Fakvio.API/Controller`) — REST `api/recurring-invoice`.
+- `RecurringInvoiceController` (`Fakvio.API/Controller`) — REST `api/recurringinvoice`.
 - UI: `RecurringScheduleEditor.razor` (znovupoužitelná komponenta, `Fakvio.UI.Shared/Components/Shared`)
   + panel na `InvoiceTemplateDetail.razor`.
 
@@ -2082,8 +2102,13 @@ a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quart
    něj neodkazuje). Jinak jen deaktivace (`IsActive = false`) — historie (`LastRunAt`,
    `OccurrenceCount`, vygenerované faktury) zůstává.
 
-**REST endpointy** (`api/recurring-invoice`): `GET` (vše, `?templateId=` filtr), `GET {id}`,
+**REST endpointy** (`api/recurringinvoice`): `GET` (vše, `?templateId=` filtr), `GET {id}`,
 `POST`, `PUT {id}`, `POST {id}/pause`, `POST {id}/resume`, `DELETE {id}`.
+
+**MCP nástroje** (N4.6, §4.9): `Tools/RecurringTools.cs`, 1:1 na REST endpointy výše —
+`list_recurring_schedules`, `get_recurring_schedule`, `create_recurring_schedule`,
+`update_recurring_schedule`, `pause_recurring_schedule`, `resume_recurring_schedule`,
+`delete_recurring_schedule`.
 
 ### 4.14 Import z CSV (klienti z Fakturoidu / iDokladu)
 

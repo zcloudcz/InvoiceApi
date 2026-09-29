@@ -7,6 +7,7 @@ using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
+using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.McpServer;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
@@ -214,6 +215,38 @@ public class McpSdkInvocationTests
     }
 
     /// <summary>
+    /// N4.6: <c>create_recurring_schedule</c> takes <c>CreateRecurringInvoiceScheduleDto</c>
+    /// directly — a string enum (<c>frequency</c>) plus a date field, through the real SDK path.
+    /// </summary>
+    [Fact]
+    public async Task CreateRecurringSchedule_TypedDtoWithFrequencyEnum_DeserializesCorrectly()
+    {
+        await using var session = await McpSdkTestSession.StartAsync();
+
+        var result = await session.Client.CallToolAsync(
+            "create_recurring_schedule",
+            new Dictionary<string, object?>
+            {
+                ["schedule"] = new
+                {
+                    templateId = 5,
+                    clientId = 10,
+                    frequency = "Monthly", // camelCase property, string enum value
+                    dayOfMonth = 15,
+                    startDate = "2026-10-15T00:00:00Z"
+                }
+            }!,
+            cancellationToken: session.Deadline.Token);
+
+        result.IsError.ShouldNotBe(true,
+            $"tool call failed: {string.Concat(result.Content.OfType<TextContentBlock>().Select(c => c.Text))}");
+        session.Api.LastCreateRecurringScheduleRequest.ShouldNotBeNull();
+        session.Api.LastCreateRecurringScheduleRequest!.TemplateId.ShouldBe(5L);
+        session.Api.LastCreateRecurringScheduleRequest.Frequency.ShouldBe(Fakvio.Domain.Enums.ERecurrenceFrequency.Monthly);
+        session.Api.LastCreateRecurringScheduleRequest.DayOfMonth.ShouldBe(15);
+    }
+
+    /// <summary>
     /// Minimal in-process MCP session: a real <see cref="McpServerRegistration.AddFakvioMcpServer"/>
     /// host talking to a real <see cref="McpClient"/> over an in-memory pipe pair, with only the
     /// outbound HTTP call to Fakvio.API stubbed.
@@ -291,6 +324,7 @@ public class McpSdkInvocationTests
         public CreateInvoiceDto? LastCreateInvoiceRequest { get; private set; }
         public long? LastCreateInvoiceFromTemplateId { get; private set; }
         public CreateInvoiceFromTemplateDto? LastCreateInvoiceFromTemplateRequest { get; private set; }
+        public CreateRecurringInvoiceScheduleDto? LastCreateRecurringScheduleRequest { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -341,6 +375,13 @@ public class McpSdkInvocationTests
                 LastCreateInvoiceFromTemplateRequest =
                     await request.Content!.ReadFromJsonAsync<CreateInvoiceFromTemplateDto>(cancellationToken);
                 return Json(new InvoiceDto { Id = 200 });
+            }
+
+            if (path.EndsWith("/api/recurringinvoice", StringComparison.Ordinal) && request.Method == HttpMethod.Post)
+            {
+                LastCreateRecurringScheduleRequest =
+                    await request.Content!.ReadFromJsonAsync<CreateRecurringInvoiceScheduleDto>(cancellationToken);
+                return Json(new RecurringInvoiceScheduleDto { Id = 300 });
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
