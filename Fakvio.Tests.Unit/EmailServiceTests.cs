@@ -1,3 +1,4 @@
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MimeKit;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Shouldly;
 
 namespace Fakvio.Tests.Unit;
@@ -49,6 +51,10 @@ public class EmailServiceTests : IDisposable
     // Mocked ISDOC export service — returns fake XML bytes without real ISDOC generation
     private readonly IIsdocExportService _isdocExport;
 
+    // Mocked UBL export service (ADR 0002, F1.9) — unused by most tests (no SK buyer / PeppolId
+    // in their fixtures, so EmailService never calls it), present only so the constructor compiles.
+    private readonly IUblExportService _ublExport;
+
     // Mocked content template service — replaces old IEmailTemplateService
     // Controls which email/PDF template is returned for the email body
     private readonly IContentTemplateService _contentTemplate;
@@ -85,6 +91,7 @@ public class EmailServiceTests : IDisposable
 
         _pdfExport = Substitute.For<IPdfExportService>();
         _isdocExport = Substitute.For<IIsdocExportService>();
+        _ublExport = Substitute.For<IUblExportService>();
         _contentTemplate = Substitute.For<IContentTemplateService>();
         _systemConfig = Substitute.For<ISystemConfigurationService>();
         _tenantResolver = Substitute.For<ITenantResolver>();
@@ -213,6 +220,7 @@ public class EmailServiceTests : IDisposable
             _masterContext,
             _pdfExport,
             _isdocExport,
+            _ublExport,
             _contentTemplate,
             _systemConfig,
             _credentialProtector,
@@ -289,6 +297,117 @@ public class EmailServiceTests : IDisposable
         // Assert — PDF generation should have been called exactly once
         await _pdfExport.Received(1)
             .GenerateInvoicePdfAsync(1, Arg.Any<CancellationToken>());
+
+        // Assert — CZ buyer (no address at all in SeedTestData) must NOT trigger a UBL export
+        // call (ADR 0002, F1.9) — only an SK buyer or an explicit Client.PeppolId does.
+        await _ublExport.DidNotReceive()
+            .ExportInvoiceAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    // --------------------------------------------------------------------------
+    // F1.9 — UBL/Peppol attachment for SK buyers (ADR 0002)
+    // --------------------------------------------------------------------------
+
+    /// <summary>
+    /// Adds a second invoice/client pair to the seeded data: a Slovak buyer, so
+    /// SendInvoiceEmailAsync should attempt a UBL attachment for it.
+    /// </summary>
+    private void SeedSkBuyerInvoice(long invoiceId, long clientId)
+    {
+        _tenantContext.Client.Add(new Client
+        {
+            Id = clientId, CompanyName = "SK Client", RegistrationNumber = "333", TaxNumber = "SK2020123456",
+            IsVatPayer = true, IsIssuer = false, IsActive = true,
+            Address = new List<Address> { new() { Country = "SK", City = "Bratislava", Street = "Hlavna 1", PostalCode = "81101", IsPrimary = true } }
+        });
+        _tenantContext.Invoice.Add(new Invoice
+        {
+            Id = invoiceId,
+            DocumentType = EDocumentType.Invoice,
+            Status = EInvoiceStatus.Completed,
+            DocumentNumber = "INV2025SK1",
+            IssueDate = new DateTime(2025, 1, 15),
+            DueDate = new DateTime(2025, 1, 29),
+            IssuerId = 1,
+            ClientId = clientId,
+            CurrencyId = 1,
+            TotalWithVat = 1210,
+            InvoiceItem = new List<InvoiceItem>()
+        });
+        _tenantContext.SaveChanges();
+    }
+
+    [Fact]
+    public async Task SendInvoiceEmailAsync_SkBuyer_CallsUblExport()
+    {
+        SeedSkBuyerInvoice(invoiceId: 2, clientId: 3);
+
+        _pdfExport.GenerateInvoicePdfAsync(2, Arg.Any<CancellationToken>())
+            .Returns(new byte[] { 0x25, 0x50, 0x44, 0x46 });
+        _isdocExport.ExportInvoiceAsync(2, Arg.Any<CancellationToken>())
+            .Returns(System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Invoice/>"));
+        _ublExport.ExportInvoiceAsync(2, Arg.Any<CancellationToken>())
+            .Returns(System.Text.Encoding.UTF8.GetBytes("<Invoice/>"));
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        var service = CreateService();
+        try
+        {
+            await service.SendInvoiceEmailAsync(2, "test@example.com");
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException and not KeyNotFoundException
+                                       and not NullReferenceException)
+        {
+            // Expected SMTP connection failure — see SendInvoiceEmailAsync_ValidInvoice_GeneratesPdf.
+        }
+
+        await _ublExport.Received(1).ExportInvoiceAsync(2, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SendInvoiceEmailAsync_SkBuyer_UblPreflightFails_SkipsAttachment_StillSendsEmail()
+    {
+        // A blocking pre-flight issue (e.g. missing Peppol endpoint) must never break the email
+        // itself — PDF + ISDOC still go out, the UBL attachment is just left off.
+        SeedSkBuyerInvoice(invoiceId: 3, clientId: 4);
+
+        _pdfExport.GenerateInvoicePdfAsync(3, Arg.Any<CancellationToken>())
+            .Returns(new byte[] { 0x25, 0x50, 0x44, 0x46 });
+        _isdocExport.ExportInvoiceAsync(3, Arg.Any<CancellationToken>())
+            .Returns(System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Invoice/>"));
+        _ublExport.ExportInvoiceAsync(3, Arg.Any<CancellationToken>())
+            .Throws(new TenantNotReadyException(
+            [
+                new Fakvio.Contracts.Dto.Readiness.ReadinessIssueDto
+                {
+                    Code = "EINVOICE_SELLER_ENDPOINT_MISSING",
+                    Severity = Fakvio.Domain.Enums.EReadinessSeverity.Blocking
+                }
+            ]));
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        var service = CreateService();
+
+        // The TenantNotReadyException from the UBL export must be caught internally — it must
+        // not surface as the exception this test sees (only the expected SMTP failure may).
+        try
+        {
+            await service.SendInvoiceEmailAsync(3, "test@example.com");
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException and not KeyNotFoundException
+                                       and not NullReferenceException and not TenantNotReadyException)
+        {
+            // Expected SMTP connection failure.
+        }
+
+        // The UBL export was attempted (and threw) — the try/catch above already proves the
+        // exception was swallowed internally rather than escaping to the caller; this confirms
+        // the code path that swallows it is the one that actually ran.
+        await _ublExport.Received(1).ExportInvoiceAsync(3, Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -312,7 +431,7 @@ public class EmailServiceTests : IDisposable
         _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
 
         var service = new EmailService(
-            _tenantContext, _masterContext, _pdfExport, _isdocExport, _contentTemplate,
+            _tenantContext, _masterContext, _pdfExport, _isdocExport, _ublExport, _contentTemplate,
             _systemConfig, _credentialProtector, _tenantResolver, emptyConfig, _logger);
 
         // Act & Assert — missing SMTP host in all 3 tiers should throw a clear error
@@ -621,6 +740,42 @@ public class EmailServiceTests : IDisposable
         isdoc.ShouldNotBeNull("ISDOC attachment must be present.");
         isdoc.FileName.ShouldBe("Invoice_INV2025001.isdoc");
         isdoc.ContentType.MimeType.ShouldBe("application/xml");
+    }
+
+    /// <summary>
+    /// Tests that BuildInvoiceMessage adds a third UBL attachment when ublBytes/ublFileName are
+    /// supplied (F1.9) — and that omitting them (the default) keeps the message at 2 attachments,
+    /// matching every other test in this class written before F1.9 existed.
+    /// </summary>
+    [Fact]
+    public void BuildInvoiceMessage_WithUblBytes_ProducesThreeAttachments()
+    {
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 };
+        var isdocBytes = System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Invoice/>");
+        var ublBytes = System.Text.Encoding.UTF8.GetBytes("<Invoice xmlns=\"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2\"/>");
+
+        var message = EmailService.BuildInvoiceMessage(
+            senderName: "TestApp",
+            senderEmail: "invoices@test.com",
+            to: "client@example.com",
+            subject: "Invoice INV2025SK1",
+            htmlBody: "<p>Please find attached.</p>",
+            pdfBytes: pdfBytes,
+            pdfFileName: "Invoice_INV2025SK1.pdf",
+            isdocBytes: isdocBytes,
+            isdocFileName: "Invoice_INV2025SK1.isdoc",
+            ublBytes: ublBytes,
+            ublFileName: "Invoice_INV2025SK1.xml");
+
+        var attachments = (message.Body as MimeKit.Multipart)!
+            .OfType<MimeKit.MimePart>()
+            .Where(p => p.IsAttachment)
+            .ToList();
+
+        attachments.Count.ShouldBe(3, "SK-buyer invoice email must carry PDF + ISDOC + UBL.");
+        var ubl = attachments.FirstOrDefault(a => a.FileName == "Invoice_INV2025SK1.xml");
+        ubl.ShouldNotBeNull();
+        ubl.ContentType.MimeType.ShouldBe("application/xml");
     }
 
     /// <summary>

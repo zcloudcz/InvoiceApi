@@ -294,6 +294,12 @@ místo souboru — nejčastěji:
 - **Platba bankovním převodem** musí mít IBAN nebo číslo účtu.
 - **Slovenský vystavitel** může zatím e-fakturu vystavit jen v měně **EUR**.
 
+**Automatická příloha v e-mailu:** když faktuře pošlete přes „Odeslat emailem" (§2.9) a
+odběratel je slovenský (nebo má nastavený přepis Peppol ID), Fakvio k PDF a ISDOC automaticky
+přidá i UBL XML. Když se e-faktura nedá vygenerovat (viz problémy výše), příloha se prostě
+vynechá — email se vždy odešle. **Pozor:** poslat e-fakturu jinak než přes Peppol síť
+(např. e-mailem) je u slovenského plátce DPH legální jen se souhlasem příjemce.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"
