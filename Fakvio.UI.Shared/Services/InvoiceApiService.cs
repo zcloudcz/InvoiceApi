@@ -1,6 +1,9 @@
+using System.Net;
 using System.Text;
+using System.Text.Json;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.PaymentMatching;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.UI.Shared.Models;
 using Fakvio.Domain.Enums;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -336,6 +339,92 @@ public class FakvioService : ApiClientBase
     {
         var idsParam = string.Join(",", invoiceIds);
         return await GetBytesAsync($"/api/invoice/bulk/pdf?ids={idsParam}");
+    }
+
+    // ─── UBL / Peppol eInvoice export (ADR 0002, F1.6) ───────────────────────
+
+    /// <summary>
+    /// Downloads the invoice as a UBL 2.1 / Peppol BIS Billing 3.0 XML file.
+    /// Returns <see cref="UblDownloadResult"/> instead of throwing — unlike
+    /// <see cref="ExportIsdocAsync"/>, a UBL export can be refused with a structured
+    /// "TENANT_NOT_READY" body (EINVOICE_* issues, e.g. "seller has no Peppol ID yet") that the
+    /// calling component needs to show the user, not just log and discard.
+    /// </summary>
+    public async Task<UblDownloadResult> ExportUblAsync(long id, string fallbackFileName)
+    {
+        var url = $"/api/invoice/{id}/ubl";
+        try
+        {
+            await AddAuthorizationHeaderAsync();
+            _logger.LogInformation("GET (UBL) {Url}", url);
+
+            var response = await _httpClient.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                return UblDownloadResult.Success(bytes, fallbackFileName);
+            }
+
+            return await ParseUblErrorAsync(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error downloading UBL file from {Url}", url);
+            return UblDownloadResult.Failure("UNEXPECTED_ERROR", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Downloads a ZIP archive containing UBL exports for multiple invoices.
+    /// Same "skip what fails" behavior as <see cref="BulkExportIsdocAsync"/> — the bulk API
+    /// endpoint never returns the per-invoice 400 body, so a plain byte array is enough here.
+    /// </summary>
+    public async Task<byte[]?> BulkExportUblAsync(List<long> invoiceIds)
+    {
+        var idsParam = string.Join(",", invoiceIds);
+        return await GetBytesAsync($"/api/invoice/bulk/ubl?ids={idsParam}");
+    }
+
+    /// <summary>
+    /// Reads the JSON error body returned by <c>GET /api/invoice/{id}/ubl</c> for 400/404
+    /// responses and maps it to a <see cref="UblDownloadResult"/>.
+    /// Expected 400 shape (TenantNotReadyException.ToBadRequestResult):
+    /// <c>{ "code": "TENANT_NOT_READY", "message": "...", "issues": [...] }</c>.
+    /// </summary>
+    private static async Task<UblDownloadResult> ParseUblErrorAsync(HttpResponseMessage response)
+    {
+        var errorBody = await response.Content.ReadAsStringAsync();
+
+        var code = response.StatusCode == HttpStatusCode.NotFound ? "NOT_FOUND" : "UNKNOWN_ERROR";
+        var message = errorBody;
+        var issues = new List<ReadinessIssueDto>();
+
+        if (!string.IsNullOrWhiteSpace(errorBody))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(errorBody);
+                if (doc.RootElement.TryGetProperty("code", out var codeProp))
+                    code = codeProp.GetString() ?? code;
+                if (doc.RootElement.TryGetProperty("message", out var msgProp))
+                    message = msgProp.GetString() ?? message;
+                if (doc.RootElement.TryGetProperty("issues", out var issuesProp)
+                    && issuesProp.ValueKind == JsonValueKind.Array)
+                {
+                    var parsed = issuesProp.Deserialize<List<ReadinessIssueDto>>(
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (parsed != null)
+                        issues = parsed;
+                }
+            }
+            catch (JsonException)
+            {
+                // Body was not the expected JSON shape (e.g. an HTML error page from a proxy) —
+                // fall through with the raw text as the message rather than throwing here.
+            }
+        }
+
+        return UblDownloadResult.Failure(code, message, issues);
     }
 
     // ─── Proforma → Final Invoice (issue #33) ────────────────────────────────

@@ -149,6 +149,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
         services.AddScopedWithLogging<IIsdocExportService, IsdocExportService>();
+        services.AddScopedWithLogging<IUblExportService, UblExportService>();
         services.AddScopedWithLogging<IQrPaymentService, QrPaymentService>();
         services.AddScopedWithLogging<IEmailService, EmailService>();
         services.AddScopedWithLogging<IContentTemplateService, ContentTemplateService>();

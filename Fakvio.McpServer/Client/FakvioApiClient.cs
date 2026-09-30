@@ -139,6 +139,17 @@ public class FakvioApiClient : IFakvioApiClient
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    /// <summary>
+    /// Downloads the invoice UBL 2.1 / Peppol BIS Billing 3.0 XML as raw bytes from
+    /// GET /api/invoice/{id}/ubl (ADR 0002, F1.7).
+    /// </summary>
+    public async Task<byte[]> ExportInvoiceUblAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/invoice/{id}/ubl", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     // ── Client endpoints ───────────────────────────────────────────────
 
     public async Task<PagedResult<ClientDto>> GetClientsPagedAsync(ClientFilterDto filter, CancellationToken ct = default)

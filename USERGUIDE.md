@@ -264,6 +264,42 @@ Dostupný z detailu faktury — viz příslušné tlačítko. ISDOC je český s
 
 **Hromadný ISDOC export:** zaškrtněte faktury → toolbar → „Stáhnout ISDOC" → stáhne se ZIP archiv s `.isdoc` soubory. Koncepty (Draft) se přeskakují — nevydaná faktura nemá právně platný ISDOC.
 
+### 2.8a Export e-faktury (UBL / Peppol BIS)
+
+**Co to je:** od 1. 1. 2027 musí slovenští plátci DPH vystavovat tuzemské (SK→SK) faktury jako
+strukturovanou e-fakturu ve formátu **UBL 2.1 / Peppol BIS Billing 3.0**, posílanou přes síť
+Peppol. Fakvio zatím (fáze 1) e-fakturu neodesílá samo — vygeneruje XML soubor, který nahrajete
+do aplikace svého „digitálního poštáře" (viz seznam certifikovaných poskytovatelů na webu
+Finanční správy SR). I mimo SK je export užitečný jako komfort pro odběratele v Peppol síti a
+příprava na celoevropskou e-fakturaci (ViDA) od 1. 7. 2030.
+
+**Kdy použít:**
+- Vystavujete fakturu slovenskému odběrateli (nebo jinému odběrateli v síti Peppol).
+- Chcete e-fakturu nahrát do aplikace svého poštáře místo ručního přepisování údajů.
+
+**Stažení:** v detailu faktury tlačítko „Stáhnout e-fakturu (UBL)" vedle tlačítka ISDOC. Tlačítko
+je zakázané u konceptů (Draft) a u proforem — proforma není daňový doklad a e-fakturu z ní
+vystavit nejde.
+
+**Hromadný export:** zaškrtněte faktury → toolbar → „Stáhnout e-faktury (UBL)" → stáhne se ZIP
+archiv s `.xml` soubory. Koncepty a proformy se přeskakují stejně jako u ISDOC.
+
+**Co zkontrolovat, když export selže:** Fakvio před vygenerováním XML kontroluje, jestli má
+faktura vše potřebné pro platnou e-fakturu. Když ne, zobrazí se seznam konkrétních problémů
+místo souboru — nejčastěji:
+- **DIČ a země** vaší firmy nebo odběratele — z nich se odvozuje Peppol adresa; když odvození
+  nejde (DPH skupina, neobvyklý formát DIČ), nastavte přepis v poli „Peppol ID" u klienta / na
+  stránce Moje firma (§5, §10).
+- **Adresa** (ulice, město, PSČ, země) musí být kompletní.
+- **Platba bankovním převodem** musí mít IBAN nebo číslo účtu.
+- **Slovenský vystavitel** může zatím e-fakturu vystavit jen v měně **EUR**.
+
+**Automatická příloha v e-mailu:** když faktuře pošlete přes „Odeslat emailem" (§2.9) a
+odběratel je slovenský (nebo má nastavený přepis Peppol ID), Fakvio k PDF a ISDOC automaticky
+přidá i UBL XML. Když se e-faktura nedá vygenerovat (viz problémy výše), příloha se prostě
+vynechá — email se vždy odešle. **Pozor:** poslat e-fakturu jinak než přes Peppol síť
+(např. e-mailem) je u slovenského plátce DPH legální jen se souhlasem příjemce.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"
@@ -338,6 +374,10 @@ Kliknutím na řádek nebo ikonu oka otevřete detail klienta.
    - DIČ, plátce DPH (přepínač)
    - Jazyk dokumentů (cs / en) — v tomto jazyce se generují PDF a emaily pro tohoto klienta
    - Barva (volitelná) — barevně označí řádky tohoto klienta v gridu faktur
+   - **Peppol ID (přepis)** — volitelné, nechte prázdné. Fakvio adresu pro e-fakturu (Peppol)
+     odvodí samo z DIČ a země klienta; pole vyplňte jen když odvození nestačí (DPH skupina,
+     zahraniční klient bez SK/CZ DIČ apod.). Formát `schéma:hodnota`, např. `0245:2020123456`
+     (SK) — viz §2.8a Export e-faktury.
 4. Přidejte adresy (fakturační, doručovací…) tlačítkem „+ Adresa"
 5. Přidejte kontakty (email, telefon)
 6. Přidejte bankovní účty
@@ -593,6 +633,9 @@ Správa informací o vaší firmě (vydavatele faktur).
 - IČ — tlačítko „ARES" automaticky doplní z registru
 - Název firmy, obchodní název
 - DIČ, plátce DPH
+- **Peppol ID (přepis)** — volitelné, nechte prázdné. Adresu pro e-fakturu (Peppol) Fakvio
+  odvodí samo z DIČ a země vaší firmy; vyplňte jen když odvození nestačí. Formát
+  `schéma:hodnota`, např. `0245:2020123456` (SK) — viz §2.8a Export e-faktury.
 
 **Adresy:** sídlo, provozovna, fakturační adresa (přes dialog Adresa)
 
@@ -1085,7 +1128,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 56 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 57 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.

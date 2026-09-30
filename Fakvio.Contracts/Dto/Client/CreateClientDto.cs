@@ -62,6 +62,17 @@ public class CreateClientDto
     public string? Color { get; set; }
 
     /// <summary>
+    /// Manual override of the Peppol network endpoint ID for the UBL eInvoice export
+    /// (ADR 0002, F1.8). Format "&lt;4-digit scheme&gt;:&lt;value&gt;", e.g. "0245:2020123456"
+    /// (SK) or "9929:CZ12345678" (CZ). Leave empty to use the automatic derivation from
+    /// <see cref="TaxNumber"/> and the primary address' country.
+    /// </summary>
+    [StringLength(64)]
+    [RegularExpression(@"^$|^\d{4}:[A-Za-z0-9.\-:]+$",
+        ErrorMessage = "Peppol ID must look like '<scheme>:<value>', e.g. '0245:2020123456'.")]
+    public string? PeppolId { get; set; }
+
+    /// <summary>
     /// Tax regime used by this company (e.g., FlatRateTax, LumpSumExpenses60).
     /// </summary>
     public string? TaxRegime { get; set; }

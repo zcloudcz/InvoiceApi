@@ -56,6 +56,16 @@ public class UpdateClientDto
     public string? Color { get; set; }
 
     /// <summary>
+    /// Manual override of the Peppol network endpoint ID (ADR 0002, F1.8).
+    /// Null = don't change, "" = clear (falls back to automatic derivation).
+    /// Format "&lt;4-digit scheme&gt;:&lt;value&gt;", e.g. "0245:2020123456".
+    /// </summary>
+    [StringLength(64)]
+    [RegularExpression(@"^$|^\d{4}:[A-Za-z0-9.\-:]+$",
+        ErrorMessage = "Peppol ID must look like '<scheme>:<value>', e.g. '0245:2020123456'.")]
+    public string? PeppolId { get; set; }
+
+    /// <summary>
     /// Tax regime used by this company. Null = don't change.
     /// </summary>
     public string? TaxRegime { get; set; }

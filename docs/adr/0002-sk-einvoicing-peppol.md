@@ -186,8 +186,13 @@ per (kategorie, sazba) `TaxAmount = round(base × rate / 100, 2, AwayFromZero)` 
 Všechny částky 2 desetinná místa (`F2`, InvariantCulture) s `currencyID`.
 
 **Dobropis** — kořen `CreditNote`, `CreditNoteTypeCode = 381`, `CreditNoteLine`/`CreditedQuantity`; Fakvio neukládá
-znaménko jednotně (uživatel zadává), proto: když `TotalWithVat < 0`, znaménka všech řádků otočit (dobropis v UBL má
-kladné částky). `BillingReference/InvoiceDocumentReference/ID` = číslo původní faktury (+ `IssueDate`).
+znaménko jednotně (uživatel zadává), proto se každý řádek bere v absolutní hodnotě nezávisle na ostatních (ne podle
+znaménka `TotalWithVat` za celý doklad — to selže na dokladu s kombinovanými znaménky řádků, viz F1.4 changelog).
+Řádky s kombinovanými znaménky (`+` i `−` zároveň) blokuje pre-flight (`EINVOICE_CREDIT_NOTE_MIXED_SIGN_LINES`) —
+export by jinak tiše spočítal jinou částku, než dobropis ve skutečnosti představuje.
+`BillingReference/InvoiceDocumentReference/ID` = číslo původní faktury. **Implementační odchylka:** bez `IssueDate`
+— oficiální Peppol fixture (`base-creditnote-correction.xml`) má v `InvoiceDocumentReference` jen `ID`, `IssueDate`
+tam není a UBL/Peppol schematron ho nevyžaduje.
 
 **Konečná faktura s odpočtem zálohy** — `BillingReference` na každý `TaxReceiptForAdvance`, jehož `OriginalInvoiceId`
 = `Invoice.OriginalInvoiceId` (proforma). Načíst ve službě, mapperu předat jako seznam čísel.

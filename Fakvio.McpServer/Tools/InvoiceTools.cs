@@ -533,6 +533,72 @@ public static class InvoiceTools
     }
 
     /// <summary>
+    /// Exports an invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML, returned as a base64-encoded
+    /// string (ADR 0002, F1.7). Aimed at SK e-invoicing from 2027 — the exported XML can be
+    /// uploaded into a Peppol "digital courier" application. When the invoice is not ready for
+    /// eInvoice export (still a Draft, a pro-forma, missing Peppol ID, …), the API answers 400
+    /// and the error JSON carries the readable EINVOICE_* codes instead of a stack trace.
+    /// </summary>
+    [McpServerTool(Title = "Export invoice as UBL/Peppol eInvoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Export an invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-invoicing 2027, Peppol network). " +
+        "Returns the XML as a base64-encoded string. " +
+        "Use this instead of ExportInvoiceIsdoc when the user asks for a Peppol / UBL / SK eFaktura export, " +
+        "or wants a file to upload into a Peppol digital courier application. " +
+        "You can find the invoice ID using FindInvoiceByNumber first.")]
+    public static async Task<string> ExportInvoiceUbl(
+        IFakvioApiClient api,
+        [Description("The invoice ID to export as UBL/Peppol XML")] long invoiceId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            // Fetch the invoice metadata for a meaningful file name
+            var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
+            if (invoice is null)
+                return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
+
+            // Download the UBL XML bytes from the API
+            var ublBytes = await api.ExportInvoiceUblAsync(invoiceId, ct);
+
+            // Build a descriptive file name based on document type
+            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.xml";
+
+            // Return base64-encoded XML with metadata — AI client saves the file
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                fileName,
+                mimeType = "application/xml",
+                sizeBytes = ublBytes.Length,
+                base64Content = Convert.ToBase64String(ublBytes)
+            }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (TenantNotReadyApiException ex)
+        {
+            // Caught separately (#342, mirrors CompleteInvoice) so the MCP client gets the
+            // structured EINVOICE_* payload — code, missingFields, issues (each with its fix
+            // route) — instead of the flattened "internal_error" the generic catch below would
+            // produce. This is the whole point of the tool call when export is refused.
+            return JsonSerializer.Serialize(new
+            {
+                error = ex.Message,
+                code = TenantNotReadyApiException.ErrorCode,
+                missingFields = ex.MissingFields,
+                issues = ex.Issues
+            }, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Soft-deletes a draft invoice.
     /// Only invoices in Draft status can be deleted.
     /// </summary>

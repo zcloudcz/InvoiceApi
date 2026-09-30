@@ -172,6 +172,7 @@ public class IsdocReceivedInvoiceEndpointTests
             invoiceService,
             Substitute.For<IPdfExportService>(),
             isdocService,
+            Substitute.For<IUblExportService>(),
             Substitute.For<IEmailService>(),
             Substitute.For<IQrPaymentService>(),
             Substitute.For<ICloudStorageOrchestrator>(),

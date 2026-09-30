@@ -601,6 +601,10 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
             entity.Property(e => e.Color).HasMaxLength(9);
 
+            // Peppol endpoint ID override (ADR 0002, F1.8) — "<scheme>:<value>", e.g. "0245:2020123456".
+            // Must match TenantDbContext.ConfigureClient exactly (same note as TaxRegime below).
+            entity.Property(e => e.PeppolId).HasMaxLength(64);
+
             // Company addresses and contacts are stored in the master DB
             // so SysAdmin can manage them without needing a tenant database.
             entity.HasMany(e => e.Address)

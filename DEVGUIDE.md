@@ -541,17 +541,32 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
    `GET /api/invoice/bulk/isdoc?ids=`, `GET /api/received-invoice/{id}/isdoc`,
    `GET /api/received-invoice/bulk/isdoc?ids=` (bulk = ZIP `.isdoc` souborů,
    selhané kusy se přeskakují; každý má Functions wrapper).
-4. **Render template** pro tělo emailu: `IContentTemplateService.RenderTemplateAsync` (`ContentTemplateService.cs:235-252`) — placeholdery v subjectu i body.
-5. **SMTP settings — 3-tier resolution** (`EmailService.cs:409-483`):
+4. **UBL 2.1 / Peppol BIS Billing 3.0** (SK e-fakturace 2027 + ViDA 2030, ADR 0002 N7):
+   `IUblExportService` → XML, jen pro vydané faktury/dobropisy (`UblMapper.cs`, vzor
+   `IsdocMapper.cs` — stejný přístup, žádná nová abstrakce). Před mapováním běží
+   per-doklad pre-flight `UblPreflight.Check` (Draft/Proforma odmítnout, Peppol ID
+   prodávajícího/odběratele, adresa, platební účet, mix `OutOfScope`, DIČ pro PDP, SK
+   měna ≠ EUR — kódy `EINVOICE_*` v `ReadinessCodes`) — blokující nález vyhodí
+   `TenantNotReadyException` stejně jako ostatní readiness brány (`ToBadRequestResult()`
+   → 400 `{code, issues}`). `BillingReference` (dobropis → původní faktura; konečná
+   faktura s odpočtem zálohy → daňové doklady k záloze) dohledává `UblExportService`
+   v DB a předává mapperu jako `precedingDocumentNumbers`. Endpointy:
+   `GET /api/invoice/{id}/ubl`, `GET /api/invoice/bulk/ubl?ids=` (bulk = ZIP `.xml`
+   souborů, stejné chování jako ISDOC bulk). Validace (XSD + CEN/Peppol schematron)
+   běží jen v `Fakvio.Tests.Unit` (`Ubl/UblTestValidator.cs`, artefakty a jejich
+   původ/licence v `Ubl/Vendored/README.md`) — runtime žádnou schematron validaci
+   nedělá, chyby tvaru XML jsou bugy mapperu odchycené testy.
+5. **Render template** pro tělo emailu: `IContentTemplateService.RenderTemplateAsync` (`ContentTemplateService.cs:235-252`) — placeholdery v subjectu i body.
+6. **SMTP settings — 3-tier resolution** (`EmailService.cs:409-483`):
    1. `CompanySystemSettings.SmtpPasswordEncrypted` (master DB) — per-company SMTP, decrypt přes `ICredentialProtector`.
    2. `SystemConfiguration` (master DB) — system-wide SMTP přes `ISystemConfigurationService.GetSmtpPasswordAsync`.
    3. `appsettings.json` `SmtpSettings` — fallback.
-6. **MailKit** (`EmailService.cs:273-366`):
+7. **MailKit** (`EmailService.cs:273-366`):
    - Port → SocketOptions: 465 → `SslOnConnect`, 587 → `StartTls`, jiné → `None`.
    - Certificate validation s **CRL tolerance** — akceptuje self-signed pokud CRL nedostupné.
    - **SASL mechanism strip** (řádek 338-339): odstraní XOAUTH2 + NTLM kvůli Seznam.cz (jinak hlásí UnAuthenticated).
    - UTF-8 encoding pro PLAIN/LOGIN auth.
-7. Build `MimeMessage` s PDF + ISDOC attachments → `SmtpClient.SendAsync`.
+8. Build `MimeMessage` s PDF + ISDOC (+ UBL pro SK odběratele, F1.9) attachments → `SmtpClient.SendAsync`.
 
 **Pokud měníš SMTP/Seznam config** → ověř SASL strip + CRL tolerance, nesahej na ně bez testu proti všem tří providerům (Gmail, Outlook, Seznam).
 
@@ -1481,7 +1496,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 56 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 57 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1502,7 +1517,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
-| **Vydané faktury** (`InvoiceTools`, 10) |
+| **Vydané faktury** (`InvoiceTools`, 11) |
 | `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
@@ -1512,6 +1527,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `MarkInvoicePaid` | **Write** | `mark_invoice_paid` (confirm) | ✅ | |
 | `SendInvoiceEmail` | **Write** (odešle e-mail) | `send_invoice_email` (confirm) | ✅ | |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
+| `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
 | `DeleteInvoice` | **Destructive** | `delete_invoice` (confirm, jen Draft) | ✅ | |
 | **Přijaté faktury** (`ReceivedInvoiceTools`, 7) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
@@ -1570,10 +1586,12 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 56 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 14 mezer: daně (5, zatím bez tasku),
+**Součty:** 57 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 15 mezer: daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
-(7 — celý `RecurringTools`, zatím bez tasku).
+(7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
+N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
+zatím nepokrývají).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1656,7 +1674,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **56 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring (po jednom souboru v `Tools/`).
+- **57 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
