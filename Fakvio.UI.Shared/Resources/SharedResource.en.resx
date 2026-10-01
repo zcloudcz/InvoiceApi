@@ -1732,8 +1732,18 @@
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Remind me later</value></data>
   <!-- Integrations / API keys (/settings/integrations) -->
   <data name="Nav_Integrations" xml:space="preserve"><value>Integrations</value></data>
-  <data name="Integration_Title" xml:space="preserve"><value>Integrations and API keys</value></data>
-  <data name="Integration_Subtitle" xml:space="preserve"><value>An API key connects an AI client (e.g. Claude) to Fakvio through the MCP server. Keys are personal — you only see and manage your own.</value></data>
+  <data name="Integration_Title" xml:space="preserve"><value>Integrations</value></data>
+  <data name="Integration_Subtitle" xml:space="preserve"><value>Connect Fakvio to ChatGPT without an API key, or manage keys for other AI clients below.</value></data>
+  <data name="Integration_ChatGptTitle" xml:space="preserve"><value>ChatGPT on the web — no API key</value></data>
+  <data name="Integration_ChatGptIntro" xml:space="preserve"><value>Just sign in with your Fakvio account. Never paste your password or API key into a ChatGPT conversation.</value></data>
+  <data name="Integration_ChatGptStep1" xml:space="preserve"><value>Open ChatGPT in your browser. Find Fakvio under Settings → Apps. If it is missing, your workspace admin must add it first using the server address below.</value></data>
+  <data name="Integration_ChatGptStep2" xml:space="preserve"><value>Choose Connect for Fakvio, sign in to Fakvio, and approve the requested access. We recommend Read only for your first connection.</value></data>
+  <data name="Integration_ChatGptStep3" xml:space="preserve"><value>In a new chat, select Fakvio from the tools and try: “Show my latest invoices.”</value></data>
+  <data name="Integration_ChatGptOpen" xml:space="preserve"><value>Open ChatGPT</value></data>
+  <data name="Integration_ChatGptServerLabel" xml:space="preserve"><value>Server address for one-time setup by your ChatGPT admin</value></data>
+  <data name="Integration_ChatGptAdminNote" xml:space="preserve"><value>Cannot add an app in ChatGPT? Ask your ChatGPT workspace admin to make Fakvio available. Custom MCP app creation depends on your ChatGPT plan and workspace settings.</value></data>
+  <data name="Integration_ApiKeysTitle" xml:space="preserve"><value>API keys for other clients</value></data>
+  <data name="Integration_ApiKeysIntro" xml:space="preserve"><value>Keys are personal. You do not need one for ChatGPT on the web; create one only for a client that can send its own Authorization header.</value></data>
   <data name="Integration_NewKey" xml:space="preserve"><value>New API key</value></data>
   <data name="Integration_CreateDialogTitle" xml:space="preserve"><value>Create API key</value></data>
   <data name="Integration_KeyNameHelper" xml:space="preserve"><value>How you will recognise the key later, e.g. "Claude Desktop — laptop".</value></data>

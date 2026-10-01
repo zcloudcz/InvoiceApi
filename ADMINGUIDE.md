@@ -611,9 +611,10 @@ Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
 ### MCP OAuth 2.1 — zapnutí a rollback (ADR 0001)
 
-Kompletní návrh a threat model: `docs/adr/0001-mcp-oauth21.md`. Kód je hotový a beze změny
-chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled` /
-`FAKVIO_MCP_OAUTH_ENABLED` defaultují na `false`.
+Kompletní návrh a threat model: `docs/adr/0001-mcp-oauth21.md`. Oba příznaky defaultují na
+`false`; v produkci byly 2026-10-01 výslovně zapnuty po vydání PR #467/#470. API a MCP
+discovery i 401 challenge byly ověřeny na veřejných HTTPS adresách. Skutečný ChatGPT OAuth
+login, refresh a revokace ještě vyžadují ruční E2E kontrolu.
 
 **Lidský úkol před prvním zapnutím (kód s tím nepočítá automaticky):**
 
@@ -629,7 +630,8 @@ chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled
    - `fakvio-mcp-web`: app setting `FAKVIO_MCP_RESOURCE_PROOF_SECRET`
    Doporučeno přes Key Vault referenci (`@Microsoft.KeyVault(SecretUri=…)`), ne jako čitelný
    app setting — je to důvěryhodnostní hranice mezi MCP hostem a API (ADR §4.4, T6).
-3. **Allowlist** — na začátek jen owner (Q8): `McpOAuth__AllowedUserIds__0` = vaše `User.Id`.
+3. **Přístup uživatelů** — vlastník 2026-10-01 zvolil `McpOAuth__AllowAll=true`, takže všichni
+   aktivní uživatelé mohou udělit vlastní souhlas. `AllowedUserIds` se při tomto nastavení ignoruje.
 
 **App settings na `fakvio-api`:**
 
@@ -639,9 +641,10 @@ chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled
 | `McpOAuth__Issuer` | `https://api.fakvio.cz` |
 | `McpOAuth__Resource` | `https://mcp.fakvio.cz/mcp` |
 | `McpOAuth__ConsentUrl` | `https://app.fakvio.cz/oauth/consent` |
-| `McpOAuth__ResourceProofSecret` | Key Vault reference — musí sedět s MCP hostem |
+| `McpOAuth__ResourceProofSecret` | 32bytové náhodné tajemství v Azure app settings, stejné jako na MCP hostu; přesun do Key Vault je doporučený follow-up |
+| `McpOAuth__AllowAll` | `true` — rozhodnutí vlastníka pro produkční spuštění 2026-10-01 |
 | `McpOAuth__TrustedClientHosts__0` / `__1` | `claude.ai` / `chatgpt.com` (výchozí, měnit jen vědomě) |
-| `McpOAuth__AllowedUserIds__0` | vaše `User.Id`, dokud `AllowAll` není `true` |
+| `McpOAuth__AllowedUserIds__0` | nenastaveno, protože `AllowAll=true` |
 
 **App settings na `fakvio-mcp-web`:**
 
@@ -666,13 +669,16 @@ chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled
    claude.ai musí okamžitě dostat 401 (bez čekání na cache).
 7. Zaznamenejte sem skutečné `client_id` URL, které claude.ai/ChatGPT při připojení použily
    (z logu `OAuth.ConsentGranted`) — ADR je nemá ověřené, jen odhadnuté ze spec dokumentace.
-8. **T9 (clickjacking):** `curl -sI https://app.fakvio.cz/oauth/consent` → hlavičky musí
-   obsahovat `content-security-policy: frame-ancestors 'none'` a `x-frame-options: DENY`.
-   Kontrola po KAŽDÉM deployi `Fakvio.BlazorUI` — `staticwebapp.config.json` je statický soubor,
-   změna hostingu (jiný Static Web Apps plán, CDN před ním) ho může přebít.
+8. **T9 (clickjacking):** `curl -sI https://app.fakvio.cz/oauth/consent` má vracet
+   `content-security-policy: frame-ancestors 'none'` a `x-frame-options: DENY`.
+   Kontrola 2026-10-01 zjistila, že aktuální GitHub Pages vrací Blazor `404.html` fallback
+   se statusem 404 a tyto hlavičky nepřidává. `staticwebapp.config.json` se na GitHub Pages
+   neuplatní. Sledujte bezpečnostní úkol #471 a kontrolu po opravě opakujte.
 
-**Rozšíření z uzavřeného testu (Q8):** po 1–2 týdnech bez incidentu a ≥ 5 aktivních grantech
-nastavte `McpOAuth__AllowAll=true` (allowlist se pak ignoruje).
+**Aktuální politika:** `McpOAuth__AllowAll=true` zapnul vlastník již při prvním produkčním
+spuštění. Každý aktivní uživatel stále musí potvrdit konkrétního klienta a rozsah přístupu;
+jeho role a firemní oprávnění se dále vyhodnocují. Pro návrat k uzavřenému testu nastavte
+`AllowAll=false` a konkrétní `AllowedUserIds`, potom restartujte API.
 
 **Rollback:**
 

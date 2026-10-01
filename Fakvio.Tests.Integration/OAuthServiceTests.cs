@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using Fakvio.Application.Exceptions;
@@ -104,11 +105,32 @@ public class OAuthServiceTests : IAsyncLifetime
             await _dataSourceFactory.DisposeAsync();
     }
 
-    private MasterDbContext CreateMasterContext()
-        => new(new DbContextOptionsBuilder<MasterDbContext>()
-            .UseNpgsql(_dataSourceFactory!.GetForSchema(_schemaName, includePublicInSearchPath: false))
-            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))
-            .Options);
+    private MasterDbContext CreateMasterContext(
+        bool enableRetryOnFailure = false, DbTransactionInterceptor? transactionInterceptor = null)
+    {
+        var options = new DbContextOptionsBuilder<MasterDbContext>()
+            .UseNpgsql(_dataSourceFactory!.GetForSchema(_schemaName, includePublicInSearchPath: false),
+                npgsql => { if (enableRetryOnFailure) npgsql.EnableRetryOnFailure(); })
+            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
+        if (transactionInterceptor is not null)
+            options.AddInterceptors(transactionInterceptor);
+        return new MasterDbContext(options.Options);
+    }
+
+    /// <summary>Models a lost commit acknowledgement after PostgreSQL has committed.</summary>
+    private sealed class LoseFirstCommitAcknowledgement : DbTransactionInterceptor
+    {
+        private int _remaining = 1;
+        public bool WasInjected => _remaining == 0;
+
+        public override Task TransactionCommittedAsync(
+            DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref _remaining, 0) == 1)
+                throw new NpgsqlException("Simulated lost commit acknowledgement", new IOException("Connection dropped"));
+            return Task.CompletedTask;
+        }
+    }
 
     private async Task SeedOwnerAsync()
     {
@@ -307,6 +329,71 @@ public class OAuthServiceTests : IAsyncLifetime
         // between minting the token and this assertion are expected to shave a little off.
         result.ExpiresIn.ShouldBeInRange(3595, 3600);
         result.Scope.ShouldBe("read");
+    }
+
+    [SkippableFact]
+    public async Task ExchangeAuthorizationCodeAsync_WithProductionRetryStrategy_IssuesTokens()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var (code, verifier) = await IssueCodeAsync();
+        await using var context = CreateMasterContext(enableRetryOnFailure: true);
+
+        var result = await CreateService(context).ExchangeAuthorizationCodeAsync(
+            new ExchangeAuthorizationCodeRequest(code, RedirectUri, ClientId, verifier, Resource));
+
+        result.AccessToken.ShouldStartWith("fak_oat_");
+    }
+
+    [SkippableFact]
+    public async Task RefreshAsync_WithProductionRetryStrategy_RotatesToken()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var initial = await IssueAndExchangeAsync();
+        await using var context = CreateMasterContext(enableRetryOnFailure: true);
+
+        var result = await CreateService(context).RefreshAsync(
+            new RefreshTokenRequest(initial.RefreshToken, null, Resource));
+
+        result.AccessToken.ShouldStartWith("fak_oat_");
+        result.RefreshToken.ShouldNotBe(initial.RefreshToken);
+    }
+
+    [SkippableFact]
+    public async Task ExchangeAuthorizationCodeAsync_WhenCommitAcknowledgementIsLost_ReturnsCommittedTokens()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var (code, verifier) = await IssueCodeAsync();
+        var interceptor = new LoseFirstCommitAcknowledgement();
+        await using var context = CreateMasterContext(enableRetryOnFailure: true, interceptor);
+
+        var result = await CreateService(context).ExchangeAuthorizationCodeAsync(
+            new ExchangeAuthorizationCodeRequest(code, RedirectUri, ClientId, verifier, Resource));
+
+        interceptor.WasInjected.ShouldBeTrue();
+        await using var verify = CreateMasterContext();
+        var hash = ApiKeyService.ComputeHash(result.AccessToken);
+        (await verify.ApiKey.AnyAsync(key => key.KeyHash == hash && key.RevokedAt == null)).ShouldBeTrue();
+    }
+
+    [SkippableFact]
+    public async Task RefreshAsync_WhenCommitAcknowledgementIsLost_ReturnsCommittedTokens()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var initial = await IssueAndExchangeAsync();
+        var interceptor = new LoseFirstCommitAcknowledgement();
+        await using var context = CreateMasterContext(enableRetryOnFailure: true, interceptor);
+
+        var result = await CreateService(context).RefreshAsync(
+            new RefreshTokenRequest(initial.RefreshToken, null, Resource));
+
+        interceptor.WasInjected.ShouldBeTrue();
+        await using var verify = CreateMasterContext();
+        var hash = ApiKeyService.ComputeHash(result.AccessToken);
+        (await verify.ApiKey.AnyAsync(key => key.KeyHash == hash && key.RevokedAt == null)).ShouldBeTrue();
     }
 
     [SkippableFact]

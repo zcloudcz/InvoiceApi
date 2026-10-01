@@ -299,6 +299,27 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
         page.Markup.ShouldContain(Localized("Integration_NoKeys"));
     }
 
+    /// <summary>
+    /// A first-time ChatGPT user needs the OAuth instructions before the API-key form.
+    /// The server address is only for one-time app setup by a ChatGPT administrator.
+    /// </summary>
+    [Fact]
+    public void Integrations_WithoutKeys_ShowsChatGptSetupBeforeApiKeys()
+    {
+        const string chatGptUrl = "https://chatgpt.com/";
+        const string mcpUrl = "https://mcp.fakvio.cz/mcp";
+        var page = RenderPageWithKeys();
+
+        var setupLink = page.FindAll("a")
+            .Single(link => link.TextContent.Contains(Localized("Integration_ChatGptOpen")));
+        setupLink.GetAttribute("href").ShouldBe(chatGptUrl);
+        setupLink.GetAttribute("target").ShouldBe("_blank");
+        page.Markup.ShouldContain(mcpUrl);
+        page.Markup.IndexOf(Localized("Integration_ChatGptTitle"), StringComparison.Ordinal)
+            .ShouldBeLessThan(page.Markup.IndexOf(Localized("Integration_ApiKeysTitle"), StringComparison.Ordinal));
+        _api.CreateCount.ShouldBe(0);
+    }
+
     /// <summary>A revoked key is labelled as such and loses its revoke button.</summary>
     [Fact]
     public void Integrations_RevokedKey_ShowsStatusAndNoRevokeButton()
