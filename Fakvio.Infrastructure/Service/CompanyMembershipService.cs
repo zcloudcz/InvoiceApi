@@ -20,6 +20,68 @@ public sealed class CompanyMembershipService(MasterDbContext db, ICurrentUserSer
     ITenantResolver tenant, ITenantProvisioningService provisioning, IHttpContextAccessor http,
     ILogger<CompanyMembershipService> logger, NpgsqlDataSource? dataSource = null) : ICompanyMembershipService
 {
+    public async Task<List<ManagedCompanyMembershipDto>> ListForUserAsync(long userId, CancellationToken ct = default)
+    {
+        await RequireAdministrator(ct);
+        var user = await db.User.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new KeyNotFoundException("User was not found.");
+        return await ProjectManaged(userId, user.CompanyId).OrderBy(m => m.CompanyName).ThenBy(m => m.CompanyId).ToListAsync(ct);
+    }
+
+    public async Task<ManagedCompanyMembershipDto> UpdateForUserAsync(long userId, long companyId,
+        UpdateCompanyMembershipDto input, CancellationToken ct = default)
+    {
+        await RequireAdministrator(ct);
+        Validator.ValidateObject(input, new ValidationContext(input), true);
+        if (input.Role is not (EUserRole.User or EUserRole.Admin)) throw new ValidationException("Invalid company role.");
+        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        // Issue, accept and revoke lock the same identity first. A previously issued invitation
+        // can therefore never race a revocation and restore the removed access afterward.
+        await LockIdentity(userId, ct);
+        var user = await db.User.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new KeyNotFoundException("User was not found.");
+        if (user.Role == EUserRole.SysAdmin) throw new ValidationException("SysAdmin does not use company memberships.");
+        var membership = await db.UserCompanyMembership.Include(m => m.Company)
+            .SingleOrDefaultAsync(m => m.UserId == userId && m.CompanyId == companyId, ct)
+            ?? throw new KeyNotFoundException("Company membership was not found.");
+        if (input.IsActive == true && (!user.IsActive || !membership.Company.IsActive || !membership.Company.IsIssuer))
+            throw new ValidationException("The account and company must be active before restoring access.");
+        membership.Role = input.Role.Value;
+        membership.IsActive = input.IsActive!.Value;
+        // Invalidate outstanding invitations on any administrative change, including a role
+        // downgrade. New access must be explicitly issued again by an administrator.
+        var invitations = await db.CompanyMembershipInvitation.Where(i => i.UserId == userId
+            && i.CompanyId == companyId && i.ConsumedAt == null).ToListAsync(ct);
+        foreach (var invitation in invitations) invitation.ConsumedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
+        logger.LogInformation("Administrator {ActorId} updated user {UserId} membership for company {CompanyId}: role {Role}, active {Active}",
+            currentUser.GetCurrentUserId(), userId, companyId, membership.Role, membership.IsActive);
+        // Account defaults and existing API-key/OAuth grants are intentionally untouched.
+        return await ProjectManaged(userId, user.CompanyId).SingleAsync(m => m.CompanyId == companyId, ct);
+    }
+
+    private async Task RequireAdministrator(CancellationToken ct)
+    {
+        var actor = await RequireUser(ct);
+        if (actor.Role != EUserRole.SysAdmin || !tenant.IsSysAdmin()) throw new UnauthorizedAccessException();
+    }
+
+    private async Task LockIdentity(long userId, CancellationToken ct)
+    {
+        if (db.Database.IsRelational())
+            await db.User.FromSqlInterpolated($"SELECT * FROM \"User\" WHERE \"Id\" = {userId} FOR NO KEY UPDATE").LoadAsync(ct);
+    }
+
+    private IQueryable<ManagedCompanyMembershipDto> ProjectManaged(long userId, long? defaultCompany)
+        => db.UserCompanyMembership.AsNoTracking().Where(m => m.UserId == userId).Select(m => new ManagedCompanyMembershipDto
+        {
+            CompanyId = m.CompanyId, CompanyName = m.Company.CompanyName, Role = m.Role,
+            IsActive = m.IsActive, IsDefault = m.CompanyId == defaultCompany,
+            IsCompanyActive = m.Company.IsActive && m.Company.IsIssuer,
+            IsProvisioned = db.CompanySystemSettings.Any(s => s.CompanyId == m.CompanyId && s.IsActive && s.IsProvisioned)
+        });
+
     public async Task<List<CompanyMembershipDto>> ListAsync(CancellationToken ct = default)
     {
         var user = await RequireUser(ct);
@@ -157,6 +219,7 @@ public sealed class CompanyMembershipService(MasterDbContext db, ICurrentUserSer
         if (string.IsNullOrWhiteSpace(token) || token.Length > 200) throw new ValidationException("Invalid invitation.");
         var hash = Hash(token);
         await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        await LockIdentity(user.Id, ct);
         // Lock the token row before checking it, so concurrent acceptance cannot race the membership insert.
         var invitation = db.Database.IsRelational()
             ? await db.CompanyMembershipInvitation.FromSqlInterpolated($"SELECT * FROM \"CompanyMembershipInvitation\" WHERE \"TokenHash\" = {hash} FOR UPDATE").SingleOrDefaultAsync(ct)

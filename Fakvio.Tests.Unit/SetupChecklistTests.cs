@@ -73,6 +73,7 @@ public class SetupChecklistTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(_storage);
 
         AddAuthorization().SetAuthorized("ucetni@example.cz");
+        AddAuthorization().SetRoles("Admin");
     }
 
     [Fact]

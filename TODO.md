@@ -1,5 +1,17 @@
 # Fakvio TODO
 
+## UX audit remediation (2026-10-01)
+
+- [x] Correct all 20 ranked audit findings and related contact, deletion, error-state and mobile-context observations on `codex/ux-audit-fixes`.
+- [x] Add SysAdmin membership inspection/update/revoke/restore in UI/API and two MCP tools (69 total, package version 2.6.0, unpublished).
+- [x] Serialize invite acceptance, membership administration and legacy account edits; prevent profile saves restoring revoked access or replacing independent company roles.
+- [x] Add 81 unit/component/MCP regressions and 7 integration cases relative to the reviewed baseline; full suites: 4,127 unit passed / 4 skipped, 256 integration passed / 3 skipped. PostgreSQL migration/concurrency checks passed on a disposable local instance.
+- [x] Release Blazor rebuild passed; compiler/analyzer/package warnings remain. Browser verified membership revocation, invitation validation, contact preservation, invoice-history navigation, URL normalization, payment pages beyond 50, and credit-note server search.
+- [x] Update USERGUIDE, ADMINGUIDE, DEVGUIDE and MCP README; preserve release-notes ownership.
+- [x] Record audit-to-test mapping, browser evidence and explicit verification limitations in `docs/reviews/2026-10-01-ux-fixes.md`.
+- [ ] Review and merge the stacked feature PRs, then authorize a separate production release. No UX fixes are deployed yet.
+
+
 ## Implemented, awaiting draft PR (2026-10-01): feedback and role presentation
 
 - [x] Shared feedback contracts, owner/company authorization, master persistence and generated migration.

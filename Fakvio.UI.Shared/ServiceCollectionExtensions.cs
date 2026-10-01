@@ -32,6 +32,7 @@ public static class ServiceCollectionExtensions
         // resource "Fakvio.UI.Shared.SharedResource" but the actual name is
         // "Fakvio.UI.Shared.Resources.SharedResource" (because the file is in Resources/).
         services.AddLocalization(options => options.ResourcesPath = "Resources");
+        services.AddTransient<MudBlazor.MudLocalizer, FakvioMudLocalizer>();
 
         // Authorization services — required for <AuthorizeView>, [Authorize] etc.
         services.AddAuthorizationCore();

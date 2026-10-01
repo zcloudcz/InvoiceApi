@@ -270,6 +270,25 @@ public class McpSdkInvocationTests
     /// outbound HTTP call to Fakvio.API stubbed.
     /// </summary>
     [Fact]
+    public async Task MembershipUpdate_SdkBindsRoleAndForwardsOnlyRequestedCompany()
+    {
+        await using var session = await McpSdkTestSession.StartAsync();
+        var tools = await session.Client.ListToolsAsync(cancellationToken: session.Deadline.Token);
+        tools.Select(t => t.Name).ShouldContain("list_user_company_memberships");
+        tools.Select(t => t.Name).ShouldContain("update_user_company_membership");
+        var result = await session.Client.CallToolAsync("update_user_company_membership", new Dictionary<string, object?>
+        {
+            ["userId"] = 7, ["targetCompanyId"] = 8,
+            ["membership"] = new { role = "User", isActive = false }
+        }, cancellationToken: session.Deadline.Token);
+        result.IsError.ShouldNotBe(true);
+        session.Api.LastMembershipBody.ShouldNotBeNull();
+        using var body = System.Text.Json.JsonDocument.Parse(session.Api.LastMembershipBody!);
+        body.RootElement.GetProperty("isActive").GetBoolean().ShouldBeFalse();
+        body.RootElement.GetProperty("role").GetInt32().ShouldBe((int)Fakvio.Domain.Enums.EUserRole.User);
+    }
+
+    [Fact]
     public async Task CompanyContext_IsAdvertisedAndForwardedPerConcurrentSdkInvocation()
     {
         await using var session = await McpSdkTestSession.StartAsync();
@@ -367,6 +386,7 @@ public class McpSdkInvocationTests
 
         public System.Collections.Concurrent.ConcurrentDictionary<string, string> FeedbackCompanyHeaders { get; } = new();
         public string? LastFeedbackBody { get; private set; }
+        public string? LastMembershipBody { get; private set; }
         public CreateReceivedInvoiceDto? LastReceivedInvoiceRequest { get; private set; }
         public CreateClientDto? LastCreateClientRequest { get; private set; }
         public long? LastUpdateClientId { get; private set; }
@@ -380,6 +400,11 @@ public class McpSdkInvocationTests
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/user/7/memberships/8" && request.Method == HttpMethod.Put)
+            {
+                LastMembershipBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return Json(new Fakvio.Contracts.Dto.CompanyMembership.ManagedCompanyMembershipDto { CompanyId = 8, IsActive = false });
+            }
             if (path == "/api/feedback" && request.Method == HttpMethod.Post)
             {
                 var bodyText = await request.Content!.ReadAsStringAsync(cancellationToken);

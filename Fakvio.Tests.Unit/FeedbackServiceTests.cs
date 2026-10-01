@@ -62,6 +62,17 @@ public class FeedbackServiceTests : IDisposable
         saved.CreatedAt.ShouldNotBe(default);
     }
 
+    [Fact]
+    public async Task FeedbackProjection_IncludesReadableOwnerContext()
+    {
+        _db.Client.Single().CompanyName = "Acme";
+        _db.User.Single().Email = "owner@example.test";
+        await _db.SaveChangesAsync();
+        var result = await _service.CreateAsync(Valid());
+        result.CompanyName.ShouldBe("Acme");
+        result.ReporterEmail.ShouldBe("owner@example.test");
+    }
+
     [Theory]
     [InlineData("https://evil.test/")]
     [InlineData("//evil.test")]

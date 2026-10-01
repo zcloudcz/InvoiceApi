@@ -14,6 +14,15 @@
 </MudStack>
 <FakvioGrid T="FeedbackDto" GridKey="@(Admin ? "feedback-inbox" : "feedback-mine")" ServerData="LoadAsync" @ref="_grid" RowsPerPage="25" RowClick="Open">
     <Columns>
+        @if (Admin)
+        {
+            <TemplateColumn Title="@L["User_Company"].Value" Filterable="false" Sortable="false">
+                <CellTemplate>@(context.Item.CompanyName ?? $"#{context.Item.CompanyId}")</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="@L["Feedback_Reporter"].Value" Filterable="false" Sortable="false">
+                <CellTemplate>@(context.Item.ReporterEmail ?? $"#{context.Item.UserId}")</CellTemplate>
+            </TemplateColumn>
+        }
         <PropertyColumn Property="x => x.Subject" Title="@L["Feedback_Subject"].Value" Filterable="false" Sortable="false" />
         <TemplateColumn Title="@L["Feedback_Type"].Value" Filterable="false" Sortable="false">
             <CellTemplate>@L[$"EFeedbackType_{context.Item.Type}"]</CellTemplate>

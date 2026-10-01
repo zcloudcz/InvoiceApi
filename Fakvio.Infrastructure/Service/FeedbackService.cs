@@ -19,10 +19,13 @@ public sealed class FeedbackService(MasterDbContext db, ICurrentUserService curr
     ITenantResolver tenant, ILogger<FeedbackService> logger) : IFeedbackService
 {
     // EF translates this expression into SELECT columns, without loading tracked entities.
-    private static readonly Expression<Func<FeedbackReport, FeedbackDto>> Projection = r => new FeedbackDto
+    private Expression<Func<FeedbackReport, FeedbackDto>> Projection => r => new FeedbackDto
     {
         Id = r.Id, Type = r.Type, Subject = r.Subject, Description = r.Description,
         Page = r.Page, AppVersion = r.AppVersion, UserId = r.UserId, CompanyId = r.CompanyId,
+        // Scalar subqueries keep the complete page in one SQL request, including deleted-identity fallbacks.
+        CompanyName = db.Client.Where(c => c.Id == r.CompanyId).Select(c => c.CompanyName).FirstOrDefault(),
+        ReporterEmail = db.User.Where(u => u.Id == r.UserId).Select(u => u.Email).FirstOrDefault(),
         Status = r.Status, PublicResponse = r.PublicResponse, CreatedAt = r.CreatedAt, UpdatedAt = r.UpdatedAt
     };
 
@@ -110,7 +113,7 @@ public sealed class FeedbackService(MasterDbContext db, ICurrentUserService curr
             throw new UnauthorizedAccessException("SysAdmin access is required.");
     }
 
-    private static async Task<PagedResult<FeedbackDto>> PageAsync(IQueryable<FeedbackReport> query, FeedbackFilterDto filter, CancellationToken ct)
+    private async Task<PagedResult<FeedbackDto>> PageAsync(IQueryable<FeedbackReport> query, FeedbackFilterDto filter, CancellationToken ct)
     {
         // Validate before multiplying so a huge page cannot overflow into a negative SQL offset.
         if (filter.Page < 1 || filter.PageSize is < 1 or > 100 || (long)(filter.Page - 1) * filter.PageSize > int.MaxValue)

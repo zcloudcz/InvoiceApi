@@ -1887,4 +1887,125 @@
   <data name="CompanyMembership_SwitchConfirm" xml:space="preserve"><value>Přepnout společnost? Neuložené změny budou zahozeny.</value></data>
   <data name="CompanyMembership_CountryCode" xml:space="preserve"><value>Dvoupísmenný kód země, například CZ nebo SK.</value></data>
   <data name="CompanyMembership_PlatformAccess" xml:space="preserve"><value>Přístup k platformě (SysAdmin)</value></data>
+  <data name="Invoice_Dates" xml:space="preserve"><value>Data dokladu</value></data>
+  <data name="Btn_Retry" xml:space="preserve"><value>Zkusit znovu</value></data>
+  <data name="MembershipAdmin_Title" xml:space="preserve"><value>Přístupy do firem</value></data>
+  <data name="MembershipAdmin_Help" xml:space="preserve"><value>Každou firmu spravujete samostatně. Změna neovlivní ostatní firmy ani oprávnění API klíčů.</value></data>
+  <data name="MembershipAdmin_Active" xml:space="preserve"><value>Přístup je aktivní</value></data>
+  <data name="MembershipAdmin_CompanyInactive" xml:space="preserve"><value>Firma není aktivní.</value></data>
+  <data name="MembershipAdmin_Empty" xml:space="preserve"><value>Uživatel nemá žádná členství ve firmách.</value></data>
+  <data name="MembershipAdmin_RevokeConfirm" xml:space="preserve"><value>Odebrat přístup do firmy {0}? Uživatel ztratí přístup při příštím požadavku.</value></data>
+  <data name="OAuthConsent_ReconnectHint" xml:space="preserve"><value>Spusťte připojení znovu v aplikaci, kterou chcete propojit.</value></data>
+  <data name="Register_EmailRecovery" xml:space="preserve"><value>Přejděte na přihlášení a použijte Zapomenuté heslo pro nový e-mail. Pokud nedorazí, kontaktujte podporu.</value></data>
+  <data name="TwoFactor_ServiceUnavailable" xml:space="preserve"><value>Ověření je dočasně nedostupné. Zkuste to znovu.</value></data>
+  <data name="TwoFactor_CopyManualKey" xml:space="preserve"><value>Kopírovat klíč pro ruční zadání</value></data>
+  <data name="TwoFactor_CopyFailed" xml:space="preserve"><value>Klíč se nepodařilo zkopírovat. Označte a zkopírujte jej ručně.</value></data>
+  <data name="TwoFactor_InvalidPassword" xml:space="preserve"><value>Nesprávné heslo.</value></data>
+  <data name="CompanyMembership_CompanyRequired" xml:space="preserve"><value>Vyberte firmu.</value></data>
+  <data name="Feedback_Reporter" xml:space="preserve"><value>Odesílatel</value></data>
+  <data name="Feedback_PageHelp" xml:space="preserve"><value>Cesta stránky nebo úplná adresa této aplikace. Parametry a fragment se neukládají.</value></data>
+  <data name="Feedback_PageInvalid" xml:space="preserve"><value>Zadejte cestu začínající / nebo adresu této aplikace.</value></data>
+  <data name="Notification_Title" xml:space="preserve"><value>Notifikace</value></data>
+  <data name="Notification_MarkAllRead" xml:space="preserve"><value>Označit vše jako přečtené</value></data>
+  <data name="Notification_Empty" xml:space="preserve"><value>Žádné notifikace</value></data>
+  <data name="Notification_ShowAll" xml:space="preserve"><value>Zobrazit vše</value></data>
+  <data name="Notification_UnreadOnly" xml:space="preserve"><value>Jen nepřečtené</value></data>
+  <data name="Notification_Error" xml:space="preserve"><value>Notifikace se nepodařilo aktualizovat. Zobrazený stav může být neaktuální. Zkuste to znovu.</value></data>
+  <data name="Notification_Now" xml:space="preserve"><value>právě teď</value></data>
+  <data name="Notification_MinutesAgo" xml:space="preserve"><value>před {0} min</value></data>
+  <data name="Notification_HoursAgo" xml:space="preserve"><value>před {0} h</value></data>
+  <data name="Notification_DaysAgo" xml:space="preserve"><value>před {0} d</value></data>
+  <data name="Common_LoadFailed" xml:space="preserve"><value>Data se nepodařilo načíst. Zkuste to znovu.</value></data>
+  <data name="Common_Retry" xml:space="preserve"><value>Zkusit znovu</value></data>
+  <data name="Settings_ReadOnly" xml:space="preserve"><value>Toto nastavení můžete prohlížet. Úpravy může provádět účetní nebo systémový administrátor.</value></data>
+  <data name="CreditNote_SearchOriginal" xml:space="preserve"><value>Vyhledejte původní fakturu podle čísla nebo zákazníka.</value></data>
+  <data name="CreditNote_SelectOriginal" xml:space="preserve"><value>Vyberte původní fakturu.</value></data>
+  <data name="Payments_BulkAutoMatchPage" xml:space="preserve"><value>Spárovat vybrané / tuto stránku</value></data>
+  <data name="Readiness_ContactSysAdmin" xml:space="preserve"><value>Požádejte systémového administrátora o doplnění.</value></data>
+  <data name="Readiness_ContactAccountant" xml:space="preserve"><value>Požádejte účetní nebo systémového administrátora o doplnění.</value></data>
+  <data name="Readiness_Field_Unknown" xml:space="preserve"><value>Povinné údaje</value></data>
+  <data name="Readiness_Field_IsIssuer" xml:space="preserve"><value>Vystavující firma</value></data>
+  <data name="Readiness_Field_Address" xml:space="preserve"><value>Adresa</value></data>
+  <data name="Readiness_Field_Street" xml:space="preserve"><value>Ulice</value></data>
+  <data name="Readiness_Field_City" xml:space="preserve"><value>Město</value></data>
+  <data name="Readiness_Field_PostalCode" xml:space="preserve"><value>PSČ</value></data>
+  <data name="Readiness_Field_Country" xml:space="preserve"><value>Země</value></data>
+  <data name="Readiness_Field_RegistrationNumber" xml:space="preserve"><value>IČO</value></data>
+  <data name="Readiness_Field_TaxNumber" xml:space="preserve"><value>DIČ</value></data>
+  <data name="Readiness_Field_BankAccount" xml:space="preserve"><value>Bankovní účet</value></data>
+  <data name="Readiness_Field_AccountNumber" xml:space="preserve"><value>Číslo účtu</value></data>
+  <data name="Readiness_Field_Invoice" xml:space="preserve"><value>Faktura</value></data>
+  <data name="Readiness_Field_CreditNote" xml:space="preserve"><value>Dobropis</value></data>
+  <data name="Readiness_Field_EpoTaxOfficeCode" xml:space="preserve"><value>Kód finančního úřadu</value></data>
+  <data name="Readiness_Field_EpoTaxOfficeBranchCode" xml:space="preserve"><value>Kód územního pracoviště</value></data>
+  <data name="MudDataGrid_Apply" xml:space="preserve"><value>Použít</value></data>
+  <data name="MudDataGrid_Clear" xml:space="preserve"><value>Vymazat</value></data>
+  <data name="MudDataGrid_AddFilter" xml:space="preserve"><value>Přidat filtr</value></data>
+  <data name="MudDataGrid_Cancel" xml:space="preserve"><value>Zrušit</value></data>
+  <data name="MudDataGrid_Loading" xml:space="preserve"><value>Načítání…</value></data>
+  <data name="MudDataGrid_Save" xml:space="preserve"><value>Uložit</value></data>
+  <data name="MudDataGrid_HideAll" xml:space="preserve"><value>Skrýt vše</value></data>
+  <data name="MudDataGrid_ShowAll" xml:space="preserve"><value>Zobrazit vše</value></data>
+  <data name="MudDataGrid_Columns" xml:space="preserve"><value>Sloupce</value></data>
+  <data name="MudDataGrid_ExpandAllGroups" xml:space="preserve"><value>Rozbalit všechny skupiny</value></data>
+  <data name="MudDataGrid_CollapseAllGroups" xml:space="preserve"><value>Sbalit všechny skupiny</value></data>
+  <data name="MudDataGrid_RefreshData" xml:space="preserve"><value>Obnovit data</value></data>
+  <data name="MudDataGrid_True" xml:space="preserve"><value>Ano</value></data>
+  <data name="MudDataGrid_False" xml:space="preserve"><value>Ne</value></data>
+  <data name="MudDataGrid_Unsort" xml:space="preserve"><value>Zrušit řazení</value></data>
+  <data name="MudDataGrid_Filter" xml:space="preserve"><value>Filtrovat</value></data>
+  <data name="MudDataGrid_Hide" xml:space="preserve"><value>Skrýt</value></data>
+  <data name="MudDataGrid_Ungroup" xml:space="preserve"><value>Zrušit seskupení</value></data>
+  <data name="MudDataGrid_Group" xml:space="preserve"><value>Seskupit</value></data>
+  <data name="MudDataGrid_FilterValue" xml:space="preserve"><value>Hodnota filtru</value></data>
+  <data name="MudDataGrid_Contains" xml:space="preserve"><value>obsahuje</value></data>
+  <data name="MudDataGrid_NotContains" xml:space="preserve"><value>neobsahuje</value></data>
+  <data name="MudDataGrid_Equals" xml:space="preserve"><value>rovná se</value></data>
+  <data name="MudDataGrid_NotEquals" xml:space="preserve"><value>nerovná se</value></data>
+  <data name="MudDataGrid_StartsWith" xml:space="preserve"><value>začíná na</value></data>
+  <data name="MudDataGrid_EndsWith" xml:space="preserve"><value>končí na</value></data>
+  <data name="MudDataGrid_IsEmpty" xml:space="preserve"><value>je prázdné</value></data>
+  <data name="MudDataGrid_IsNotEmpty" xml:space="preserve"><value>není prázdné</value></data>
+  <data name="MudDataGrid_Is" xml:space="preserve"><value>je</value></data>
+  <data name="MudDataGrid_IsNot" xml:space="preserve"><value>není</value></data>
+  <data name="MudDataGrid_IsAfter" xml:space="preserve"><value>je po</value></data>
+  <data name="MudDataGrid_IsOnOrAfter" xml:space="preserve"><value>je v nebo po</value></data>
+  <data name="MudDataGrid_IsBefore" xml:space="preserve"><value>je před</value></data>
+  <data name="MudDataGrid_IsOnOrBefore" xml:space="preserve"><value>je v nebo před</value></data>
+  <data name="MudDataGrid_Column" xml:space="preserve"><value>Sloupec</value></data>
+  <data name="MudDataGrid_Operator" xml:space="preserve"><value>Podmínka</value></data>
+  <data name="MudDataGrid_Value" xml:space="preserve"><value>Hodnota</value></data>
+  <data name="MudDataGrid_MoveDown" xml:space="preserve"><value>Posunout dolů</value></data>
+  <data name="MudDataGrid_MoveUp" xml:space="preserve"><value>Posunout nahoru</value></data>
+  <data name="MudDataGrid_Sort" xml:space="preserve"><value>Řadit</value></data>
+  <data name="MudDataGrid_ClearFilter" xml:space="preserve"><value>Vymazat filtr</value></data>
+  <data name="MudDataGrid_OpenFilters" xml:space="preserve"><value>Otevřít filtry</value></data>
+  <data name="MudDataGrid_ToggleGroupExpansion" xml:space="preserve"><value>Rozbalit nebo sbalit skupinu</value></data>
+  <data name="MudDataGrid_RemoveFilter" xml:space="preserve"><value>Odstranit filtr</value></data>
+  <data name="MudDataGrid_ShowColumnOptions" xml:space="preserve"><value>Možnosti sloupce</value></data>
+  <data name="MudDataGridPager_FirstPage" xml:space="preserve"><value>První stránka</value></data>
+  <data name="MudDataGridPager_PreviousPage" xml:space="preserve"><value>Předchozí stránka</value></data>
+  <data name="MudDataGridPager_NextPage" xml:space="preserve"><value>Další stránka</value></data>
+  <data name="MudDataGridPager_LastPage" xml:space="preserve"><value>Poslední stránka</value></data>
+  <data name="MudTablePager_FirstPage" xml:space="preserve"><value>První stránka</value></data>
+  <data name="MudTablePager_PreviousPage" xml:space="preserve"><value>Předchozí stránka</value></data>
+  <data name="MudTablePager_NextPage" xml:space="preserve"><value>Další stránka</value></data>
+  <data name="MudTablePager_LastPage" xml:space="preserve"><value>Poslední stránka</value></data>
+  <data name="MudPagination_FirstPage" xml:space="preserve"><value>První stránka</value></data>
+  <data name="MudPagination_PreviousPage" xml:space="preserve"><value>Předchozí stránka</value></data>
+  <data name="MudPagination_NextPage" xml:space="preserve"><value>Další stránka</value></data>
+  <data name="MudPagination_LastPage" xml:space="preserve"><value>Poslední stránka</value></data>
+  <data name="MudDataGridPager_RowsPerPage" xml:space="preserve"><value>Řádků na stránce:</value></data>
+  <data name="MudDataGridPager_AllItems" xml:space="preserve"><value>Vše</value></data>
+  <data name="MudDataGridPager_InfoFormat" xml:space="preserve"><value>{0}–{1} z {2}</value></data>
+  <data name="MudInput_Clear" xml:space="preserve"><value>Vymazat</value></data>
+  <data name="MudDialog_Close" xml:space="preserve"><value>Zavřít</value></data>
+  <data name="MudSnackbar_Close" xml:space="preserve"><value>Zavřít</value></data>
+  <data name="MudAlert_Close" xml:space="preserve"><value>Zavřít</value></data>
+  <data name="Invoice_SelectClient" xml:space="preserve"><value>Vyberte zákazníka</value></data>
+  <data name="MembershipAdmin_Saved" xml:space="preserve"><value>Přístup do firmy byl uložen.</value></data>
+  <data name="MembershipAdmin_RestoreRequired" xml:space="preserve"><value>Nejprve obnovte přístup k této firmě ve správě členství. Potom můžete změnit výchozí firmu nebo roli účtu.</value></data>
+  <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Aktuální stránka {0}</value></data>
+  <data name="MudPagination_PageIndex" xml:space="preserve"><value>Stránka {0}</value></data>
+  <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Rozbalit nebo sbalit {0}</value></data>
 </root>

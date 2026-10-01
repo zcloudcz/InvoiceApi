@@ -156,9 +156,9 @@
             // actually wrong code (TwoFactor_InvalidCode).
             _errorMessage = L["RateLimit_TooManyAttempts"].Value;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _errorMessage = ex.Message;
+            _errorMessage = L["TwoFactor_ServiceUnavailable"].Value;
         }
         finally
         {

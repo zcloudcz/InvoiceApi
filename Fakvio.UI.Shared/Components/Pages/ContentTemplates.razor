@@ -5,6 +5,7 @@
 @inject ContentTemplateApiService TemplateService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 
@@ -12,14 +13,18 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">@L["ContentTemplate_Title"]</MudText>
 <MudText Class="mb-4">@L["ContentTemplate_Subtitle"]</MudText>
+@if (!_canManage) { <MudAlert Severity="Severity.Info" Class="mb-3">@L["Settings_ReadOnly"]</MudAlert> }
 
 <MudPaper Class="pa-4">
     @* Toolbar section with Create button and filter chips *@
     <div class="d-flex flex-wrap justify-space-between align-center gap-2 mb-4">
         @* Navigate to create page instead of opening a dialog *@
-        <ResponsiveButton Label="@L["ContentTemplate_New"].Value"
-                          StartIcon="@Icons.Material.Filled.Add"
-                          Href="/content-templates/create" />
+        @if (_canManage)
+        {
+            <ResponsiveButton Label="@L["ContentTemplate_New"].Value"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           Href="/content-templates/create" />
+        }
         @* Filter by template type group *@
         <MudChipSet T="string" SelectionMode="SelectionMode.SingleSelection" SelectedValueChanged="OnFilterChanged">
             <MudChip T="string" Value="@("all")" Default="true">@L["Label_All"]</MudChip>
@@ -84,10 +89,16 @@
             @* Actions column — edit, delete, preview, download, upload *@
             <TemplateColumn T="ContentTemplateDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
                 <CellTemplate>
-                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
-                                   OnClick="@(() => Navigation.NavigateTo($"/content-templates/{context.Item.Id}"))" Title="@L["Btn_Edit"].Value" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                   OnClick="@(() => DeleteTemplate(context.Item.Id))" Title="@L["Btn_Delete"].Value" />
+                    @if (_canManage)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="@(() => Navigation.NavigateTo($"/content-templates/{context.Item.Id}"))" Title="@L["Btn_Edit"].Value" />
+                    }
+                    @if (_canManage)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeleteTemplate(context.Item.Id))" Title="@L["Btn_Delete"].Value" />
+                    }
                     @* Preview template with real/sample data *@
                     <MudIconButton Icon="@Icons.Material.Filled.Preview" Size="Size.Small" Color="Color.Default"
                                    Disabled="@string.IsNullOrEmpty(context.Item.HtmlBody)"
@@ -104,6 +115,8 @@
                         // "context" refers to the upload component, not the grid row.
                         var rowItem = context.Item;
                     }
+                    @if (_canManage)
+                    {
                     <MudFileUpload T="IBrowserFile" Accept=".html,.htm"
                                    FilesChanged="@(file => HandleHtmlFileUpload(rowItem, file))"
                                    Class="d-inline-flex ma-0" Style="min-width:0;">
@@ -112,6 +125,7 @@
                                            Title="@L["ContentTemplate_UploadHtml"].Value" />
                         </ActivatorContent>
                     </MudFileUpload>
+                    }
                 </CellTemplate>
             </TemplateColumn>
         </Columns>
@@ -140,6 +154,7 @@
 </MudDialog>
 
 @code {
+    private bool _canManage;
     private FakvioGrid<ContentTemplateDto>? _dataGrid;
     private List<ContentTemplateDto> _templates = new();
     private List<ContentTemplateDto> _filteredTemplates = new();
@@ -153,6 +168,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Accountant is the display name of the Admin role used by the API.
+        var user = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
+        _canManage = user.IsInRole("Admin") || user.IsInRole("SysAdmin");
         await LoadTemplates();
     }
 
@@ -213,6 +231,7 @@
 
     private async Task DeleteTemplate(long id)
     {
+        if (!_canManage) return;
         try
         {
             var success = await TemplateService.DeleteAsync(id);
@@ -293,6 +312,7 @@
     /// </summary>
     private async Task HandleHtmlFileUpload(ContentTemplateDto template, IBrowserFile file)
     {
+        if (!_canManage) return;
         var ext = Path.GetExtension(file.Name)?.ToLowerInvariant();
         if (ext != ".html" && ext != ".htm")
         {

@@ -1496,7 +1496,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 67 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 69 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1579,6 +1579,11 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `ListFeedback`, `GetFeedback` | Read | — | ❌ | vlastní uživatel + firma |
 | `ListAdminFeedback`, `GetAdminFeedback` | Read | — | ❌ | SysAdmin |
 | `UpdateFeedbackStatus` | Write | — | ❌ | SysAdmin; veřejná odpověď |
+| **Firmy a členství** (`CompanyTools`, 6) |
+| `ListCompanies`, `SelectCompany` | Read / validate context | — | ❌ | explicitní kontext credentialu |
+| `AddCompany`, `RetryCompanySetup` | Write | — | ❌ | přihlášená identita; granty se nerozšiřují |
+| `ListUserCompanyMemberships` | Read | — | ❌ | SysAdmin |
+| `UpdateUserCompanyMembership` | **Destructive / idempotent** | — | ❌ | SysAdmin; role a aktivita jednoho členství |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
@@ -1591,8 +1596,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 67 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 21 mezer: zpětná vazba (6), daně (5, zatím bez tasku),
+**Součty:** 69 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 27 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
@@ -1679,7 +1684,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **67 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 4 company (po jednom souboru v `Tools/`).
+- **69 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -3309,3 +3314,35 @@ MCP 2.5.0 adds list_companies, select_company, add_company and retry_company_set
 Verification includes real SDK discovery/invocation and concurrent-company forwarding, API-key picker defaults, company-creation retry identity, invitation acceptance, and localized UI. Database authorization and migration validation are separate mandatory gates; client tests alone do not establish tenant isolation. Production deployment and NuGet publication are outside this implementation.
 
 Rollback of the multi-company migration must not silently restore legacy credentials to a different company. Before dropping explicit company bindings, revoke every credential whose legacy User.CompanyId interpretation would change its company scope; this includes multi-company grants and OAuth chains whose consent company differs from the default. Inspect the generated Down migration against representative data. No production database was modified during this implementation.
+
+## UX recovery and membership administration (October 2026)
+
+### Individual membership lifecycle
+
+`UserCompanyMembershipController` exposes `GET /api/user/{userId}/memberships` and `PUT /api/user/{userId}/memberships/{companyId}`. HTTP and `CompanyMembershipService` both require a persisted SysAdmin identity. PUT accepts `UpdateCompanyMembershipDto.Role` (User/Admin only) and `IsActive`; required values are validated. It updates an existing membership only. It leaves other memberships, `User.CompanyId`, account defaults, API-key grants and OAuth grants unchanged. Restoring access requires an active account and issuer company. Every administrative change consumes outstanding invitations for that user/company, including role downgrades.
+
+On relational storage, invitation issue/accept, membership update/revoke and legacy account updates acquire the same user-identity lock in their transaction. Keep this lock order when adding another membership mutation: otherwise a previously issued invitation or account edit could race a revocation and restore access. Non-relational tests alone cannot validate these PostgreSQL interleavings.
+
+`UserCompanyMembershipDialog` is opened from the SysAdmin Users grid. Saving one row refreshes only that row so other unsaved membership edits remain. Deactivation names the company in its confirmation. Legacy account/default fields are compatibility metadata, not authority to recreate or overwrite an existing membership.
+
+MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 69 tools; update every published count and parity row whenever discovery changes.
+
+### Document forms and server-backed lists
+
+`ClientContactEditor.Merge` clones the existing contact collection and changes/removes only the first email and phone edited by the simplified form. All other values, labels and primary flags must survive because the API replaces the complete collection. Updating a client also preserves its inactive status. Client deletion has explicit confirmation in list and detail views; invoice numbers in client history are links.
+
+Invoice/client save handlers acquire a re-entry flag before their first await and release it in `finally`; disabled buttons alone do not prevent queued submissions. New invoice client selection is nullable in the UI, with a localized placeholder, while the request retains the validated numeric ID. Credit-note originals use bounded server search over issued/paid invoices, so older documents are found by narrowing the query rather than downloading the entire ledger. Document-type changes clear incompatible original selection and refresh numbering preview.
+
+`FakvioService.GetPagedAsync(..., throwOnError: true)` allows interactive consumers to show persistent load failure/retry. The default retains legacy fallback behavior. Do not render a server-grid filter unless the loader forwards it: unsupported invoice amount and history status/amount column filters are explicitly disabled. Payment history and unmatched payments use server page/page-size/total counts. Filter changes reset history to page one; a page beyond the remaining result is clamped after mutation. Reloading unmatched payments clears selection, and bulk actions clearly apply to selected rows or the current page.
+
+VAT, numbering and content-template UI checks mirror API Admin/SysAdmin permissions. Accountant is the localized name of Admin. Ordinary Users retain read views; direct template-create navigation does not expose an editable form.
+
+### Recovery, localization and feedback
+
+Notification clients propagate request failures; page/bell preserve the last successful data and change read flags only after successful writes. Their retry/loading/error states are distinct from an empty list. OAuth consent treats invalid-ticket 400 responses separately from retryable service failures. Registration persists the email-delivery outcome. Login two-factor verification distinguishes 401 invalid codes, 429 throttling and transport/server failure. The TOTP manual-key copy button uses clipboard interop and reports clipboard failure.
+
+The API-key reveal prevents another creation until the current secret is acknowledged; selected company grants display names. Feedback detail compares the editable response/status with the loaded report for `UnsavedChangesLock`. Admin list/detail display reporter and company context projected in SQL. Feedback accepts relative paths or same-origin URLs, removes query/fragment and rejects unsafe/external paths with a field error; server validation remains authoritative.
+
+`ReadinessIssueText` maps missing field identifiers to localized names, and `ReadinessFixLink` checks whether a server-supplied editor route is permitted before offering navigation. `FakvioMudLocalizer`, registered through shared UI services, supplies MudBlazor grid labels in the active language. Keep CZ/EN resources synchronized and preserve accessible names for icon-only controls.
+
+Regression coverage includes `ClientContactEditorTests`, `DocumentUxRegressionTests`, `AccountUxRecoveryTests`, shared localization/readiness tests and membership API/MCP tests. PostgreSQL concurrency tests remain necessary for invitation/revocation ordering. Targeted suites have run during implementation; final combined validation and deployment are separate gates, and this branch is not deployed.

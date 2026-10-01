@@ -10,6 +10,17 @@ namespace Fakvio.McpServer.Tools;
 [McpServerToolType]
 public static class CompanyTools
 {
+    [McpServerTool(Name = "list_user_company_memberships", Title = "List user company memberships", ReadOnly = true, Idempotent = true, OpenWorld = false),
+     Description("SysAdmin only. List a user's active and revoked company memberships. Requires read scope.")]
+    public static Task<string> ListUserCompanyMemberships(IFakvioApiClient api, long userId, CancellationToken ct = default) =>
+        ExecuteAsync(() => api.GetUserCompanyMembershipsAsync(userId, ct), ct);
+
+    [McpServerTool(Name = "update_user_company_membership", Title = "Update user company membership", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false),
+     Description("SysAdmin only, write scope. Update an existing membership's User or Admin (Accountant) role and active status. Does not change other companies, account defaults or credential grants. Invalidates pending invitations for this membership.")]
+    public static Task<string> UpdateUserCompanyMembership(IFakvioApiClient api, long userId, long targetCompanyId,
+        UpdateCompanyMembershipDto membership, CancellationToken ct = default) =>
+        ExecuteAsync(() => api.UpdateUserCompanyMembershipAsync(userId, targetCompanyId, membership, ct), ct);
+
     [McpServerTool(Name = "list_companies", Title = "List accessible companies", ReadOnly = true, Idempotent = true, OpenWorld = false),
      Description("List active companies explicitly granted to this credential. Newly joined or created companies are not automatically granted. Requires read scope.")]
     public static Task<string> ListCompanies(IFakvioApiClient api, CancellationToken ct = default) =>

@@ -670,4 +670,34 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
                 JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json")
         };
     }
+
+    [Fact]
+    public async Task RevealedKey_BlocksAnotherCreationUntilAcknowledged()
+    {
+        var page = RenderPageWithKeys(ActiveKey());
+        await CreateKeyNamed(page, NewKeyName);
+        page.WaitForAssertion(() => page.Markup.ShouldContain(RawKey));
+        var create = page.FindComponents<Fakvio.UI.Shared.Components.Shared.ResponsiveButton>()
+            .Single(x => x.Instance.Label == Localized("Integration_NewKey"));
+        create.Instance.Disabled.ShouldBeTrue();
+        // Exercise the callback too: a queued event must not bypass the visible disabled state.
+        await page.InvokeAsync(() => create.Instance.OnClick.InvokeAsync());
+        _api.CreateCount.ShouldBe(1);
+        page.Markup.ShouldContain(RawKey);
+        page.FindComponents<MudButton>().Single(x => x.Instance.ChildContent is not null &&
+            x.Markup.Contains(Localized("Integration_KeySaved"))).Find("button").Click();
+        create.Instance.Disabled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task CompanyGrantSelection_FormatsNamesInsteadOfIds()
+    {
+        var page = RenderPageWithKeys(ActiveKey());
+        ClickButtonTitled(page, Localized("Integration_NewKey"));
+        page.WaitForAssertion(() => page.FindComponents<MudSelect<long>>().Count.ShouldBe(1));
+        var selector = page.FindComponent<MudSelect<long>>();
+        selector.Instance.MultiSelectionTextFunc.ShouldNotBeNull()(["1"]).ShouldBe("Company one");
+        await page.InvokeAsync(() => selector.Instance.SelectedValuesChanged.InvokeAsync([1L]));
+        selector.Instance.SelectedValues.ShouldContain(1L);
+    }
 }

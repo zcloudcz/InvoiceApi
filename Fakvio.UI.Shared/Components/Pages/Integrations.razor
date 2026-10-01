@@ -74,6 +74,7 @@
 
 <MudPaper Class="pa-4 mb-4 d-flex justify-end">
     <ResponsiveButton Label="@L["Integration_NewKey"].Value"
+                      Disabled="@(_createdKey is not null)"
                       StartIcon="@Icons.Material.Filled.Add"
                       OnClick="OpenCreateDialog" />
 </MudPaper>
@@ -188,6 +189,7 @@
             else
             {
             <MudSelect T="long" MultiSelection="true" SelectedValues="_selectedCompanies" SelectedValuesChanged="@(values => _selectedCompanies = values.ToArray())"
+                       MultiSelectionTextFunc="SelectedCompanyNames"
                        Label="@L["CompanyMembership_GrantedCompanies"].Value" HelperText="@L["CompanyMembership_GrantHelp"].Value" Disabled="_saving">
                 @foreach (var company in _memberships.Where(x => x.IsProvisioned))
                 {
@@ -327,6 +329,8 @@
 
     private void OpenCreateDialog()
     {
+        // The only recoverable copy must be acknowledged before another secret replaces it.
+        if (_createdKey is not null) return;
         _selectedCompanies = _currentCompanyId is { } id && _memberships.Any(x => x.CompanyId == id && x.IsProvisioned) ? [id] : [];
         _newName = string.Empty;
         _newScopes = ScopeRead;
@@ -336,6 +340,9 @@
     }
 
     private void CloseCreateDialog() => _showCreateDialog = false;
+
+    private string SelectedCompanyNames(List<string> values) => string.Join(", ", values.Select(value =>
+        long.TryParse(value, out var id) ? _memberships.FirstOrDefault(company => company.CompanyId == id)?.CompanyName ?? value : value));
 
     private async Task CreateAsync()
     {

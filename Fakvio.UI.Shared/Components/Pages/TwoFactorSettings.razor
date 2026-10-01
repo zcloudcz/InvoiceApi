@@ -6,6 +6,7 @@
 @inject TwoFactorApiService TwoFactorApi
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
 
 <PageTitle>@L["TwoFactor_Title"] - Fakvio</PageTitle>
 
@@ -114,6 +115,11 @@
             </MudGrid>
         }
     }
+    @if (!_loading && _status is null)
+    {
+        <MudAlert Severity="Severity.Error">@L["TwoFactor_ServiceUnavailable"]</MudAlert>
+        <MudButton OnClick="LoadStatusAsync">@L["Feedback_Refresh"]</MudButton>
+    }
 </MudContainer>
 
 @* ── TOTP Setup Dialog ──────────────────────────────────────────────────── *@
@@ -138,7 +144,9 @@
                               ReadOnly="true"
                               Variant="Variant.Outlined"
                               Adornment="Adornment.End"
-                              AdornmentIcon="@Icons.Material.Filled.ContentCopy" />
+                              AdornmentIcon="@Icons.Material.Filled.ContentCopy"
+                              AdornmentAriaLabel="@L["TwoFactor_CopyManualKey"].Value"
+                              OnAdornmentClick="CopyManualKeyAsync" />
 
                 @* Step 2: Verify code *@
                 <MudText Typo="Typo.body1">@L["TwoFactor_TotpStep2"]</MudText>
@@ -242,7 +250,8 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add(ex.Message, Severity.Error);
+            _status = null;
+            Snackbar.Add(L["TwoFactor_ServiceUnavailable"], Severity.Error);
         }
         finally
         {
@@ -269,12 +278,12 @@
             }
             else
             {
-                Snackbar.Add("Failed to initiate TOTP setup.", Severity.Error);
+                Snackbar.Add(L["TwoFactor_ServiceUnavailable"], Severity.Error);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add(ex.Message, Severity.Error);
+            Snackbar.Add(L["TwoFactor_ServiceUnavailable"], Severity.Error);
         }
         finally
         {
@@ -303,10 +312,11 @@
                 _errorMessage = L["TwoFactor_InvalidCode"].Value;
             }
         }
-        catch (Exception ex)
+        catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
         {
-            _errorMessage = ex.Message;
+            _errorMessage = L["TwoFactor_InvalidCode"].Value;
         }
+        catch (Exception) { _errorMessage = L["TwoFactor_ServiceUnavailable"].Value; }
         finally
         {
             _verifyLoading = false;
@@ -331,12 +341,12 @@
             }
             else
             {
-                Snackbar.Add("Failed to enable email 2FA.", Severity.Error);
+                Snackbar.Add(L["TwoFactor_ServiceUnavailable"], Severity.Error);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add(ex.Message, Severity.Error);
+            Snackbar.Add(L["TwoFactor_ServiceUnavailable"], Severity.Error);
         }
         finally
         {
@@ -365,13 +375,14 @@
             }
             else
             {
-                _errorMessage = L["TwoFactor_InvalidCode"].Value;
+                _errorMessage = L["TwoFactor_InvalidPassword"].Value;
             }
         }
-        catch (Exception ex)
+        catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
         {
-            _errorMessage = ex.Message;
+            _errorMessage = L["TwoFactor_InvalidPassword"].Value;
         }
+        catch (Exception) { _errorMessage = L["TwoFactor_ServiceUnavailable"].Value; }
         finally
         {
             _disableLoading = false;
@@ -389,6 +400,17 @@
             return string.Empty;
 
         return $"data:image/png;base64,{Convert.ToBase64String(_totpSetup.QrCodeImage)}";
+    }
+
+    private async Task CopyManualKeyAsync()
+    {
+        if (_totpSetup is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _totpSetup.ManualEntryKey);
+            Snackbar.Add(L["Integration_Copied"], Severity.Success);
+        }
+        catch (Exception) { Snackbar.Add(L["TwoFactor_CopyFailed"], Severity.Warning); }
     }
 
     /// <summary>

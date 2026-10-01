@@ -7,6 +7,10 @@ namespace Fakvio.UI.Shared.Services;
 public sealed class CompanyMembershipApiService(IHttpClientFactory factory, ILogger<CompanyMembershipApiService> logger,
     AuthenticationStateProvider authentication) : ApiClientBase(factory, logger, authentication)
 {
+    public Task<List<ManagedCompanyMembershipDto>> ListForUserAsync(long userId, CancellationToken ct = default) =>
+        SendAsync<List<ManagedCompanyMembershipDto>>(HttpMethod.Get, $"/api/user/{userId}/memberships", null, ct);
+    public Task<ManagedCompanyMembershipDto> UpdateForUserAsync(long userId, long companyId, UpdateCompanyMembershipDto input, CancellationToken ct = default) =>
+        SendAsync<ManagedCompanyMembershipDto>(HttpMethod.Put, $"/api/user/{userId}/memberships/{companyId}", input, ct);
     public Task<List<CompanyMembershipDto>> ListAsync(CancellationToken ct = default) =>
         SendAsync<List<CompanyMembershipDto>>(HttpMethod.Get, "/api/my-companies", null, ct);
     public Task<CompanyMembershipDto> CreateAsync(CreateMyCompanyDto company, CancellationToken ct = default) =>
