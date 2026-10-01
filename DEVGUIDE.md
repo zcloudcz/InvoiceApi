@@ -425,6 +425,16 @@ Interní scope formát ukládá více oprávnění čárkou (`read,write`) stejn
 token endpoint ho na drátě převádí na mezery (`read write`) podle RFC 6749 §3.3; při výměně kódu
 i při obnově tokenu musí klient dostat stejný protokolový formát.
 
+Produkční `MasterDbContext` používá Npgsql `EnableRetryOnFailure`. Obě OAuth cesty s explicitní
+transakcí (`ExchangeAuthorizationCodeAsync`, `RefreshAsync`) proto spouštějí celý transakční blok
+přes `Database.CreateExecutionStrategy().ExecuteAsync(...)`. Před každým pokusem vyčistí EF
+tracker a znovu čtou kód či token pod příslušným zámkem. Bez execution strategy by produkční
+`POST /oauth/token` skončil HTTP 500 s chybou o nepodporované uživatelské transakci; integrační
+testy proto používají také kontext s produkčním nastavením retry. Pokud se po potvrzeném
+commitu ztratí odpověď PostgreSQL, strategie před opakováním ověří v DB hash právě vydaného
+access tokenu a vrátí připravenou odpověď; opakování samotného jednorázového kódu nebo refresh
+tokenu by jinak chybně vyvolalo detekci reuse.
+
 ---
 
 ## 3. Multi-tenant — jak data oddělujeme
