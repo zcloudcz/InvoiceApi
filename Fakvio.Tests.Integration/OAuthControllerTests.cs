@@ -1,6 +1,11 @@
 using System.Net;
+using System.Text.Json;
+using Fakvio.Application.Service;
 using Fakvio.Tests.Integration.Fixtures;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using NSubstitute;
 using Shouldly;
 
 namespace Fakvio.Tests.Integration;
@@ -86,6 +91,44 @@ public class OAuthControllerTests
         body.ShouldContain("unsupported_grant_type");
     }
 
+    [Theory]
+    [InlineData("authorization_code", "read,write", "read write")]
+    [InlineData("refresh_token", "read,write", "read write")]
+    [InlineData("authorization_code", "read", "read")]
+    [InlineData("refresh_token", "read", "read")]
+    public async Task TokenEndpoint_FormatsScopesUsingOAuthWireSyntax(string grantType, string storedScope, string expectedScope)
+    {
+        using var factory = new TokenResponseOAuthFactory();
+        factory.InitializeDatabase();
+        var expected = new OAuthTokenResult("access", "refresh", 3600, storedScope);
+        factory.OAuthService.ExchangeAuthorizationCodeAsync(
+                Arg.Any<ExchangeAuthorizationCodeRequest>(), Arg.Any<CancellationToken>())
+            .Returns(expected);
+        factory.OAuthService.RefreshAsync(Arg.Any<RefreshTokenRequest>(), Arg.Any<CancellationToken>())
+            .Returns(expected);
+        var client = factory.CreateClient();
+        var fields = grantType == "authorization_code"
+            ? new Dictionary<string, string>
+            {
+                ["grant_type"] = grantType,
+                ["code"] = "code",
+                ["redirect_uri"] = "https://chatgpt.com/callback",
+                ["client_id"] = "https://chatgpt.com/client",
+                ["code_verifier"] = "verifier"
+            }
+            : new Dictionary<string, string>
+            {
+                ["grant_type"] = grantType,
+                ["refresh_token"] = "refresh"
+            };
+
+        var response = await client.PostAsync("/oauth/token", new FormUrlEncodedContent(fields));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("scope").GetString().ShouldBe(expectedScope);
+    }
+
     [Fact]
     public async Task TokenEndpoint_ExceedsRateLimit_Returns429()
     {
@@ -117,6 +160,22 @@ public class OAuthControllerTests
             builder.UseSetting("McpOAuth:Enabled", "true");
             builder.UseSetting("McpOAuth:Issuer", "https://api.fakvio.test");
             builder.UseSetting("McpOAuth:Resource", "https://mcp.fakvio.test/mcp");
+        }
+    }
+
+    /// <summary>Replaces token persistence with a predictable result to test the HTTP wire format.</summary>
+    private sealed class TokenResponseOAuthFactory : EnabledOAuthFactory
+    {
+        public IOAuthService OAuthService { get; } = Substitute.For<IOAuthService>();
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IOAuthService>();
+                services.AddSingleton(OAuthService);
+            });
         }
     }
 

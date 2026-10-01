@@ -22,7 +22,7 @@ namespace Fakvio.Infrastructure.Authentication.OAuth;
 /// 4. The fetch itself — <see cref="SsrfSafeConnect"/> via a dedicated named HttpClient, no
 ///    redirects, 5s timeout, 64 KB response cap.
 /// 5. Document validation — client_id echoes the URL, redirect_uris present and well-formed,
-///    token_endpoint_auth_method absent or "none".
+///    and the client supports the public-client "none" token endpoint authentication method.
 ///
 /// Anything that fails after step 2 is cached as a NEGATIVE result for
 /// <see cref="NegativeCacheDuration"/> — repeatedly hammering a broken/hostile client_id must not
@@ -269,10 +269,27 @@ public class OAuthClientResolver : IOAuthClientResolver
                 return $"CIMD document has an invalid redirect_uri '{redirectUri}'";
         }
 
-        // v1 only supports public clients with no client authentication at the token endpoint
-        // (ADR §4.6) — anything else is rejected outright rather than silently ignored.
-        if (doc.TokenEndpointAuthMethod is not (null or "none"))
+        // Fakvio is a public client authorization server: it supports PKCE but does not
+        // authenticate clients at the token endpoint. Prefer the current plural CIMD field,
+        // which lists every method the client supports. Keep the older singular field as a
+        // fallback for existing clients (such as Claude) that do not publish the plural field.
+        if (doc.TokenEndpointAuthMethodsSupported.ValueKind != JsonValueKind.Undefined)
+        {
+            if (doc.TokenEndpointAuthMethodsSupported.ValueKind != JsonValueKind.Array)
+                return "CIMD document has malformed token_endpoint_auth_methods_supported";
+
+            var methods = doc.TokenEndpointAuthMethodsSupported.EnumerateArray().ToArray();
+            if (methods.Length == 0 || methods.Any(method =>
+                    method.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(method.GetString())))
+                return "CIMD document has malformed token_endpoint_auth_methods_supported";
+
+            if (!methods.Any(method => string.Equals(method.GetString(), "none", StringComparison.Ordinal)))
+                return "CIMD document does not support the required public-client auth method 'none'";
+        }
+        else if (doc.TokenEndpointAuthMethod is not (null or "none"))
+        {
             return $"CIMD document requests unsupported token_endpoint_auth_method '{doc.TokenEndpointAuthMethod}'";
+        }
 
         return null;
     }
@@ -343,5 +360,8 @@ public class OAuthClientResolver : IOAuthClientResolver
 
         [JsonPropertyName("token_endpoint_auth_method")]
         public string? TokenEndpointAuthMethod { get; set; }
+
+        [JsonPropertyName("token_endpoint_auth_methods_supported")]
+        public JsonElement TokenEndpointAuthMethodsSupported { get; set; }
     }
 }

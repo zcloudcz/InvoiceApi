@@ -24,6 +24,12 @@
 - [ ] Browser visual check at normal/narrow widths remains unperformed; interaction/authorization/localization verified by bUnit.
 - [ ] Separately authorized next feature: one identity with company memberships, add-company and existing-user invitation acceptance. Current duplicate-email registration remains rejected (verified; not implemented in this branch).
 
+## ChatGPT web MCP OAuth compatibility (2026-10-01)
+
+- [x] Accept current ChatGPT CIMD metadata when its supported authentication methods include `none`, while retaining the legacy singular-field fallback and rejecting malformed/incompatible documents.
+- [x] Return OAuth scopes as space-separated values on both authorization-code exchange and refresh responses; keep the internal API-key/database representation unchanged.
+- [x] Add resolver unit tests and token-endpoint integration tests; update DEVGUIDE, USERGUIDE, ADMINGUIDE and OAuth ADR.
+- [ ] Production OAuth rollout remains blocked: `api.fakvio.cz` currently resolves to GitHub Pages with a TLS mismatch; configure its DNS/App Service hostname/certificate, apply the OAuth app settings (including `McpOAuth__ConsentUrl`), then verify discovery and a ChatGPT read-only login.
 
 ## Completed (2026-09-11)
 

@@ -100,7 +100,7 @@ public class OAuthController : ControllerBase
                 AccessToken = result.AccessToken,
                 RefreshToken = result.RefreshToken,
                 ExpiresIn = result.ExpiresIn,
-                Scope = result.Scope
+                Scope = FormatScopeForResponse(result.Scope)
             });
         }
         catch (OAuthErrorException ex)
@@ -122,6 +122,13 @@ public class OAuthController : ControllerBase
         return _oauthService.ExchangeAuthorizationCodeAsync(
             new ExchangeAuthorizationCodeRequest(code, redirectUri, clientId, codeVerifier, resource), ct);
     }
+
+    /// <summary>
+    /// Converts the application's comma-separated scope storage into the space-separated
+    /// format required by OAuth token responses (RFC 6749 §3.3).
+    /// </summary>
+    private static string FormatScopeForResponse(string scope)
+        => string.Join(' ', scope.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
 
     private Task<OAuthTokenResult> RefreshAsync(string? refreshToken, string? scope, string? resource, CancellationToken ct)
     {

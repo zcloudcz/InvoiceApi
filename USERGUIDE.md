@@ -1341,8 +1341,17 @@ stačí v daném klientovi zadat adresu Fakvio MCP serveru a přihlásit se bě�
 kterou aplikaci jde (podle adresy, ne podle jména, které si aplikace sama zvolila), kam vás po
 povolení pošle, a zvolíte **Jen čtení** (výchozí) nebo **Čtení i zápis**.
 
-> Tahle cesta je v postupném zavádění (uzavřený test) — pokud vám claude.ai/ChatGPT po zadání
-> adresy nenabídne přihlášení, zatím se k vám ještě nedostala; použijte API klíč (§20.1).
+**ChatGPT na webu:** v podporovaném plánu otevřete **Nastavení → Apps → Create** (v pracovním
+prostoru může vytvoření aplikace povolit jen správce), zadejte `https://mcp.fakvio.cz/mcp` a
+vyberte přihlášení přes OAuth. ChatGPT vás přesměruje na přihlášení do Fakvia a následný souhlas
+s oprávněním **Jen čtení** nebo **Čtení i zápis**. Přesný postup a dostupnost vývojářského režimu
+se liší podle plánu a nastavení pracovního prostoru; viz [oficiální návod OpenAI pro MCP
+aplikace](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
+
+> Vzdálené OAuth připojení je dostupné až po zapnutí a ověření OAuth provozovatelem Fakvia.
+> Pokud ChatGPT po zadání adresy nenabídne přihlášení, tato konfigurace ještě není připravená.
+> API klíč z §20.1 nelze použít jako přímou náhradu v ChatGPT webu; pro klienta s API klíčem
+> použijte místní režim stdio nebo klienta, který umí posílat vlastní hlavičku `Authorization`.
 
 **Správa připojených aplikací.** Na stránce **Nastavení → Integrace** přibyla pod klíči sekce
 **Připojené aplikace** — jedna aplikace = jeden řádek (název, oprávnění, kdy vzniklo, kdy

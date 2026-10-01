@@ -617,9 +617,11 @@ chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled
 
 **Lidský úkol před prvním zapnutím (kód s tím nepočítá automaticky):**
 
-1. **Vlastní doména `api.fakvio.cz`** — CNAME u Forpsi na `fakvio-api`, managed certifikát v
-   App Service (stejný postup jako u `mcp.fakvio.cz` výše). Bez ní nemá `McpOAuth:Issuer` na co
-   ukazovat a klienti (claude.ai, ChatGPT) by si zafixovali issuer na `*.azurewebsites.net`.
+1. **Vlastní doména `api.fakvio.cz`** — nastavte CNAME u Forpsi na `fakvio-api.azurewebsites.net`,
+   přidejte hostname a managed certifikát na App Service `fakvio-api` a ověřte HTTPS. Audit
+   2026-10-01 zjistil, že `api.fakvio.cz` stále míří na `fakvio.cz` (GitHub Pages) a certifikát
+   neodpovídá; OAuth proto nezapínejte, dokud DNS i TLS neukazují na API. Bez stabilní domény by
+   klienti (Claude, ChatGPT) mohli issuer navždy svázat s technickou adresou `*.azurewebsites.net`.
 2. **Sdílené tajemství `ResourceProofSecret`** — vygenerujte 32+ náhodných bytů
    (`openssl rand -base64 32`) a uložte je **stejné** na obou web appech:
    - `fakvio-api`: app setting `McpOAuth__ResourceProofSecret`
@@ -635,6 +637,7 @@ chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled
 | `McpOAuth__Enabled` | `true` |
 | `McpOAuth__Issuer` | `https://api.fakvio.cz` |
 | `McpOAuth__Resource` | `https://mcp.fakvio.cz/mcp` |
+| `McpOAuth__ConsentUrl` | `https://app.fakvio.cz/oauth/consent` |
 | `McpOAuth__ResourceProofSecret` | Key Vault reference — musí sedět s MCP hostem |
 | `McpOAuth__TrustedClientHosts__0` / `__1` | `claude.ai` / `chatgpt.com` (výchozí, měnit jen vědomě) |
 | `McpOAuth__AllowedUserIds__0` | vaše `User.Id`, dokud `AllowAll` není `true` |
@@ -652,15 +655,17 @@ chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled
 
 1. `GET https://api.fakvio.cz/.well-known/oauth-authorization-server` → 200 s `issuer`.
 2. `GET https://mcp.fakvio.cz/.well-known/oauth-protected-resource/mcp` → 200 s `resource`.
-3. V claude.ai (Nastavení → Konektory) zadejte `https://mcp.fakvio.cz/mcp` jako vlastní
-   konektor — mělo by nabídnout přihlášení, ne 401 bez OAuth náznaku.
-4. Přihlaste se jako owner, na consentu zvolte **Jen čtení**, povolte → ověřte, že zápisový
+3. V ChatGPT webu v **Nastavení → Apps → Create** přidejte `https://mcp.fakvio.cz/mcp` a
+   zvolte OAuth. Ověřte, že se zobrazí přihlášení a stránka souhlasu; pokud ne, zkontrolujte
+   PRM/AS discovery a hlavičku `WWW-Authenticate` na `/mcp`.
+4. Stejný endpoint ověřte také v claude.ai přes Nastavení → Konektory.
+5. Přihlaste se jako owner, na consentu zvolte **Jen čtení**, povolte → ověřte, že zápisový
    nástroj vrátí čitelnou chybu, ne 500.
-5. Na `/settings/integrations` → **Připojené aplikace** → **Odebrat** → další request z
+6. Na `/settings/integrations` → **Připojené aplikace** → **Odebrat** → další request z
    claude.ai musí okamžitě dostat 401 (bez čekání na cache).
-6. Zaznamenejte sem skutečné `client_id` URL, které claude.ai/ChatGPT při připojení použily
+7. Zaznamenejte sem skutečné `client_id` URL, které claude.ai/ChatGPT při připojení použily
    (z logu `OAuth.ConsentGranted`) — ADR je nemá ověřené, jen odhadnuté ze spec dokumentace.
-7. **T9 (clickjacking):** `curl -sI https://app.fakvio.cz/oauth/consent` → hlavičky musí
+8. **T9 (clickjacking):** `curl -sI https://app.fakvio.cz/oauth/consent` → hlavičky musí
    obsahovat `content-security-policy: frame-ancestors 'none'` a `x-frame-options: DENY`.
    Kontrola po KAŽDÉM deployi `Fakvio.BlazorUI` — `staticwebapp.config.json` je statický soubor,
    změna hostingu (jiný Static Web Apps plán, CDN před ním) ho může přebít.
