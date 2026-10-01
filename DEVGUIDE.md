@@ -430,7 +430,10 @@ transakcí (`ExchangeAuthorizationCodeAsync`, `RefreshAsync`) proto spouštějí
 přes `Database.CreateExecutionStrategy().ExecuteAsync(...)`. Před každým pokusem vyčistí EF
 tracker a znovu čtou kód či token pod příslušným zámkem. Bez execution strategy by produkční
 `POST /oauth/token` skončil HTTP 500 s chybou o nepodporované uživatelské transakci; integrační
-testy proto používají také kontext s produkčním nastavením retry.
+testy proto používají také kontext s produkčním nastavením retry. Pokud se po potvrzeném
+commitu ztratí odpověď PostgreSQL, strategie před opakováním ověří v DB hash právě vydaného
+access tokenu a vrátí připravenou odpověď; opakování samotného jednorázového kódu nebo refresh
+tokenu by jinak chybně vyvolalo detekci reuse.
 
 ---
 
