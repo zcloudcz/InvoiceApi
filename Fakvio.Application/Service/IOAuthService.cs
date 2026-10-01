@@ -8,7 +8,8 @@ public sealed record OAuthTokenResult(string AccessToken, string RefreshToken, i
 
 /// <summary>Input to <see cref="IOAuthService.IssueAuthorizationCodeAsync"/> — everything the consent decision already validated.</summary>
 public sealed record IssueAuthorizationCodeRequest(
-    long UserId, string ClientId, string ClientName, string RedirectUri, string CodeChallenge, string Scopes, string Resource);
+    long UserId, string ClientId, string ClientName, string RedirectUri, string CodeChallenge, string Scopes, string Resource,
+    long? CompanyId = null);
 
 /// <summary>Input to <see cref="IOAuthService.ExchangeAuthorizationCodeAsync"/> — the token endpoint's <c>grant_type=authorization_code</c> request.</summary>
 public sealed record ExchangeAuthorizationCodeRequest(string Code, string RedirectUri, string ClientId, string CodeVerifier, string? Resource);
@@ -88,7 +89,7 @@ public interface IOAuthService
     /// evaluated fresh — the consent screen must reflect the CURRENT allowlist state, not
     /// whatever it was when the authorize redirect happened.
     /// </summary>
-    Task<OAuthConsentUserInfo> GetConsentUserInfoAsync(long userId, CancellationToken ct = default);
+    Task<OAuthConsentUserInfo> GetConsentUserInfoAsync(long userId, CancellationToken ct = default, long? companyId = null);
 
     /// <summary>
     /// Pure validation helper shared with the authorize endpoint (N5.4): missing/empty →

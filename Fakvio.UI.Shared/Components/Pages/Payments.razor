@@ -55,13 +55,13 @@
         <MudButton Variant="Variant.Filled" Color="Color.Secondary"
                    StartIcon="@Icons.Material.Filled.AutoFixHigh"
                    OnClick="TriggerBulkAutoMatchAsync"
-                   Disabled="_bulkMatchBusy || _unmatchedPage == null || _unmatchedPage.Items.Count == 0"
+                   Disabled="_bulkMatchBusy || _unmatchedLoading || _unmatchedLoadFailed || _unmatchedPage == null || _unmatchedPage.Items.Count == 0"
                    Class="mr-2">
             @if (_bulkMatchBusy)
             {
                 <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
             }
-            @L["Payments_BulkAutoMatch"]
+            @L["Payments_BulkAutoMatchPage"]
         </MudButton>
         <MudButton Variant="Variant.Text" Color="Color.Default"
                    StartIcon="@Icons.Material.Filled.Refresh"
@@ -76,15 +76,19 @@
         <MudProgressLinear Indeterminate="true" Color="Color.Warning" Class="mb-2" />
     }
 
-    @if (_unmatchedPage == null || _unmatchedPage.Items.Count == 0)
+    @if (_unmatchedLoadFailed)
+    {
+        <MudAlert Severity="Severity.Error">@L["Common_LoadFailed"]</MudAlert>
+    }
+    else if (!_unmatchedLoading && (_unmatchedPage == null || _unmatchedPage.Items.Count == 0))
     {
         <MudText Typo="Typo.body2" Class="mud-text-secondary">
             @L["Payments_Unmatched_Empty"]
         </MudText>
     }
-    else
+    else if (_unmatchedPage is not null)
     {
-        <MudTable Items="_unmatchedPage.Items" Dense="true" Hover="true"
+        <MudTable Items="_unmatchedPage.Items" RowsPerPage="UnmatchedPageSize" Dense="true" Hover="true"
                   MultiSelection="true" @bind-SelectedItems="_selectedUnmatched">
             <HeaderContent>
                 <MudTh>@L["Payments_Col_Date"]</MudTh>
@@ -140,6 +144,8 @@
                 </MudTd>
             </RowTemplate>
         </MudTable>
+        <MudPagination Count="_unmatchedPage.TotalPages" Selected="_unmatchedPageNumber"
+                       SelectedChanged="OnUnmatchedPageChanged" Disabled="_unmatchedLoading || _bulkMatchBusy" />
     }
 </MudPaper>
 
@@ -168,7 +174,7 @@
     </MudSelect>
 
     <MudTextField @bind-Value="_search" Immediate="false" DebounceInterval="400"
-                  OnDebounceIntervalElapsed="Reload"
+                  OnDebounceIntervalElapsed="ResetAndReload"
                   Label="@L["Payments_SearchPlaceholder"]"
                   Adornment="Adornment.Start"
                   AdornmentIcon="@Icons.Material.Filled.Search"
@@ -185,13 +191,17 @@
     <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
 }
 
-@if (_page == null || _page.Items.Count == 0)
+@if (_loadFailed)
+{
+    <MudAlert Severity="Severity.Error">@L["Common_LoadFailed"]</MudAlert>
+}
+else if (!_loading && (_page == null || _page.Items.Count == 0))
 {
     <MudAlert Severity="Severity.Info">@L["Payments_Empty"]</MudAlert>
 }
-else
+else if (_page is not null)
 {
-    <MudTable Items="_page.Items" Dense="true" Hover="true" Striped="true"
+    <MudTable Items="_page.Items" RowsPerPage="_pageSize" Dense="true" Hover="true" Striped="true"
               OnRowClick="@(EventCallback.Factory.Create<TableRowClickEventArgs<BankTransactionDto>>(this, args => OpenDetail(args.Item)))">
         <HeaderContent>
             <MudTh>@L["Payments_Col_Date"]</MudTh>
@@ -279,12 +289,15 @@ else
                 }
             </MudTd>
         </RowTemplate>
-        <PagerContent>
-            <MudTablePager PageSizeOptions="new[] { 25, 50, 100 }"
-                           RowsPerPageString="@L["Grid_RowsPerPage"]" />
-        </PagerContent>
+
     </MudTable>
 
+    <MudStack Row="true" Class="flex-wrap" AlignItems="AlignItems.Center">
+        <MudPagination Count="_page.TotalPages" Selected="_pageNumber" SelectedChanged="OnPageChanged" Disabled="_loading" />
+        <MudSelect T="int" Value="_pageSize" ValueChanged="OnPageSizeChanged" Label="@L["Table_RowsPerPage"].Value" Disabled="_loading">
+            <MudSelectItem Value="25">25</MudSelectItem><MudSelectItem Value="50">50</MudSelectItem><MudSelectItem Value="100">100</MudSelectItem>
+        </MudSelect>
+    </MudStack>
     <MudText Typo="Typo.caption" Class="mt-2">
         @string.Format(L["Payments_Total_Info"].Value, _page.TotalCount)
     </MudText>
@@ -298,10 +311,16 @@ else
 
     // ─── All-transactions grid state ──────────────────────────────────────
     private bool _loading;
+    private bool _loadFailed;
+    private int _pageNumber = 1;
+    private int _pageSize = 50;
     private Fakvio.Contracts.Common.Pagination.PagedResult<BankTransactionDto>? _page;
 
     // ─── Unmatched section state ──────────────────────────────────────────
     private bool _unmatchedLoading;
+    private bool _unmatchedLoadFailed;
+    private int _unmatchedPageNumber = 1;
+    private const int UnmatchedPageSize = 25;
     private Fakvio.Contracts.Common.Pagination.PagedResult<BankTransactionDto>? _unmatchedPage;
 
     /// <summary>
@@ -327,18 +346,25 @@ else
     private async Task Reload()
     {
         _loading = true;
+        _loadFailed = false;
         try
         {
             _page = await Api.ListTransactionsAsync(
                 status: _statusFilter,
                 direction: _directionFilter,
                 search: _search,
-                page: 1,
-                pageSize: 50);
+                page: _pageNumber,
+                pageSize: _pageSize);
+            if (_page is null) throw new InvalidOperationException("Missing payment response.");
+            if (_pageNumber > Math.Max(1, _page.TotalPages))
+            {
+                _pageNumber = Math.Max(1, _page.TotalPages);
+                await Reload();
+            }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            _loadFailed = true;
         }
         finally
         {
@@ -346,16 +372,21 @@ else
         }
     }
 
+    private Task ResetAndReload() { _pageNumber = 1; return Reload(); }
+    private Task OnPageChanged(int page) { _pageNumber = page; return Reload(); }
+    private Task OnPageSizeChanged(int size) { _pageSize = size; return ResetAndReload(); }
+    private Task OnUnmatchedPageChanged(int page) { _unmatchedPageNumber = page; return ReloadUnmatched(); }
+
     private async Task OnStatusChanged(EMatchStatus? v)
     {
         _statusFilter = v;
-        await Reload();
+        await ResetAndReload();
     }
 
     private async Task OnDirectionChanged(EPaymentDirection? v)
     {
         _directionFilter = v;
-        await Reload();
+        await ResetAndReload();
     }
 
     /// <summary>Navigates to the read-only detail page for a single transaction.</summary>
@@ -366,22 +397,30 @@ else
 
     /// <summary>
     /// Loads the unmatched incoming transactions for the top section.
-    /// Uses a large page size so the user sees all unmatched items at once.
+    /// Fetches the selected server page; selection is cleared when that page is refreshed.
     /// </summary>
     private async Task ReloadUnmatched()
     {
         _unmatchedLoading = true;
+        _unmatchedLoadFailed = false;
+        _selectedUnmatched.Clear();
         try
         {
             _unmatchedPage = await Api.ListTransactionsAsync(
                 status: EMatchStatus.Unmatched,
                 direction: EPaymentDirection.Incoming,
-                page: 1,
-                pageSize: 100);
+                page: _unmatchedPageNumber,
+                pageSize: UnmatchedPageSize);
+            if (_unmatchedPage is null) throw new InvalidOperationException("Missing payment response.");
+            if (_unmatchedPageNumber > Math.Max(1, _unmatchedPage.TotalPages))
+            {
+                _unmatchedPageNumber = Math.Max(1, _unmatchedPage.TotalPages);
+                await ReloadUnmatched();
+            }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            _unmatchedLoadFailed = true;
         }
         finally
         {
@@ -450,12 +489,12 @@ else
     /// </summary>
     private async Task TriggerBulkAutoMatchAsync()
     {
-        if (_unmatchedPage == null || _unmatchedPage.Items.Count == 0) return;
+        if (_bulkMatchBusy || _unmatchedLoading || _unmatchedLoadFailed || _unmatchedPage == null || _unmatchedPage.Items.Count == 0) return;
 
         _bulkMatchBusy = true;
         try
         {
-            // Use selected rows if any are checked, otherwise fall back to all unmatched.
+            // Use selected rows if any are checked, otherwise use the current page (the button states this explicitly).
             var targetRows = _selectedUnmatched.Count > 0
                 ? _selectedUnmatched.ToList()
                 : _unmatchedPage.Items.ToList();

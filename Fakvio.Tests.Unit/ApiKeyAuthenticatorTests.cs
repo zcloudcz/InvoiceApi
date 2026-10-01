@@ -44,6 +44,7 @@ public class ApiKeyAuthenticatorTests : IDisposable
             Substitute.For<ILogger<ApiKeyAuthenticator>>(),
             Microsoft.Extensions.Options.Options.Create(new Fakvio.Infrastructure.Authentication.OAuth.McpOAuthOptions()));
 
+        _context.Client.Add(new Client { Id = OwnerCompanyId, RegistrationNumber = "owner", IsIssuer = true });
         _context.User.AddRange(
             NewUser(OwnerUserId, "owner@test.cz", EUserRole.User, companyId: OwnerCompanyId, isActive: true),
             // No company — exactly the shape that makes SysAdmin impersonation possible.
@@ -236,10 +237,36 @@ public class ApiKeyAuthenticatorTests : IDisposable
     [Fact]
     public async Task KeyOfDeactivatedUser_IsRejected()
     {
-        var created = await CreateKeyAsync(userId: InactiveUserId);
+        var created = await CreateKeyAsync();
+        (await _context.User.SingleAsync(u => u.Id == OwnerUserId)).IsActive = false;
+        await _context.SaveChangesAsync();
 
         // The key outlives the login session, so deactivating the user has to kill it too.
         (await _authenticator.AuthenticateAsync(created.Key)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task KeyCompany_DoesNotFollowUsersDefaultCompany()
+    {
+        var created = await CreateKeyAsync();
+        (await _context.User.SingleAsync(u => u.Id == OwnerUserId)).CompanyId = 99;
+        await _context.SaveChangesAsync();
+        var principal = await _authenticator.AuthenticateAsync(created.Key);
+        principal.ShouldNotBeNull();
+        principal.FindFirst("CompanyId")!.Value.ShouldBe(OwnerCompanyId.ToString());
+    }
+
+    [Fact]
+    public async Task KeyRole_UsesLiveMembershipInsteadOfGlobalDefaultRole()
+    {
+        var created = await CreateKeyAsync();
+        var membership = await _context.UserCompanyMembership.SingleAsync(m => m.UserId == OwnerUserId);
+        membership.Role = EUserRole.Admin;
+        await _context.SaveChangesAsync();
+        (await _authenticator.AuthenticateAsync(created.Key))!.IsInRole("Admin").ShouldBeTrue();
+        membership.Role = EUserRole.User;
+        await _context.SaveChangesAsync();
+        (await _authenticator.AuthenticateAsync(created.Key))!.IsInRole("Admin").ShouldBeFalse();
     }
 
     [Theory]

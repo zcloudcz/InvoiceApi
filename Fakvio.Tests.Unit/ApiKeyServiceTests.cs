@@ -37,6 +37,8 @@ public class ApiKeyServiceTests : IDisposable
         _service = new ApiKeyService(_context, Substitute.For<ILogger<ApiKeyService>>());
 
         // FK targets — an API key always belongs to a user.
+        _context.Client.AddRange(new Client { Id = 10, RegistrationNumber = "10", IsIssuer = true }, new Client { Id = 20, RegistrationNumber = "20", IsIssuer = true },
+            new Client { Id = 30, RegistrationNumber = "30", IsIssuer = true });
         _context.User.AddRange(
             NewUser(OwnerUserId, "owner@test.cz", EUserRole.User, companyId: 10),
             NewUser(OtherUserId, "other@test.cz", EUserRole.User, companyId: 20),
@@ -88,6 +90,55 @@ public class ApiKeyServiceTests : IDisposable
         => new() { Name = name, Scopes = scopes };
 
     // ─── Key generation & hashing ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_DefaultGrantDoesNotExpandWhenUserJoinsAnotherCompany()
+    {
+        var created = await _service.CreateAsync(OwnerUserId, NewRequest());
+        _context.UserCompanyMembership.Add(new UserCompanyMembership
+        {
+            UserId = OwnerUserId, CompanyId = 30, Role = EUserRole.Admin, IsActive = true
+        });
+        await _context.SaveChangesAsync();
+
+        var stored = await LoadStoredKeyAsync(created.Id);
+        stored.CompanyId.ShouldBe(10);
+        stored.AllowedCompanyIds.ShouldBe(new long[] { 10 });
+    }
+
+    [Fact]
+    public async Task CreateAsync_RejectsCompanyOutsideActiveMemberships()
+    {
+        var request = NewRequest();
+        request.AllowedCompanyIds = [10, 20];
+        await Should.ThrowAsync<ArgumentException>(() => _service.CreateAsync(OwnerUserId, request));
+        (await _context.ApiKey.CountAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task CreateAsync_RejectsInactiveIssuerEvenWithActiveMembership()
+    {
+        (await _context.Client.SingleAsync(c => c.Id == 10)).IsActive = false;
+        await _context.SaveChangesAsync();
+        await Should.ThrowAsync<ArgumentException>(() => _service.CreateAsync(OwnerUserId, NewRequest()));
+        (await _context.ApiKey.CountAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ExplicitGrantIncludesOnlySelectedCompanies()
+    {
+        _context.UserCompanyMembership.Add(new UserCompanyMembership
+        {
+            UserId = OwnerUserId, CompanyId = 30, Role = EUserRole.Admin, IsActive = true
+        });
+        await _context.SaveChangesAsync();
+        var request = NewRequest();
+        request.CompanyId = 30;
+        request.AllowedCompanyIds = [10, 30];
+        var created = await _service.CreateAsync(OwnerUserId, request);
+        created.CompanyId.ShouldBe(30);
+        created.AllowedCompanyIds.ShouldBe(new long[] { 10, 30 });
+    }
 
     [Fact]
     public async Task CreateAsync_ReturnsRawKeyWithFakPrefix()
@@ -282,13 +333,13 @@ public class ApiKeyServiceTests : IDisposable
     [Fact]
     public async Task CreateAsync_SysAdminWithoutCompany_Succeeds()
     {
-        // The key carries no CompanyId at all — the tenant is derived from the owner at
-        // authentication time. That is what lets a SysAdmin key impersonate a tenant
-        // later (#236) instead of being frozen to one company.
+        // Global SysAdmin access retains its existing explicit impersonation workflow.
+        // Ordinary user keys, covered above, always have a fixed company grant.
         var created = await _service.CreateAsync(SysAdminUserId, NewRequest("SysAdmin CLI"));
 
         created.Key.ShouldStartWith("fak_live_");
-        typeof(ApiKey).GetProperty("CompanyId").ShouldBeNull();
+        created.CompanyId.ShouldBeNull();
+        created.AllowedCompanyIds.ShouldBeEmpty();
     }
 
     // ─── Listing ──────────────────────────────────────────────────────────────

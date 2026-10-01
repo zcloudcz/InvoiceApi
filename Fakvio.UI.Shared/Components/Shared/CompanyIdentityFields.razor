@@ -1,0 +1,29 @@
+@inject IStringLocalizer<SharedResource> L
+@* Shared issuer identity/address inputs used by registration and authenticated company creation. *@
+<MudTextField Variant="Variant.Outlined" Value="@CompanyName" ValueChanged="CompanyNameChanged" Label="@L["Register_CompanyName"].Value" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Business" Required="true" Disabled="Disabled" Immediate="true" />
+<MudTextField Variant="Variant.Outlined" Value="@RegistrationNumber" ValueChanged="RegistrationNumberChanged" Label="@L["Register_RegistrationNumber"].Value" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Numbers" Required="true" Disabled="Disabled" Immediate="true" />
+@ChildContent
+<MudText Typo="Typo.subtitle2" Class="mt-2">@L["Register_AddressSection"]</MudText>
+<MudTextField Variant="Variant.Outlined" Value="@Street" ValueChanged="StreetChanged" Label="@L["Client_Street"].Value" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Home" Disabled="Disabled" />
+<MudGrid>
+    <MudItem xs="12" sm="4"><MudTextField Variant="Variant.Outlined" Value="@PostalCode" ValueChanged="PostalCodeChanged" Label="@L["Client_PostalCode"].Value" Disabled="Disabled" /></MudItem>
+    <MudItem xs="12" sm="8"><MudTextField Variant="Variant.Outlined" Value="@City" ValueChanged="CityChanged" Label="@L["Client_City"].Value" Disabled="Disabled" /></MudItem>
+</MudGrid>
+<MudTextField Variant="Variant.Outlined" Value="@Country" ValueChanged="CountryChanged" Label="@L["Client_Country"].Value" HelperText="@L["CompanyMembership_CountryCode"].Value" MaxLength="2" Disabled="Disabled" />
+
+@code {
+    [Parameter] public string CompanyName { get; set; } = "";
+    [Parameter] public EventCallback<string> CompanyNameChanged { get; set; }
+    [Parameter] public string RegistrationNumber { get; set; } = "";
+    [Parameter] public EventCallback<string> RegistrationNumberChanged { get; set; }
+    [Parameter] public string? Street { get; set; }
+    [Parameter] public EventCallback<string?> StreetChanged { get; set; }
+    [Parameter] public string? City { get; set; }
+    [Parameter] public EventCallback<string?> CityChanged { get; set; }
+    [Parameter] public string? PostalCode { get; set; }
+    [Parameter] public EventCallback<string?> PostalCodeChanged { get; set; }
+    [Parameter] public string? Country { get; set; }
+    [Parameter] public EventCallback<string?> CountryChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

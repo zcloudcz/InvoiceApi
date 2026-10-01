@@ -75,6 +75,7 @@ public class OAuthConsentPageTests : BunitContext, IAsyncLifetime
         RequestedScopes = "read,write",
         UserEmail = "owner@example.com",
         CompanyName = "Owner s.r.o.",
+        CompanyId = 17,
         IsEligible = true
     };
 
@@ -170,22 +171,61 @@ public class OAuthConsentPageTests : BunitContext, IAsyncLifetime
     }
 
     /// <summary>Serves the one route the page calls: GET /api/oauth/consent/{ticket}.</summary>
+    [Fact]
+    public async Task Decision_EchoesDisplayedCompany()
+    {
+        var consent = RenderConsent(BaseInfo());
+        consent.WaitForAssertion(() => consent.Markup.ShouldContain(ClientId));
+        var allow = consent.FindAll("button").First(b => b.TextContent.Contains(
+            Services.GetRequiredService<Microsoft.Extensions.Localization.IStringLocalizer<SharedResource>>()["Btn_Allow"].Value));
+        await allow.ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+        _api.Decision.ShouldNotBeNull().CompanyId.ShouldBe(17);
+    }
+
     private sealed class ConsentStub : HttpMessageHandler
     {
+        public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
         public OAuthConsentInfoDto? Info { get; set; }
+        public OAuthConsentDecisionDto? Decision { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath.StartsWith("/api/oauth/consent/"))
             {
-                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                var response = new HttpResponseMessage(Status)
                 {
                     Content = JsonContent.Create(Info)
                 };
-                return Task.FromResult(response);
+                return response;
             }
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            if (request.Method == HttpMethod.Post)
+            {
+                Decision = await request.Content!.ReadFromJsonAsync<OAuthConsentDecisionDto>(ct);
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new OAuthConsentDecisionResultDto { RedirectUrl = "https://claude.ai/callback" }) };
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
+    }
+
+    [Fact]
+    public void ExpiredTicket_ShowsRecoveryInsteadOfRemainingLoading()
+    {
+        _api.Status = HttpStatusCode.BadRequest;
+        var cut = RenderConsent(BaseInfo());
+        cut.WaitForAssertion(() => cut.FindAll(".mud-alert").Count.ShouldBe(1));
+        cut.FindAll(".mud-progress-circular").ShouldBeEmpty();
+        cut.Find("a[href='/settings/integrations']").ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ConsentOutage_CanRetrySameTicket()
+    {
+        _api.Status = HttpStatusCode.ServiceUnavailable;
+        var cut = RenderConsent(BaseInfo());
+        cut.WaitForAssertion(() => cut.FindAll(".mud-alert").Count.ShouldBe(1));
+        _api.Status = HttpStatusCode.OK;
+        await cut.InvokeAsync(() => cut.FindComponent<MudBlazor.MudButton>().Instance.OnClick.InvokeAsync());
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain(ClientId));
     }
 }

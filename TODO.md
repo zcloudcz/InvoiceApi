@@ -1,5 +1,30 @@
 # Fakvio TODO
 
+## UX audit remediation (2026-10-01)
+
+- [x] Correct all 20 ranked audit findings and related contact, deletion, error-state and mobile-context observations on `codex/ux-audit-fixes`.
+- [x] Add SysAdmin membership inspection/update/revoke/restore in UI/API and two MCP tools (69 total, package version 2.6.0, unpublished).
+- [x] Serialize invite acceptance, membership administration and legacy account edits; prevent profile saves restoring revoked access or replacing independent company roles.
+- [x] Add 81 unit/component/MCP regressions and 7 integration cases relative to the reviewed baseline; full suites: 4,127 unit passed / 4 skipped, 256 integration passed / 3 skipped. PostgreSQL migration/concurrency checks passed on a disposable local instance.
+- [x] Release Blazor rebuild passed; compiler/analyzer/package warnings remain. Browser verified membership revocation, invitation validation, contact preservation, invoice-history navigation, URL normalization, payment pages beyond 50, and credit-note server search.
+- [x] Update USERGUIDE, ADMINGUIDE, DEVGUIDE and MCP README; preserve release-notes ownership.
+- [x] Record audit-to-test mapping, browser evidence and explicit verification limitations in `docs/reviews/2026-10-01-ux-fixes.md`.
+- [ ] Review and merge the stacked feature PRs, then authorize a separate production release. No UX fixes are deployed yet.
+
+
+## Implemented, awaiting draft PR (2026-10-01): feedback and role presentation
+
+- [x] Shared feedback contracts, owner/company authorization, master persistence and generated migration.
+- [x] Localized header form, personal tracking, SysAdmin inbox and public response; no role chip beside name.
+- [x] MCP HTTP parity and package version 2.4.0 (not published).
+- [x] Accountant / Účetní display label; user-management UI limited to SysAdmin.
+- [x] Release verification: 3,986 unit tests passed (4 existing DB smoke skips); 239 integration tests passed (3 external-service skips). Includes 70 feedback unit/UI/MCP cases, 14 feedback HTTP/migration cases, and 33 user-management cases. Generated migration applied to disposable PostgreSQL; column, FK and index checks passed.
+- [x] Independent feedback security review and coordinating-agent user-management review: no findings.
+- [ ] Draft PR; no feedback production deployment or MCP 2.4.0 publication performed.
+- [ ] Browser visual check at normal/narrow widths remains unperformed; interaction/authorization/localization verified by bUnit.
+- [ ] Separately authorized next feature: one identity with company memberships, add-company and existing-user invitation acceptance. Current duplicate-email registration remains rejected (verified; not implemented in this branch).
+
+
 ## Completed (2026-09-11)
 
 ### Výchozí řazení faktur: od nejnovější ✅
@@ -1103,7 +1128,10 @@ Comprehensive browser-based UI tests using Microsoft.Playwright.NUnit (Chromium 
 - [x] **NavigateTool** (Infrastructure/Service/ChatTools): new IChatTool for navigation — resolves client names via IClientService.GetClientsPagedAsync, builds URLs for new_invoice, new_credit_note, client_detail, client_list, invoice_list, new_client; handles single match (navigate), multiple matches (disambiguate), no match (error)
 - [x] **ChatToolExecutor extended**: added NavigationKeywordPattern [GeneratedRegex] (otevři, ukaž, přejdi, naviguj, zobraz, open, show, go to, new invoice, new client, etc.); DetectToolIntent now triggers on EITHER (IČO + keyword) OR (navigation keyword); BuildToolInstructions includes navigate tool with examples
 - [x] **ChatService pending action**: _pendingUiAction field captured from toolResult.UiAction after tool execution; GetPendingUiAction() method on IChatService interface; scoped per-request (safe for concurrent users)
-- [x] **ChatController SSE action event**: after [DONE], sends `event: action\ndata: {json}\n\n` if pending action exists — uses standard SSE event: field for type discrimination
+- [x] **ChatController SSE action event**: after [DONE], sends `event: action
+data: {json}
+
+` if pending action exists — uses standard SSE event: field for type discrimination
 - [x] **ChatApiService**: new ChatStreamEvent class (Text/Action discriminated union); StreamMessageAsync returns IAsyncEnumerable<ChatStreamEvent>; parses SSE event: lines, tracks currentEventType, yields text or action events; continues reading after [DONE] for action events
 - [x] **ChatPanel navigation**: injects NavigationManager, captures pendingAction during streaming, executes NavigateTo(url) after 800ms delay (lets user see AI response first)
 - [x] **DI registration**: NavigateTool added to ServiceCollectionExtensions.cs
@@ -1193,3 +1221,16 @@ based on how often Czech customers ask for them. Each line is sized as a standal
 - [ ] **Performance Optimization** — Redis distributed cache, response compression, lazy loading for large datasets, query optimization
 - [ ] **Apple OAuth** — add Apple sign-in provider (requires separate NuGet package, Apple Developer account setup)
 
+## Multi-company implementation — UI and MCP progress (2026-10-01)
+- [x] Shared company registration inputs, authenticated add/retry dialog, membership selector and confirmed browser reload after switch.
+- [x] Existing-identity invitation acceptance and SysAdmin invitation dialog; localized CZ/EN labels. Backend sends bilingual invitation email and returns a one-time manual link fallback; browser acceptance preserves identity credentials.
+- [x] API-key explicit company picker defaults to current company; key/connected-app company metadata. SysAdmin global-key creation remains available without memberships; focused integrations regression suite 22/22 passed.
+- [x] MCP 2.5.0 company tools and per-invocation context isolation; no machine JWT exchange.
+- [x] Added UI retry/invitation tests and real SDK concurrent company-context/discovery coverage.
+- [x] Central compilation and UI/MCP/login verification: 89 passed, 0 failed (2026-10-01). Includes real SDK concurrent company selection and OAuth consent company echo.
+- [x] Isolated PostgreSQL migration Up/Down passed (coordinator); independent security review of live membership, session, consent and rollback completed. Inactive-issuer, superseded-invitation and machine-retry findings fixed by responsible implementers.
+- [x] Final guides and implementation plan reconciled to actual routes, 67 MCP tools, stateless selection and unchanged legacy login behavior.
+- [x] Final full unit suite: 4,046 passed, 4 skipped, 0 failed; full integration suite: 249 passed, 3 skipped, 0 failed. Both exit 0, including real PostgreSQL migration and concurrent invitation acceptance.
+- [x] Coordinator final review, EF model consistency check (no pending changes), and Release Blazor WebAssembly build (0 warnings/errors).
+- [ ] Merge the reviewed feature through the normal release flow; desktop/mobile browser layout and journey checks remain unrun.
+Production deployment and package publication are outside this task and have not been performed.

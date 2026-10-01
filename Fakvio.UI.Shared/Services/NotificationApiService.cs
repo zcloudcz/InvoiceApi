@@ -37,15 +37,8 @@ public class NotificationApiService : ApiClientBase
         if (type.HasValue)
             url += $"&type={(int)type.Value}";
 
-        try
-        {
-            return await GetAsync<PagedResult<NotificationDto>>(url)
-                   ?? new PagedResult<NotificationDto>([], 0, page, pageSize);
-        }
-        catch (ApiException)
-        {
-            return new PagedResult<NotificationDto>([], 0, page, pageSize);
-        }
+        return await GetAsync<PagedResult<NotificationDto>>(url)
+            ?? throw new HttpRequestException("Notification response was empty.");
     }
 
     /// <summary>
@@ -54,14 +47,7 @@ public class NotificationApiService : ApiClientBase
     /// </summary>
     public async Task<int> GetUnreadCountAsync()
     {
-        try
-        {
-            return await GetAsync<int>("/api/notification/unread-count");
-        }
-        catch (ApiException)
-        {
-            return 0;
-        }
+        return await GetAsync<int>("/api/notification/unread-count");
     }
 
     /// <summary>
@@ -70,14 +56,8 @@ public class NotificationApiService : ApiClientBase
     /// </summary>
     public async Task<NotificationDashboardDto?> GetDashboardAsync()
     {
-        try
-        {
-            return await GetAsync<NotificationDashboardDto>("/api/notification/dashboard");
-        }
-        catch (ApiException)
-        {
-            return null;
-        }
+        return await GetAsync<NotificationDashboardDto>("/api/notification/dashboard")
+            ?? throw new HttpRequestException("Notification dashboard response was empty.");
     }
 
     /// <summary>
@@ -86,14 +66,7 @@ public class NotificationApiService : ApiClientBase
     /// </summary>
     public async Task MarkAsReadAsync(long notificationId)
     {
-        try
-        {
-            await PostWithoutBodyAsync<object>($"/api/notification/{notificationId}/read");
-        }
-        catch (ApiException)
-        {
-            // Swallow — read state is best-effort.
-        }
+        await PostWithoutBodyAsync<object>($"/api/notification/{notificationId}/read");
     }
 
     /// <summary>
@@ -102,13 +75,6 @@ public class NotificationApiService : ApiClientBase
     /// </summary>
     public async Task MarkAllAsReadAsync()
     {
-        try
-        {
-            await PostWithoutBodyAsync<object>("/api/notification/read-all");
-        }
-        catch (ApiException)
-        {
-            // Swallow — read state is best-effort.
-        }
+        await PostWithoutBodyAsync<object>("/api/notification/read-all");
     }
 }

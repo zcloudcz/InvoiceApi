@@ -108,6 +108,8 @@ public class ApiKeyAuthenticationEndpointTests : IClassFixture<FakvioFactory>
         var master = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
         var user = master.User.First(u => u.Id == userId);
         user.CompanyId = companyId;
+        if (!master.UserCompanyMembership.Any(m => m.UserId == userId && m.CompanyId == companyId))
+            master.UserCompanyMembership.Add(new Fakvio.Domain.Entities.UserCompanyMembership { UserId = userId, CompanyId = companyId, Role = user.Role });
         master.SaveChanges();
     }
 

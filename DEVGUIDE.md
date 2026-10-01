@@ -1341,10 +1341,10 @@ Co v katalogu **záměrně není**:
 | Vynecháno | Proč |
 |-----------|------|
 | Auth flow (`/login`, `/register`, `/set-password`, `/verify-email`, callbacky) | Asistent běží v session přihlášeného uživatele — navigace ven z aplikace. |
-| SysAdmin-only stránky (`/logs`, `/system-settings`, `/companies`, `/company-settings`, `/currencies`, `/ai-instructions`, `/send-email`, `/sysadmin/*`) | Tenant uživatel by dostal jen „access denied". |
+| SysAdmin-only stránky (`/logs`, `/system-settings`, `/companies`, `/company-settings`, `/currencies`, `/ai-instructions`, `/send-email`, `/users`, `/sysadmin/*`) | Tenant uživatel by dostal jen „access denied". |
 | Routy s parametrem (`/invoices/{id}`, `/payments/{id}`, `/received-invoices/{id}`, detaily šablon) | Potřebují nejdřív dohledat entitu; dnes existuje jen resoluce klienta (target `client_detail` → `/clients/{id}`). |
 
-Stránky s `[Authorize(Roles = "Admin,SysAdmin")]` (`/users`, `/tax-configs`) v katalogu
+Stránky s `[Authorize(Roles = "Admin,SysAdmin")]` (`/tax-configs`) v katalogu
 **jsou** — `Admin` je tenantová role.
 
 Hlídá to `NavigateToolRouteCatalogTests`: čte reálnou routovací tabulku reflexí
@@ -1496,7 +1496,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 57 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 69 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1574,6 +1574,16 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `PauseRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
 | `ResumeRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
 | `DeleteRecurringSchedule` | **Destructive** | — | ❌ | zatím bez tasku |
+| **Zpětná vazba (6)** |
+| `SubmitFeedback` | Create | — | ❌ | MCP + UI; chat umí navigovat na přehled |
+| `ListFeedback`, `GetFeedback` | Read | — | ❌ | vlastní uživatel + firma |
+| `ListAdminFeedback`, `GetAdminFeedback` | Read | — | ❌ | SysAdmin |
+| `UpdateFeedbackStatus` | Write | — | ❌ | SysAdmin; veřejná odpověď |
+| **Firmy a členství** (`CompanyTools`, 6) |
+| `ListCompanies`, `SelectCompany` | Read / validate context | — | ❌ | explicitní kontext credentialu |
+| `AddCompany`, `RetryCompanySetup` | Write | — | ❌ | přihlášená identita; granty se nerozšiřují |
+| `ListUserCompanyMemberships` | Read | — | ❌ | SysAdmin |
+| `UpdateUserCompanyMembership` | **Destructive / idempotent** | — | ❌ | SysAdmin; role a aktivita jednoho členství |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
@@ -1586,8 +1596,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 57 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 15 mezer: daně (5, zatím bez tasku),
+**Součty:** 69 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 27 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
@@ -1674,7 +1684,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **57 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring (po jednom souboru v `Tools/`).
+- **69 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -1693,7 +1703,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
   Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
   podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
-- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 56 nástrojů.**
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro běžné MCP nástroje.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
   Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
@@ -3274,3 +3284,65 @@ Nový vývojář / AI agent — pro rychlou orientaci přečti v tomto pořadí:
 9. `Fakvio.UI.Shared/Services/CustomAuthenticationStateProvider.cs` — auth na klientu.
 
 Pro hlubší investigation použij `Explore` agenta s konkrétní otázkou — ne grep naslepo.
+
+## Feedback reports (October 2026)
+
+Authenticated users can submit bugs, ideas and observations from the header and follow their own reports. `FeedbackService` is the shared boundary for the Blazor client and MCP HTTP calls. Reports live in master `FeedbackReport`; no tenant database, worker or external ticketing integration is involved. Migration `20261001105750_AddFeedbackReports` adds bounded text columns, restricted user/company foreign keys and indexes for owner/company, newest-first inbox and status paging.
+
+- `POST /api/feedback`, `GET /api/feedback`, `GET /api/feedback/{id}` derive the active user and effective company from trusted context. The service rechecks the user's active company membership (or authorized SysAdmin impersonation). Every personal query filters both user and company before pagination. Inaccessible IDs return 404.
+- `GET /api/sysadmin/feedback`, `GET /api/sysadmin/feedback/{id}`, `PATCH /api/sysadmin/feedback/{id}` require SysAdmin in HTTP authorization and the service, including its persisted user role. The global inbox works without impersonation. API keys/OAuth retain their existing authentication and read/write-scope restrictions; the feature grants no additional role.
+- Page is one-based, page size 1–100 (default 25), ordering is `CreatedAt DESC, Id DESC`. Undefined enums and invalid pagination return 400. Subject and description are trimmed and required (200/10,000 characters); public response 10,000, page 2,048, version 100. The server removes query/fragment and rejects non-local or unsafe paths. Report content is plain text, never rendered as HTML.
+- Feedback deliberately avoids argument-logging service proxies and response-body logging. Logs carry report IDs/statuses only. The HTTP adapter propagates cancellation; failed dialogs retain text and prevent repeated submission while pending.
+- MCP 2.4.0 adds `submit_feedback`, `list_feedback`, `get_feedback`, `list_admin_feedback`, `get_admin_feedback`, `update_feedback_status`. Clients use the shared contracts and API, never direct database access. See the MCP README for exact tool names and authorization.
+
+UI role `Admin` is presented as **Accountant / Účetní**. The persisted enum/JWT role remains `Admin`; user-management endpoints and navigation are restricted to SysAdmin. Self-service profile/password/preferences remain available. Registration still rejects an existing email; signed-in users add another company through the membership flow below.
+
+## Multiple-company identity and client boundaries
+
+UserCompanyMembership in MasterDb is the authority for non-SysAdmin company roles. User.CompanyId remains a compatibility/default pointer and must not be changed by a switch. Authorization must validate live membership before tenant routing and role authorization, including MasterDb-backed feedback, notification and user-query paths. SysAdmin remains a platform role with explicit impersonation.
+
+CompanySessionService issues company-switch and refresh sessions from a live membership. The existing AuthService login/2FA signing flow is unchanged: initial login metadata can retain the default User.Role, while CompanyMembershipMiddleware is authoritative on each request. A browser whose default membership was revoked may still list its memberships and switch through the explicitly allowed recovery endpoints.
+
+The browser uses /api/my-companies for listing and idempotent company creation, /api/my-companies/switch for an interactive replacement JWT, and /api/my-companies/{id}/retry-provisioning for setup recovery. CreateMyCompanyDto.OperationId remains stable across network retries. CompanyMembershipSelector replaces the browser session only after successful switching, then performs a full reload to discard company-specific caches and old views. CompanyIdentityFields is shared by registration and authenticated company creation.
+
+Membership invitations use /api/my-companies/invitations and its /accept endpoint. The authenticated invited identity accepts a hashed, expiring, single-use token. The invitation endpoint sends bilingual HTML-encoded email and returns the raw token once for a manual link fallback if SMTP fails; stored data contains only the hash. The UI places the raw invitation in the URL fragment, not the query, and clears it after acceptance. CompanyInvitationReturnStorage carries only the invitation token in sessionStorage across login/2FA/external login, then returns to a fixed local fragment route; no general return URL is accepted. This flow does not modify password credentials.
+
+Personal key issuance uses CompanyId and AllowedCompanyIds. Explicit company selection travels in X-Selected-Company-Id; X-Company-Id remains reserved for SysAdmin impersonation. The API intersects selected company, credential grants, live membership, role and scopes. OAuth grant/code/access/refresh chains remain pinned to their consent company and reject explicit selected-company overrides.
+
+MCP 2.5.0 adds list_companies, select_company, add_company and retry_company_setup. CompanyRequestContext adds a reserved optional companyId property to tool discovery and removes it before individual method binding. Its AsyncLocal scope lasts only for one invocation; AuthHeaderHandler stamps the selected-company header onto each request, never HttpClient defaults. Concurrent HTTP and stdio calls cannot share a selected company. select_company returns a validated context hint, not a JWT or persistent session change. OAuth callers omit companyId. Invitation acceptance remains an interactive browser flow and is not exposed to scoped machine credentials. Machine provisioning retry requires an explicit grant for its target company; recovery before new credential issuance uses the browser.
+
+Verification includes real SDK discovery/invocation and concurrent-company forwarding, API-key picker defaults, company-creation retry identity, invitation acceptance, and localized UI. Database authorization and migration validation are separate mandatory gates; client tests alone do not establish tenant isolation. Production deployment and NuGet publication are outside this implementation.
+
+Rollback of the multi-company migration must not silently restore legacy credentials to a different company. Before dropping explicit company bindings, revoke every credential whose legacy User.CompanyId interpretation would change its company scope; this includes multi-company grants and OAuth chains whose consent company differs from the default. Inspect the generated Down migration against representative data. No production database was modified during this implementation.
+
+## UX recovery and membership administration (October 2026)
+
+### Individual membership lifecycle
+
+`UserCompanyMembershipController` exposes `GET /api/user/{userId}/memberships` and `PUT /api/user/{userId}/memberships/{companyId}`. HTTP and `CompanyMembershipService` both require a persisted SysAdmin identity. PUT accepts `UpdateCompanyMembershipDto.Role` (User/Admin only) and `IsActive`; required values are validated. It updates an existing membership only. It leaves other memberships, `User.CompanyId`, account defaults, API-key grants and OAuth grants unchanged. Restoring access requires an active account and issuer company. Every administrative change consumes outstanding invitations for that user/company, including role downgrades.
+
+On relational storage, invitation issue/accept, membership update/revoke and legacy account updates acquire the same user-identity lock in their transaction. Keep this lock order when adding another membership mutation: otherwise a previously issued invitation or account edit could race a revocation and restore access. Non-relational tests alone cannot validate these PostgreSQL interleavings.
+
+`UserCompanyMembershipDialog` is opened from the SysAdmin Users grid. Saving one row refreshes only that row so other unsaved membership edits remain. Deactivation names the company in its confirmation. Legacy account/default fields are compatibility metadata, not authority to recreate or overwrite an existing membership.
+
+MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 69 tools; update every published count and parity row whenever discovery changes.
+
+### Document forms and server-backed lists
+
+`ClientContactEditor.Merge` clones the existing contact collection and changes/removes only the first email and phone edited by the simplified form. All other values, labels and primary flags must survive because the API replaces the complete collection. Updating a client also preserves its inactive status. Client deletion has explicit confirmation in list and detail views; invoice numbers in client history are links.
+
+Invoice/client save handlers acquire a re-entry flag before their first await and release it in `finally`; disabled buttons alone do not prevent queued submissions. New invoice client selection is nullable in the UI, with a localized placeholder, while the request retains the validated numeric ID. Credit-note originals use bounded server search over issued/paid invoices, so older documents are found by narrowing the query rather than downloading the entire ledger. Document-type changes clear incompatible original selection and refresh numbering preview.
+
+`FakvioService.GetPagedAsync(..., throwOnError: true)` allows interactive consumers to show persistent load failure/retry. The default retains legacy fallback behavior. Do not render a server-grid filter unless the loader forwards it: unsupported invoice amount and history status/amount column filters are explicitly disabled. Payment history and unmatched payments use server page/page-size/total counts. Filter changes reset history to page one; a page beyond the remaining result is clamped after mutation. Reloading unmatched payments clears selection, and bulk actions clearly apply to selected rows or the current page.
+
+VAT, numbering and content-template UI checks mirror API Admin/SysAdmin permissions. Accountant is the localized name of Admin. Ordinary Users retain read views; direct template-create navigation does not expose an editable form.
+
+### Recovery, localization and feedback
+
+Notification clients propagate request failures; page/bell preserve the last successful data and change read flags only after successful writes. Their retry/loading/error states are distinct from an empty list. OAuth consent treats invalid-ticket 400 responses separately from retryable service failures. Registration persists the email-delivery outcome. Login two-factor verification distinguishes 401 invalid codes, 429 throttling and transport/server failure. The TOTP manual-key copy button uses clipboard interop and reports clipboard failure.
+
+The API-key reveal prevents another creation until the current secret is acknowledged; selected company grants display names. Feedback detail compares the editable response/status with the loaded report for `UnsavedChangesLock`. Admin list/detail display reporter and company context projected in SQL. Feedback accepts relative paths or same-origin URLs, removes query/fragment and rejects unsafe/external paths with a field error; server validation remains authoritative.
+
+`ReadinessIssueText` maps missing field identifiers to localized names, and `ReadinessFixLink` checks whether a server-supplied editor route is permitted before offering navigation. `FakvioMudLocalizer`, registered through shared UI services, supplies MudBlazor grid labels in the active language. Keep CZ/EN resources synchronized and preserve accessible names for icon-only controls.
+
+Regression coverage includes `ClientContactEditorTests`, `DocumentUxRegressionTests`, `AccountUxRecoveryTests`, shared localization/readiness tests and membership API/MCP tests. PostgreSQL concurrency tests remain necessary for invitation/revocation ordering. Targeted suites have run during implementation; final combined validation and deployment are separate gates, and this branch is not deployed.

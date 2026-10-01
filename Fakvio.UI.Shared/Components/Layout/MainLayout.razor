@@ -58,6 +58,8 @@
                         </MudSelect>
                     </AuthorizeView>
 
+                    <AuthorizeView Context="companyContext"><Authorized>@if (!companyContext.User.IsInRole("SysAdmin")) { <CompanyMembershipSelector /> }</Authorized></AuthorizeView>
+                    <FeedbackButton />
                     @* User profile menu — avatar + name opens personal settings (preferences, 2FA) *@
                     <MudMenu Dense="true" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
                         <ActivatorContent>
@@ -65,12 +67,9 @@
                                        StartIcon="@Icons.Material.Filled.AccountCircle"
                                        EndIcon="@Icons.Material.Filled.ArrowDropDown"
                                        title="@L["Layout_MyProfile"]">
-                                @* Name + role chip hide on phones — avatar icon + arrow stay *@
+                                @* Name hides on phones — avatar icon + arrow stay *@
                                 <span class="appbar-username">
                                     @context.User.Identity?.Name
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">
-                                        @context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
-                                    </MudChip>
                                 </span>
                             </MudButton>
                         </ActivatorContent>

@@ -96,6 +96,17 @@ public class NotificationServiceTests : IDisposable
     // ─── CreateForAllUsersAsync ─────────────────────────────────────────────
 
     [Fact]
+    public async Task Fanout_IncludesSecondaryMembershipAndExcludesRevokedMembership()
+    {
+        _masterContext.User.Add(new User { Id = 99, Email = "secondary@test.cz", CompanyId = 999, IsActive = true });
+        _masterContext.UserCompanyMembership.Add(new UserCompanyMembership { UserId = 99, CompanyId = CompanyId, Role = EUserRole.User });
+        _masterContext.UserCompanyMembership.Single(m => m.UserId == User1Id).IsActive = false;
+        await _masterContext.SaveChangesAsync();
+        var id = await _sut.CreateForAllUsersAsync(ENotificationType.PaymentMatched, "Title", "Body", 1, "Invoice");
+        var notification = await _tenantContext.Notification.Include(n => n.Recipients).SingleAsync(n => n.Id == id);
+        notification.Recipients.Select(r => r.UserId).ShouldBe(new[] { User2Id, 99L }, ignoreOrder: true);
+    }
+    [Fact]
     public async Task Create_FansOutToAllActiveUsers()
     {
         var id = await _sut.CreateForAllUsersAsync(

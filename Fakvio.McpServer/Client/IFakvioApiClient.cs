@@ -1,3 +1,5 @@
+using Fakvio.Contracts.Dto.CompanyMembership;
+using Fakvio.Contracts.Dto.Feedback;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.ApiKey;
 using Fakvio.Contracts.Dto.Client;
@@ -30,6 +32,29 @@ namespace Fakvio.McpServer.Client;
 /// </summary>
 public interface IFakvioApiClient
 {
+    /// <summary>Lists the active memberships explicitly available to the current credential.</summary>
+    Task<List<CompanyMembershipDto>> GetMyCompaniesAsync(CancellationToken ct = default);
+    Task<List<ManagedCompanyMembershipDto>> GetUserCompanyMembershipsAsync(long userId, CancellationToken ct = default);
+    Task<ManagedCompanyMembershipDto> UpdateUserCompanyMembershipAsync(long userId, long companyId, UpdateCompanyMembershipDto input, CancellationToken ct = default);
+    /// <summary>Creates a company without broadening the calling credential's grants.</summary>
+    Task<CompanyMembershipDto> CreateMyCompanyAsync(CreateMyCompanyDto company, CancellationToken ct = default);
+    /// <summary>Retries setup of the caller's existing company creation operation.</summary>
+    Task<CompanyMembershipDto> RetryCompanyProvisioningAsync(long companyId, CancellationToken ct = default);
+
+    // Feedback identity and permissions are always resolved by the authenticated API.
+    /// <summary>POST /api/feedback — submit feedback for the authenticated user/company.</summary>
+    Task<FeedbackDto> CreateFeedbackAsync(CreateFeedbackDto dto, CancellationToken ct = default);
+    /// <summary>GET /api/feedback — list only the caller's reports in the selected company.</summary>
+    Task<PagedResult<FeedbackDto>> GetFeedbackAsync(FeedbackFilterDto filter, CancellationToken ct = default);
+    /// <summary>GET /api/feedback/{id} — retrieve an accessible report or preserve the API error.</summary>
+    Task<FeedbackDto> GetFeedbackByIdAsync(long id, CancellationToken ct = default);
+    /// <summary>GET /api/sysadmin/feedback — requires the API's SysAdmin policy.</summary>
+    Task<PagedResult<FeedbackDto>> GetAdminFeedbackAsync(FeedbackFilterDto filter, CancellationToken ct = default);
+    /// <summary>GET /api/sysadmin/feedback/{id} — requires the API's SysAdmin policy.</summary>
+    Task<FeedbackDto> GetAdminFeedbackByIdAsync(long id, CancellationToken ct = default);
+    /// <summary>PATCH /api/sysadmin/feedback/{id} — requires the API's SysAdmin policy.</summary>
+    Task<FeedbackDto> UpdateFeedbackStatusAsync(long id, UpdateFeedbackStatusDto dto, CancellationToken ct = default);
+
     // ── Invoice endpoints ──────────────────────────────────────────────
 
     /// <summary>GET /api/invoice/paged — paginated invoice list with filters.</summary>

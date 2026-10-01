@@ -141,7 +141,7 @@
 
         @* Total with VAT — sortable, filterable *@
         <PropertyColumn Property="x => x.TotalWithVat" Title="@L["Invoice_TotalWithVat"].Value"
-                        SortBy="x => x.TotalWithVat">
+                        SortBy="x => x.TotalWithVat" Filterable="false">
             <CellTemplate>
                 <strong>@context.Item.TotalWithVat.ToString("N2") @context.Item.CurrencyCode</strong>
             </CellTemplate>
@@ -241,7 +241,13 @@
         </TemplateColumn>
     </Columns>
     <NoRecordsContent>
-        <MudAlert Severity="Severity.Info">@L["Invoice_NoRecords"]</MudAlert>
+        @if (_loadFailed)
+        {
+            <MudAlert Severity="Severity.Error">@L["Common_LoadFailed"]
+                <MudButton OnClick="SearchInvoices">@L["Common_Retry"]</MudButton>
+            </MudAlert>
+        }
+        else if (!_loading) { <MudAlert Severity="Severity.Info">@L["Invoice_NoRecords"]</MudAlert> }
     </NoRecordsContent>
 </FakvioGrid>
 
@@ -354,6 +360,7 @@
 
     private FakvioGrid<InvoiceDto>? _dataGrid;
     private bool _loading = false;
+    private bool _loadFailed;
 
     // Computed page labels — resolved from localization based on the current document type filter
     private string PageHeading => TypeFilter switch
@@ -572,6 +579,7 @@
     private async Task<GridData<InvoiceDto>> LoadServerData(GridState<InvoiceDto> state)
     {
         _loading = true;
+        _loadFailed = false;
         StateHasChanged();
 
         try
@@ -612,7 +620,7 @@
                 dueDateFrom: dueFrom,
                 dueDateTo: dueTo,
                 taxableSupplyDateFrom: taxableFrom,
-                taxableSupplyDateTo: taxableTo);
+                taxableSupplyDateTo: taxableTo, throwOnError: true);
 
             return new GridData<InvoiceDto>
             {
@@ -622,7 +630,8 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error loading invoices: {ex.Message}", Severity.Error);
+            _loadFailed = true;
+            Snackbar.Add(L["Common_LoadFailed"], Severity.Error);
             return new GridData<InvoiceDto> { Items = new List<InvoiceDto>(), TotalItems = 0 };
         }
         finally

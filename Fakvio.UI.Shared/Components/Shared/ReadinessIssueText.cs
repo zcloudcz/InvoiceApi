@@ -12,6 +12,13 @@ namespace Fakvio.UI.Shared.Components.Shared;
 /// </summary>
 public static class ReadinessIssueText
 {
+    /// <summary>API field identifiers remain stable; presentation uses readable translated labels.</summary>
+    public static string Fields(IStringLocalizer<SharedResource> localizer, IEnumerable<string> fields)
+        => string.Join(", ", fields.Select(field =>
+        {
+            var label = localizer[$"Readiness_Field_{field}"];
+            return label.ResourceNotFound ? localizer["Readiness_Field_Unknown"].Value : label.Value;
+        }));
     /// <summary>
     /// Localized description of the issue, with the issuer name appended when the problem
     /// belongs to one specific company (a tenant may have several issuers).

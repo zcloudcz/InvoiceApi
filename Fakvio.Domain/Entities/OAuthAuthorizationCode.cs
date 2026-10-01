@@ -17,6 +17,9 @@ namespace Fakvio.Domain.Entities;
 /// </summary>
 public class OAuthAuthorizationCode : BaseEntity
 {
+    /// <summary>Company selected by the consenting interactive session.</summary>
+    public long? CompanyId { get; set; }
+
     /// <summary>Base64 of SHA-256 over the raw code. Unique index — the lookup selector.</summary>
     public string CodeHash { get; set; } = string.Empty;
 

@@ -73,7 +73,7 @@ public class UserService : IUserService
         // Filter by company if specified
         if (companyId.HasValue)
         {
-            query = query.Where(u => u.CompanyId == companyId.Value);
+            query = query.Where(u => _context.UserCompanyMembership.Any(m => m.UserId == u.Id && m.CompanyId == companyId.Value && m.IsActive));
         }
 
         // Filter by active status
@@ -87,7 +87,8 @@ public class UserService : IUserService
             .ThenBy(u => u.FirstName)
             .ToListAsync(cancellationToken);
 
-        return users.Select(u => MapToDto(u)).ToList();
+        var result = users.Select(u => MapToDto(u)).ToList();
+        return result;
     }
 
     /// <summary>
@@ -107,11 +108,11 @@ public class UserService : IUserService
         if (!filter.IncludeInactive)
             query = query.Where(u => u.IsActive);
 
-        if (filter.Role.HasValue)
+        if (filter.Role.HasValue && !filter.CompanyId.HasValue)
             query = query.Where(u => u.Role == filter.Role.Value);
 
         if (filter.CompanyId.HasValue)
-            query = query.Where(u => u.CompanyId == filter.CompanyId.Value);
+            query = query.Where(u => _context.UserCompanyMembership.Any(m => m.UserId == u.Id && m.CompanyId == filter.CompanyId.Value && m.IsActive && (!filter.Role.HasValue || m.Role == filter.Role.Value)));
 
         if (filter.NeverLoggedIn.HasValue)
         {
@@ -143,8 +144,9 @@ public class UserService : IUserService
         var pagedResult = await query.ToPagedResultAsync(filter.Page, filter.PageSize, cancellationToken);
 
         // Map to DTOs
+        var items = pagedResult.Items.Select(u => MapToDto(u)).ToList();
         return new PagedResult<UserDto>(
-            pagedResult.Items.Select(u => MapToDto(u)).ToList(),
+            items,
             pagedResult.TotalCount,
             pagedResult.PageNumber,
             pagedResult.PageSize);
@@ -241,6 +243,12 @@ public class UserService : IUserService
     /// </summary>
     public async Task<UserDto?> UpdateUserAsync(long userId, UpdateUserDto updateDto, CancellationToken cancellationToken = default)
     {
+        // Share the identity lock with invitation acceptance and membership administration.
+        // Otherwise an older account-edit request could overwrite a concurrent access change.
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (_context.Database.IsRelational())
+            await _context.User.FromSqlInterpolated($"SELECT * FROM \"User\" WHERE \"Id\" = {userId} FOR NO KEY UPDATE").LoadAsync(cancellationToken);
         var user = await _context.User
             .Include(u => u.Company)
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -249,6 +257,8 @@ public class UserService : IUserService
         {
             return null;
         }
+        var previousCompanyId = user.CompanyId;
+        var previousRole = user.Role;
 
         // Validate email uniqueness if changing email
         if (updateDto.Email != null && updateDto.Email != user.Email)
@@ -297,6 +307,23 @@ public class UserService : IUserService
             user.CompanyId = updateDto.CompanyId.Value;
         }
 
+        // Forms submit unchanged defaults along with name/email edits. Only an actual access
+        // change may update the legacy default membership; explicit revocations stay revoked.
+        var companyChanged = user.CompanyId != previousCompanyId;
+        var roleChanged = user.Role != previousRole;
+        if ((roleChanged || companyChanged) && user.CompanyId.HasValue && user.Role != EUserRole.SysAdmin)
+        {
+            var membership = await _context.UserCompanyMembership.SingleOrDefaultAsync(m => m.UserId == user.Id && m.CompanyId == user.CompanyId, cancellationToken);
+            if (membership is null)
+                _context.UserCompanyMembership.Add(new UserCompanyMembership { UserId = user.Id, CompanyId = user.CompanyId.Value, Role = user.Role });
+            else
+            {
+                if (!membership.IsActive)
+                    throw new InvalidOperationException(UserErrorCodes.CompanyMembershipRestoreRequired);
+                if (roleChanged) membership.Role = user.Role;
+                else user.Role = membership.Role;
+            }
+        }
         // Update active status if provided
         if (updateDto.IsActive.HasValue)
         {
@@ -305,6 +332,7 @@ public class UserService : IUserService
 
         user.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         // Reload company data
         await _context.Entry(user)
