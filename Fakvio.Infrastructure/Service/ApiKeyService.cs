@@ -87,6 +87,8 @@ public class ApiKeyService : IApiKeyService
                 Name = k.Name,
                 KeyPrefix = k.KeyPrefix,
                 Scopes = k.Scopes,
+                CompanyId = k.CompanyId,
+                AllowedCompanyIds = k.AllowedCompanyIds,
                 CreatedAt = k.CreatedAt,
                 ExpiresAt = k.ExpiresAt,
                 LastUsedAt = k.LastUsedAt,
@@ -115,11 +117,40 @@ public class ApiKeyService : IApiKeyService
         if (dto.ExpiresAt is not null && dto.ExpiresAt <= DateTime.UtcNow)
             throw new ArgumentException("ExpiresAt must be in the future.");
 
+        var user = await _context.User.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new ArgumentException("User does not exist.");
+        if (!user.IsActive)
+            throw new ArgumentException("Inactive users cannot create credentials.");
+
+        var companyId = dto.CompanyId ?? user.CompanyId;
+        var companyIds = (dto.AllowedCompanyIds ?? []).Distinct().Order().ToArray();
+        if (companyIds.Length > 100 || companyIds.Any(id => id <= 0))
+            throw new ArgumentException("Select at most 100 valid companies.");
+
+        // Omission grants one company, never all of the user's present or future memberships.
+        if (companyIds.Length == 0 && companyId.HasValue)
+            companyIds = [companyId.Value];
+        if (companyId.HasValue && !companyIds.Contains(companyId.Value))
+            throw new ArgumentException("The default company must be included in the company grants.");
+        if (user.Role != EUserRole.SysAdmin)
+        {
+            if (!companyId.HasValue || companyIds.Length == 0)
+                throw new ArgumentException("A company is required.");
+            var permitted = await _context.UserCompanyMembership.AsNoTracking()
+                .CountAsync(m => m.UserId == userId && m.IsActive &&
+                    m.Company.IsActive && m.Company.IsIssuer &&
+                    (m.Role == EUserRole.User || m.Role == EUserRole.Admin) && companyIds.Contains(m.CompanyId), ct);
+            if (permitted != companyIds.Length)
+                throw new ArgumentException("Every selected company must have an active membership.");
+        }
+
         var rawKey = GenerateRawKey();
 
         var entity = new ApiKeyEntity
         {
             UserId = userId,
+            CompanyId = companyId,
+            AllowedCompanyIds = companyIds,
             Name = name,
             KeyPrefix = rawKey[..DisplayPrefixLength],
             KeyHash = ComputeHash(rawKey),
@@ -142,6 +173,8 @@ public class ApiKeyService : IApiKeyService
             Name = entity.Name,
             KeyPrefix = entity.KeyPrefix,
             Scopes = entity.Scopes,
+            CompanyId = entity.CompanyId,
+            AllowedCompanyIds = entity.AllowedCompanyIds,
             CreatedAt = entity.CreatedAt,
             ExpiresAt = entity.ExpiresAt,
             Key = rawKey

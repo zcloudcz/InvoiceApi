@@ -1,0 +1,4 @@
+@page "/feedback/{Id:long}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+<FeedbackDetail Id="Id" />
+@code { [Parameter] public long Id { get; set; } }

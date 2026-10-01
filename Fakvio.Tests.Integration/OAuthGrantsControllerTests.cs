@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;
 using Fakvio.Contracts.Dto.OAuth;
@@ -23,6 +24,7 @@ public class OAuthGrantsControllerTests
         factory.InitializeDatabase();
         var email = "grants-flagoff@test.cz";
         var password = factory.SeedRegularUser(email, userId: 950, companyId: 20);
+        SeedIssuer(factory, 20);
         var client = factory.CreateClient();
         var login = await AuthHelper.LoginAsync(client, email, password);
         AuthHelper.SetAuthToken(client, login.Token);
@@ -39,6 +41,7 @@ public class OAuthGrantsControllerTests
         factory.InitializeDatabase();
         var email = "grants-owner@test.cz";
         var password = factory.SeedRegularUser(email, userId: 951, companyId: 21);
+        SeedIssuer(factory, 21);
         var client = factory.CreateClient();
         var login = await AuthHelper.LoginAsync(client, email, password);
         AuthHelper.SetAuthToken(client, login.Token);
@@ -59,6 +62,7 @@ public class OAuthGrantsControllerTests
         factory.InitializeDatabase();
         var email = "grants-apikey@test.cz";
         var password = factory.SeedRegularUser(email, userId: 952, companyId: 22);
+        SeedIssuer(factory, 22);
         var client = factory.CreateClient();
         var login = await AuthHelper.LoginAsync(client, email, password);
         AuthHelper.SetAuthToken(client, login.Token);
@@ -80,6 +84,7 @@ public class OAuthGrantsControllerTests
         factory.InitializeDatabase();
         var email = "grants-revoke-unknown@test.cz";
         var password = factory.SeedRegularUser(email, userId: 953, companyId: 23);
+        SeedIssuer(factory, 23);
         var client = factory.CreateClient();
         var login = await AuthHelper.LoginAsync(client, email, password);
         AuthHelper.SetAuthToken(client, login.Token);
@@ -89,6 +94,13 @@ public class OAuthGrantsControllerTests
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
+    private static void SeedIssuer(FakvioFactory factory, long companyId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Fakvio.Infrastructure.Data.MasterDbContext>();
+        db.Client.Add(new Fakvio.Domain.Entities.Client { Id = companyId, IsIssuer = true, CompanyName = "Grant test", RegistrationNumber = companyId.ToString() });
+        db.SaveChanges();
+    }
     private class EnabledOAuthFactory : FakvioFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

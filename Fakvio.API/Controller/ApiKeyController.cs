@@ -105,6 +105,10 @@ public class ApiKeyController : ControllerBase
 
         try
         {
+            // Bind an omitted default to the currently selected interactive company.
+            // The service validates any explicit selection against live memberships.
+            if (dto.CompanyId is null && long.TryParse(User.FindFirstValue("CompanyId"), out var selectedCompanyId))
+                dto.CompanyId = selectedCompanyId;
             var created = await _apiKeyService.CreateAsync(userId.Value, dto, ct);
             return StatusCode(StatusCodes.Status201Created, created);
         }

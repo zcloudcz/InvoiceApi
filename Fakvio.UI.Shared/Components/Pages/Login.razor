@@ -245,6 +245,7 @@
             // sending them to /login. Send them right back instead of home — the ONE place
             // this app returns anywhere other than "/" after login, and deliberately not a
             // general returnUrl (see OAuthConsentReturnStorage docs).
+            if (await CompanyInvitationReturnStorage.TryResumeAsync(JS, Navigation)) return;
             var pendingOAuthTicket = await OAuthConsentReturnStorage.ConsumeAsync(JS);
             if (!string.IsNullOrEmpty(pendingOAuthTicket))
             {

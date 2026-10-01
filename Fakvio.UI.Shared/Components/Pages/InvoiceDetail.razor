@@ -27,6 +27,7 @@
 
 @* Warn user before navigating away from dirty forms (create or edit mode) *@
 <UnsavedChangesLock IsDirty="_isDirty" />
+@if (_saving) { <MudProgressLinear Indeterminate="true" Class="mb-2" /> }
 
 @if (_loading)
 {
@@ -48,7 +49,7 @@ else if (_isCreateMode)
         <MudSpacer />
         <MudButton Variant="Variant.Text" OnClick="GoBack">@L["Btn_Cancel"]</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                   OnClick="SaveNewInvoice">@L["Btn_Create"]</MudButton>
+                   Disabled="_saving" OnClick="SaveNewInvoice">@L["Btn_Create"]</MudButton>
     </div>
 
     @* Create form — 3-column card layout for invoice fields *@
@@ -63,16 +64,17 @@ else if (_isCreateMode)
                 </MudCardHeader>
                 <MudCardContent>
                     @* Client selector — reactive: auto-fills billing params from client settings *@
-                    <MudSelect Value="_createDto.ClientId"
-                               ValueChanged="@((long v) => OnClientChanged(v))"
+                    <MudSelect T="long?" Value="@(_createDto.ClientId > 0 ? (long?)_createDto.ClientId : null)"
+                               ValueChanged="@((long? v) => OnClientChanged(v ?? 0))"
+                               Placeholder="@L["Invoice_SelectClient"].Value" Strict="true"
                                Label="@L["Invoice_Client"].Value" Required="true" Class="mb-3">
                         @foreach (var client in _allClients)
                         {
-                            <MudSelectItem Value="@client.Id">@client.CompanyName</MudSelectItem>
+                            <MudSelectItem T="long?" Value="@((long?)client.Id)">@client.CompanyName</MudSelectItem>
                         }
                     </MudSelect>
                     @* Document type selector — all supported types *@
-                    <MudSelect @bind-Value="_createDto.DocumentType" Label="@L["Template_DocumentType"].Value" Class="mb-3">
+                    <MudSelect T="EDocumentType" Value="_createDto.DocumentType" ValueChanged="OnDocumentTypeChanged" Label="@L["Template_DocumentType"].Value" Class="mb-3">
                         <MudSelectItem Value="@EDocumentType.Invoice">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
                         <MudSelectItem Value="@EDocumentType.CreditNote">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
                         <MudSelectItem Value="@EDocumentType.Proforma">@L["Template_DocumentTypeProforma"]</MudSelectItem>
@@ -81,13 +83,12 @@ else if (_isCreateMode)
                     @* Original invoice selector — only shown for credit notes *@
                     @if (_createDto.DocumentType == EDocumentType.CreditNote)
                     {
-                        <MudSelect @bind-Value="_createDto.OriginalInvoiceId" Label="@L["CreditNote_OriginalInvoice"].Value"
-                                   Required="true" Class="mb-3">
-                            @foreach (var inv in _completedInvoices)
-                            {
-                                <MudSelectItem Value="@((long?)inv.Id)">@inv.DocumentNumber - @inv.ClientName</MudSelectItem>
-                            }
-                        </MudSelect>
+                        <MudAutocomplete T="InvoiceDto" Value="_originalInvoice" ValueChanged="OnOriginalInvoiceChanged"
+                                         SearchFunc="SearchOriginalInvoices" ToStringFunc="@(i => i == null ? string.Empty : $"{i.DocumentNumber} — {i.ClientName}")"
+                                         Label="@L["CreditNote_OriginalInvoice"].Value" HelperText="@L["CreditNote_SearchOriginal"].Value"
+                                         Required="true" MinCharacters="0" MaxItems="50" ResetValueOnEmptyText="true"
+                                         ShowProgressIndicator="true" Class="mb-3" />
+                        @if (_originalSearchFailed) { <MudAlert Severity="Severity.Error">@L["Common_LoadFailed"]</MudAlert> }
                     }
                     @* Currency selector *@
                     <MudSelect @bind-Value="_createDto.CurrencyId" Label="@L["Template_Currency"].Value" Required="true" Class="mb-3">
@@ -225,7 +226,7 @@ else
         {
             <MudButton Variant="Variant.Text" OnClick="CancelEditing">@L["Btn_Cancel"]</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="SaveInvoice">@L["Btn_Save"]</MudButton>
+                       Disabled="_saving" OnClick="SaveInvoice">@L["Btn_Save"]</MudButton>
         }
         @if (_invoice.Status == EInvoiceStatus.Completed)
         {
@@ -915,7 +916,9 @@ else
     private bool _isDirty = false;
 
     // Credit note: completed invoices available as OriginalInvoiceId (only loaded for CreditNote type)
-    private List<InvoiceDto> _completedInvoices = new();
+    private InvoiceDto? _originalInvoice;
+    private bool _originalSearchFailed;
+    private bool _saving;
 
     // QR code state — loaded for completed/paid invoices in view mode
     private string? _qrCodeBase64;
@@ -991,7 +994,8 @@ else
             // Load completed invoices for credit note OriginalInvoiceId dropdown (if creating a credit note)
             if (_createDto.DocumentType == EDocumentType.CreditNote)
             {
-                await LoadCompletedInvoices();
+                if (_createDto.OriginalInvoiceId is long originalId)
+                    _originalInvoice = await InvoiceService.GetByIdAsync(originalId);
             }
 
             // Pre-fill document number from the default sequence (user can still override)
@@ -1044,29 +1048,41 @@ else
     /// Loads completed/paid invoices for the OriginalInvoiceId dropdown when creating a credit note.
     /// Only shows invoices that can be credited (Completed or Paid status).
     /// </summary>
-    private async Task LoadCompletedInvoices()
+    private async Task OnDocumentTypeChanged(EDocumentType type)
     {
+        _createDto.DocumentType = type;
+        _originalInvoice = null;
+        _createDto.OriginalInvoiceId = null;
+        _originalSearchFailed = false;
+        await LoadDocumentNumberPreview();
+    }
+
+    private void OnOriginalInvoiceChanged(InvoiceDto? invoice)
+    {
+        _originalInvoice = invoice;
+        _createDto.OriginalInvoiceId = invoice?.Id;
+    }
+
+    /// <summary>Search on the server so older invoices remain reachable without loading the entire ledger.</summary>
+    private async Task<IEnumerable<InvoiceDto>> SearchOriginalInvoices(string search, CancellationToken cancellationToken)
+    {
+        _originalSearchFailed = false;
         try
         {
-            var result = await InvoiceService.GetPagedAsync(
-                page: 1,
-                pageSize: 200, // Reasonable limit for dropdown
-                documentType: EDocumentType.Invoice,
-                status: EInvoiceStatus.Completed);
-
-            var paidResult = await InvoiceService.GetPagedAsync(
-                page: 1,
-                pageSize: 200,
-                documentType: EDocumentType.Invoice,
-                status: EInvoiceStatus.Paid);
-
-            _completedInvoices = result.Items.Concat(paidResult.Items)
-                .OrderByDescending(i => i.IssueDate)
-                .ToList();
+            cancellationToken.ThrowIfCancellationRequested();
+            var issued = await InvoiceService.GetPagedAsync(pageSize: 50, search: search,
+                documentType: EDocumentType.Invoice, status: EInvoiceStatus.Completed, throwOnError: true);
+            cancellationToken.ThrowIfCancellationRequested();
+            var paid = await InvoiceService.GetPagedAsync(pageSize: 50, search: search,
+                documentType: EDocumentType.Invoice, status: EInvoiceStatus.Paid, throwOnError: true);
+            cancellationToken.ThrowIfCancellationRequested();
+            return issued.Items.Concat(paid.Items).OrderByDescending(i => i.IssueDate);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return []; }
+        catch (Exception)
         {
-            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+            _originalSearchFailed = true;
+            return [];
         }
     }
 
@@ -1517,6 +1533,8 @@ else
     /// </summary>
     private async Task SaveNewInvoice()
     {
+        if (_saving) return;
+        _saving = true;
         try
         {
             // Validate that a client is selected — the API would reject ClientId=0
@@ -1536,6 +1554,12 @@ else
             if (_createDto.InvoiceItem.Count == 0)
             {
                 Snackbar.Add(L["Invoice_AddAtLeastOneItem"].Value, Severity.Warning);
+                return;
+            }
+
+            if (_createDto.DocumentType == EDocumentType.CreditNote && !_createDto.OriginalInvoiceId.HasValue)
+            {
+                Snackbar.Add(L["CreditNote_SelectOriginal"], Severity.Warning);
                 return;
             }
 
@@ -1565,6 +1589,7 @@ else
             }
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _saving = false; }
     }
 
     // --- Edit mode (existing invoices) ---
@@ -1649,6 +1674,8 @@ else
     {
         if (_invoice == null) return;
 
+        if (_saving) return;
+        _saving = true;
         try
         {
             if (_editItems.Count == 0)
@@ -1679,6 +1706,7 @@ else
         {
             Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
+        finally { _saving = false; }
     }
 
     // --- Metadata edit (Completed invoices — non-financial fields) ---

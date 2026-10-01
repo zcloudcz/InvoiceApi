@@ -11,8 +11,11 @@
 *@
 @page "/settings/integrations"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.CompanyMembership
 @using Fakvio.Contracts.Dto.ApiKey
 @using Fakvio.Contracts.Dto.OAuth
+@inject CompanyMembershipApiService MembershipApi
+@inject AuthenticationStateProvider Authentication
 @inject ApiKeyApiService ApiKeyService
 @inject OAuthGrantsApiService OAuthGrantsService
 @inject IConfiguration Configuration
@@ -71,6 +74,7 @@
 
 <MudPaper Class="pa-4 mb-4 d-flex justify-end">
     <ResponsiveButton Label="@L["Integration_NewKey"].Value"
+                      Disabled="@(_createdKey is not null)"
                       StartIcon="@Icons.Material.Filled.Add"
                       OnClick="OpenCreateDialog" />
 </MudPaper>
@@ -90,6 +94,7 @@
                 <MudChip T="string" Size="Size.Small" Color="Color.Default">@ScopeLabel(context.Item.Scopes)</MudChip>
             </CellTemplate>
         </PropertyColumn>
+        <TemplateColumn Title="@L["CompanyMembership_GrantedCompanies"].Value"><CellTemplate>@CompanyNames(context.Item)</CellTemplate></TemplateColumn>
         <PropertyColumn Property="x => x.CreatedAt" Title="@L["Integration_Created"].Value">
             <CellTemplate>@FormatDate(context.Item.CreatedAt)</CellTemplate>
         </PropertyColumn>
@@ -131,6 +136,7 @@
 
     <FakvioGrid T="OAuthGrantDto" GridKey="oauth-grants" Items="_grants" Loading="_grantsLoading">
         <Columns>
+            <PropertyColumn Property="x => x.CompanyName" Title="@L["User_Company"].Value" />
             <PropertyColumn Property="x => x.ClientId" Title="@L["Integration_ConnectedAppClient"].Value">
                 <CellTemplate>
                     <MudText Typo="Typo.body2">@context.Item.ClientId</MudText>
@@ -176,6 +182,21 @@
                 <MudSelectItem Value="@ScopeReadWrite">@L["Integration_ScopeReadWrite"]</MudSelectItem>
             </MudSelect>
 
+            @if (_isSysAdmin && _memberships.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info">@L["CompanyMembership_PlatformAccess"]</MudAlert>
+            }
+            else
+            {
+            <MudSelect T="long" MultiSelection="true" SelectedValues="_selectedCompanies" SelectedValuesChanged="@(values => _selectedCompanies = values.ToArray())"
+                       MultiSelectionTextFunc="SelectedCompanyNames"
+                       Label="@L["CompanyMembership_GrantedCompanies"].Value" HelperText="@L["CompanyMembership_GrantHelp"].Value" Disabled="_saving">
+                @foreach (var company in _memberships.Where(x => x.IsProvisioned))
+                {
+                    <MudSelectItem Value="company.CompanyId">@company.CompanyName</MudSelectItem>
+                }
+            </MudSelect>
+            }
             <MudDatePicker @bind-Date="_newExpiresOn" Label="@L["Integration_Expiration"].Value" Class="mt-3"
                            Clearable="true" MinDate="DateTime.Today.AddDays(1)"
                            HelperText="@L["Integration_ExpirationHelper"].Value" />
@@ -184,7 +205,7 @@
     <DialogActions>
         <MudButton OnClick="CloseCreateDialog">@L["Btn_Cancel"]</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync"
-                   Disabled="@(!_formValid || _saving)">
+                   Disabled="@(!_formValid || _saving || (!_isSysAdmin && _selectedCompanies.Length == 0))">
             @L["Btn_Create"]
         </MudButton>
     </DialogActions>
@@ -197,6 +218,10 @@
     /// <summary>Scope value sent to the API for a read+write key.</summary>
     private const string ScopeReadWrite = "read,write";
 
+    private List<CompanyMembershipDto> _memberships = [];
+    private long[] _selectedCompanies = [];
+    private long? _currentCompanyId;
+    private bool _isSysAdmin;
     private IReadOnlyList<ApiKeyDto> _keys = [];
     private bool _loading;
     private bool _saving;
@@ -224,7 +249,7 @@
         CloseButton = true
     };
 
-    protected override Task OnInitializedAsync() => Task.WhenAll(ReloadAsync(), ReloadGrantsAsync());
+    protected override Task OnInitializedAsync() => Task.WhenAll(ReloadAsync(), ReloadGrantsAsync(), LoadMembershipsAsync());
 
     private async Task ReloadAsync()
     {
@@ -284,8 +309,29 @@
         }
     }
 
+    private string CompanyNames(ApiKeyDto key) =>
+        _isSysAdmin && key.CompanyId is null && key.AllowedCompanyIds.Length == 0
+            ? L["CompanyMembership_PlatformAccess"].Value
+            : string.Join(", ", key.AllowedCompanyIds.Select(id => _memberships.FirstOrDefault(x => x.CompanyId == id)?.CompanyName ?? id.ToString()));
+    private async Task LoadMembershipsAsync()
+    {
+        try
+        {
+            _memberships = await MembershipApi.ListAsync();
+            if (Authentication is CustomAuthenticationStateProvider provider)
+                _currentCompanyId = (await provider.GetUserSessionAsync())?.CompanyId;
+            _currentCompanyId ??= _memberships.FirstOrDefault(x => x.IsDefault)?.CompanyId;
+            var authentication = await Authentication.GetAuthenticationStateAsync();
+            _isSysAdmin = authentication?.User.IsInRole("SysAdmin") == true;
+        }
+        catch (Exception ex) { ErrorHandler.Handle(ex, "Integrations.Companies"); }
+    }
+
     private void OpenCreateDialog()
     {
+        // The only recoverable copy must be acknowledged before another secret replaces it.
+        if (_createdKey is not null) return;
+        _selectedCompanies = _currentCompanyId is { } id && _memberships.Any(x => x.CompanyId == id && x.IsProvisioned) ? [id] : [];
         _newName = string.Empty;
         _newScopes = ScopeRead;
         _newExpiresOn = null;
@@ -295,9 +341,12 @@
 
     private void CloseCreateDialog() => _showCreateDialog = false;
 
+    private string SelectedCompanyNames(List<string> values) => string.Join(", ", values.Select(value =>
+        long.TryParse(value, out var id) ? _memberships.FirstOrDefault(company => company.CompanyId == id)?.CompanyName ?? value : value));
+
     private async Task CreateAsync()
     {
-        if (_form is null)
+        if (_saving || _form is null || (!_isSysAdmin && _selectedCompanies.Length == 0))
             return;
 
         await _form.Validate();
@@ -310,6 +359,8 @@
             var created = await ApiKeyService.CreateAsync(new CreateApiKeyDto
             {
                 Name = _newName,
+                CompanyId = _selectedCompanies.Length == 0 ? null : _selectedCompanies.Contains(_currentCompanyId ?? 0) ? _currentCompanyId : _selectedCompanies[0],
+                AllowedCompanyIds = _selectedCompanies,
                 Scopes = _newScopes,
                 // The picker yields a local midnight; the key should stay valid for the whole
                 // chosen day, so it expires at the start of the following day (in UTC, which is

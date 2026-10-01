@@ -73,7 +73,7 @@
                                    render a link pointing back at the current page. *@
                                 @if (!string.IsNullOrWhiteSpace(issue.FixRoute))
                                 {
-                                    <MudLink Href="@issue.FixRoute" Typo="Typo.body2">@L["Readiness_FixLink"]</MudLink>
+                                    <ReadinessFixLink Route="@issue.FixRoute" />
                                 }
                             </div>
 
@@ -82,7 +82,7 @@
                                 @* The same field names the 400 TENANT_NOT_READY response lists, so a user
                                    who does hit the refusal recognises what the checklist had told them. *@
                                 <MudText Typo="Typo.caption" Class="d-block mb-2">
-                                    @string.Join(", ", issue.MissingFields)
+                                    @ReadinessIssueText.Fields(L, issue.MissingFields)
                                 </MudText>
                             }
                         }

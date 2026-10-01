@@ -380,7 +380,7 @@
   <data name="User_ResetPasswordInfo" xml:space="preserve"><value>As an administrator you can set a new password without knowing the current one.</value></data>
   <data name="User_NewPassword" xml:space="preserve"><value>New password</value></data>
   <data name="User_RoleUser" xml:space="preserve"><value>User</value></data>
-  <data name="User_RoleAdmin" xml:space="preserve"><value>Administrator</value></data>
+  <data name="User_RoleAdmin" xml:space="preserve"><value>Accountant</value></data>
   <data name="User_RoleSysAdmin" xml:space="preserve"><value>System administrator</value></data>
   <data name="User_ChangePassword" xml:space="preserve"><value>Change password</value></data>
   <data name="User_Deactivate" xml:space="preserve"><value>Deactivate</value></data>
@@ -1839,4 +1839,173 @@
   <data name="Integration_ConnectedAppRemoveConfirmTitle" xml:space="preserve"><value>Remove this connected app?</value></data>
   <data name="Integration_ConnectedAppRemoveConfirmText" xml:space="preserve"><value>{0} will lose access to your account. This cannot be undone.</value></data>
   <data name="Integration_ConnectedAppRemoveSuccess" xml:space="preserve"><value>The application has been disconnected.</value></data>
+  <data name="EFeedbackStatus_Declined" xml:space="preserve"><value>Declined</value></data>
+  <data name="EFeedbackStatus_InProgress" xml:space="preserve"><value>In progress</value></data>
+  <data name="EFeedbackStatus_New" xml:space="preserve"><value>New</value></data>
+  <data name="EFeedbackStatus_Resolved" xml:space="preserve"><value>Resolved</value></data>
+  <data name="EFeedbackType_Bug" xml:space="preserve"><value>Bug</value></data>
+  <data name="EFeedbackType_Idea" xml:space="preserve"><value>Idea</value></data>
+  <data name="EFeedbackType_Observation" xml:space="preserve"><value>Observation</value></data>
+  <data name="Feedback_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Feedback_Description" xml:space="preserve"><value>Description</value></data>
+  <data name="Feedback_Error" xml:space="preserve"><value>The request failed. Check your entries and permissions and try again.</value></data>
+  <data name="Feedback_Inbox" xml:space="preserve"><value>Feedback inbox</value></data>
+  <data name="Feedback_Mine" xml:space="preserve"><value>My reports</value></data>
+  <data name="Feedback_Open" xml:space="preserve"><value>Open report</value></data>
+  <data name="Feedback_Page" xml:space="preserve"><value>Page (without parameters)</value></data>
+  <data name="Feedback_Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Feedback_Report" xml:space="preserve"><value>Report a bug or idea</value></data>
+  <data name="Feedback_Required" xml:space="preserve"><value>This field is required.</value></data>
+  <data name="Feedback_Response" xml:space="preserve"><value>Public response</value></data>
+  <data name="Feedback_Saved" xml:space="preserve"><value>Response and status saved.</value></data>
+  <data name="Feedback_Send" xml:space="preserve"><value>Send</value></data>
+  <data name="Feedback_Sent" xml:space="preserve"><value>Your report was submitted.</value></data>
+  <data name="Feedback_Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Feedback_Subject" xml:space="preserve"><value>Subject</value></data>
+  <data name="Feedback_Type" xml:space="preserve"><value>Type</value></data>
+  <data name="Feedback_Version" xml:space="preserve"><value>Application version</value></data>
+  <data name="CompanyMembership_Accept" xml:space="preserve"><value>Accept invitation</value></data>
+  <data name="CompanyMembership_Accepted" xml:space="preserve"><value>Invitation accepted. Refresh the page to find the company in the selector.</value></data>
+  <data name="CompanyMembership_AcceptInfo" xml:space="preserve"><value>Accept using the account matching the invited email. Your password stays the same.</value></data>
+  <data name="CompanyMembership_AcceptTitle" xml:space="preserve"><value>Accept company invitation</value></data>
+  <data name="CompanyMembership_Add" xml:space="preserve"><value>Add company</value></data>
+  <data name="CompanyMembership_CredentialNotice" xml:space="preserve"><value>Existing API keys and connected apps do not automatically gain access to the new company.</value></data>
+  <data name="CompanyMembership_Error" xml:space="preserve"><value>The request failed. Check your access and try again.</value></data>
+  <data name="CompanyMembership_GrantedCompanies" xml:space="preserve"><value>Allowed companies</value></data>
+  <data name="CompanyMembership_GrantHelp" xml:space="preserve"><value>Select only the companies this key may access. The current company is selected by default.</value></data>
+  <data name="CompanyMembership_InvitationCreated" xml:space="preserve"><value>Invitation created. Share this one-time link with the invited user.</value></data>
+  <data name="CompanyMembership_InvitationError" xml:space="preserve"><value>The invitation is not valid for this account, has expired, or was already used.</value></data>
+  <data name="CompanyMembership_InvitationLink" xml:space="preserve"><value>Invitation link</value></data>
+  <data name="CompanyMembership_InvitationToken" xml:space="preserve"><value>Invitation token</value></data>
+  <data name="CompanyMembership_Invite" xml:space="preserve"><value>Create invitation</value></data>
+  <data name="CompanyMembership_InviteExisting" xml:space="preserve"><value>Invite existing account</value></data>
+  <data name="CompanyMembership_LoginRequired" xml:space="preserve"><value>Sign in using the invited email, then reopen the invitation link.</value></data>
+  <data name="CompanyMembership_ProvisioningFailed" xml:space="preserve"><value>The company was created, but setup is incomplete. Retry setup.</value></data>
+  <data name="CompanyMembership_Retry" xml:space="preserve"><value>Retry setup</value></data>
+  <data name="CompanyMembership_Select" xml:space="preserve"><value>Companies</value></data>
+  <data name="CompanyMembership_Switch" xml:space="preserve"><value>Switch</value></data>
+  <data name="CompanyMembership_SwitchConfirm" xml:space="preserve"><value>Switch company? Unsaved changes will be discarded.</value></data>
+  <data name="CompanyMembership_CountryCode" xml:space="preserve"><value>Two-letter country code, for example CZ or SK.</value></data>
+  <data name="CompanyMembership_PlatformAccess" xml:space="preserve"><value>Platform access (SysAdmin)</value></data>
+  <data name="Invoice_Dates" xml:space="preserve"><value>Document dates</value></data>
+  <data name="Btn_Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="MembershipAdmin_Title" xml:space="preserve"><value>Company access</value></data>
+  <data name="MembershipAdmin_Help" xml:space="preserve"><value>Manage each company separately. Changes do not affect other companies or API-key grants.</value></data>
+  <data name="MembershipAdmin_Active" xml:space="preserve"><value>Access is active</value></data>
+  <data name="MembershipAdmin_CompanyInactive" xml:space="preserve"><value>Company is inactive.</value></data>
+  <data name="MembershipAdmin_Empty" xml:space="preserve"><value>This user has no company memberships.</value></data>
+  <data name="MembershipAdmin_RevokeConfirm" xml:space="preserve"><value>Revoke access to {0}? Access will be denied on the next request.</value></data>
+  <data name="OAuthConsent_ReconnectHint" xml:space="preserve"><value>Restart the connection from the app you want to connect.</value></data>
+  <data name="Register_EmailRecovery" xml:space="preserve"><value>Go to sign in and use Forgot password to request another email. If it does not arrive, contact support.</value></data>
+  <data name="TwoFactor_ServiceUnavailable" xml:space="preserve"><value>Verification is temporarily unavailable. Please try again.</value></data>
+  <data name="TwoFactor_CopyManualKey" xml:space="preserve"><value>Copy manual entry key</value></data>
+  <data name="TwoFactor_CopyFailed" xml:space="preserve"><value>Could not copy the key. Select and copy it manually.</value></data>
+  <data name="TwoFactor_InvalidPassword" xml:space="preserve"><value>Incorrect password.</value></data>
+  <data name="CompanyMembership_CompanyRequired" xml:space="preserve"><value>Select a company.</value></data>
+  <data name="Feedback_Reporter" xml:space="preserve"><value>Reporter</value></data>
+  <data name="Feedback_PageHelp" xml:space="preserve"><value>Page path or full URL of this app. Query parameters and fragments are not saved.</value></data>
+  <data name="Feedback_PageInvalid" xml:space="preserve"><value>Enter a path starting with / or a URL of this app.</value></data>
+  <data name="Notification_Title" xml:space="preserve"><value>Notifications</value></data>
+  <data name="Notification_MarkAllRead" xml:space="preserve"><value>Mark all as read</value></data>
+  <data name="Notification_Empty" xml:space="preserve"><value>No notifications</value></data>
+  <data name="Notification_ShowAll" xml:space="preserve"><value>View all</value></data>
+  <data name="Notification_UnreadOnly" xml:space="preserve"><value>Unread only</value></data>
+  <data name="Notification_Error" xml:space="preserve"><value>Could not update notifications. The displayed state may be out of date. Please try again.</value></data>
+  <data name="Notification_Now" xml:space="preserve"><value>just now</value></data>
+  <data name="Notification_MinutesAgo" xml:space="preserve"><value>{0} min ago</value></data>
+  <data name="Notification_HoursAgo" xml:space="preserve"><value>{0} h ago</value></data>
+  <data name="Notification_DaysAgo" xml:space="preserve"><value>{0} d ago</value></data>
+  <data name="Common_LoadFailed" xml:space="preserve"><value>Could not load data. Please try again.</value></data>
+  <data name="Common_Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Settings_ReadOnly" xml:space="preserve"><value>You can view these settings. Changes require an accountant or system administrator.</value></data>
+  <data name="CreditNote_SearchOriginal" xml:space="preserve"><value>Search the original invoice by number or customer.</value></data>
+  <data name="CreditNote_SelectOriginal" xml:space="preserve"><value>Select the original invoice.</value></data>
+  <data name="Payments_BulkAutoMatchPage" xml:space="preserve"><value>Match selected / this page</value></data>
+  <data name="Readiness_ContactSysAdmin" xml:space="preserve"><value>Ask your system administrator to complete this.</value></data>
+  <data name="Readiness_ContactAccountant" xml:space="preserve"><value>Ask your accountant or system administrator to complete this.</value></data>
+  <data name="Readiness_Field_Unknown" xml:space="preserve"><value>Required details</value></data>
+  <data name="Readiness_Field_IsIssuer" xml:space="preserve"><value>Issuing company</value></data>
+  <data name="Readiness_Field_Address" xml:space="preserve"><value>Address</value></data>
+  <data name="Readiness_Field_Street" xml:space="preserve"><value>Street</value></data>
+  <data name="Readiness_Field_City" xml:space="preserve"><value>City</value></data>
+  <data name="Readiness_Field_PostalCode" xml:space="preserve"><value>Postal code</value></data>
+  <data name="Readiness_Field_Country" xml:space="preserve"><value>Country</value></data>
+  <data name="Readiness_Field_RegistrationNumber" xml:space="preserve"><value>Registration number</value></data>
+  <data name="Readiness_Field_TaxNumber" xml:space="preserve"><value>VAT number</value></data>
+  <data name="Readiness_Field_BankAccount" xml:space="preserve"><value>Bank account</value></data>
+  <data name="Readiness_Field_AccountNumber" xml:space="preserve"><value>Account number</value></data>
+  <data name="Readiness_Field_Invoice" xml:space="preserve"><value>Invoice</value></data>
+  <data name="Readiness_Field_CreditNote" xml:space="preserve"><value>Credit note</value></data>
+  <data name="Readiness_Field_EpoTaxOfficeCode" xml:space="preserve"><value>Tax office code</value></data>
+  <data name="Readiness_Field_EpoTaxOfficeBranchCode" xml:space="preserve"><value>Tax office branch code</value></data>
+  <data name="MudDataGrid_Apply" xml:space="preserve"><value>Apply</value></data>
+  <data name="MudDataGrid_Clear" xml:space="preserve"><value>Clear</value></data>
+  <data name="MudDataGrid_AddFilter" xml:space="preserve"><value>Add filter</value></data>
+  <data name="MudDataGrid_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="MudDataGrid_Loading" xml:space="preserve"><value>Loading…</value></data>
+  <data name="MudDataGrid_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="MudDataGrid_HideAll" xml:space="preserve"><value>Hide all</value></data>
+  <data name="MudDataGrid_ShowAll" xml:space="preserve"><value>Show all</value></data>
+  <data name="MudDataGrid_Columns" xml:space="preserve"><value>Columns</value></data>
+  <data name="MudDataGrid_ExpandAllGroups" xml:space="preserve"><value>Expand all groups</value></data>
+  <data name="MudDataGrid_CollapseAllGroups" xml:space="preserve"><value>Collapse all groups</value></data>
+  <data name="MudDataGrid_RefreshData" xml:space="preserve"><value>Refresh data</value></data>
+  <data name="MudDataGrid_True" xml:space="preserve"><value>True</value></data>
+  <data name="MudDataGrid_False" xml:space="preserve"><value>False</value></data>
+  <data name="MudDataGrid_Unsort" xml:space="preserve"><value>Unsort</value></data>
+  <data name="MudDataGrid_Filter" xml:space="preserve"><value>Filter</value></data>
+  <data name="MudDataGrid_Hide" xml:space="preserve"><value>Hide</value></data>
+  <data name="MudDataGrid_Ungroup" xml:space="preserve"><value>Ungroup</value></data>
+  <data name="MudDataGrid_Group" xml:space="preserve"><value>Group</value></data>
+  <data name="MudDataGrid_FilterValue" xml:space="preserve"><value>Filter value</value></data>
+  <data name="MudDataGrid_Contains" xml:space="preserve"><value>contains</value></data>
+  <data name="MudDataGrid_NotContains" xml:space="preserve"><value>not contains</value></data>
+  <data name="MudDataGrid_Equals" xml:space="preserve"><value>equals</value></data>
+  <data name="MudDataGrid_NotEquals" xml:space="preserve"><value>not equals</value></data>
+  <data name="MudDataGrid_StartsWith" xml:space="preserve"><value>starts with</value></data>
+  <data name="MudDataGrid_EndsWith" xml:space="preserve"><value>ends with</value></data>
+  <data name="MudDataGrid_IsEmpty" xml:space="preserve"><value>is empty</value></data>
+  <data name="MudDataGrid_IsNotEmpty" xml:space="preserve"><value>is not empty</value></data>
+  <data name="MudDataGrid_Is" xml:space="preserve"><value>is</value></data>
+  <data name="MudDataGrid_IsNot" xml:space="preserve"><value>is not</value></data>
+  <data name="MudDataGrid_IsAfter" xml:space="preserve"><value>is after</value></data>
+  <data name="MudDataGrid_IsOnOrAfter" xml:space="preserve"><value>is on or after</value></data>
+  <data name="MudDataGrid_IsBefore" xml:space="preserve"><value>is before</value></data>
+  <data name="MudDataGrid_IsOnOrBefore" xml:space="preserve"><value>is on or before</value></data>
+  <data name="MudDataGrid_Column" xml:space="preserve"><value>Column</value></data>
+  <data name="MudDataGrid_Operator" xml:space="preserve"><value>Operator</value></data>
+  <data name="MudDataGrid_Value" xml:space="preserve"><value>Value</value></data>
+  <data name="MudDataGrid_MoveDown" xml:space="preserve"><value>Move down</value></data>
+  <data name="MudDataGrid_MoveUp" xml:space="preserve"><value>Move up</value></data>
+  <data name="MudDataGrid_Sort" xml:space="preserve"><value>Sort</value></data>
+  <data name="MudDataGrid_ClearFilter" xml:space="preserve"><value>Clear filter</value></data>
+  <data name="MudDataGrid_OpenFilters" xml:space="preserve"><value>Open filters</value></data>
+  <data name="MudDataGrid_ToggleGroupExpansion" xml:space="preserve"><value>Toggle group</value></data>
+  <data name="MudDataGrid_RemoveFilter" xml:space="preserve"><value>Remove filter</value></data>
+  <data name="MudDataGrid_ShowColumnOptions" xml:space="preserve"><value>Column options</value></data>
+  <data name="MudDataGridPager_FirstPage" xml:space="preserve"><value>First page</value></data>
+  <data name="MudDataGridPager_PreviousPage" xml:space="preserve"><value>Previous page</value></data>
+  <data name="MudDataGridPager_NextPage" xml:space="preserve"><value>Next page</value></data>
+  <data name="MudDataGridPager_LastPage" xml:space="preserve"><value>Last page</value></data>
+  <data name="MudTablePager_FirstPage" xml:space="preserve"><value>First page</value></data>
+  <data name="MudTablePager_PreviousPage" xml:space="preserve"><value>Previous page</value></data>
+  <data name="MudTablePager_NextPage" xml:space="preserve"><value>Next page</value></data>
+  <data name="MudTablePager_LastPage" xml:space="preserve"><value>Last page</value></data>
+  <data name="MudPagination_FirstPage" xml:space="preserve"><value>First page</value></data>
+  <data name="MudPagination_PreviousPage" xml:space="preserve"><value>Previous page</value></data>
+  <data name="MudPagination_NextPage" xml:space="preserve"><value>Next page</value></data>
+  <data name="MudPagination_LastPage" xml:space="preserve"><value>Last page</value></data>
+  <data name="MudDataGridPager_RowsPerPage" xml:space="preserve"><value>Rows per page:</value></data>
+  <data name="MudDataGridPager_AllItems" xml:space="preserve"><value>All</value></data>
+  <data name="MudDataGridPager_InfoFormat" xml:space="preserve"><value>{0}–{1} of {2}</value></data>
+  <data name="MudInput_Clear" xml:space="preserve"><value>Clear</value></data>
+  <data name="MudDialog_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="MudSnackbar_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="MudAlert_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Invoice_SelectClient" xml:space="preserve"><value>Select a customer</value></data>
+  <data name="MembershipAdmin_Saved" xml:space="preserve"><value>Company access was saved.</value></data>
+  <data name="MembershipAdmin_RestoreRequired" xml:space="preserve"><value>First restore access to this company in company membership management. Then change the account’s default company or role.</value></data>
+  <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
+  <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Toggle {0}</value></data>
 </root>

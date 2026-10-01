@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@L["Login_Title"] - Fakvio</PageTitle>
@@ -74,6 +75,7 @@
                 var customAuthStateProvider = (CustomAuthenticationStateProvider)AuthStateProvider;
                 await customAuthStateProvider.MarkUserAsAuthenticatedAsync(loginResponse);
 
+                if (await CompanyInvitationReturnStorage.TryResumeAsync(JS, Navigation)) return;
                 // Redirect to home page with full reload to pick up new auth state
                 Navigation.NavigateTo("/", forceLoad: true);
             }

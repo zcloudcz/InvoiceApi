@@ -1,0 +1,92 @@
+@using Fakvio.Contracts.Dto.CompanyMembership
+@inject CompanyMembershipApiService Api
+@inject AuthenticationStateProvider Authentication
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+@inject IStringLocalizer<SharedResource> L
+@implements IDisposable
+<MudMenu Color="Color.Inherit">
+    <ActivatorContent>
+        <MudButton Color="Color.Inherit" EndIcon="@Icons.Material.Filled.ArrowDropDown" Style="min-width:0;padding:4px"
+                   title="@(_companies.FirstOrDefault(x => x.CompanyId == _currentId)?.CompanyName ?? L["CompanyMembership_Select"].Value)">
+            @* Reserve space for the menu, logo, feedback, profile and notification buttons on narrow phones. *@
+            <span style="max-width:clamp(24px,calc(100vw - 284px),150px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                @(_companies.FirstOrDefault(x => x.CompanyId == _currentId)?.CompanyName ?? L["CompanyMembership_Select"].Value)
+            </span>
+        </MudButton>
+    </ActivatorContent>
+    <ChildContent>
+    @if (_error) { <MudMenuItem OnClick="LoadAsync">@L["CompanyMembership_Error"]</MudMenuItem> }
+    @foreach (var company in _companies)
+    {
+        <MudMenuItem Disabled="_busy" OnClick="@(() => SelectAsync(company))">
+            @(company.CompanyId == _currentId ? "✓ " : "")@company.CompanyName — @L[company.Role == Fakvio.Domain.Enums.EUserRole.Admin ? "User_RoleAdmin" : "User_RoleUser"]
+            @if (!company.IsProvisioned) { <span> (@L["CompanyMembership_Retry"])</span> }
+        </MudMenuItem>
+    }
+    <MudDivider />
+    <MudMenuItem Disabled="_busy" Icon="@Icons.Material.Filled.Add" OnClick="AddAsync">@L["CompanyMembership_Add"]</MudMenuItem>
+    </ChildContent>
+</MudMenu>
+@code {
+    private List<CompanyMembershipDto> _companies = [];
+    private long? _currentId;
+    private bool _busy, _error;
+    private readonly CancellationTokenSource _lifetime = new();
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await LoadAsync();
+        StateHasChanged();
+    }
+    private async Task LoadAsync()
+    {
+        _error = false;
+        try
+        {
+            _companies = await Api.ListAsync(_lifetime.Token);
+            if (Authentication is CustomAuthenticationStateProvider provider)
+                _currentId = (await provider.GetUserSessionAsync())?.CompanyId;
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception) { _error = true; }
+    }
+    private async Task SelectAsync(CompanyMembershipDto company)
+    {
+        if (_busy || company.CompanyId == _currentId && company.IsProvisioned) return;
+        if (!company.IsProvisioned)
+        {
+            _busy = true;
+            try { await Api.RetryAsync(company.CompanyId, _lifetime.Token); await LoadAsync(); }
+            catch (Exception) { _error = true; }
+            finally { _busy = false; }
+            return;
+        }
+        // Always confirm: any currently open editor may contain unsaved input.
+        if (await Dialogs.ShowMessageBox(L["CompanyMembership_Select"], L["CompanyMembership_SwitchConfirm"],
+            yesText: L["CompanyMembership_Switch"], cancelText: L["Btn_Cancel"]) != true) return;
+        _busy = true;
+        _error = false;
+        try
+        {
+            var session = await Api.SwitchAsync(company.CompanyId, _lifetime.Token);
+            if (Authentication is CustomAuthenticationStateProvider provider)
+            {
+                await provider.MarkUserAsAuthenticatedAsync(session);
+                // A new WASM app instance discards company-specific caches and in-flight views.
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception) { _error = true; }
+        finally { _busy = false; }
+    }
+    private async Task AddAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<AddCompanyDialog>(L["CompanyMembership_Add"],
+            new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small, BackdropClick = false });
+        await dialog.Result;
+        await LoadAsync();
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

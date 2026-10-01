@@ -27,6 +27,9 @@ public class OAuthConsentInfoDto
 
     public string? CompanyName { get; set; }
 
+    /// <summary>The company displayed to the user; echoed when consenting.</summary>
+    public long? CompanyId { get; set; }
+
     /// <summary>False during closed early access for a user not on the allowlist (ADR §5.2) — the UI shows a "closed beta" message instead of Allow/Deny.</summary>
     public bool IsEligible { get; set; }
 }
@@ -37,6 +40,9 @@ public class OAuthConsentDecisionDto
     public string Ticket { get; set; } = string.Empty;
 
     public bool Allow { get; set; }
+
+    /// <summary>Must match the company displayed and the current interactive session.</summary>
+    public long? CompanyId { get; set; }
 
     /// <summary>Required when <see cref="Allow"/> is true — "read" or "read,write", must be a subset of what was requested.</summary>
     public string? Scope { get; set; }

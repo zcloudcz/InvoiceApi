@@ -1,0 +1,73 @@
+@using Fakvio.Contracts.Dto.CompanyMembership
+@inject CompanyMembershipApiService Api
+@inject IStringLocalizer<SharedResource> L
+@implements IDisposable
+<MudDialog>
+    <DialogContent>
+        @if (_error) { <MudAlert Severity="Severity.Error">@L["CompanyMembership_Error"]</MudAlert> }
+        @if (_created is { IsProvisioned: false })
+        {
+            <MudAlert Severity="Severity.Warning">@L["CompanyMembership_ProvisioningFailed"]</MudAlert>
+            <MudButton OnClick="RetryAsync" Disabled="_busy">@L["CompanyMembership_Retry"]</MudButton>
+        }
+        else
+        {
+            <MudForm @ref="_form">
+                <CompanyIdentityFields @bind-CompanyName="_company.CompanyName" @bind-RegistrationNumber="_company.RegistrationNumber"
+                    @bind-Street="_company.Street" @bind-City="_company.City" @bind-PostalCode="_company.PostalCode"
+                    Country="@_company.Country" CountryChanged="@(value => _company.Country = value ?? "CZ")" Disabled="_busy" />
+                <MudTextField @bind-Value="_company.TaxNumber" Label="@L["Client_TaxNumber"].Value" Disabled="_busy" />
+                <MudSwitch @bind-Value="_company.IsVatPayer" Label="@L["Client_IsVatPayer"].Value" Disabled="_busy" Color="Color.Primary" />
+            </MudForm>
+        }
+        <MudText Typo="Typo.caption" Class="mt-3">@L["CompanyMembership_CredentialNotice"]</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_busy">@L["Btn_Cancel"]</MudButton>
+        @if (_created is null)
+        {
+            <MudButton OnClick="CreateAsync" Disabled="_busy" Color="Color.Primary" Variant="Variant.Filled">@L["CompanyMembership_Add"]</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    private readonly CreateMyCompanyDto _company = new() { OperationId = Guid.NewGuid() };
+    private readonly CancellationTokenSource _lifetime = new();
+    private CompanyMembershipDto? _created;
+    private MudForm? _form;
+    private bool _busy, _error;
+    private void Cancel() => MudDialog.Cancel();
+    private async Task CreateAsync()
+    {
+        if (_busy || _form is null) return;
+        _busy = true;
+        _error = false;
+        try
+        {
+            await _form.Validate();
+            if (!_form.IsValid) return;
+            // The operation ID stays unchanged on failure; a timeout retry cannot create a second company.
+            _created = await Api.CreateAsync(_company, _lifetime.Token);
+            if (_created.IsProvisioned) MudDialog.Close(DialogResult.Ok(_created));
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception) { _error = true; }
+        finally { _busy = false; }
+    }
+    private async Task RetryAsync()
+    {
+        if (_busy || _created is null) return;
+        _busy = true;
+        _error = false;
+        try
+        {
+            _created = await Api.RetryAsync(_created.CompanyId, _lifetime.Token);
+            if (_created.IsProvisioned) MudDialog.Close(DialogResult.Ok(_created));
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception) { _error = true; }
+        finally { _busy = false; }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

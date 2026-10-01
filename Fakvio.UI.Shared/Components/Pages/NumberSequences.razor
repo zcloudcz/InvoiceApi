@@ -4,6 +4,7 @@
 @using Fakvio.Domain.Enums
 @inject NumberSequenceApiService SequenceService
 @inject ISnackbar Snackbar
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
@@ -11,6 +12,7 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">@L["Nav_NumberSequences"]</MudText>
 <MudText Class="mb-4">@L["NumSeq_Subtitle"]</MudText>
+@if (!_canManage) { <MudAlert Severity="Severity.Info" Class="mb-3">@L["Settings_ReadOnly"]</MudAlert> }
 
 @* ========== Number Sequence Formats — MudDataGrid with inline actions ========== *@
 <MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Formats"]</MudText>
@@ -22,9 +24,12 @@
             Loading="@_loadingFormats"
             RowClick="@(args => OpenEditFormatDialog(args.Item))">
     <ToolBarContent>
-        <ResponsiveButton Label="@L["NumSeq_NewFormat"].Value" Size="Size.Small"
-                          StartIcon="@Icons.Material.Filled.Add"
-                          OnClick="OpenCreateFormatDialog" />
+        @if (_canManage)
+        {
+            <ResponsiveButton Label="@L["NumSeq_NewFormat"].Value" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenCreateFormatDialog" />
+        }
         <MudSpacer />
         <MudSwitch T="bool" @bind-Value="_showDeletedFormats" Label="@L["Label_ShowDeleted"].Value"
                    Color="Color.Warning" />
@@ -58,17 +63,26 @@
         <TemplateColumn T="NumberSequenceFormatDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false"
                         CellStyle="white-space:nowrap;">
             <CellTemplate>
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
-                               OnClick="@(() => OpenEditFormatDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                @if (_canManage)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => OpenEditFormatDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                }
                 @if (context.Item.IsActive)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                   OnClick="@(() => DeactivateFormat(context.Item))" Title="@L["Btn_Delete"].Value" />
+                    @if (_canManage)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeactivateFormat(context.Item))" Title="@L["Btn_Delete"].Value" />
+                    }
                 }
                 else
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
-                                   OnClick="@(() => ActivateFormat(context.Item))" Title="@L["Btn_Restore"].Value" />
+                    @if (_canManage)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
+                                       OnClick="@(() => ActivateFormat(context.Item))" Title="@L["Btn_Restore"].Value" />
+                    }
                 }
             </CellTemplate>
         </TemplateColumn>
@@ -88,9 +102,12 @@
             Loading="@_loadingSequences"
             RowClick="@(args => OpenEditSequenceDialog(args.Item))">
     <ToolBarContent>
-        <ResponsiveButton Label="@L["NumSeq_NewSequence"].Value" Size="Size.Small"
-                          StartIcon="@Icons.Material.Filled.Add"
-                          OnClick="OpenCreateSequenceDialog" />
+        @if (_canManage)
+        {
+            <ResponsiveButton Label="@L["NumSeq_NewSequence"].Value" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenCreateSequenceDialog" />
+        }
         <MudSpacer />
         <MudSwitch T="bool" @bind-Value="_showDeletedSequences" Label="@L["Label_ShowDeleted"].Value"
                    Color="Color.Warning" />
@@ -131,19 +148,31 @@
         <TemplateColumn T="NumberSequenceDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false"
                         CellStyle="white-space:nowrap;">
             <CellTemplate>
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
-                               OnClick="@(() => OpenEditSequenceDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                @if (_canManage)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => OpenEditSequenceDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                }
                 @if (!context.Item.IsDefault && context.Item.IsActive)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" Color="Color.Warning"
-                                   OnClick="@(() => SetAsDefault(context.Item.Id))" Title="@L["NumSeq_SetDefault"].Value" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                   OnClick="@(() => DeactivateSequence(context.Item))" Title="@L["Btn_Delete"].Value" />
+                    @if (_canManage)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" Color="Color.Warning"
+                                       OnClick="@(() => SetAsDefault(context.Item.Id))" Title="@L["NumSeq_SetDefault"].Value" />
+                    }
+                    @if (_canManage)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeactivateSequence(context.Item))" Title="@L["Btn_Delete"].Value" />
+                    }
                 }
                 @if (!context.Item.IsActive)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
-                                   OnClick="@(() => ActivateSequence(context.Item))" Title="@L["Btn_Restore"].Value" />
+                    @if (_canManage)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
+                                       OnClick="@(() => ActivateSequence(context.Item))" Title="@L["Btn_Restore"].Value" />
+                    }
                 }
             </CellTemplate>
         </TemplateColumn>
@@ -267,6 +296,7 @@
 </MudDialog>
 
 @code {
+    private bool _canManage;
     private FakvioGrid<NumberSequenceFormatDto>? _formatsGrid;
     private FakvioGrid<NumberSequenceDto>? _sequencesGrid;
 
@@ -324,6 +354,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Accountant is the display name of the Admin role used by the API.
+        var user = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
+        _canManage = user.IsInRole("Admin") || user.IsInRole("SysAdmin");
         // Load both formats and sequences in parallel
         await Task.WhenAll(LoadFormats(), LoadSequences());
     }
@@ -388,12 +421,14 @@
 
     private void OpenCreateFormatDialog()
     {
+        if (!_canManage) return;
         _newFormat = new CreateNumberSequenceFormatDto();
         _showFormatDialog = true;
     }
 
     private async Task CreateFormat()
     {
+        if (!_canManage) return;
         if (_formatForm == null) return;
         await _formatForm.Validate();
         if (!_formatFormValid) return;
@@ -415,12 +450,14 @@
 
     private void OpenCreateSequenceDialog()
     {
+        if (!_canManage) return;
         _newSequence = new CreateNumberSequenceDto { StartingNumber = 1 };
         _showSequenceDialog = true;
     }
 
     private async Task CreateSequence()
     {
+        if (!_canManage) return;
         if (_sequenceForm == null) return;
         await _sequenceForm.Validate();
         if (!_sequenceFormValid) return;
@@ -444,6 +481,7 @@
     /// </summary>
     private async Task SetAsDefault(long id)
     {
+        if (!_canManage) return;
         try
         {
             await SequenceService.SetAsDefaultAsync(id);
@@ -461,6 +499,7 @@
     /// </summary>
     private async Task DeactivateSequence(NumberSequenceDto sequence)
     {
+        if (!_canManage) return;
         bool? result = await DialogService.ShowMessageBox(
             L["Msg_ConfirmDeleteTitle"].Value,
             $"{L["NumSeq_ConfirmDeactivate"].Value} ({sequence.Name})",
@@ -485,6 +524,7 @@
 
     private async Task DeactivateFormat(NumberSequenceFormatDto format)
     {
+        if (!_canManage) return;
         bool? result = await DialogService.ShowMessageBox(
             L["Msg_ConfirmDeleteTitle"].Value,
             $"{L["NumSeq_ConfirmDeactivate"].Value} ({format.Name})",
@@ -507,6 +547,7 @@
 
     private async Task ActivateFormat(NumberSequenceFormatDto format)
     {
+        if (!_canManage) return;
         try
         {
             await SequenceService.ActivateFormatAsync(format.Id);
@@ -523,6 +564,7 @@
 
     private async Task ActivateSequence(NumberSequenceDto sequence)
     {
+        if (!_canManage) return;
         try
         {
             await SequenceService.ActivateSequenceAsync(sequence.Id);
@@ -542,6 +584,7 @@
     /// </summary>
     private void OpenEditFormatDialog(NumberSequenceFormatDto format)
     {
+        if (!_canManage) return;
         _editFormatId = format.Id;
         _editFormat = new UpdateNumberSequenceFormatDto
         {
@@ -556,6 +599,7 @@
     /// </summary>
     private async Task UpdateFormat()
     {
+        if (!_canManage) return;
         if (_editFormatForm == null) return;
         await _editFormatForm.Validate();
         if (!_editFormatFormValid) return;
@@ -582,6 +626,7 @@
     /// </summary>
     private void OpenEditSequenceDialog(NumberSequenceDto sequence)
     {
+        if (!_canManage) return;
         _editSequenceId = sequence.Id;
         _editSequence = new UpdateNumberSequenceDto
         {
@@ -598,6 +643,7 @@
     /// </summary>
     private async Task UpdateSequence()
     {
+        if (!_canManage) return;
         if (_editSequenceForm == null) return;
         await _editSequenceForm.Validate();
         if (!_editSequenceFormValid) return;
