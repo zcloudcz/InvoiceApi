@@ -36,6 +36,7 @@
 - [ ] Complete a real ChatGPT read-only OAuth consent, MCP tool call, refresh and revocation check. The browser is waiting for the user to sign in to ChatGPT.
 - [ ] Resolve security issue #471: the GitHub Pages consent URL serves the Blazor 404.html fallback with HTTP 404 and without the `frame-ancestors` / `X-Frame-Options` headers required by ADR T9. The clickjacking check has not passed.
 - [x] Add a localized, beginner-friendly ChatGPT connection path at the top of Integrations and detailed user/admin setup steps in USERGUIDE. Release build succeeds with 0 errors; deployment is pending.
+- [x] Tester gate for PR #473: add bUnit coverage for the ChatGPT link and guide placement; 4,135 unit tests and 260 integration tests passed (4 and 7 skipped respectively). No GitHub CI checks are configured.
 - [x] Audit reported 'Účetní' role display: PR #462 renamed the `Admin=1` label to Accountant/Účetní without changing the stored role; it also restricted user management/invitations to SysAdmin. No production row was queried. Product decision on restoring the original label/permissions is separate from this OAuth rollout.
 
 ## Completed (2026-09-11)
