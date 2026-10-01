@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.01 — 2026-10-01
+
 - **#456** — Faktury, dobropisy a daňové doklady k záloze jdou stáhnout jako e-faktura UBL / Peppol BIS 3.0 (vedle ISDOC) — jednotlivě, hromadně i přes MCP; slovenským odběratelům se UBL přikládá k e-mailu. Příprava na povinnou e-fakturaci na Slovensku od 2027 (odesílání přes Peppol přijde ve fázi 2). (PR #456, `499e029`)
 - **#455** — Přijaté faktury umí importovat e-faktury UBL / Peppol BIS (XML) a ISDOC — z e-mailu i ručním nahráním; strukturovaná data se převezmou přesně, bez odhadu z PDF. (PR #455, `e04bacc`)
 - **#454** — Opakované faktury jdou spravovat i z AI přes MCP (výpis, založení, úprava, pozastavení, obnovení, smazání plánu); MCP server 2.2.0. (PR #454, `3e7340b`)
