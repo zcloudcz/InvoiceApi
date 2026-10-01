@@ -197,7 +197,8 @@ Protected Resource Metadata: `resource` = `https://mcp.fakvio.cz/mcp`, `authoriz
 - `refresh_token`: najde podle hashe. Platný a nepoužitý → označí `ConsumedAt`, vydá nový refresh
   (stejný grant) + nový access token. **Už použitý** refresh token → **revokace celého grantu**
   (všechny refresh i access tokeny, `RevokedReason=RefreshReuse`), Warning log, `invalid_grant`.
-- Odpověď: `access_token`, `token_type=Bearer`, `expires_in=3600`, `refresh_token`, `scope` (skutečně udělený),
+- Odpověď: `access_token`, `token_type=Bearer`, `expires_in=3600`, `refresh_token`, `scope` (skutečně udělený;
+  na protokolové hranici oddělený mezerami, např. `read write`, i když interní/API-key formát používá `read,write`),
   `Cache-Control: no-store`. Chyby jen RFC 6749 kódy bez interních detailů.
 
 **Revoke** (`POST /oauth/revoke`, RFC 7009): refresh token → revokace grantu; access token → revokace řádku;
@@ -289,7 +290,11 @@ a token přeposílá. Řešení a interpretace:
   - negativní cache 5 min a max 1 souběžný fetch per `client_id` (ochrana proti zneužití AS jako skeneru).
 - Validace dokumentu: `client_id` == URL přesně, `client_name` a `redirect_uris` přítomné, každý
   `redirect_uri` je `https` nebo loopback `http` (`127.0.0.1`, `[::1]`, `localhost`); `token_endpoint_auth_method`
-  chybí nebo `none` (jiné metody v1 nepodporujeme → `invalid_client`).
+  chybí nebo `none` (jiné metody v1 nepodporujeme → `invalid_client`). Pokud CIMD obsahuje současné
+  plural pole `token_endpoint_auth_methods_supported`, musí být neprázdné, správně utvořené a musí
+  obsahovat `none`; starší singular pole se použije jen tehdy, když plural pole chybí. ChatGPT
+  publikuje plural seznam `none` a `private_key_jwt` a preferuje `private_key_jwt`; Fakvio z průniku
+  podporovaných metod používá `none`, protože klientské assertiony neimplementuje.
 - Cache v `IMemoryCache` podle `Cache-Control` (min 5 min, max 24 h). Při více instancích stáhne každá
   instance sama — přijatelné.
 - **DCR (RFC 7591) v1 neimplementujeme.** Claude i ChatGPT CIMD umí a použijí ho, pokud AS metadata
