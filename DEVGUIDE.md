@@ -401,6 +401,31 @@ turn je desítky tool callů a každý z nich by jinak byl zápis do master DB.
 
 ---
 
+### 2.11 MCP OAuth 2.1 (ADR 0001, story N5)
+
+Kompletní návrh, threat model a rozhodnutí ownera: `docs/adr/0001-mcp-oauth21.md`. Tady jen
+mapa na kód.
+
+| Co | Kde |
+|---|---|
+| Entity | `Fakvio.Domain/Entities/OAuthGrant.cs`, `OAuthAuthorizationCode.cs`, `OAuthRefreshToken.cs`; `ApiKey.OAuthGrantId` (nullable FK) | 
+| Migrace | `Fakvio.Infrastructure/Migrations/Master/…_AddMcpOAuth_N5_2.cs` — čistě aditivní |
+| Úklid | `Fakvio.Infrastructure/Service/OAuthCleanupService.cs` (`BackgroundService`, hodinově — vzor `LogCleanupService`) |
+| CIMD resolver (SSRF-safe) | `Fakvio.Infrastructure/Authentication/OAuth/OAuthClientResolver.cs` + `SsrfSafeConnect.cs` — DNS resolve + blokace privátních/loopback/link-local/CGNAT/ULA rozsahů a Azure metadata adres v `SocketsHttpHandler.ConnectCallback`, žádné redirecty, 5s timeout, 64 kB limit, 1 souběžný fetch/`client_id`, pozitivní i negativní `IMemoryCache` |
+| AS core | `IOAuthService` (`Fakvio.Application/Service`) + `OAuthService` (`Fakvio.Infrastructure/Service`) — vydání/výměna authorization code, refresh rotace + reuse detekce (Q5 — 10s grace okno), revokace grantu |
+| Endpointy | `Fakvio.API/Controller/OAuthController.cs` — `/.well-known/oauth-authorization-server`, `/oauth/token`, `/oauth/revoke`; anonymní, `[EnableRateLimiting("oauth-token")]`, 404 když `McpOAuth:Enabled=false` |
+| Proof hlavička (T6) | `ApiKeyAuthenticator.HasValidResourceProof` — OAuth token (`fak_oat_…`) bez `X-Fakvio-Resource-Proof` hlavičky (shoda s `McpOAuth:ResourceProofSecret`, constant-time) neautentizuje |
+| Claims | `oauth_grant_id`, `oauth_resource` (`ApiKeyAuthenticationDefaults`) — `ImpersonationMiddleware` ignoruje `X-Company-Id` pro OAuth principal (Q9); `ApiKeyRequestGuard` odmítá OAuth/API-key principal na `/api/oauth/grants*` stejně jako na `/api/api-key*` |
+| `/api/api-key/me` | Nově vrací `OAuthGrantId` + `OAuthResource` — MCP host podle nich (N5.6) odmítne token s cizím resource |
+| Feature flag | `McpOAuth:Enabled` (default `false`) — `OAuthController` i AS metadata 404, dokud není zapnuto. Viz `McpOAuthOptions` pro celou konfiguraci (`AllowAll`, `AllowedUserIds/CompanyIds`, `TrustedClientHosts`, `Issuer`, `Resource`, `ResourceProofSecret`) |
+| Rate limiting | Politika `oauth-token` (`Program.cs`, vzor `auth-anon` z RC.4) — per-IP fixed window, default 300/60s (`RateLimiting:OAuthToken`) |
+| Testy | `Fakvio.Tests.Integration/OAuthDatabaseConstraintTests.cs` (DDL/cascade/cleanup), `OAuthServiceTests.cs` (T3/T5/T11/T12/Q5, vše proti reálnému PG — `ExecuteUpdateAsync`/`ExecuteDeleteAsync` na InMemory házejí `NotSupportedException`), `Fakvio.Tests.Unit/OAuthClientResolverTests.cs` + `SsrfSafeConnectTests.cs` (T7), `ApiKeyAuthenticatorOAuthTests.cs` (T6 proof hlavička) |
+
+**Konsent, autorizační endpoint a UI stránka "Připojené aplikace" ještě nejsou implementované**
+(N5.4/N5.7) — do té doby `IOAuthService.IssueAuthorizationCodeAsync` nemá volajícího mimo testy.
+
+---
+
 ## 3. Multi-tenant — jak data oddělujeme
 
 ### 3.1 Big picture
@@ -516,17 +541,32 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
    `GET /api/invoice/bulk/isdoc?ids=`, `GET /api/received-invoice/{id}/isdoc`,
    `GET /api/received-invoice/bulk/isdoc?ids=` (bulk = ZIP `.isdoc` souborů,
    selhané kusy se přeskakují; každý má Functions wrapper).
-4. **Render template** pro tělo emailu: `IContentTemplateService.RenderTemplateAsync` (`ContentTemplateService.cs:235-252`) — placeholdery v subjectu i body.
-5. **SMTP settings — 3-tier resolution** (`EmailService.cs:409-483`):
+4. **UBL 2.1 / Peppol BIS Billing 3.0** (SK e-fakturace 2027 + ViDA 2030, ADR 0002 N7):
+   `IUblExportService` → XML, jen pro vydané faktury/dobropisy (`UblMapper.cs`, vzor
+   `IsdocMapper.cs` — stejný přístup, žádná nová abstrakce). Před mapováním běží
+   per-doklad pre-flight `UblPreflight.Check` (Draft/Proforma odmítnout, Peppol ID
+   prodávajícího/odběratele, adresa, platební účet, mix `OutOfScope`, DIČ pro PDP, SK
+   měna ≠ EUR — kódy `EINVOICE_*` v `ReadinessCodes`) — blokující nález vyhodí
+   `TenantNotReadyException` stejně jako ostatní readiness brány (`ToBadRequestResult()`
+   → 400 `{code, issues}`). `BillingReference` (dobropis → původní faktura; konečná
+   faktura s odpočtem zálohy → daňové doklady k záloze) dohledává `UblExportService`
+   v DB a předává mapperu jako `precedingDocumentNumbers`. Endpointy:
+   `GET /api/invoice/{id}/ubl`, `GET /api/invoice/bulk/ubl?ids=` (bulk = ZIP `.xml`
+   souborů, stejné chování jako ISDOC bulk). Validace (XSD + CEN/Peppol schematron)
+   běží jen v `Fakvio.Tests.Unit` (`Ubl/UblTestValidator.cs`, artefakty a jejich
+   původ/licence v `Ubl/Vendored/README.md`) — runtime žádnou schematron validaci
+   nedělá, chyby tvaru XML jsou bugy mapperu odchycené testy.
+5. **Render template** pro tělo emailu: `IContentTemplateService.RenderTemplateAsync` (`ContentTemplateService.cs:235-252`) — placeholdery v subjectu i body.
+6. **SMTP settings — 3-tier resolution** (`EmailService.cs:409-483`):
    1. `CompanySystemSettings.SmtpPasswordEncrypted` (master DB) — per-company SMTP, decrypt přes `ICredentialProtector`.
    2. `SystemConfiguration` (master DB) — system-wide SMTP přes `ISystemConfigurationService.GetSmtpPasswordAsync`.
    3. `appsettings.json` `SmtpSettings` — fallback.
-6. **MailKit** (`EmailService.cs:273-366`):
+7. **MailKit** (`EmailService.cs:273-366`):
    - Port → SocketOptions: 465 → `SslOnConnect`, 587 → `StartTls`, jiné → `None`.
    - Certificate validation s **CRL tolerance** — akceptuje self-signed pokud CRL nedostupné.
    - **SASL mechanism strip** (řádek 338-339): odstraní XOAUTH2 + NTLM kvůli Seznam.cz (jinak hlásí UnAuthenticated).
    - UTF-8 encoding pro PLAIN/LOGIN auth.
-7. Build `MimeMessage` s PDF + ISDOC attachments → `SmtpClient.SendAsync`.
+8. Build `MimeMessage` s PDF + ISDOC (+ UBL pro SK odběratele, F1.9) attachments → `SmtpClient.SendAsync`.
 
 **Pokud měníš SMTP/Seznam config** → ověř SASL strip + CRL tolerance, nesahej na ně bez testu proti všem tří providerům (Gmail, Outlook, Seznam).
 
@@ -1456,7 +1496,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 49 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 57 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1477,7 +1517,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
-| **Vydané faktury** (`InvoiceTools`, 10) |
+| **Vydané faktury** (`InvoiceTools`, 11) |
 | `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
@@ -1487,6 +1527,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `MarkInvoicePaid` | **Write** | `mark_invoice_paid` (confirm) | ✅ | |
 | `SendInvoiceEmail` | **Write** (odešle e-mail) | `send_invoice_email` (confirm) | ✅ | |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
+| `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
 | `DeleteInvoice` | **Destructive** | `delete_invoice` (confirm, jen Draft) | ✅ | |
 | **Přijaté faktury** (`ReceivedInvoiceTools`, 7) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
@@ -1525,6 +1566,14 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetPayment` | Read | `get_payment` | ✅ | |
 | `ListReminders` | Read | `list_reminders` | ✅ | |
 | `GetReminderSettings` | Read | `get_reminder_settings` | ✅ | |
+| **Opakované faktury** (`RecurringTools`, 7) |
+| `ListRecurringSchedules` | Read | — | ❌ | zatím bez tasku |
+| `GetRecurringSchedule` | Read | — | ❌ | zatím bez tasku |
+| `CreateRecurringSchedule` | Create | — | ❌ | zatím bez tasku |
+| `UpdateRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
+| `PauseRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
+| `ResumeRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
+| `DeleteRecurringSchedule` | **Destructive** | — | ❌ | zatím bez tasku |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
@@ -1537,9 +1586,12 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 49 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 7 mezer: daně (5, zatím bez tasku),
-šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`).
+**Součty:** 57 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 15 mezer: daně (5, zatím bez tasku),
+šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
+(7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
+N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
+zatím nepokrývají).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1621,8 +1673,8 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **Validace každý request přes `GET /api/api-key/me`** (`McpApiKeyMiddleware`), **bez cache** — cache by udělala z revokace eventually-consistent věc (zákaz ze story #144). Chybějící hlavička se odmítne rovnou, bez round-tripu na API. Transportní selhání API se **nepřevádí** na 401: „API je nedostupné" a „tvůj klíč neplatí" jsou dvě různé diagnózy, tak to padá jako 500.
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
-  - **Mimo scope (story #144):** OAuth 2.1 / dynamic client registration pro Claude.ai konektory (hlavičku dodává uživatel ručně), per-area scopes (jen read/write), cache API klíčů.
-- **49 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment (po jednom souboru v `Tools/`).
+  - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
+- **57 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -1641,7 +1693,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
   Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
   podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
-- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 49 nástrojů.**
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 56 nástrojů.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
   Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
@@ -1702,6 +1754,17 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter` (žádný `string …Json` parametr) a
   `McpSdkInvocationTests` (enum jako řetězec a vnořené DTO pole projdou přes skutečnou SDK cestu,
   ne jen přímým voláním metody).
+- **`RecurringTools` (N4.6, 2.2.0) pokrývá celé CRUD nad recurring schedules** (§4.13), ne jen
+  čtení, jak navrhoval původní task N4.6 — rozšířeno na žádost ownera. `list_recurring_schedules`/
+  `get_recurring_schedule` jsou read-only; `create_recurring_schedule`/`update_recurring_schedule`
+  berou typované DTO (`CreateRecurringInvoiceScheduleDto`/`UpdateRecurringInvoiceScheduleDto`), ne
+  JSON string (stejná N2.5 konvence); `pause_recurring_schedule`/`resume_recurring_schedule` jsou
+  idempotentní (opakované volání na stejném stavu je no-op); `delete_recurring_schedule` je
+  `Destructive = true`. Popisy nástrojů výslovně říkají modelu, že vygenerovaná faktura se rovnou
+  **vystaví** (Status = Completed, ne koncept) a že `autoSend` řídí jen e-mail, ne vystavení —
+  jinak by si model mohl plést chování s `create_invoice_from_template` (tam `autoComplete`
+  skutečně rozhoduje draft vs. completed), a že zmeškaná perioda se dohání po jedné faktuře za
+  cyklus datované na PLÁNOVANÝ den (§4.13 bod 2), ne na dnešek.
 - **Verze balíčku se bumpuje ve stejném PR jako změna nástroje (N2.6), ne později.**
   `<Version>` v `Fakvio.McpServer.csproj` — publish na nuget.org je `--skip-duplicate` jen na
   `master` (`.github/workflows/mcp-server.yml`), takže build se stejným číslem je no-op, ne chyba;
@@ -1732,6 +1795,7 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
 | Processor | `InvoiceEmailProcessor.cs` | Orchestrátor: archiv → extract → classify → import → notify |
 | Classifier | `InvoiceEmailClassifier.cs` | AI klasifikace směru (přijatá/vydaná) s IČO fast path |
 | ISDOC parser | `IsdocImportParser.cs` | ISDOC 6.0.2 XML → `InvoiceExtractedData` (bez AI) |
+| UBL parser (F1.10) | `UblImportParser.cs` | UBL 2.1 / Peppol BIS Billing 3.0 (`Invoice`/`CreditNote` root) → `InvoiceExtractedData` (bez AI); viz §4.10a |
 | Mailbox CRUD | `InvoiceMailboxService.cs` | Activate/deactivate/regenerate alias |
 | API | `InvoiceMailboxController.cs`, `InboundInvoiceEmailController.cs` | Mailbox management + inbox list/detail/retry/ignore |
 | UI | `InvoiceMailboxCard.razor`, `InboundInvoiceEmails.razor` | Company Settings card + inbox stránka |
@@ -1742,10 +1806,11 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
 1. Guard (mailbox active, email within ActiveFrom window)
 2. Dedup: SHA-256(mailboxId | messageId | imapUid)
 3. Archive: persist InboundInvoiceEmail (status=Pending)
-4. Extract attachments: PDF bytes + ISDOC XML z MimeMessage
-5. Parse invoice data (priority chain):
+4. Extract attachments: PDF bytes + ISDOC/UBL XML z MimeMessage
+5. Parse invoice data (priority chain, per attachment — jeden email může obsahovat víc dokladů):
    a. ISDOC XML → IsdocImportParser (.isdoc plain + .isdocx ZIP)
-   b. PDF → InvoiceImportService pipeline (QR → AI → regex)
+   b. UBL/Peppol XML → UblImportParser (.xml, F1.10 — viz §4.10a)
+   c. PDF → InvoiceImportService pipeline (QR → AI → regex)
 6. Duplicate detection: DocumentNumber + supplier IČO → existující doklad?
    → YES: přidat přílohy k existujícímu, notifikace "Příloha přidána"
    → NO: pokračovat na krok 7
@@ -1754,7 +1819,7 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
    b. AI fallback (IInvoiceEmailClassifier)
 8. Auto-create client (IClientService + ARES)
 9. Create doklad: ReceivedInvoice nebo Invoice
-10. Attach PDF/ISDOC jako FileAttachment
+10. Attach PDF/ISDOC/UBL jako FileAttachment
 11. Notify: CreateForAllUsersAsync (InvoiceEmailImported / InvoiceEmailNeedsReview)
 ```
 
@@ -1767,6 +1832,67 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
 **Klíčový DI pattern:** `ImapPollService` konstruuje `InvoiceEmailProcessor` ručně s explicitním `TenantDbContext` (ne z DI scope). DI scope nemá tenant schema nastavené — stejný pattern jako `InboundEmailProcessor` pro platby.
 
 **Pokud přidáváš nový typ emailového zpracování:** rozšiř `EMailboxType`, přidej nový processor, a přidej branch do `ImapPollService.HandleMessageAsync`.
+
+### 4.10a UBL / Peppol BIS import do přijatých faktur (F1.10)
+
+Import UBL 2.1 / Peppol BIS Billing 3.0 e-faktur (`Invoice`/`CreditNote` root) — SK povinná
+e-fakturace od 1. 1. 2027, viz `docs/adr/0002-sk-einvoicing-peppol.md`. Dvě vstupní cesty, jeden
+parser:
+
+| Cesta | Kde | Jak |
+|---|---|---|
+| Email | `InvoiceEmailProcessor` (§4.10) | Příloha `.xml` (nebo content-type obsahující `xml`, kromě ISDOC) → `IUblImportParser.Parse(byte[])`, priorita jako ISDOC, před PDF |
+| Ruční upload | `ImportController.Preview` → `InvoiceImportService.PreviewStructuredImportAsync` | `.xml`/`.isdoc`/`.isdocx` obchází QR/AI/regex pipeline úplně — buď se dokument rozpozná deterministicky, nebo se vrátí `InvoiceImportPreviewDto` s `ExtractionSource="Error"` a jednou `Error` validací (žádná výjimka) |
+
+**`UblImportParser` (`Fakvio.Infrastructure/Service/UblImportParser.cs`, `internal`-free pure XML
+deserializer, žádné AI, žádné síťové volání):**
+
+- Rozliší kořen podle namespace: `.../Invoice-2` (`InvoiceTypeCode` 380 = Invoice, 386 =
+  TaxReceiptForAdvance) nebo `.../CreditNote-2` → `CreditNote`. Jiný kořen → `null`.
+- Mapuje hlavičku, `AccountingSupplierParty`/`AccountingCustomerParty` (IČO z
+  `PartyLegalEntity/CompanyID`, DIČ z `PartyTaxScheme/CompanyID`), `LegalMonetaryTotal`,
+  `TaxTotal`, `PaymentMeans` (VS, IBAN, BIC), a řádky (`InvoiceLine`/`CreditNoteLine`, přímo pod
+  kořenem — na rozdíl od ISDOC bez obalového elementu).
+- **Dobropis (`CreditNote` root):** `ReceivedInvoice` nemá vlastní příznak „toto je dobropis" —
+  proto se množství na řádcích při importu **znaménkově otočí** (Peppol BIS má na CreditNote vždy
+  kladná množství; Fakvio si dobropis interně reprezentuje jako zápornou položku). Zrcadlí (v
+  opačném směru) chování exportního mapperu z F1.1/F1.4.
+- **Mapovací detaily, na kterých šlo snadno šlápnout vedle (a proto mají vlastní testy):**
+  `TaxableSupplyDate` (DUZP) čte `cbc:TaxPointDate` (BT-7) na kořeni, **ne**
+  `cac:Delivery/cbc:ActualDeliveryDate` (BT-72, jiné pole) — to je jen fallback, když
+  `TaxPointDate` chybí. `DueDate` u `CreditNote` **není** na kořeni (na rozdíl od `Invoice`) —
+  čte se z `cac:PaymentMeans/cbc:PaymentDueDate`. Cena položky se nepočítá přímo z
+  `cac:Price/cbc:PriceAmount` (to je jen fallback), ale z `LineExtensionAmount / množství` —
+  `PriceAmount` může být "cena za `BaseQuantity` kusů" nebo zahrnovat řádkovou slevu/přirážku,
+  `LineExtensionAmount` (skutečná čistá částka řádku) tyhle efekty už zahrnuje. `TaxTotal` a
+  `PartyTaxScheme` mohou být na dokladu dva (měna dokladu/účetní měna; DPH schéma/zastoupení) —
+  vybírá se podle `currencyID`/`TaxScheme/ID`, ne první nalezený.
+- **Bezpečnost (netriviální vstup z e-mailu/uploadu):** `XmlReaderSettings.DtdProcessing =
+  Prohibit` (blokuje XXE i "billion laughs" — obojí vyžaduje DOCTYPE s ENTITY, takže zákaz
+  DOCTYPE stačí), `XmlResolver = null` (žádné externí zdroje), tvrdý limit velikosti
+  `MaxXmlSizeBytes = 2 MB` před parsováním (reálné Peppol faktury jsou řádově stovky kB;
+  menší strop než obecný 10 MB limit uploadu v `ImportController` schválně omezuje i
+  "DOM bombu" — validní XML s milionem drobných elementů, který by bez limitu velikosti
+  DTD zákaz neřešil). `.isdocx` (ZIP) navíc řeší **decompression bombu** — sdílený
+  `IsdocZipReader` (`Fakvio.Infrastructure/Service/IsdocZipReader.cs`, používá ho ISDOC
+  branch obou pipeline, email i upload) čte ZIP entry přes bounded stream a počítá
+  *skutečné* rozbalené bajty (ne `ZipArchiveEntry.Length`, ten je součástí ZIP hlavičky a
+  útočník ho může nastavit špatně), zastaví se nad `IsdocZipReader.MaxDecompressedBytes`
+  (2 MB). Cokoliv nevalidní/neznámé/moc velké → `null`, nikdy výjimka ven z `Parse`.
+
+**Sdílené konverzní tabulky (jednotky, kategorie DPH, země) s F1.1 (export) zatím NEJSOU:**
+F1.10 vznikl paralelně s F1.1–F1.9 v jiném worktree a používá jen to málo, co import potřebuje
+(čtení hodnot přímo z XML, žádné odvozování kódů). Po mergi obou větví zvážit sjednocení, pokud
+se objeví duplicitní logika — zatím žádná není, `UblImportParser` a plánovaný `UblCodes`/`UblMapper`
+(F1.1) se nepřekrývají.
+
+**Testy:** `UblImportParserTests.cs` — reálné Peppol příklady (`Ubl/ImportFixtures/`, origin/licence
+v `README.md` tamtéž) + hand-crafted XXE/entity-bomb/oversize testy. `InvoiceEmailProcessorUblTests.cs`
+— integrace přes InMemory `TenantDbContext`. `InvoiceImportServiceTests.cs` — routing `.xml` vs
+`.isdoc`/`.isdocx`, ZIP unwrap, error preview na `null`.
+
+**DB změna: žádná** — F1.10 je bezmigrační (jediná plánovaná DB změna fáze 1, `Client.PeppolId`,
+patří do F1.8).
 
 ### 4.11 EPO XML export (DPHDP3 + DPHKH1)
 
@@ -2008,7 +2134,7 @@ a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quart
   (`AddMonths`) a nastaví `DayOfMonth` — díky capu 1-28 je výsledný den vždy platný.
 - `RecurringInvoiceWorker : BackgroundService` (`Fakvio.Infrastructure/Service`) — tenká obálka,
   registrovaná v `Fakvio.API/Program.cs`. Viz §6.3 pro interval a lock key.
-- `RecurringInvoiceController` (`Fakvio.API/Controller`) — REST `api/recurring-invoice`.
+- `RecurringInvoiceController` (`Fakvio.API/Controller`) — REST `api/recurringinvoice`.
 - UI: `RecurringScheduleEditor.razor` (znovupoužitelná komponenta, `Fakvio.UI.Shared/Components/Shared`)
   + panel na `InvoiceTemplateDetail.razor`.
 
@@ -2057,8 +2183,13 @@ a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quart
    něj neodkazuje). Jinak jen deaktivace (`IsActive = false`) — historie (`LastRunAt`,
    `OccurrenceCount`, vygenerované faktury) zůstává.
 
-**REST endpointy** (`api/recurring-invoice`): `GET` (vše, `?templateId=` filtr), `GET {id}`,
+**REST endpointy** (`api/recurringinvoice`): `GET` (vše, `?templateId=` filtr), `GET {id}`,
 `POST`, `PUT {id}`, `POST {id}/pause`, `POST {id}/resume`, `DELETE {id}`.
+
+**MCP nástroje** (N4.6, §4.9): `Tools/RecurringTools.cs`, 1:1 na REST endpointy výše —
+`list_recurring_schedules`, `get_recurring_schedule`, `create_recurring_schedule`,
+`update_recurring_schedule`, `pause_recurring_schedule`, `resume_recurring_schedule`,
+`delete_recurring_schedule`.
 
 ### 4.14 Import z CSV (klienti z Fakturoidu / iDokladu)
 
@@ -3018,6 +3149,15 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 ---
 
 ## 12. Známé gotchas (rychlý lookup)
+
+### Neplátce DPH (`Client.IsVatPayer = false` na issueru)
+- Server nevěří klientovi: `InvoiceService` i `InvoiceTemplateService` (create + update) volají pro
+  neplátce `NonVatPayerItems.StripVat` — `VatRateId = null`, `VatRatePercentage = 0`, ReverseCharge → Standard.
+  Všechny cesty (UI, MCP, chat, kopie, dobropis, šablona → faktura, opakované faktury) jdou přes tyto služby.
+- PDF: `PdfExportService.StripVatFromTemplate` odstraní z šablony sloupec DPH, rekapitulaci, „DAŇOVÝ DOKLAD“
+  a DUZP podle přesných úryvků výchozích šablon (`Templates/*.html`). Ručně přepsaná šablona si sloupec
+  DPH ponechá (s 0 %). Při změně markupu výchozích šablon uprav i konstanty v `PdfExportService`.
+- UI: `InvoiceItemEditor` si stav načte sám přes `GetIssuerAsync` (nepředává se parametrem).
 
 ### Data Protection
 - **Key persistence je POVINNÁ** — `PersistKeysToDbContext<MasterDbContext>()`. Bez ní každý restart = nový key ring = všechna zašifrovaná hesla ztracena (issue #109). Viz §2.7.

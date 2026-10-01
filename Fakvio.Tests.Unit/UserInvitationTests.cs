@@ -35,6 +35,7 @@ public class UserInvitationTests : IDisposable
     private readonly UserService _userService;
     private readonly IAuthService _authService;
     private readonly ITenantProvisioningService _provisioningService;
+    private readonly IOAuthService _oauthService;
 
     /// <summary>
     /// Name of the in-memory database backing <see cref="_context"/>.
@@ -66,7 +67,8 @@ public class UserInvitationTests : IDisposable
         _provisioningService = Substitute.For<ITenantProvisioningService>();
         var logger = Substitute.For<ILogger<UserService>>();
 
-        _userService = new UserService(_context, _authService, _provisioningService, logger);
+        _oauthService = Substitute.For<IOAuthService>();
+        _userService = new UserService(_context, _authService, _provisioningService, _oauthService, logger);
 
         // Seed a test company (required for non-SysAdmin users)
         SeedTestCompany();
@@ -560,6 +562,7 @@ public class UserInvitationTests : IDisposable
                 dataSourceFactory,
                 rootDataSource,
                 Substitute.For<ILogger<TenantProvisioningService>>()),
+            Substitute.For<IOAuthService>(),
             userLogger);
 
         var token = await SeedInvitedUserAsync("colleague-real@test.com", companyId: SeededCompanyId);

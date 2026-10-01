@@ -38,6 +38,25 @@ public interface IInvoiceImportService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Previews the import of a structured invoice document — ISDOC or UBL/Peppol BIS
+    /// XML (F1.10, see docs/adr/0002-sk-einvoicing-peppol.md) — routed by file extension
+    /// (.isdoc/.isdocx vs .xml). Unlike <see cref="PreviewImportAsync"/>, there is no
+    /// QR/AI/regex waterfall here: the document is either a well-formed, recognized
+    /// ISDOC/UBL invoice (parsed deterministically, no AI) or it isn't (returns an error
+    /// preview — this method never throws for a malformed file).
+    /// </summary>
+    /// <param name="fileBytes">Raw file bytes.</param>
+    /// <param name="fileName">Original file name (used to pick the parser and for display).</param>
+    /// <param name="target">Import target: issued or received invoice.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Preview DTO with extracted data and validation results.</returns>
+    Task<InvoiceImportPreviewDto> PreviewStructuredImportAsync(
+        byte[] fileBytes,
+        string fileName,
+        EImportTarget target,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Confirms the import of one or more invoices after user review.
     /// Creates the invoices (and optionally new clients) in the database.
     /// </summary>

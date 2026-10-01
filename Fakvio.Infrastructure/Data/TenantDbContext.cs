@@ -350,6 +350,9 @@ public class TenantDbContext : DbContext
             // CSS hex color for row highlighting in grids (e.g., "#FF5722").
             entity.Property(e => e.Color).HasMaxLength(9);
 
+            // Peppol endpoint ID override (ADR 0002, F1.8) — "<scheme>:<value>", e.g. "0245:2020123456".
+            entity.Property(e => e.PeppolId).HasMaxLength(64);
+
             entity.HasMany(e => e.Address)
                 .WithOne(a => a.Client)
                 .HasForeignKey(a => a.ClientId)

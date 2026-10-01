@@ -62,6 +62,7 @@ public class UserInvitationTokenLeakTests : IDisposable
             _context,
             authService,
             Substitute.For<ITenantProvisioningService>(),
+            Substitute.For<IOAuthService>(),
             Substitute.For<ILogger<UserService>>());
 
         SeedCompanyWithPendingInvitation();

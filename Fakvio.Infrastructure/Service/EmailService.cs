@@ -1,6 +1,8 @@
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
+using Fakvio.Infrastructure.Service.Ubl;
 using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -30,6 +32,7 @@ public class EmailService : IEmailService
     private readonly MasterDbContext _masterContext;
     private readonly IPdfExportService _pdfExportService;
     private readonly IIsdocExportService _isdocExportService;
+    private readonly IUblExportService _ublExportService;
     private readonly IContentTemplateService _contentTemplateService;
     private readonly ISystemConfigurationService _systemConfigService;
     private readonly ICredentialProtector _credentialProtector;
@@ -56,6 +59,7 @@ public class EmailService : IEmailService
         MasterDbContext masterContext,
         IPdfExportService pdfExportService,
         IIsdocExportService isdocExportService,
+        IUblExportService ublExportService,
         IContentTemplateService contentTemplateService,
         ISystemConfigurationService systemConfigService,
         ICredentialProtector credentialProtector,
@@ -67,6 +71,7 @@ public class EmailService : IEmailService
         _masterContext = masterContext;
         _pdfExportService = pdfExportService;
         _isdocExportService = isdocExportService;
+        _ublExportService = ublExportService;
         _contentTemplateService = contentTemplateService;
         _systemConfigService = systemConfigService;
         _credentialProtector = credentialProtector;
@@ -82,10 +87,13 @@ public class EmailService : IEmailService
 
         // Load the invoice with related data for placeholder substitution.
         // Include Client to read the client's preferred language for template resolution.
+        // Client.Address is included on top of the ISDOC-era set of includes — F1.9 needs the
+        // buyer's country to decide whether a UBL attachment applies (UblCodes.CountryToIso2).
         var invoice = await _context.Invoice
             .Include(i => i.Currency)
             .Include(i => i.Issuer)
             .Include(i => i.Client)
+                .ThenInclude(c => c!.Address)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
@@ -111,9 +119,46 @@ public class EmailService : IEmailService
         var isdocBytes = await _isdocExportService.ExportInvoiceAsync(invoiceId, ct);
         var isdocFileName = $"{prefix}_{docNumber}.isdoc";
 
+        // UBL/Peppol attachment (ADR 0002, F1.9) — only for a buyer who is actually reachable
+        // via Peppol: a Slovak buyer (SK e-invoicing 2027) or any buyer with an explicit
+        // Client.PeppolId override (F1.8). A pre-flight failure (missing Peppol ID, incomplete
+        // address, …) just skips the attachment — the email itself must never fail because the
+        // UBL side of the document is not ready yet; PDF + ISDOC still go out as before.
+        // Sending e-invoice XML by email instead of through a Peppol courier is only lawful with
+        // the recipient's consent ([FAQ] I/66) — USERGUIDE §2.8a tells the user that.
+        byte[]? ublBytes = null;
+        string? ublFileName = null;
+        var buyerCountry = UblCodes.CountryToIso2(
+            invoice.Client?.Address?.FirstOrDefault(a => a.IsPrimary)?.Country
+                ?? invoice.Client?.Address?.FirstOrDefault()?.Country);
+        var buyerIsPeppolReachable = buyerCountry == "SK" || !string.IsNullOrWhiteSpace(invoice.Client?.PeppolId);
+        if (buyerIsPeppolReachable)
+        {
+            try
+            {
+                ublBytes = await _ublExportService.ExportInvoiceAsync(invoiceId, ct);
+                ublFileName = $"{prefix}_{docNumber}.xml";
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw; // A caller-requested cancellation must still abort the whole send.
+            }
+            catch (Exception ex)
+            {
+                // Any UBL failure — not just TenantNotReadyException — must leave the email
+                // unaffected: a mapper bug, a transient DB error, or an unexpected document
+                // type must not cost the recipient their PDF + ISDOC because a comfort
+                // attachment could not be built.
+                _logger.LogWarning(ex,
+                    "UBL attachment skipped for invoice {InvoiceId} email — export failed: {Message}",
+                    invoiceId, ex.Message);
+            }
+        }
+
         _logger.LogInformation(
-            "Invoice {InvoiceId} attachments prepared: PDF={PdfFile} ({PdfBytes} B), ISDOC={IsdocFile} ({IsdocBytes} B)",
-            invoiceId, pdfFileName, pdfBytes.Length, isdocFileName, isdocBytes.Length);
+            "Invoice {InvoiceId} attachments prepared: PDF={PdfFile} ({PdfBytes} B), ISDOC={IsdocFile} ({IsdocBytes} B){UblInfo}",
+            invoiceId, pdfFileName, pdfBytes.Length, isdocFileName, isdocBytes.Length,
+            ublBytes != null ? $", UBL={ublFileName} ({ublBytes.Length} B)" : "");
 
         // Build placeholders dictionary for template substitution
         var placeholders = new Dictionary<string, string>
@@ -139,7 +184,7 @@ public class EmailService : IEmailService
         // Try to render from the default content template for the client's language, fall back to simple HTML
         var (subject, htmlBody) = await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
 
-        // Build and send the email with both attachments (PDF + ISDOC).
+        // Build and send the email with PDF + ISDOC (+ UBL when applicable, F1.9).
         // We call the internal builder directly instead of SendEmailAsync because
         // the public SendEmailAsync signature supports only one optional attachment
         // and we don't want to break that public interface (per issue #16 analysis).
@@ -147,6 +192,7 @@ public class EmailService : IEmailService
             recipientEmail, subject, htmlBody,
             pdfBytes, pdfFileName,
             isdocBytes, isdocFileName,
+            ublBytes, ublFileName,
             ct);
 
         // Mark the invoice as sent by email in the database
@@ -154,16 +200,20 @@ public class EmailService : IEmailService
         invoice.LastSentByEmailAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
 
+        var attachmentCount = ublBytes != null ? 3 : 2;
+        var attachmentNames = ublBytes != null
+            ? $"{pdfFileName}, {isdocFileName}, {ublFileName}"
+            : $"{pdfFileName}, {isdocFileName}";
         _logger.LogInformation(
             "Invoice {InvoiceId} email sent successfully to {Email} with {AttachmentCount} attachments: {Attachments}",
-            invoiceId, recipientEmail, 2, $"{pdfFileName}, {isdocFileName}");
+            invoiceId, recipientEmail, attachmentCount, attachmentNames);
     }
 
     /// <summary>
-    /// Builds and sends a MimeMessage with exactly two attachments: PDF and ISDOC.
-    /// This is an internal helper used only by <see cref="SendInvoiceEmailAsync"/>.
-    /// Keeping it separate avoids changing the public <see cref="SendEmailAsync"/> signature
-    /// which only supports a single optional attachment.
+    /// Builds and sends a MimeMessage with PDF + ISDOC, and optionally a UBL/Peppol XML
+    /// attachment (F1.9). This is an internal helper used only by
+    /// <see cref="SendInvoiceEmailAsync"/>. Keeping it separate avoids changing the public
+    /// <see cref="SendEmailAsync"/> signature which only supports a single optional attachment.
     /// </summary>
     /// <param name="to">Recipient email address.</param>
     /// <param name="subject">Email subject.</param>
@@ -172,31 +222,36 @@ public class EmailService : IEmailService
     /// <param name="pdfFileName">Filename for the PDF attachment (e.g. "Invoice_2025001.pdf").</param>
     /// <param name="isdocBytes">Raw ISDOC XML bytes to attach.</param>
     /// <param name="isdocFileName">Filename for the ISDOC attachment (e.g. "Invoice_2025001.isdoc").</param>
+    /// <param name="ublBytes">Raw UBL XML bytes to attach, or null to skip the attachment.</param>
+    /// <param name="ublFileName">Filename for the UBL attachment; required when <paramref name="ublBytes"/> is set.</param>
     /// <param name="ct">Cancellation token.</param>
     internal async Task SendInvoiceMessageAsync(
         string to, string subject, string htmlBody,
         byte[] pdfBytes, string pdfFileName,
         byte[] isdocBytes, string isdocFileName,
+        byte[]? ublBytes = null, string? ublFileName = null,
         CancellationToken ct = default)
     {
         // Resolve SMTP settings using the 3-tier priority chain
         var smtp = await ResolveSmtpSettingsAsync(ct);
 
-        // Build the MimeMessage with HTML body + two attachments
+        // Build the MimeMessage with HTML body + attachments
         var message = BuildInvoiceMessage(
             smtp.SenderName, smtp.SenderEmail,
             to, subject, htmlBody,
             pdfBytes, pdfFileName,
-            isdocBytes, isdocFileName);
+            isdocBytes, isdocFileName,
+            ublBytes, ublFileName);
 
         // Connect and send using MailKit
         await SendViaSMTPAsync(smtp, message, ct);
     }
 
     /// <summary>
-    /// Builds a MimeMessage for an invoice email containing both PDF and ISDOC attachments.
-    /// Extracted as a separate static method so unit tests can verify the message structure
-    /// without a real SMTP server — call this directly and inspect the returned MimeMessage.
+    /// Builds a MimeMessage for an invoice email containing PDF + ISDOC attachments, and
+    /// optionally a third UBL/Peppol XML attachment (F1.9, e.g. for an SK buyer). Extracted as
+    /// a separate static method so unit tests can verify the message structure without a real
+    /// SMTP server — call this directly and inspect the returned MimeMessage.
     /// </summary>
     /// <param name="senderName">Display name shown in the "From" header (e.g. "Fakvio").</param>
     /// <param name="senderEmail">Email address in the "From" header.</param>
@@ -207,11 +262,14 @@ public class EmailService : IEmailService
     /// <param name="pdfFileName">Filename for the PDF (e.g. "Invoice_INV2025001.pdf").</param>
     /// <param name="isdocBytes">Raw ISDOC XML bytes to attach.</param>
     /// <param name="isdocFileName">Filename for the ISDOC (e.g. "Invoice_INV2025001.isdoc").</param>
+    /// <param name="ublBytes">Raw UBL XML bytes to attach, or null to skip the attachment.</param>
+    /// <param name="ublFileName">Filename for the UBL attachment; required when <paramref name="ublBytes"/> is set.</param>
     internal static MimeMessage BuildInvoiceMessage(
         string senderName, string senderEmail,
         string to, string subject, string htmlBody,
         byte[] pdfBytes, string pdfFileName,
-        byte[] isdocBytes, string isdocFileName)
+        byte[] isdocBytes, string isdocFileName,
+        byte[]? ublBytes = null, string? ublFileName = null)
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(senderName, senderEmail));
@@ -226,6 +284,11 @@ public class EmailService : IEmailService
         // ISDOC XML — Czech electronic invoice standard (ISO/IEC 19845 based).
         // Content type "application/xml" is the MIME type for XML documents (RFC 7303).
         bodyBuilder.Attachments.Add(isdocFileName, isdocBytes, ContentType.Parse("application/xml"));
+
+        // UBL/Peppol XML (F1.9) — only when the caller resolved one (SK buyer or explicit
+        // Client.PeppolId override, and the pre-flight actually passed).
+        if (ublBytes != null && ublFileName != null)
+            bodyBuilder.Attachments.Add(ublFileName, ublBytes, ContentType.Parse("application/xml"));
 
         message.Body = bodyBuilder.ToMessageBody();
         return message;

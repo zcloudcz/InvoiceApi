@@ -63,6 +63,13 @@ public class ClientDto
     public string? Color { get; set; }
 
     /// <summary>
+    /// Manual override of the Peppol network endpoint ID for the UBL eInvoice export
+    /// (ADR 0002, F1.8), e.g. "0245:2020123456". Null = derived automatically from
+    /// <see cref="TaxNumber"/> and the primary address' country.
+    /// </summary>
+    public string? PeppolId { get; set; }
+
+    /// <summary>
     /// Collection of client addresses
     /// </summary>
     public List<AddressDto> Address { get; set; } = new();

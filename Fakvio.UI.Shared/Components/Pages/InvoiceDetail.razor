@@ -257,6 +257,14 @@ else
                    StartIcon="@Icons.Material.Filled.Download"
                    Disabled="@(_invoice.Status == EInvoiceStatus.Draft)"
                    OnClick="DownloadIsdoc">@L["Btn_ExportIsdoc"]</MudButton>
+        @* UBL / Peppol eInvoice download (ADR 0002, F1.6) — disabled for Draft (nothing issued
+           yet) and Proforma (not a tax document, [FAQ] I/34); UblExportService's own pre-flight
+           still gates finer-grained problems (missing Peppol ID, incomplete address, …), shown
+           via the issues list on failure instead of a generic error. *@
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Download"
+                   Disabled="@(_invoice.Status == EInvoiceStatus.Draft || _invoice.DocumentType == EDocumentType.Proforma)"
+                   OnClick="DownloadUbl">@L["Btn_ExportUbl"]</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Email"
                    OnClick="@(() => _showEmailDialog = true)">@L["Btn_SendEmail"]</MudButton>
     </div>
@@ -489,12 +497,15 @@ else
                     </MudCardHeader>
                     <MudCardContent>
                         <MudList T="string" Dense="true">
+                            @if (IssuerIsVatPayer)
+                            {
                             <MudListItem T="string">
                                 <strong>@L["Invoice_TotalBeforeVat"]:</strong> @_invoice.TotalBeforeVat.ToString("N2") @_invoice.CurrencyCode
                             </MudListItem>
                             <MudListItem T="string">
                                 <strong>@L["Invoice_TotalVat"]:</strong> @_invoice.TotalVat.ToString("N2") @_invoice.CurrencyCode
                             </MudListItem>
+                            }
                             <MudListItem T="string">
                                 <MudText Typo="Typo.h5" Color="Color.Primary">
                                     @_invoice.TotalWithVat.ToString("N2") @_invoice.CurrencyCode
@@ -650,7 +661,10 @@ else
                         <MudTh Style="text-align:right">@L["InvoiceItem_Quantity"]</MudTh>
                         <MudTh>@L["InvoiceItem_Unit"]</MudTh>
                         <MudTh Style="text-align:right">@L["InvoiceItem_UnitPrice"]</MudTh>
-                        <MudTh Style="text-align:right">@L["InvoiceItem_VatRate"]</MudTh>
+                        @if (IssuerIsVatPayer)
+                        {
+                            <MudTh Style="text-align:right">@L["InvoiceItem_VatRate"]</MudTh>
+                        }
                         <MudTh Style="text-align:right">@L["InvoiceItem_Total"]</MudTh>
                     </HeaderContent>
                     <RowTemplate>
@@ -659,7 +673,10 @@ else
                         <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
                         <MudTd>@context.Unit</MudTd>
                         <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
-                        <MudTd Style="text-align:right">@context.VatRatePercentage.ToString("N0")%</MudTd>
+                        @if (IssuerIsVatPayer)
+                        {
+                            <MudTd Style="text-align:right">@context.VatRatePercentage.ToString("N0")%</MudTd>
+                        }
                         <MudTd Style="text-align:right"><strong>@context.TotalWithVat.ToString("N2")</strong></MudTd>
                     </RowTemplate>
                 </MudTable>
@@ -871,6 +888,12 @@ else
     private List<CurrencyDto> _currencies = new();
     private ClientDto? _issuer;
 
+    /// <summary>
+    /// A non-VAT payer's invoice shows no VAT rate column and no VAT totals.
+    /// Unknown issuer (still loading / failed) = show VAT, i.e. today's behaviour.
+    /// </summary>
+    private bool IssuerIsVatPayer => _issuer?.IsVatPayer ?? true;
+
     // Bank account selection state — loaded from issuer's BankAccount collection
     private List<BankAccountDto> _issuerBankAccounts = new();
     private long? _selectedBankAccountId;
@@ -979,7 +1002,8 @@ else
             // View/edit mode — load existing invoice (transition from create → view after save)
             _isEditing = false;
             _isDirty = false;
-            await LoadInvoice();
+            // Issuer is needed in view mode too — a non-VAT payer's invoice hides VAT rows.
+            await Task.WhenAll(LoadInvoice(), LoadIssuer());
         }
     }
 
@@ -1831,6 +1855,40 @@ else
             }
         }
         catch (Exception ex) { Snackbar.Add($"Error downloading ISDOC: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Downloads the invoice as a UBL 2.1 / Peppol BIS Billing 3.0 XML file via JS interop
+    /// (ADR 0002, F1.6). Unlike <see cref="DownloadIsdoc"/>, a refused export carries structured
+    /// readiness issues (missing Peppol ID, incomplete address, …) — shown via
+    /// <see cref="ReadinessIssueText"/>, the same wording <c>ReadinessBanner</c>/<c>SetupChecklist</c>
+    /// already use for the very same codes, so the user reads one consistent sentence either way.
+    /// </summary>
+    private async Task DownloadUbl()
+    {
+        if (_invoice == null) return;
+        try
+        {
+            var fileName = $"{_invoice.DocumentNumber ?? Id.ToString()}.xml";
+            var result = await InvoiceService.ExportUblAsync(Id, fileName);
+
+            if (result.IsSuccess && result.FileBytes != null)
+            {
+                var base64 = Convert.ToBase64String(result.FileBytes);
+                await JS.InvokeVoidAsync("downloadFile", result.FileName ?? fileName, base64, "application/xml");
+                Snackbar.Add(L["Invoice_UblDownloaded"].Value, Severity.Success);
+            }
+            else if (result.Issues.Count > 0)
+            {
+                var text = string.Join(" ", result.Issues.Select(i => ReadinessIssueText.Describe(L, i)));
+                Snackbar.Add(text, Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add(result.ErrorMessage ?? L["Invoice_UblFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error downloading UBL: {ex.Message}", Severity.Error); }
     }
 
     /// <summary>

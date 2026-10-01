@@ -189,6 +189,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
             masterContext,
             CreateAuthServiceStub(),
             CreateProvisioningService(masterContext, _dataSourceFactory!),
+            Substitute.For<IOAuthService>(),
             NullLogger<UserService>.Instance);
 
         var invited = await userService.InviteUserAsync(new InviteUserDto
@@ -472,6 +473,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
                 masterContext,
                 CreateAuthServiceStub(),
                 CreateProvisioningService(masterContext, dataSourceFactorySpy),
+                Substitute.For<IOAuthService>(),
                 NullLogger<UserService>.Instance);
 
             result = await userService.SetPasswordAsync(new SetPasswordDto

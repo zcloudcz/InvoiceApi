@@ -38,7 +38,12 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<AuthenticationS
         // MasterDbContext, while the handler itself is created per scheme.
         var authenticator = Context.RequestServices.GetRequiredService<IApiKeyAuthenticator>();
 
-        var principal = await authenticator.AuthenticateAsync(rawKey, Context.RequestAborted);
+        // Only the MCP host is ever supposed to set this header (AuthHeaderHandler forwards it
+        // unchanged for OAuth tokens) — see ApiKeyAuthenticator.HasValidResourceProof for what
+        // happens when it is missing, wrong, or forged by anyone else.
+        var resourceProof = Request.Headers[ApiKeyAuthenticationDefaults.ResourceProofHeaderName].FirstOrDefault();
+
+        var principal = await authenticator.AuthenticateAsync(rawKey, resourceProof, Context.RequestAborted);
 
         // Fail (not NoResult) so an unknown / revoked / expired key is a hard 401 rather
         // than silently degrading into an anonymous request.

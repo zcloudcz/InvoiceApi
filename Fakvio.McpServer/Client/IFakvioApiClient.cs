@@ -9,6 +9,7 @@ using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
@@ -60,6 +61,14 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/invoice/{id}/isdoc — export invoice as ISDOC 6.0.2 XML (raw bytes).</summary>
     Task<byte[]> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// GET /api/invoice/{id}/ubl — export invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (raw
+    /// bytes). Can 400 with TENANT_NOT_READY when the invoice is not ready for eInvoice export
+    /// (Draft, pro-forma, missing Peppol ID, …) — surfaced to the caller like any other
+    /// FakvioApiException (ADR 0002, F1.7).
+    /// </summary>
+    Task<byte[]> ExportInvoiceUblAsync(long id, CancellationToken ct = default);
 
     // ── Client endpoints ───────────────────────────────────────────────
 
@@ -213,6 +222,32 @@ public interface IFakvioApiClient
     /// explicitly requested issuer does not exist in this tenant (404).
     /// </summary>
     Task<ReadinessReportDto?> GetReadinessAsync(long? issuerId = null, CancellationToken ct = default);
+
+    // ── Recurring invoice schedule endpoints (DEVGUIDE §4.13) ────────────
+
+    /// <summary>GET /api/recurringinvoice?templateId= — all schedules, optionally for one template.</summary>
+    Task<List<RecurringInvoiceScheduleDto>> GetRecurringSchedulesAsync(long? templateId = null, CancellationToken ct = default);
+
+    /// <summary>GET /api/recurringinvoice/{id} — single schedule by ID; null when not found.</summary>
+    Task<RecurringInvoiceScheduleDto?> GetRecurringScheduleByIdAsync(long id, CancellationToken ct = default);
+
+    /// <summary>POST /api/recurringinvoice — create a new schedule on a template.</summary>
+    Task<RecurringInvoiceScheduleDto> CreateRecurringScheduleAsync(CreateRecurringInvoiceScheduleDto dto, CancellationToken ct = default);
+
+    /// <summary>PUT /api/recurringinvoice/{id} — partial update; null fields are left unchanged.</summary>
+    Task<RecurringInvoiceScheduleDto> UpdateRecurringScheduleAsync(long id, UpdateRecurringInvoiceScheduleDto dto, CancellationToken ct = default);
+
+    /// <summary>POST /api/recurringinvoice/{id}/pause — sets IsActive = false without deleting.</summary>
+    Task<RecurringInvoiceScheduleDto> PauseRecurringScheduleAsync(long id, CancellationToken ct = default);
+
+    /// <summary>POST /api/recurringinvoice/{id}/resume — sets IsActive = true.</summary>
+    Task<RecurringInvoiceScheduleDto> ResumeRecurringScheduleAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// DELETE /api/recurringinvoice/{id} — hard-deletes a schedule that never fired, otherwise
+    /// deactivates it (history stays). See <c>IRecurringInvoiceService.DeleteAsync</c>.
+    /// </summary>
+    Task DeleteRecurringScheduleAsync(long id, CancellationToken ct = default);
 
     // ── Identity ──────────────────────────────────────────────────────────
 

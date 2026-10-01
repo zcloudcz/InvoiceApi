@@ -636,6 +636,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<DateTime?>("LastAresFetchDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PeppolId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<long?>("PreferredCurrencyId")
                         .HasColumnType("bigint");
 

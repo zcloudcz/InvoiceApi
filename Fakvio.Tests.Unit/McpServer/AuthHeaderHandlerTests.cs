@@ -33,7 +33,7 @@ public class AuthHeaderHandlerTests
         provider.GetToken().Returns("token-user-a", "token-user-b");
 
         var recorder = new RecordingHandler();
-        using var client = new HttpClient(new AuthHeaderHandler(provider) { InnerHandler = recorder });
+        using var client = new HttpClient(new AuthHeaderHandler(provider, new Fakvio.McpServer.Configuration.McpServerSettings()) { InnerHandler = recorder });
 
         // Act: two calls on one shared client, the way two tool calls would arrive
         await client.GetAsync("https://test-api.fakvio.cz/api/invoice/1");
@@ -52,7 +52,7 @@ public class AuthHeaderHandlerTests
         provider.GetToken().Returns("jwt-token");
 
         var recorder = new RecordingHandler();
-        using var client = new HttpClient(new AuthHeaderHandler(provider) { InnerHandler = recorder });
+        using var client = new HttpClient(new AuthHeaderHandler(provider, new Fakvio.McpServer.Configuration.McpServerSettings()) { InnerHandler = recorder });
 
         await client.GetAsync("https://test-api.fakvio.cz/api/invoice/1");
 
@@ -73,7 +73,7 @@ public class AuthHeaderHandlerTests
         provider.GetToken().Returns(token);
 
         var recorder = new RecordingHandler();
-        using var client = new HttpClient(new AuthHeaderHandler(provider) { InnerHandler = recorder });
+        using var client = new HttpClient(new AuthHeaderHandler(provider, new Fakvio.McpServer.Configuration.McpServerSettings()) { InnerHandler = recorder });
 
         await client.GetAsync("https://test-api.fakvio.cz/api/invoice/1");
 
@@ -100,7 +100,7 @@ public class AuthHeaderHandlerTests
         provider.GetToken().Returns(providerToken);
 
         var recorder = new RecordingHandler();
-        using var client = new HttpClient(new AuthHeaderHandler(provider) { InnerHandler = recorder });
+        using var client = new HttpClient(new AuthHeaderHandler(provider, new Fakvio.McpServer.Configuration.McpServerSettings()) { InnerHandler = recorder });
 
         // GetAsync cannot pre-set headers, so the request is built explicitly
         var request = new HttpRequestMessage(HttpMethod.Get, "https://test-api.fakvio.cz/api/invoice/1");
@@ -121,7 +121,7 @@ public class AuthHeaderHandlerTests
         var settings = new McpServerSettings { ApiToken = "env-token" };
         var recorder = new RecordingHandler();
         using var client = new HttpClient(
-            new AuthHeaderHandler(new EnvironmentApiTokenProvider(settings)) { InnerHandler = recorder });
+            new AuthHeaderHandler(new EnvironmentApiTokenProvider(settings), settings) { InnerHandler = recorder });
 
         await client.GetAsync("https://test-api.fakvio.cz/api/invoice/1");
 

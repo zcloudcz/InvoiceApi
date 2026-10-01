@@ -7,11 +7,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace Fakvio.API.Controller;
 
 /// <summary>
-/// Controller for importing invoices from PDF files, and clients from a CSV export
-/// (Fakturoid/iDoklad — see DEVGUIDE.md §4.14).
+/// Controller for importing invoices from PDF/ISDOC/UBL files, and clients from a CSV
+/// export (Fakturoid/iDoklad — see DEVGUIDE.md §4.14).
 ///
 /// The import follows a 2-step workflow:
-/// 1. POST /preview — Upload 1-N PDFs (or 1 CSV), get extraction results + validation
+/// 1. POST /preview — Upload 1-N files (PDF, ISDOC, or UBL/Peppol BIS XML — or 1 CSV),
+///    get extraction results + validation
 /// 2. POST /confirm — Submit reviewed/edited data to create invoices/clients
 ///
 /// The preview endpoints accept multipart/form-data with files.
@@ -40,15 +41,17 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// Previews the import of one or more PDF files.
-    /// Extracts invoice data using the 3-tier pipeline (QR → AI → Regex),
-    /// validates the data, and returns previews for user review.
+    /// Previews the import of one or more invoice files.
+    /// PDFs go through the 3-tier extraction pipeline (QR → AI → Regex); structured
+    /// documents (.isdoc/.isdocx, .xml — UBL/Peppol BIS, see F1.10 in
+    /// docs/adr/0002-sk-einvoicing-peppol.md) are parsed deterministically, no AI.
+    /// Either way, the result is validated the same way and returned for user review.
     ///
     /// Accepts multipart/form-data with:
-    /// - files: 1-N PDF files (max 10 MB each)
+    /// - files: 1-N files (PDF, ISDOC, or UBL XML — max 10 MB each)
     /// - target: "IssuedInvoice" or "ReceivedInvoice"
     /// </summary>
-    /// <param name="files">PDF files to import.</param>
+    /// <param name="files">Files to import.</param>
     /// <param name="target">Import target type.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>List of preview DTOs (one per uploaded file).</returns>
@@ -72,9 +75,14 @@ public class ImportController : ControllerBase
 
         foreach (var file in files)
         {
+            var isPdf = file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase)
+                     || file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+            var isStructured = file.FileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                             || file.FileName.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase)
+                             || file.FileName.EndsWith(".isdocx", StringComparison.OrdinalIgnoreCase);
+
             // Validate file type
-            if (!file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) &&
-                !file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            if (!isPdf && !isStructured)
             {
                 previews.Add(new InvoiceImportPreviewDto
                 {
@@ -85,7 +93,7 @@ public class ImportController : ControllerBase
                         new ImportValidationMessage
                         {
                             Field = "File",
-                            Message = "Only PDF files are supported.",
+                            Message = "Only PDF, ISDOC (.isdoc/.isdocx) or UBL (.xml) files are supported.",
                             Severity = EImportValidationSeverity.Error
                         }
                     }
@@ -93,7 +101,9 @@ public class ImportController : ControllerBase
                 continue;
             }
 
-            // Validate file size (max 10 MB per file)
+            // Validate file size (max 10 MB per file — applies to every accepted type,
+            // including UBL/ISDOC XML: real Peppol/ISDOC invoices are a few hundred KB
+            // at most, so this is a generous cap against an oversized/malicious upload).
             if (file.Length > 10 * 1024 * 1024)
             {
                 previews.Add(new InvoiceImportPreviewDto
@@ -116,10 +126,13 @@ public class ImportController : ControllerBase
             // Read file bytes
             using var ms = new MemoryStream();
             await file.CopyToAsync(ms, ct);
-            var pdfBytes = ms.ToArray();
+            var fileBytes = ms.ToArray();
 
-            // Preview the import
-            var preview = await _importService.PreviewImportAsync(pdfBytes, file.FileName, target, ct);
+            // Preview the import — PDF goes through the QR/AI/regex pipeline,
+            // structured documents (ISDOC/UBL) are parsed deterministically.
+            var preview = isPdf
+                ? await _importService.PreviewImportAsync(fileBytes, file.FileName, target, ct)
+                : await _importService.PreviewStructuredImportAsync(fileBytes, file.FileName, target, ct);
             previews.Add(preview);
         }
 

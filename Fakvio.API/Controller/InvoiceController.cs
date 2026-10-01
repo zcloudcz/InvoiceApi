@@ -30,6 +30,7 @@ public class InvoiceController : ControllerBase
     private readonly IInvoiceService _invoiceService;
     private readonly IPdfExportService _pdfExportService;
     private readonly IIsdocExportService _isdocExportService;
+    private readonly IUblExportService _ublExportService;
     private readonly IEmailService _emailService;
     private readonly IQrPaymentService _qrPaymentService;
     private readonly ICloudStorageOrchestrator _cloudStorageOrchestrator;
@@ -40,6 +41,7 @@ public class InvoiceController : ControllerBase
         IInvoiceService invoiceService,
         IPdfExportService pdfExportService,
         IIsdocExportService isdocExportService,
+        IUblExportService ublExportService,
         IEmailService emailService,
         IQrPaymentService qrPaymentService,
         ICloudStorageOrchestrator cloudStorageOrchestrator,
@@ -49,6 +51,7 @@ public class InvoiceController : ControllerBase
         _invoiceService = invoiceService;
         _pdfExportService = pdfExportService;
         _isdocExportService = isdocExportService;
+        _ublExportService = ublExportService;
         _emailService = emailService;
         _qrPaymentService = qrPaymentService;
         _cloudStorageOrchestrator = cloudStorageOrchestrator;
@@ -1310,5 +1313,105 @@ public class InvoiceController : ControllerBase
 
         var zipBytes = ZipArchiveHelper.CreateZip(entries);
         return File(zipBytes, "application/zip", $"Isdoc_{DateTime.UtcNow:yyyyMMdd}.zip");
+    }
+
+    /// <summary>
+    /// Exports the specified invoice as a UBL 2.1 / Peppol BIS Billing 3.0 XML file
+    /// (ADR 0002, N7). Aimed at SK e-invoicing from 2027 — the SK Financial Administration
+    /// explicitly allows exporting this XML and uploading it into a digital courier's
+    /// application ([FAQ] I/14). Returns the XML as a downloadable file (application/xml,
+    /// extension .xml).
+    /// </summary>
+    /// <param name="id">Invoice ID to export</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>UBL XML file</returns>
+    /// <response code="200">Returns .xml file</response>
+    /// <response code="404">Invoice not found</response>
+    /// <response code="400">Invoice is not ready for eInvoice export — see <c>issues</c> in the body</response>
+    [HttpGet("{id:long}/ubl")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ExportUbl(
+        long id,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET /api/invoice/{Id}/ubl - Generating UBL export", id);
+
+        try
+        {
+            var ublBytes = await _ublExportService.ExportInvoiceAsync(id, cancellationToken);
+
+            var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
+            var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+            var fileName = $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}.xml";
+
+            _logger.LogInformation("UBL generated for invoice {Id}, size: {Size} bytes", id, ublBytes.Length);
+
+            return File(ublBytes, "application/xml", fileName);
+        }
+        catch (KeyNotFoundException)
+        {
+            _logger.LogWarning("Invoice {Id} not found for UBL export", id);
+            return NotFound(new { message = $"Invoice with ID {id} not found" });
+        }
+        catch (TenantNotReadyException ex)
+        {
+            _logger.LogWarning("Cannot export UBL for invoice {Id} — tenant not ready: {Message}", id, ex.Message);
+            return ex.ToBadRequestResult();
+        }
+    }
+
+    /// <summary>
+    /// Generates UBL 2.1 / Peppol BIS Billing 3.0 XML exports for multiple invoices and returns
+    /// them as a ZIP archive (ADR 0002, N7). Invoices that fail to export (deleted, not ready —
+    /// see <see cref="ExportUbl"/>) are silently skipped — mirrors the bulk ISDOC/PDF
+    /// export behavior.
+    /// </summary>
+    /// <param name="ids">Comma-separated list of invoice IDs</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>ZIP file containing individual .xml files</returns>
+    [HttpGet("bulk/ubl")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> BulkExportUbl(
+        [FromQuery] string ids,
+        CancellationToken cancellationToken = default)
+    {
+        var invoiceIds = ids.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => long.TryParse(s.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        _logger.LogInformation("GET /api/invoice/bulk/ubl - {Count} invoices", invoiceIds.Count);
+
+        var entries = new List<(string EntryName, byte[] Content)>();
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var id in invoiceIds)
+        {
+            try
+            {
+                var ublBytes = await _ublExportService.ExportInvoiceAsync(id, cancellationToken);
+                var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
+                var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+                var fileName = ZipArchiveHelper.SanitizePathSegment(
+                    $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}") + ".xml";
+
+                entries.Add((ZipArchiveHelper.UniqueEntryName(usedNames, fileName), ublBytes));
+            }
+            catch (Exception ex)
+            {
+                // Covers both KeyNotFoundException (deleted) and TenantNotReadyException (not
+                // ready for eInvoice export) — bulk export skips either the same way bulk ISDOC does.
+                _logger.LogWarning("Bulk UBL failed for invoice {Id}: {Error}", id, ex.Message);
+            }
+        }
+
+        if (entries.Count == 0)
+            return NotFound(new { message = "No UBL exports could be generated for the selected invoices." });
+
+        var zipBytes = ZipArchiveHelper.CreateZip(entries);
+        return File(zipBytes, "application/zip", $"Ubl_{DateTime.UtcNow:yyyyMMdd}.zip");
     }
 }

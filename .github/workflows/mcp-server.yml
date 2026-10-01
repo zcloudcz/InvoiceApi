@@ -235,14 +235,6 @@ jobs:
           #
           # The consequence to know: forgetting the bump means the fix reaches CI artifacts and
           # nobody else, silently. The version bump belongs in the same PR as the change.
-          dotnet nuget push ./nupkg/*.nupkg             --source https://api.nuget.org/v3/index.json             --api-key "${NUGET_API_KEY}"             --skip-duplicate is what makes this safe to run on every master push: the version
-          # lives in Fakvio.McpServer.csproj and is bumped by hand, so a merge that did not
-          # touch it re-pushes an already-published version. Without the flag nuget.org answers
-          # 409 and the build goes red on a merge that did nothing wrong; with it, the push is
-          # a no-op and a real bump still ships.
-          #
-          # The consequence to know: forgetting the bump means the fix reaches CI artifacts and
-          # nobody else, silently. The version bump belongs in the same PR as the change.
           dotnet nuget push ./nupkg/*.nupkg \
             --source https://api.nuget.org/v3/index.json \
             --api-key "${NUGET_API_KEY}" \

@@ -42,6 +42,9 @@
         <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Download" OnClick="BulkIsdoc"
                    Disabled="_bulkProcessing">@L["Bulk_Isdoc"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Download" OnClick="BulkUbl"
+                   Disabled="_bulkProcessing">@L["Bulk_Ubl"]</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Tertiary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Email" OnClick="BulkEmail"
                    Disabled="_bulkProcessing">@L["Bulk_Email"]</MudButton>
@@ -1107,6 +1110,44 @@
             else
             {
                 Snackbar.Add(L["Invoice_IsdocFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Bulk-downloads UBL 2.1 / Peppol BIS Billing 3.0 XML exports as a ZIP (ADR 0002, F1.6).
+    /// Same eligibility filter as the per-invoice button (Draft/Proforma excluded) — the API
+    /// would just skip them anyway, but filtering here avoids the round-trip and gives an
+    /// immediate "nothing eligible" message instead of a silently smaller ZIP.
+    /// </summary>
+    private async Task BulkUbl()
+    {
+        var eligible = _selectedInvoices
+            .Where(i => i.Status != EInvoiceStatus.Draft && i.DocumentType != EDocumentType.Proforma)
+            .ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var zipBytes = await InvoiceService.BulkExportUblAsync(eligible.Select(i => i.Id).Distinct().ToList());
+            if (zipBytes != null && zipBytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(zipBytes);
+                var fileName = $"Ubl_{DateTime.Now:yyyyMMdd}.zip";
+                await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/zip");
+                Snackbar.Add(L["Invoice_UblDownloaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_UblFailed"].Value, Severity.Error);
             }
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
