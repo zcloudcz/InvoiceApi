@@ -207,6 +207,36 @@ public class FeedbackUiTests : BunitContext, IAsyncLifetime
         provider.FindComponents<MudSelectItem<EUserRole>>()
             .Any(x => x.Instance.Value == EUserRole.Admin).ShouldBeTrue();
     }
+
+    [Theory]
+    [InlineData("cs-CZ")]
+    [InlineData("en-US")]
+    public async Task UserEditor_ExplainsRevokedDefaultUsingLocalizedGuidance(string culture)
+    {
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(culture);
+        AddAuthorization().SetRoles("SysAdmin");
+        Services.AddSingleton<UserApiService>();
+        Services.AddSingleton<ClientApiService>();
+        Services.AddSingleton(Substitute.For<ILocalStorageService>());
+        Services.AddSingleton<GridStateService>();
+        var preferences = Substitute.For<UserPreferencesState>();
+        preferences.Preferences.Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto());
+        preferences.EnsureLoadedAsync().Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto());
+        Services.AddSingleton(preferences);
+        _backend.Users.Add(new Fakvio.Contracts.Dto.User.UserDto { Id = 10, Email = "accountant@example.test", CompanyId = 20 });
+        var provider = Render<MudDialogProvider>();
+        var cut = Render<Users>();
+        var localizer = Services.GetRequiredService<IStringLocalizer<SharedResource>>();
+        cut.WaitForAssertion(() => cut.FindComponents<MudIconButton>().Any(b => b.Instance.Icon == Icons.Material.Filled.Edit).ShouldBeTrue());
+        await cut.InvokeAsync(() => cut.FindComponents<MudIconButton>().First(b => b.Instance.Icon == Icons.Material.Filled.Edit).Instance.OnClick.InvokeAsync());
+        var save = provider.FindComponents<MudButton>().First(b => b.Find("button").TextContent.Contains(localizer["Btn_Save"].Value));
+        await provider.InvokeAsync(() => save.Instance.OnClick.InvokeAsync());
+        var snackbar = Services.GetRequiredService<ISnackbar>().ShownSnackbars.Last();
+        snackbar.Severity.ShouldBe(Severity.Warning);
+        localizer["MembershipAdmin_RestoreRequired"].ResourceNotFound.ShouldBeFalse();
+        snackbar.Message.ShouldBe(localizer["MembershipAdmin_RestoreRequired"].Value);
+        provider.FindAll(".mud-dialog").ShouldNotBeEmpty();
+    }
     [Theory]
     [InlineData("Admin", false)]
     [InlineData("SysAdmin", true)]
@@ -240,6 +270,67 @@ public class FeedbackUiTests : BunitContext, IAsyncLifetime
             .ShowAsync<FeedbackDialog>("Report"));
         return provider.FindComponent<FeedbackDialog>();
     }
+
+    [Fact]
+    public async Task ExternalPageUrl_ShowsFieldErrorWithoutSending()
+    {
+        var cut = await OpenDialogAsync();
+        await FillAsync(cut);
+        var page = cut.FindComponents<MudTextField<string>>()[2];
+        await cut.InvokeAsync(() => page.Instance.ValueChanged.InvokeAsync("https://other.test/invoices"));
+        await cut.InvokeAsync(() => cut.FindComponents<MudButton>().Last().Instance.OnClick.InvokeAsync());
+        _backend.PostCount.ShouldBe(0);
+        page.Instance.Error.ShouldBeTrue();
+        _dialog!.Result.IsCompleted.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task InvalidPage_CorrectedToLocalUrl_SubmitsOnceOnFirstRetry()
+    {
+        var cut = await OpenDialogAsync();
+        await FillAsync(cut);
+        var page = cut.FindComponents<MudTextField<string>>()[2];
+        var submit = cut.FindComponents<MudButton>().Last();
+        await cut.InvokeAsync(() => page.Instance.ValueChanged.InvokeAsync("https://other.test/invoices"));
+        await cut.InvokeAsync(() => submit.Instance.OnClick.InvokeAsync());
+        _backend.PostCount.ShouldBe(0);
+        page.Instance.Error.ShouldBeTrue();
+        var appUri = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().BaseUri;
+        await cut.InvokeAsync(() => page.Instance.ValueChanged.InvokeAsync(appUri + "invoices?token=secret#private"));
+        await cut.InvokeAsync(() => submit.Instance.OnClick.InvokeAsync());
+        _backend.PostCount.ShouldBe(1);
+        _backend.Created!.Page.ShouldBe("/invoices");
+        (await _dialog!.Result)!.Canceled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task AdminDraft_IsProtectedUntilSaved_AndShowsIdentity()
+    {
+        AddAuthorization().SetRoles("SysAdmin");
+        _backend.Report.CompanyName = "Acme";
+        _backend.Report.ReporterEmail = "reporter@example.test";
+        var cut = Render<FeedbackDetail>(p => p.Add(x => x.Id, 12).Add(x => x.Admin, true));
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Acme"));
+        cut.Markup.ShouldContain("reporter@example.test");
+        cut.FindComponent<UnsavedChangesLock>().Instance.IsDirty.ShouldBeFalse();
+        await cut.InvokeAsync(() => cut.FindComponent<MudTextField<string>>().Instance.ValueChanged.InvokeAsync("Draft"));
+        cut.FindComponent<UnsavedChangesLock>().Instance.IsDirty.ShouldBeTrue();
+        await cut.InvokeAsync(() => cut.FindComponents<MudButton>().Last().Instance.OnClick.InvokeAsync());
+        cut.FindComponent<UnsavedChangesLock>().Instance.IsDirty.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task AdminDraft_SaveFailureKeepsNavigationProtection()
+    {
+        AddAuthorization().SetRoles("SysAdmin");
+        var cut = Render<FeedbackDetail>(p => p.Add(x => x.Id, 12).Add(x => x.Admin, true));
+        cut.WaitForAssertion(() => cut.FindComponents<MudTextField<string>>().Count.ShouldBe(1));
+        await cut.InvokeAsync(() => cut.FindComponent<MudTextField<string>>().Instance.ValueChanged.InvokeAsync("Draft"));
+        _backend.Fail = true;
+        await cut.InvokeAsync(() => cut.FindComponents<MudButton>().Last().Instance.OnClick.InvokeAsync());
+        cut.FindComponent<UnsavedChangesLock>().Instance.IsDirty.ShouldBeTrue();
+        cut.FindComponent<MudTextField<string>>().Instance.Value.ShouldBe("Draft");
+    }
     private static async Task FillAsync(IRenderedComponent<FeedbackDialog> cut)
     {
         var inputs = cut.FindComponents<MudTextField<string>>();
@@ -250,6 +341,7 @@ public class FeedbackUiTests : BunitContext, IAsyncLifetime
 
     private sealed class Backend : HttpMessageHandler
     {
+        public List<Fakvio.Contracts.Dto.User.UserDto> Users { get; } = [];
         public FeedbackDto Report { get; } = new() { Id = 12, Subject = "Example", Description = "Details", Status = EFeedbackStatus.New };
         public bool Fail { get; set; }
         public int PostCount { get; private set; }
@@ -261,6 +353,10 @@ public class FeedbackUiTests : BunitContext, IAsyncLifetime
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             LastPath = request.RequestUri!.AbsolutePath;
+            if (LastPath == "/api/user" && request.Method == HttpMethod.Get)
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Users) };
+            if (LastPath.StartsWith("/api/user/") && request.Method == HttpMethod.Put)
+                return new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = JsonContent.Create(new { message = Fakvio.Contracts.Dto.User.UserErrorCodes.CompanyMembershipRestoreRequired }) };
             if (!LastPath.Contains("feedback")) return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<object>()) };
             if (request.Method == HttpMethod.Post)
             {
@@ -282,6 +378,16 @@ public class FeedbackUiTests : BunitContext, IAsyncLifetime
 
 public class FeedbackPageContextTests
 {
+    [Theory]
+    [InlineData("https://example.test/invoices?token=secret#private", "/invoices")]
+    [InlineData("/invoices?token=secret#private", "/invoices")]
+    [InlineData("https://other.test/invoices", null)]
+    [InlineData("http://example.test/invoices", null)]
+    [InlineData("https://example.test:444/invoices", null)]
+    [InlineData("/%2fother.test", null)]
+    [InlineData("/%5cother.test", null)]
+    public void Input_OnlyAcceptsThisOriginAndSafePaths(string value, string? expected) =>
+        FeedbackPageContext.NormalizeInput(value, "https://example.test/feedback").ShouldBe(expected);
     [Theory]
     [InlineData("https://example.test/invoices?token=secret#private", "/invoices")]
     [InlineData("https://example.test/", "/")]

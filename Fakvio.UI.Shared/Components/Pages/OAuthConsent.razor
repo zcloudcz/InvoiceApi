@@ -29,6 +29,13 @@
         else if (_ticketInvalid)
         {
             <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@L["OAuthConsent_InvalidTicket"]</MudAlert>
+            <MudText Class="mt-3">@L["OAuthConsent_ReconnectHint"]</MudText>
+            <MudButton Href="/settings/integrations">@L["Integration_Title"]</MudButton>
+        }
+        else if (_info is null)
+        {
+            <MudAlert Severity="Severity.Error">@L["OAuthConsent_Error"]</MudAlert>
+            <MudButton OnClick="LoadConsentAsync">@L["Feedback_Refresh"]</MudButton>
         }
         else if (_info is not null)
         {
@@ -143,18 +150,31 @@
             return;
         }
 
-        _info = await ConsentApi.DescribeAsync(_ticket);
-        _loading = false;
-
-        if (_info is null)
-        {
-            _ticketInvalid = true;
-            return;
-        }
+        await LoadConsentAsync();
 
         // Default to the widest requested scope being pre-selected is deliberately NOT done —
         // "Jen čtení" stays the default per ADR §4.9 regardless of what was requested.
         _selectedScope = "read";
+    }
+
+    private async Task LoadConsentAsync()
+    {
+        _loading = true;
+        try
+        {
+            _info = await ConsentApi.DescribeAsync(_ticket!);
+            _ticketInvalid = _info is null;
+        }
+        catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            _ticketInvalid = true;
+        }
+        catch (Exception)
+        {
+            // Keep transport failures retryable; a failed request does not invalidate a ticket.
+            _info = null;
+        }
+        finally { _loading = false; }
     }
 
     private async Task DecideAsync(bool allow)

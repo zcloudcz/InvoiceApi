@@ -63,6 +63,7 @@ public class ReadinessBannerTests : BunitContext, IAsyncLifetime
             sp.GetRequiredService<AuthenticationStateProvider>()));
 
         AddAuthorization().SetAuthorized("ucetni@example.cz");
+        AddAuthorization().SetRoles("Admin");
     }
 
     /// <summary>Convenience factory for a readiness issue with the fields the banner reads.</summary>

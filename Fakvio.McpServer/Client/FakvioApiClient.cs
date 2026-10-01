@@ -60,6 +60,20 @@ public class FakvioApiClient : IFakvioApiClient
         return await response.Content.ReadFromJsonAsync<List<CompanyMembershipDto>>(JsonOptions, ct) ?? [];
     }
 
+    public async Task<List<ManagedCompanyMembershipDto>> GetUserCompanyMembershipsAsync(long userId, CancellationToken ct = default)
+    {
+        using var response = await _http.GetAsync($"api/user/{userId}/memberships", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<List<ManagedCompanyMembershipDto>>(JsonOptions, ct) ?? [];
+    }
+
+    public async Task<ManagedCompanyMembershipDto> UpdateUserCompanyMembershipAsync(long userId, long companyId, UpdateCompanyMembershipDto input, CancellationToken ct = default)
+    {
+        using var response = await _http.PutAsJsonAsync($"api/user/{userId}/memberships/{companyId}", input, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<ManagedCompanyMembershipDto>(JsonOptions, ct))!;
+    }
+
     public async Task<CompanyMembershipDto> CreateMyCompanyAsync(CreateMyCompanyDto company, CancellationToken ct = default)
     {
         using var response = await _http.PostAsJsonAsync("api/my-companies", company, JsonOptions, ct);

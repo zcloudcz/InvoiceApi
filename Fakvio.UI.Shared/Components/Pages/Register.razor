@@ -35,9 +35,10 @@
             @* Success message after registration — instructs user to check email *@
             @if (_isSuccess)
             {
-                <MudAlert Severity="Severity.Success" Variant="Variant.Filled">
-                    @L["Register_SuccessSetPassword"]
+                <MudAlert Severity="@(_emailSent ? Severity.Success : Severity.Warning)" Variant="Variant.Filled">
+                    @L[_emailSent ? "Register_SuccessSetPassword" : "Register_SuccessNoEmail"]
                 </MudAlert>
+                @if (!_emailSent) { <MudText>@L["Register_EmailRecovery"]</MudText> }
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
                            OnClick="@(() => Navigation.NavigateTo("/login"))">
                     @L["Btn_Login"]
@@ -138,6 +139,7 @@
     private string? _errorMessage;
     private bool _isSubmitting;
     private bool _isSuccess;
+    private bool _emailSent;
     private bool _isLoadingAres;
     private string? _aresMessage;
     private Severity _aresSeverity;
@@ -198,6 +200,7 @@
             if (response != null)
             {
                 _isSuccess = true;
+                _emailSent = response.EmailSent;
 
                 if (response.EmailSent)
                 {

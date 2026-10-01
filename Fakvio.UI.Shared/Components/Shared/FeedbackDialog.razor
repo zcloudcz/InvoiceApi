@@ -14,7 +14,8 @@
                           RequiredError="@L["Feedback_Required"].Value" MaxLength="200" Immediate="true" Disabled="_busy" />
             <MudTextField @bind-Value="_report.Description" Label="@L["Feedback_Description"].Value" Required="true"
                           RequiredError="@L["Feedback_Required"].Value" MaxLength="10000" Lines="6" Immediate="true" Disabled="_busy" />
-            <MudTextField @bind-Value="_report.Page" Label="@L["Feedback_Page"].Value" MaxLength="2048" Disabled="_busy" />
+            <MudTextField @bind-Value="_report.Page" Label="@L["Feedback_Page"].Value" MaxLength="2048" Disabled="_busy"
+                          HelperText="@L["Feedback_PageHelp"].Value" Error="_pageError" ErrorText="@L["Feedback_PageInvalid"].Value" />
             <MudText Typo="Typo.caption">@L["Feedback_Version"]: @_report.AppVersion</MudText>
         </MudForm>
     </DialogContent>
@@ -31,6 +32,7 @@
     private MudForm? _form;
     private bool _busy;
     private bool _error;
+    private bool _pageError;
 
     protected override void OnInitialized()
     {
@@ -50,12 +52,13 @@
         if (_busy || _form is null) return;
         _busy = true;
         _error = false;
+        _pageError = false;
         try
         {
             await _form.Validate();
             if (!_form.IsValid || string.IsNullOrWhiteSpace(_report.Subject) || string.IsNullOrWhiteSpace(_report.Description)) return;
-            var safePage = FeedbackPageContext.NormalizePath(_report.Page);
-            if (!string.IsNullOrWhiteSpace(_report.Page) && safePage is null) { _error = true; return; }
+            var safePage = FeedbackPageContext.NormalizeInput(_report.Page, Navigation.Uri);
+            if (!string.IsNullOrWhiteSpace(_report.Page) && safePage is null) { _pageError = true; return; }
             _report.Page = safePage;
             var created = await Api.CreateAsync(_report, _lifetime.Token);
             MudDialog.Close(DialogResult.Ok(created.Id));

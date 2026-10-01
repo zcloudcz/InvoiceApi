@@ -184,6 +184,7 @@ public class OAuthConsentPageTests : BunitContext, IAsyncLifetime
 
     private sealed class ConsentStub : HttpMessageHandler
     {
+        public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
         public OAuthConsentInfoDto? Info { get; set; }
         public OAuthConsentDecisionDto? Decision { get; private set; }
 
@@ -191,7 +192,7 @@ public class OAuthConsentPageTests : BunitContext, IAsyncLifetime
         {
             if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath.StartsWith("/api/oauth/consent/"))
             {
-                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                var response = new HttpResponseMessage(Status)
                 {
                     Content = JsonContent.Create(Info)
                 };
@@ -205,5 +206,26 @@ public class OAuthConsentPageTests : BunitContext, IAsyncLifetime
             }
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
+    }
+
+    [Fact]
+    public void ExpiredTicket_ShowsRecoveryInsteadOfRemainingLoading()
+    {
+        _api.Status = HttpStatusCode.BadRequest;
+        var cut = RenderConsent(BaseInfo());
+        cut.WaitForAssertion(() => cut.FindAll(".mud-alert").Count.ShouldBe(1));
+        cut.FindAll(".mud-progress-circular").ShouldBeEmpty();
+        cut.Find("a[href='/settings/integrations']").ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ConsentOutage_CanRetrySameTicket()
+    {
+        _api.Status = HttpStatusCode.ServiceUnavailable;
+        var cut = RenderConsent(BaseInfo());
+        cut.WaitForAssertion(() => cut.FindAll(".mud-alert").Count.ShouldBe(1));
+        _api.Status = HttpStatusCode.OK;
+        await cut.InvokeAsync(() => cut.FindComponent<MudBlazor.MudButton>().Instance.OnClick.InvokeAsync());
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain(ClientId));
     }
 }

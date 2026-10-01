@@ -47,6 +47,19 @@ public sealed class FeedbackApiService(IHttpClientFactory factory, ILogger<Feedb
 /// <summary>Collects only a local path: query strings and fragments may contain secrets.</summary>
 public static class FeedbackPageContext
 {
+    /// <summary>Accepts a path or a URL for this app only; secrets in queries/fragments are discarded.</summary>
+    public static string? NormalizeInput(string? value, string currentUri)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        value = value.Trim();
+        if (value.StartsWith('/')) return NormalizePath(value);
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var supplied) ||
+            !Uri.TryCreate(currentUri, UriKind.Absolute, out var current) ||
+            supplied.Scheme != current.Scheme || supplied.Authority != current.Authority ||
+            !string.IsNullOrEmpty(supplied.UserInfo)) return null;
+        return NormalizePath(supplied.AbsolutePath);
+    }
+
     public static string? FromUri(string uri)
     {
         if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed)) return null;
@@ -57,6 +70,8 @@ public static class FeedbackPageContext
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
         path = path.Split('?', '#')[0];
+        var decoded = Uri.UnescapeDataString(path);
+        if (decoded.StartsWith("//") || decoded.Contains('\\') || decoded.Any(char.IsControl)) return null;
         return path.Length <= 2048 && path.StartsWith('/') && !path.StartsWith("//")
             && !path.Contains('\\') && !path.Any(char.IsControl) ? path : null;
     }

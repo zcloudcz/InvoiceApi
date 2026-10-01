@@ -7,9 +7,10 @@
 @implements IDisposable
 <MudMenu Color="Color.Inherit">
     <ActivatorContent>
-        <MudButton Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Business" EndIcon="@Icons.Material.Filled.ArrowDropDown"
+        <MudButton Color="Color.Inherit" EndIcon="@Icons.Material.Filled.ArrowDropDown" Style="min-width:0;padding:4px"
                    title="@(_companies.FirstOrDefault(x => x.CompanyId == _currentId)?.CompanyName ?? L["CompanyMembership_Select"].Value)">
-            <span class="hide-xs" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            @* Reserve space for the menu, logo, feedback, profile and notification buttons on narrow phones. *@
+            <span style="max-width:clamp(24px,calc(100vw - 284px),150px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                 @(_companies.FirstOrDefault(x => x.CompanyId == _currentId)?.CompanyName ?? L["CompanyMembership_Select"].Value)
             </span>
         </MudButton>

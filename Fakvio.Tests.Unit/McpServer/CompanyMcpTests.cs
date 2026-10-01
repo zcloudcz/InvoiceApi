@@ -9,6 +9,19 @@ namespace Fakvio.Tests.Unit.McpServer;
 public class CompanyMcpTests
 {
     [Fact]
+    public async Task MembershipAdministrationForwardsExactTargetAndPatch()
+    {
+        var api = Substitute.For<IFakvioApiClient>();
+        var change = new UpdateCompanyMembershipDto { Role = Fakvio.Domain.Enums.EUserRole.User, IsActive = false };
+        api.GetUserCompanyMembershipsAsync(7, Arg.Any<CancellationToken>()).Returns([new ManagedCompanyMembershipDto { CompanyId = 8, IsActive = true }]);
+        api.UpdateUserCompanyMembershipAsync(7, 8, change, Arg.Any<CancellationToken>()).Returns(new ManagedCompanyMembershipDto { CompanyId = 8, IsActive = false });
+        (await CompanyTools.ListUserCompanyMemberships(api, 7)).ShouldContain("companyId");
+        (await CompanyTools.UpdateUserCompanyMembership(api, 7, 8, change)).ShouldContain("false");
+        await api.Received(1).UpdateUserCompanyMembershipAsync(7, 8, change, Arg.Any<CancellationToken>());
+        api.ReceivedCalls().Count().ShouldBe(2);
+    }
+
+    [Fact]
     public async Task Context_IsIsolatedAcrossConcurrentCalls_AndRestoredOnFailure()
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

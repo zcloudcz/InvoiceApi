@@ -61,6 +61,11 @@
             <CellTemplate>
                 <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
                                OnClick="@(() => OpenEditDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                @if (context.Item.Role != EUserRole.SysAdmin)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Business" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => OpenMembershipsAsync(context.Item))" Title="@L["MembershipAdmin_Title"].Value" />
+                }
                 <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Color="Color.Info"
                                OnClick="@(() => OpenChangePasswordDialog(context.Item))" Title="@L["User_ChangePassword"].Value" />
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
@@ -157,6 +162,10 @@
 </MudDialog>
 
 @code {
+    private Task<IDialogReference> OpenMembershipsAsync(UserDto user) => DialogService.ShowAsync<UserCompanyMembershipDialog>(
+        $"{L["MembershipAdmin_Title"]} — {user.Email}",
+        new DialogParameters<UserCompanyMembershipDialog> { { x => x.UserId, user.Id } },
+        new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small, BackdropClick = false });
     private Task<IDialogReference> InviteExistingUserAsync() => DialogService.ShowAsync<InviteCompanyMemberDialog>(L["CompanyMembership_InviteExisting"], new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small });
     private FakvioGrid<UserDto>? _dataGrid;
     private List<UserDto> _users = new();
@@ -325,6 +334,10 @@
                     }
                 }
             }
+        }
+        catch (ApiException ex) when (ex.Message == UserErrorCodes.CompanyMembershipRestoreRequired)
+        {
+            Snackbar.Add(L["MembershipAdmin_RestoreRequired"], Severity.Warning);
         }
         catch (Exception ex)
         {

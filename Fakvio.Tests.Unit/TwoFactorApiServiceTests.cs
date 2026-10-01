@@ -66,4 +66,27 @@ public class TwoFactorApiServiceTests
             HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(response);
     }
+
+    [Fact]
+    public async Task ServerFailure_IsNotAnInvalidCode()
+    {
+        var service = CreateService(new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var error = await Should.ThrowAsync<ApiException>(() => service.VerifyTwoFactorCodeAsync("session", "123456"));
+        error.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+    }
+
+    [Fact]
+    public async Task TransportFailure_PropagatesForRetryInsteadOfInvalidCode()
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("InvoiceAPI").Returns(new HttpClient(new OfflineHandler()) { BaseAddress = new Uri("https://test.local") });
+        var service = new TwoFactorApiService(factory, NullLogger<TwoFactorApiService>.Instance, Substitute.For<AuthenticationStateProvider>());
+        await Should.ThrowAsync<HttpRequestException>(() => service.VerifyTwoFactorCodeAsync("session", "123456"));
+    }
+
+    private sealed class OfflineHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            throw new HttpRequestException("Offline");
+    }
 }

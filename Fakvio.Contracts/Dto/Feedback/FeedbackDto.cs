@@ -18,6 +18,8 @@ public class FeedbackDto : CreateFeedbackDto
     public long Id { get; set; }
     public long UserId { get; set; }
     public long CompanyId { get; set; }
+    public string? CompanyName { get; set; }
+    public string? ReporterEmail { get; set; }
     public EFeedbackStatus Status { get; set; }
     public string? PublicResponse { get; set; }
     public DateTime CreatedAt { get; set; }

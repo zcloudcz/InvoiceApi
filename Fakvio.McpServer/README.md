@@ -49,6 +49,8 @@ export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace
 proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
 žádné volání ze 2.2.0 se neláme.
 
+**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 69 nástrojů. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
+
 ---
 
 Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
@@ -270,7 +272,7 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (67)
+## Dostupné nástroje (69)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
@@ -285,6 +287,8 @@ dostane, klíč revokujte na `/settings/integrations` — přestane platit okam�
 | `Tools/SettingsTools.cs` | 6 | ListNumberSequences, ListVatRates, CreateNumberSequence, UpdateNumberSequence, UpdateMyCompany, AddBankAccount |
 | `Tools/PaymentTools.cs` | 4 | ListPayments, GetPayment, ListReminders, GetReminderSettings |
 | `Tools/RecurringTools.cs` | 7 | ListRecurringSchedules, GetRecurringSchedule, CreateRecurringSchedule, UpdateRecurringSchedule, PauseRecurringSchedule, ResumeRecurringSchedule, DeleteRecurringSchedule |
+| `Tools/FeedbackTools.cs` | 6 | SubmitFeedback, ListFeedback, GetFeedback, ListAdminFeedback, GetAdminFeedback, UpdateFeedbackStatus |
+| `Tools/CompanyTools.cs` | 6 | ListCompanies, SelectCompany, AddCompany, RetryCompanySetup, ListUserCompanyMemberships, UpdateUserCompanyMembership |
 
 Zdroj pravdy je vždy kód — atributy `[McpServerTool]` v `Tools/`:
 
@@ -399,3 +403,11 @@ OAuth access tokens remain bound to the consent company: omit `companyId`, even 
 `add_company(company)` requires write scope. Supply a stable UUID `operationId` and reuse it after a timeout. `retry_company_setup(targetCompanyId)` retries an existing creation operation only when the credential explicitly grants that company and the identity is its authorized creator. If creation needs recovery before a new credential is issued, retry from the authenticated browser. Neither grants the calling credential access to the resulting company; explicitly authorize a new key or consent in the browser before using it.
 
 Company membership invitations are accepted interactively by the invited signed-in identity in the browser; scoped API keys and OAuth tokens cannot exchange an invitation or company selection for broader credentials.
+
+### Správa členství uživatelů (SysAdmin)
+
+Katalog obsahuje také `list_user_company_memberships` a `update_user_company_membership`. První vrací aktivní i odebraná členství uživatele (`userId`) a vyžaduje SysAdmina a scope čtení. Druhý přijímá `userId`, `targetCompanyId` a typovaný `membership` s rolí User/Admin a příznakem `isActive`; vyžaduje SysAdmina a scope zápisu. Role Admin se uživateli zobrazuje jako Účetní/Accountant. Nástroj je označen jako destruktivní a idempotentní.
+
+`targetCompanyId` je firma spravovaného členství, nikoli rezervovaný top-level `companyId` pro kontext přihlašovacích údajů. Nástroje používají `GET /api/user/{userId}/memberships` a `PUT /api/user/{userId}/memberships/{companyId}`. Aktualizuje se pouze existující cílové členství: ostatní firmy, výchozí firma účtu a udělené API-key/OAuth granty se nemění. Čekající pozvánky pro cílové členství se zneplatní, aby neobnovily staré oprávnění. Samotný MCP nástroj neposkytuje další roli ani grant.
+
+Přijetí pozvánky zůstává interaktivním krokem v prohlížeči. Tyto změny jsou součástí pracovní větve; neznamenají publikování balíčku ani nasazení serveru.

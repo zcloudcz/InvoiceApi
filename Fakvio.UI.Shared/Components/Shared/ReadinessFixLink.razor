@@ -1,0 +1,30 @@
+@inject AuthenticationStateProvider Authentication
+@inject IStringLocalizer<SharedResource> L
+
+@if (!string.IsNullOrWhiteSpace(Route))
+{
+    @if (_canFix)
+    {
+        <MudLink Href="@Route" Typo="Typo.body2">@L["Readiness_FixLink"]</MudLink>
+    }
+    else
+    {
+        <MudText Typo="Typo.caption">@L[Route == "/company-settings" ? "Readiness_ContactSysAdmin" : "Readiness_ContactAccountant"]</MudText>
+    }
+}
+
+@code {
+    [Parameter] public string Route { get; set; } = "";
+    private bool _canFix;
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = (await Authentication.GetAuthenticationStateAsync()).User;
+        // Keep server-provided destinations, but do not send users to a forbidden editor.
+        _canFix = Route switch
+        {
+            "/company-settings" => user.IsInRole("SysAdmin"),
+            "/number-sequences" => user.IsInRole("SysAdmin") || user.IsInRole("Admin"),
+            _ => true
+        };
+    }
+}

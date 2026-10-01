@@ -243,6 +243,12 @@ public class UserService : IUserService
     /// </summary>
     public async Task<UserDto?> UpdateUserAsync(long userId, UpdateUserDto updateDto, CancellationToken cancellationToken = default)
     {
+        // Share the identity lock with invitation acceptance and membership administration.
+        // Otherwise an older account-edit request could overwrite a concurrent access change.
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (_context.Database.IsRelational())
+            await _context.User.FromSqlInterpolated($"SELECT * FROM \"User\" WHERE \"Id\" = {userId} FOR NO KEY UPDATE").LoadAsync(cancellationToken);
         var user = await _context.User
             .Include(u => u.Company)
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -251,6 +257,8 @@ public class UserService : IUserService
         {
             return null;
         }
+        var previousCompanyId = user.CompanyId;
+        var previousRole = user.Role;
 
         // Validate email uniqueness if changing email
         if (updateDto.Email != null && updateDto.Email != user.Email)
@@ -299,16 +307,21 @@ public class UserService : IUserService
             user.CompanyId = updateDto.CompanyId.Value;
         }
 
-        // An explicit administrator edit updates only the default membership, preserving other company roles.
-        if ((updateDto.Role.HasValue || updateDto.CompanyId.HasValue) && user.CompanyId.HasValue && user.Role != EUserRole.SysAdmin)
+        // Forms submit unchanged defaults along with name/email edits. Only an actual access
+        // change may update the legacy default membership; explicit revocations stay revoked.
+        var companyChanged = user.CompanyId != previousCompanyId;
+        var roleChanged = user.Role != previousRole;
+        if ((roleChanged || companyChanged) && user.CompanyId.HasValue && user.Role != EUserRole.SysAdmin)
         {
             var membership = await _context.UserCompanyMembership.SingleOrDefaultAsync(m => m.UserId == user.Id && m.CompanyId == user.CompanyId, cancellationToken);
             if (membership is null)
                 _context.UserCompanyMembership.Add(new UserCompanyMembership { UserId = user.Id, CompanyId = user.CompanyId.Value, Role = user.Role });
             else
             {
-                membership.Role = user.Role;
-                if (updateDto.CompanyId.HasValue) membership.IsActive = true;
+                if (!membership.IsActive)
+                    throw new InvalidOperationException(UserErrorCodes.CompanyMembershipRestoreRequired);
+                if (roleChanged) membership.Role = user.Role;
+                else user.Role = membership.Role;
             }
         }
         // Update active status if provided
@@ -319,6 +332,7 @@ public class UserService : IUserService
 
         user.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         // Reload company data
         await _context.Entry(user)
