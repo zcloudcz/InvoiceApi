@@ -1732,8 +1732,18 @@
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Připomenout později</value></data>
   <!-- Integrations / API keys (/settings/integrations) -->
   <data name="Nav_Integrations" xml:space="preserve"><value>Integrace</value></data>
-  <data name="Integration_Title" xml:space="preserve"><value>Integrace a API klíče</value></data>
-  <data name="Integration_Subtitle" xml:space="preserve"><value>API klíč slouží k připojení AI klienta (např. Claude) k Fakviu přes MCP server. Klíč je osobní — vidíte a spravujete jen své vlastní klíče.</value></data>
+  <data name="Integration_Title" xml:space="preserve"><value>Integrace</value></data>
+  <data name="Integration_Subtitle" xml:space="preserve"><value>Připojte Fakvio k ChatGPT bez API klíče, nebo si níže spravujte klíče pro jiné AI klienty.</value></data>
+  <data name="Integration_ChatGptTitle" xml:space="preserve"><value>ChatGPT na webu — bez API klíče</value></data>
+  <data name="Integration_ChatGptIntro" xml:space="preserve"><value>Stačí přihlášení do vašeho Fakvio účtu. V ChatGPT nikdy nevkládejte heslo ani API klíč do textu konverzace.</value></data>
+  <data name="Integration_ChatGptStep1" xml:space="preserve"><value>Otevřete ChatGPT v prohlížeči. V nabídce Pluginy nebo Aplikace vyhledejte Fakvio. Pokud tam není, správce pracovního prostoru ho musí nejprve přidat pomocí adresy níže.</value></data>
+  <data name="Integration_ChatGptStep2" xml:space="preserve"><value>U Fakvia zvolte Připojit, přihlaste se ve Fakviu a potvrďte požadovaný přístup. Pro první použití doporučujeme Jen čtení.</value></data>
+  <data name="Integration_ChatGptStep3" xml:space="preserve"><value>V novém chatu vyberte Fakvio mezi nástroji a zkuste: „Zobraz moje poslední faktury.“</value></data>
+  <data name="Integration_ChatGptOpen" xml:space="preserve"><value>Otevřít ChatGPT Pluginy</value></data>
+  <data name="Integration_ChatGptServerLabel" xml:space="preserve"><value>Adresa pro jednorázové přidání Fakvia správcem ChatGPT</value></data>
+  <data name="Integration_ChatGptAdminNote" xml:space="preserve"><value>Nevidíte v ChatGPT možnost přidat aplikaci? O její zpřístupnění požádejte správce svého ChatGPT pracovního prostoru. Možnost vytvoření vlastní MCP aplikace závisí na plánu a nastavení ChatGPT.</value></data>
+  <data name="Integration_ApiKeysTitle" xml:space="preserve"><value>API klíče pro ostatní klienty</value></data>
+  <data name="Integration_ApiKeysIntro" xml:space="preserve"><value>Klíč je osobní. Pro ChatGPT na webu ho nepotřebujete; vytvořte ho jen pro klienta, který umí poslat vlastní hlavičku Authorization.</value></data>
   <data name="Integration_NewKey" xml:space="preserve"><value>Nový API klíč</value></data>
   <data name="Integration_CreateDialogTitle" xml:space="preserve"><value>Vytvořit API klíč</value></data>
   <data name="Integration_KeyNameHelper" xml:space="preserve"><value>Podle čeho klíč poznáte, například „Claude Desktop — notebook“.</value></data>

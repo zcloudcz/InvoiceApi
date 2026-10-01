@@ -1341,17 +1341,30 @@ stačí v daném klientovi zadat adresu Fakvio MCP serveru a přihlásit se bě�
 kterou aplikaci jde (podle adresy, ne podle jména, které si aplikace sama zvolila), kam vás po
 povolení pošle, a zvolíte **Jen čtení** (výchozí) nebo **Čtení i zápis**.
 
-**ChatGPT na webu:** v podporovaném plánu otevřete **Nastavení → Apps → Create** (v pracovním
-prostoru může vytvoření aplikace povolit jen správce), zadejte `https://mcp.fakvio.cz/mcp` a
-vyberte přihlášení přes OAuth. ChatGPT vás přesměruje na přihlášení do Fakvia a následný souhlas
-s oprávněním **Jen čtení** nebo **Čtení i zápis**. Přesný postup a dostupnost vývojářského režimu
-se liší podle plánu a nastavení pracovního prostoru; viz [oficiální návod OpenAI pro MCP
-aplikace](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
+**ChatGPT na webu — běžný uživatel:**
 
-> Vzdálené OAuth připojení je dostupné až po zapnutí a ověření OAuth provozovatelem Fakvia.
-> Pokud ChatGPT po zadání adresy nenabídne přihlášení, tato konfigurace ještě není připravená.
-> API klíč z §20.1 nelze použít jako přímou náhradu v ChatGPT webu; pro klienta s API klíčem
-> použijte místní režim stdio nebo klienta, který umí posílat vlastní hlavičku `Authorization`.
+1. Otevřete [ChatGPT Pluginy](https://chatgpt.com/plugins) v prohlížeči a přihlaste se. Podle
+   podoby vašeho účtu může být Fakvio také v **Nastavení → Aplikace**.
+2. Najděte **Fakvio** a zvolte **Připojit**. Pokud ho v seznamu nevidíte, požádejte správce
+   pracovního prostoru ChatGPT o jeho přidání; sami nemusíte vytvářet API klíč.
+3. Na stránce Fakvia se přihlaste svým běžným účtem. Zkontrolujte název aplikace, firmu a
+   požadovaná oprávnění; pro první připojení zvolte **Jen čtení** a potvrďte **Povolit**.
+4. V ChatGPT otevřete nový chat, vyberte Fakvio v nabídce nástrojů a zkuste
+   „Zobraz moje poslední faktury.“ Když v další zprávě chcete nová data z Fakvia, vyberte
+   aplikaci znovu nebo ji v textu označte.
+
+**Jednorázové přidání správcem ChatGPT nebo uživatelem s vývojářským režimem:** v ChatGPT
+zapněte **Developer mode** (obvykle **Nastavení → Zabezpečení a přihlášení**, případně
+**Nastavení → Aplikace → Pokročilá nastavení**). Otevřete **Pluginy → +** nebo
+**Nastavení → Aplikace → Vytvořit**, zadejte název **Fakvio**, adresu
+`https://mcp.fakvio.cz/mcp` a přihlášení **OAuth**. Spusťte načtení nástrojů, dokončete
+přihlášení do Fakvia a aplikaci vytvořte. Ve firemním pracovním prostoru ji správce následně
+zpřístupní ostatním členům. Nabídky i dostupnost se liší podle plánu a nastavení ChatGPT;
+viz [aktuální návod OpenAI](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt).
+
+> API klíč z §20.1 v ChatGPT na webu nepoužívejte. K přihlášení slouží OAuth; heslo ani klíč
+> nikdy nevkládejte do textu chatu. Pokud připojení nenabídne přihlášení, ověřte u správce
+> ChatGPT dostupnost vlastní MCP aplikace.
 
 **Správa připojených aplikací.** Na stránce **Nastavení → Integrace** přibyla pod klíči sekce
 **Připojené aplikace** — jedna aplikace = jeden řádek (název, oprávnění, kdy vzniklo, kdy

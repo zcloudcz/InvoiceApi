@@ -30,6 +30,34 @@
 <MudText Typo="Typo.h4" GutterBottom="true">@L["Integration_Title"]</MudText>
 <MudText Class="mb-4">@L["Integration_Subtitle"]</MudText>
 
+@* ChatGPT handles OAuth itself. Show this path before API keys so a first-time user
+   does not create and share a personal key that ChatGPT's web UI cannot use. *@
+<MudPaper Class="pa-4 mb-6" Outlined="true">
+    <MudText Typo="Typo.h5" GutterBottom="true">@L["Integration_ChatGptTitle"]</MudText>
+    <MudText Class="mb-3">@L["Integration_ChatGptIntro"]</MudText>
+    <ol class="mb-4">
+        <li>@L["Integration_ChatGptStep1"]</li>
+        <li>@L["Integration_ChatGptStep2"]</li>
+        <li>@L["Integration_ChatGptStep3"]</li>
+    </ol>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mb-4"
+               StartIcon="@Icons.Material.Filled.OpenInNew"
+               Href="https://chatgpt.com/plugins" Target="_blank">
+        @L["Integration_ChatGptOpen"]
+    </MudButton>
+    <MudText Typo="Typo.subtitle2">@L["Integration_ChatGptServerLabel"]</MudText>
+    <MudPaper Class="pa-2 mb-3 d-flex align-center gap-2" Outlined="true">
+        <MudText Typo="Typo.body2" Style="font-family: monospace; overflow-wrap: anywhere;">@ChatGptMcpUrl</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                       Title="@L["Integration_CopySnippet"].Value"
+                       OnClick="@(() => CopyAsync(ChatGptMcpUrl))" />
+    </MudPaper>
+    <MudAlert Severity="Severity.Info">@L["Integration_ChatGptAdminNote"]</MudAlert>
+</MudPaper>
+
+<MudText Typo="Typo.h5" GutterBottom="true">@L["Integration_ApiKeysTitle"]</MudText>
+<MudText Class="mb-3">@L["Integration_ApiKeysIntro"]</MudText>
+
 @* ── One-time reveal ────────────────────────────────────────────────────────
    Rendered only right after a successful create. Dismissing it drops the key
    from memory — there is deliberately no way to bring it back. *@
@@ -212,6 +240,9 @@
 </MudDialog>
 
 @code {
+    /// <summary>Canonical web MCP endpoint to paste into ChatGPT's custom app form.</summary>
+    private const string ChatGptMcpUrl = "https://mcp.fakvio.cz/mcp";
+
     /// <summary>Scope value sent to the API for a read-only key.</summary>
     private const string ScopeRead = "read";
 
