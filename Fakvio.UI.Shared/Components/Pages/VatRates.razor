@@ -3,6 +3,7 @@
 @using Fakvio.Contracts.Dto.VatRate
 @inject VatRateApiService VatRateService
 @inject ISnackbar Snackbar
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @* Localization service for multi-language support *@
 @inject IStringLocalizer<SharedResource> L
 
@@ -10,6 +11,7 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">@L["VatRate_Title"]</MudText>
 <MudText Class="mb-4">@L["VatRate_Subtitle"]</MudText>
+@if (!_canManage) { <MudAlert Severity="Severity.Info" Class="mb-3">@L["Settings_ReadOnly"]</MudAlert> }
 
 @* MudDataGrid with client-side Items — small dataset, no server paging needed *@
 <FakvioGrid T="VatRateDto"
@@ -19,9 +21,12 @@
             Loading="@_loading"
             RowClick="@(args => OpenEditDialog(args.Item))">
     <ToolBarContent>
-        <ResponsiveButton Label="@L["VatRate_New"].Value"
-                          StartIcon="@Icons.Material.Filled.Add"
-                          OnClick="OpenCreateDialog" />
+        @if (_canManage)
+        {
+            <ResponsiveButton Label="@L["VatRate_New"].Value"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenCreateDialog" />
+        }
     </ToolBarContent>
     <Columns>
         @* PropertyColumn: sortable + filterable by default. CellTemplate uses context.Item. *@
@@ -57,8 +62,11 @@
                 }
                 else
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" OnClick="@(() => SetAsDefault(context.Item.Id))"
-                                   Title="@L["VatRate_SetAsDefault"].Value"/>
+                    @if (_canManage)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" OnClick="@(() => SetAsDefault(context.Item.Id))"
+                                       Title="@L["VatRate_SetAsDefault"].Value"/>
+                    }
                 }
             </CellTemplate>
         </TemplateColumn>
@@ -72,10 +80,16 @@
         @* Actions column — edit and delete buttons, not sortable/filterable *@
         <TemplateColumn T="VatRateDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
             <CellTemplate>
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
-                               OnClick="@(() => OpenEditDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                               OnClick="@(() => DeleteVatRate(context.Item.Id))" Title="@L["Btn_Delete"].Value" />
+                @if (_canManage)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => OpenEditDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                }
+                @if (_canManage)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteVatRate(context.Item.Id))" Title="@L["Btn_Delete"].Value" />
+                }
             </CellTemplate>
         </TemplateColumn>
     </Columns>
@@ -125,6 +139,7 @@
 </MudDialog>
 
 @code {
+    private bool _canManage;
     private FakvioGrid<VatRateDto>? _dataGrid;
     private List<VatRateDto> _vatRates = new();
     private bool _loading = true;
@@ -147,6 +162,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Accountant is the display name of the Admin role used by the API.
+        var user = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
+        _canManage = user.IsInRole("Admin") || user.IsInRole("SysAdmin");
         await LoadVatRates();
     }
 
@@ -169,6 +187,7 @@
 
     private void OpenCreateDialog()
     {
+        if (!_canManage) return;
         _newVatRate = new CreateVatRateDto
         {
             IsActive = true,
@@ -186,6 +205,7 @@
 
     private async Task CreateVatRate()
     {
+        if (!_canManage) return;
         try
         {
             if (_validFromDate.HasValue)
@@ -214,6 +234,7 @@
 
     private async Task SetAsDefault(long id)
     {
+        if (!_canManage) return;
         try
         {
             var result = await VatRateService.SetAsDefaultAsync(id);
@@ -231,6 +252,7 @@
 
     private async Task DeleteVatRate(long id)
     {
+        if (!_canManage) return;
         try
         {
             var success = await VatRateService.DeleteAsync(id);
@@ -252,6 +274,7 @@
     /// </summary>
     private void OpenEditDialog(VatRateDto vatRate)
     {
+        if (!_canManage) return;
         _editVatRateId = vatRate.Id;
         _editVatRate = new UpdateVatRateDto
         {
@@ -273,6 +296,7 @@
     /// </summary>
     private async Task UpdateVatRate()
     {
+        if (!_canManage) return;
         try
         {
             // Convert date picker values to UTC before sending to API

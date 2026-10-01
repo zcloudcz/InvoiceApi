@@ -38,6 +38,7 @@ public class FakvioService : ApiClientBase
         }
         catch (ApiException)
         {
+            // Legacy consumers retain the fallback; interactive grids opt into visible errors.
             // Graceful degradation for list endpoints — show empty grid instead of crashing.
             // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
             return [];
@@ -69,7 +70,8 @@ public class FakvioService : ApiClientBase
         bool? isOverdue = null,
         string? currency = null,
         decimal? minAmount = null,
-        decimal? maxAmount = null)
+        decimal? maxAmount = null,
+        bool throwOnError = false)
     {
         try
         {
@@ -136,7 +138,7 @@ public class FakvioService : ApiClientBase
             return await GetAsync<PagedResult<InvoiceDto>>($"/api/invoice/paged{queryParams}")
                    ?? new PagedResult<InvoiceDto>();
         }
-        catch (ApiException)
+        catch (ApiException) when (!throwOnError)
         {
             // Graceful degradation for list endpoints — show empty grid instead of crashing.
             // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).

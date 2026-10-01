@@ -117,7 +117,7 @@ public class NavigateTool : IChatTool
         new("dashboard", "/", "dashboard"),
         new("my_company", "/my-company", "my company page"),
         new("number_sequences", "/number-sequences", "number sequence settings"),
-        new("user_list", "/users", "user list"),
+        new("feedback", "/feedback", "my feedback reports"),
         new("preferences", "/preferences", "user preferences"),
         new("two_factor_settings", "/profile/two-factor", "two-factor authentication settings"),
         new("notifications", "/notifications", "notification list"),

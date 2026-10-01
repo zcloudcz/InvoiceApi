@@ -6,6 +6,12 @@ namespace Fakvio.Contracts.Dto.ApiKey;
 /// </summary>
 public class ApiKeyDto
 {
+    /// <summary>Default company pinned when this credential was issued.</summary>
+    public long? CompanyId { get; set; }
+
+    /// <summary>Explicit company grants; membership revocation still takes effect immediately.</summary>
+    public long[] AllowedCompanyIds { get; set; } = [];
+
     /// <summary>API key primary key.</summary>
     public long Id { get; set; }
 

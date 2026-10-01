@@ -39,8 +39,9 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
         _authenticator = new ApiKeyAuthenticator(
             _context,
             Substitute.For<ILogger<ApiKeyAuthenticator>>(),
-            Options.Create(new McpOAuthOptions { Enabled = true, ResourceProofSecret = ResourceProofSecret }));
+            Options.Create(new McpOAuthOptions { Enabled = true, AllowAll = true, ResourceProofSecret = ResourceProofSecret }));
 
+        _context.Client.Add(new Client { Id = 10, RegistrationNumber = "10", IsIssuer = true });
         _context.User.Add(new User
         {
             Id = UserId, Email = "owner@test.cz", FirstName = "Test", LastName = "User",
@@ -63,7 +64,7 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
     {
         var grant = new OAuthGrant
         {
-            UserId = UserId, ClientId = "https://claude.ai/oauth/claude-code-client-metadata",
+            UserId = UserId, CompanyId = 10, ClientId = "https://claude.ai/oauth/claude-code-client-metadata",
             ClientName = "Claude Code", Scopes = "read", Resource = CanonicalResource,
             ExpiresAt = DateTime.UtcNow.AddDays(180)
         };
@@ -72,7 +73,7 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
 
         _context.ApiKey.Add(new ApiKey
         {
-            UserId = UserId, Name = "OAuth: Claude Code", KeyPrefix = RawToken[..12],
+            UserId = UserId, CompanyId = 10, AllowedCompanyIds = [10], Name = "OAuth: Claude Code", KeyPrefix = RawToken[..12],
             KeyHash = ApiKeyService.ComputeHash(RawToken), Scopes = "read",
             OAuthGrantId = grant.Id, ExpiresAt = DateTime.UtcNow.AddHours(1)
         });
@@ -85,6 +86,42 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
         SeedOAuthAccessToken();
 
         (await _authenticator.AuthenticateAsync(RawToken, resourceProofHeader: null)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task OAuthToken_RevokedCompanyMembershipIsRejected()
+    {
+        SeedOAuthAccessToken();
+        (await _context.UserCompanyMembership.SingleAsync(m => m.UserId == UserId)).IsActive = false;
+        await _context.SaveChangesAsync();
+        (await _authenticator.AuthenticateAsync(RawToken, ResourceProofSecret)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task OAuthToken_InactiveCompanyIsRejected()
+    {
+        SeedOAuthAccessToken();
+        (await _context.Client.SingleAsync()).IsActive = false;
+        await _context.SaveChangesAsync();
+        (await _authenticator.AuthenticateAsync(RawToken, ResourceProofSecret)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task OAuthToken_MismatchedGrantCompanyIsRejected()
+    {
+        SeedOAuthAccessToken();
+        (await _context.OAuthGrant.SingleAsync()).CompanyId = 20;
+        await _context.SaveChangesAsync();
+        (await _authenticator.AuthenticateAsync(RawToken, ResourceProofSecret)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task OAuthToken_RemovedFromAllowlistIsRejected()
+    {
+        SeedOAuthAccessToken();
+        var restricted = new ApiKeyAuthenticator(_context, Substitute.For<ILogger<ApiKeyAuthenticator>>(),
+            Options.Create(new McpOAuthOptions { Enabled = true, ResourceProofSecret = ResourceProofSecret }));
+        (await restricted.AuthenticateAsync(RawToken, ResourceProofSecret)).ShouldBeNull();
     }
 
     [Fact]
@@ -115,7 +152,7 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
         const string rawKey = "fak_live_test-manual-key-0123456789";
         _context.ApiKey.Add(new ApiKey
         {
-            UserId = UserId, Name = "Manual key", KeyPrefix = rawKey[..12],
+            UserId = UserId, CompanyId = 10, AllowedCompanyIds = [10], Name = "Manual key", KeyPrefix = rawKey[..12],
             KeyHash = ApiKeyService.ComputeHash(rawKey), Scopes = "read"
         });
         _context.SaveChanges();
@@ -163,7 +200,7 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
     {
         var grant = new OAuthGrant
         {
-            UserId = UserId, ClientId = "https://claude.ai/oauth/claude-code-client-metadata",
+            UserId = UserId, CompanyId = 10, ClientId = "https://claude.ai/oauth/claude-code-client-metadata",
             ClientName = "Claude Code", Scopes = "read", Resource = CanonicalResource,
             ExpiresAt = DateTime.UtcNow.AddDays(180), RevokedAt = DateTime.UtcNow, RevokedReason = EOAuthGrantRevokedReason.User
         };
@@ -175,7 +212,7 @@ public class ApiKeyAuthenticatorOAuthTests : IDisposable
         // future code path that revokes a grant without remembering to sweep its tokens.
         _context.ApiKey.Add(new ApiKey
         {
-            UserId = UserId, Name = "OAuth: Claude Code", KeyPrefix = RawToken[..12],
+            UserId = UserId, CompanyId = 10, AllowedCompanyIds = [10], Name = "OAuth: Claude Code", KeyPrefix = RawToken[..12],
             KeyHash = ApiKeyService.ComputeHash(RawToken), Scopes = "read",
             OAuthGrantId = grant.Id, ExpiresAt = DateTime.UtcNow.AddHours(1)
         });

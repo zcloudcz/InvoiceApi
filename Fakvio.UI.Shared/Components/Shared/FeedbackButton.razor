@@ -1,0 +1,21 @@
+@inject IDialogService Dialogs
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<MudIconButton Icon="@Icons.Material.Filled.BugReport" Color="Color.Inherit" OnClick="OpenAsync"
+               title="@L["Feedback_Report"]" aria-label="@L["Feedback_Report"].Value" />
+
+@code {
+    private async Task OpenAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<FeedbackDialog>(L["Feedback_Report"],
+            new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small, BackdropClick = false, CloseOnEscapeKey = false });
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: long id })
+        {
+            Snackbar.Add(L["Feedback_Sent"], Severity.Success);
+            Navigation.NavigateTo($"/feedback/{id}");
+        }
+    }
+}

@@ -45,6 +45,9 @@ public sealed class AuthHeaderHandler : DelegatingHandler
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var token = _tokenProvider.GetToken();
+        request.Headers.Remove("X-Selected-Company-Id");
+        if (CompanyRequestContext.CompanyId is { } companyId)
+            request.Headers.TryAddWithoutValidation("X-Selected-Company-Id", companyId.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
         // Assigned unconditionally, including the null case: "no token" must
         // CLEAR the header, not merely leave whatever is already on the request.

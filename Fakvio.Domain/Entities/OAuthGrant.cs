@@ -17,6 +17,9 @@ namespace Fakvio.Domain.Entities;
 /// </summary>
 public class OAuthGrant : BaseEntity
 {
+    /// <summary>Company shown at consent. Refreshing a token never changes this binding.</summary>
+    public long? CompanyId { get; set; }
+
     /// <summary>The Fakvio user who granted consent. Master schema — same reasoning as <see cref="ApiKey"/>.</summary>
     public long UserId { get; set; }
 

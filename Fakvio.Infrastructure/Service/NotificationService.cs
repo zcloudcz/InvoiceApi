@@ -74,10 +74,10 @@ public class NotificationService : INotificationService
         CancellationToken ct = default)
     {
 
-        var userIds = await _masterContext.Set<User>()
+        var userIds = await _masterContext.Set<UserCompanyMembership>()
             .AsNoTracking()
-            .Where(u => u.CompanyId == companyId && u.IsActive)
-            .Select(u => u.Id)
+            .Where(m => m.CompanyId == companyId && m.IsActive && m.User.IsActive)
+            .Select(m => m.UserId).Distinct()
             .ToListAsync(ct);
 
         if (userIds.Count == 0)

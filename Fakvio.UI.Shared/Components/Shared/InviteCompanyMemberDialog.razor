@@ -1,0 +1,74 @@
+@using Fakvio.Contracts.Dto.CompanyMembership
+@using Fakvio.Contracts.Dto.Client
+@using Fakvio.Domain.Enums
+@inject CompanyMembershipApiService Api
+@inject CompanyApiService Companies
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+<MudDialog>
+    <DialogContent>
+        @if (_error) { <MudAlert Severity="Severity.Error">@L["CompanyMembership_Error"]</MudAlert> }
+        @if (_link is not null)
+        {
+            <MudAlert Severity="Severity.Success">@L["CompanyMembership_InvitationCreated"]</MudAlert>
+            <MudTextField Value="@_link" ReadOnly="true" Label="@L["CompanyMembership_InvitationLink"].Value" />
+        }
+        else
+        {
+            <MudForm @ref="_form">
+                <MudSelect T="long?" @bind-Value="SelectedCompanyId" Label="@L["User_Company"].Value" Disabled="@(_busy || _loading)"
+                           Strict="true" Placeholder="@L["CompanyMembership_CompanyRequired"].Value"
+                           Required="true" RequiredError="@L["CompanyMembership_CompanyRequired"].Value"
+                           Validation="@(new Func<long?, string?>(value => value is > 0 ? null : L["CompanyMembership_CompanyRequired"].Value))">
+                    @foreach (var company in _companies) { <MudSelectItem T="long?" Value="@((long?)company.Id)">@company.CompanyName</MudSelectItem> }
+                </MudSelect>
+                <MudTextField @bind-Value="_request.Email" Label="@L["Label_Email"].Value" InputType="InputType.Email" Required="true" Disabled="_busy" Immediate="true" />
+                <MudSelect T="EUserRole" @bind-Value="_request.Role" Label="@L["User_Role"].Value" Disabled="_busy">
+                    <MudSelectItem Value="EUserRole.User">@L["User_RoleUser"]</MudSelectItem>
+                    <MudSelectItem Value="EUserRole.Admin">@L["User_RoleAdmin"]</MudSelectItem>
+                </MudSelect>
+            </MudForm>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close" Disabled="_busy">@L["Btn_Cancel"]</MudButton>
+        @if (_link is null) { <MudButton OnClick="InviteAsync" Disabled="@(_busy || _loading)" Color="Color.Primary">@L["CompanyMembership_Invite"]</MudButton> }
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    private InviteCompanyMemberDto _request = new();
+    // Null represents the unselected UI state; the API still receives its positive numeric ID.
+    private long? SelectedCompanyId
+    {
+        get => _request.CompanyId > 0 ? _request.CompanyId : null;
+        set => _request.CompanyId = value ?? 0;
+    }
+    private List<ClientDto> _companies = [];
+    private MudForm? _form;
+    private bool _busy, _error;
+    private bool _loading = true;
+    private string? _link;
+    protected override async Task OnInitializedAsync()
+    {
+        try { _companies = await Companies.GetAllAsync(); }
+        catch (Exception) { _error = true; }
+        finally { _loading = false; }
+    }
+    private void Close() => MudDialog.Cancel();
+    private async Task InviteAsync()
+    {
+        if (_busy || _loading || _form is null) return;
+        _busy = true; _error = false;
+        try
+        {
+            await _form.Validate();
+            if (!_form.IsValid) return;
+            var invitation = await Api.InviteAsync(_request);
+            if (string.IsNullOrWhiteSpace(invitation.Token)) { _error = true; return; }
+            _link = Navigation.BaseUri.TrimEnd('/') + "/company-invitations/accept#" + Uri.EscapeDataString(invitation.Token);
+        }
+        catch (Exception) { _error = true; }
+        finally { _busy = false; }
+    }
+}

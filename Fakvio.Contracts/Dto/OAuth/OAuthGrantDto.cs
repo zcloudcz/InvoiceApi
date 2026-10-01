@@ -7,6 +7,11 @@ namespace Fakvio.Contracts.Dto.OAuth;
 /// </summary>
 public class OAuthGrantDto
 {
+    /// <summary>Company explicitly authorized on the consent screen.</summary>
+    public long? CompanyId { get; set; }
+
+    public string? CompanyName { get; set; }
+
     public long Id { get; set; }
 
     /// <summary>The client_id URL — same "trust this, not the display name" reasoning as the consent screen.</summary>

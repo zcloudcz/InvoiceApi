@@ -1,0 +1,68 @@
+@using Fakvio.Contracts.Dto.CompanyMembership
+@using Fakvio.Domain.Enums
+@inject CompanyMembershipApiService Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<MudDialog>
+    <DialogContent>
+        <MudText Class="mb-3">@L["MembershipAdmin_Help"]</MudText>
+        @if (_error)
+        {
+            <MudAlert Severity="Severity.Error">@L["CompanyMembership_Error"]</MudAlert>
+            <MudButton OnClick="LoadAsync" Disabled="_busy">@L["Btn_Retry"]</MudButton>
+        }
+        @if (_loading) { <MudProgressLinear Indeterminate="true" /> }
+        @foreach (var row in _rows)
+        {
+            <MudPaper Class="pa-3 my-2" Outlined="true">
+                <MudText Typo="Typo.subtitle1">@row.CompanyName</MudText>
+                @if (!row.IsCompanyActive) { <MudText>@L["MembershipAdmin_CompanyInactive"]</MudText> }
+                <MudSelect T="EUserRole" @bind-Value="row.Role" Label="@L["User_Role"].Value" Disabled="_busy">
+                    <MudSelectItem Value="EUserRole.User">@L["User_RoleUser"]</MudSelectItem>
+                    <MudSelectItem Value="EUserRole.Admin">@L["User_RoleAdmin"]</MudSelectItem>
+                </MudSelect>
+                <MudSwitch T="bool" @bind-Value="row.IsActive" Label="@L["MembershipAdmin_Active"].Value" Disabled="_busy" />
+                <MudButton OnClick="@(() => SaveAsync(row))" Disabled="_busy" Color="Color.Primary">@L["Btn_Save"]</MudButton>
+            </MudPaper>
+        }
+        @if (!_loading && !_error && _rows.Count == 0) { <MudText>@L["MembershipAdmin_Empty"]</MudText> }
+    </DialogContent>
+    <DialogActions><MudButton OnClick="Close" Disabled="_busy">@L["Btn_Close"]</MudButton></DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Parameter] public long UserId { get; set; }
+    private List<ManagedCompanyMembershipDto> _rows = [];
+    private bool _loading, _busy, _error;
+    protected override Task OnInitializedAsync() => LoadAsync();
+    private async Task LoadAsync()
+    {
+        _loading = true; _error = false;
+        try { _rows = await Api.ListForUserAsync(UserId); }
+        catch (Exception) { _error = true; }
+        finally { _loading = false; }
+    }
+    private async Task SaveAsync(ManagedCompanyMembershipDto row)
+    {
+        if (_busy) return;
+        // Confirmation names the company: deactivation affects this membership only.
+        _busy = true;
+        try
+        {
+            if (!row.IsActive && await Dialogs.ShowMessageBox(L["MembershipAdmin_Title"],
+                L["MembershipAdmin_RevokeConfirm", row.CompanyName], yesText: L["Btn_Save"], cancelText: L["Btn_Cancel"]) != true) return;
+            _error = false;
+            var saved = await Api.UpdateForUserAsync(UserId, row.CompanyId, new() { Role = row.Role, IsActive = row.IsActive });
+            // Refresh only this row. Another company's unsaved draft must survive this save.
+            var index = _rows.IndexOf(row);
+            if (index >= 0) _rows[index] = saved;
+            Snackbar.Add(L["MembershipAdmin_Saved"], Severity.Success);
+        }
+        catch (Exception) { _error = true; }
+        finally { _busy = false; }
+    }
+    private void Close() => Dialog.Close();
+}

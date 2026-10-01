@@ -41,6 +41,7 @@
                 </MudNavGroup>
             }
 
+            <MudNavLink Href="/feedback" Icon="@Icons.Material.Filled.BugReport">@L["Feedback_Mine"]</MudNavLink>
             <MudNavGroup Title="@L["Nav_Settings"].Value" Icon="@Icons.Material.Filled.Settings">
                 @* User preferences moved to the AppBar profile menu (avatar + name) *@
                 @* Two-Factor Auth — visible for all authenticated users with invoicing context *@
@@ -54,13 +55,14 @@
                     <MudNavLink Href="/number-sequences" Icon="@Icons.Material.Filled.Numbers">@L["Nav_NumberSequences"]</MudNavLink>
                 }
 
-                @* User management — Admin and SysAdmin *@
-                <AuthorizeView Roles="Admin,SysAdmin" Context="adminContext">
+                @* User management — SysAdmin only *@
+                <AuthorizeView Roles="SysAdmin" Context="adminContext">
                     <MudNavLink Href="/users" Icon="@Icons.Material.Filled.People">@L["Nav_Users"]</MudNavLink>
                 </AuthorizeView>
 
                 @* System-wide settings — SysAdmin only *@
                 <AuthorizeView Roles="SysAdmin" Context="sysAdminContext">
+                    <MudNavLink Href="/sysadmin/feedback" Icon="@Icons.Material.Filled.Feedback">@L["Feedback_Inbox"]</MudNavLink>
                     @* Currencies — visible in both modes (dual-context: master or tenant) *@
                     <MudNavLink Href="/currencies" Icon="@Icons.Material.Filled.AttachMoney">@L["Nav_Currencies"]</MudNavLink>
 

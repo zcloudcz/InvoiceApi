@@ -7,6 +7,7 @@
 @inject ContentTemplateApiService TemplateService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 
@@ -18,6 +19,10 @@
 @if (_loading)
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (_isCreateMode && !_canManage)
+{
+    <MudAlert Severity="Severity.Info">@L["Settings_ReadOnly"]</MudAlert>
 }
 else if (!_isCreateMode && (_errorMessage != null || _template == null))
 {
@@ -46,7 +51,7 @@ else
         {
             <MudButton Variant="Variant.Text" OnClick="GoBack">@L["Btn_Cancel"]</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="SaveTemplate">@L["Btn_Create"]</MudButton>
+                       Disabled="!_canManage" OnClick="SaveTemplate">@L["Btn_Create"]</MudButton>
         }
         else if (!_isEditing)
         {
@@ -56,15 +61,15 @@ else
                 @L["ContentTemplate_Preview"]
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
-                       OnClick="EnableEditing">@L["Btn_Edit"]</MudButton>
+                       Disabled="!_canManage" OnClick="EnableEditing">@L["Btn_Edit"]</MudButton>
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
-                       OnClick="DeleteTemplate">@L["Btn_Delete"]</MudButton>
+                       Disabled="!_canManage" OnClick="DeleteTemplate">@L["Btn_Delete"]</MudButton>
         }
         else
         {
             <MudButton Variant="Variant.Text" OnClick="CancelEditing">@L["Btn_Cancel"]</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="SaveTemplate">@L["Btn_Save"]</MudButton>
+                       Disabled="!_canManage" OnClick="SaveTemplate">@L["Btn_Save"]</MudButton>
         }
     </div>
 
@@ -255,6 +260,7 @@ else
 </MudDialog>
 
 @code {
+    private bool _canManage;
     [Parameter] public long Id { get; set; }
 
     private ContentTemplateDto? _template;
@@ -281,6 +287,10 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // Accountant is the display name of the Admin role used by the API.
+        var user = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
+        _canManage = user.IsInRole("Admin") || user.IsInRole("SysAdmin");
+        if (_isCreateMode && !_canManage) { _loading = false; return; }
         if (_isCreateMode)
         {
             _currentName = "";
@@ -328,6 +338,7 @@ else
     /// </summary>
     private void EnableEditing()
     {
+        if (!_canManage) return;
         if (_template == null) return;
 
         _currentName = _template.Name;
@@ -357,6 +368,7 @@ else
     /// </summary>
     private async Task SaveTemplate()
     {
+        if (!_canManage) return;
         try
         {
             if (_isCreateMode)
@@ -424,6 +436,7 @@ else
 
     private async Task DeleteTemplate()
     {
+        if (!_canManage) return;
         try
         {
             if (await TemplateService.DeleteAsync(Id))
@@ -546,6 +559,7 @@ else
     /// </summary>
     private async Task HandleHtmlFileUpload(IBrowserFile file)
     {
+        if (!_canManage) return;
         // Validate file extension
         var ext = Path.GetExtension(file.Name)?.ToLowerInvariant();
         if (ext != ".html" && ext != ".htm")

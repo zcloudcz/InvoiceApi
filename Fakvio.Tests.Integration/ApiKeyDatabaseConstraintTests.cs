@@ -191,9 +191,10 @@ public class ApiKeyDatabaseConstraintTests : IAsyncLifetime
     {
         await using var context = CreateMasterContext();
 
+        context.Client.Add(new Client { Id = OwnerUserId, CompanyName = "Key owner", RegistrationNumber = "00235001", IsIssuer = true });
         context.User.Add(new User
         {
-            Id = OwnerUserId,
+            Id = OwnerUserId, CompanyId = OwnerUserId,
             Email = "api-key-owner@fakvio.test",
             // Not a login path in these tests — the hash only has to be non-null.
             PasswordHash = "not-a-real-hash",
@@ -215,7 +216,7 @@ public class ApiKeyDatabaseConstraintTests : IAsyncLifetime
     private static ApiKeyEntity BuildApiKey(string keyHash, string name = "Test key")
         => new()
         {
-            UserId = OwnerUserId,
+            UserId = OwnerUserId, CompanyId = OwnerUserId, AllowedCompanyIds = [OwnerUserId],
             Name = name,
             KeyPrefix = "fak_live_abc",
             KeyHash = keyHash,

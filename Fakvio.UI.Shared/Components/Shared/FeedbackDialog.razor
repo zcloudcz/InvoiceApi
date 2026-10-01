@@ -1,0 +1,72 @@
+@using Fakvio.Contracts.Dto.Feedback
+@using Fakvio.Domain.Enums
+@inject FeedbackApiService Api
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+@implements IDisposable
+
+<MudDialog>
+    <DialogContent>
+        @if (_error) { <MudAlert Severity="Severity.Error">@L["Feedback_Error"]</MudAlert> }
+        <MudForm @ref="_form">
+            <EnumSelect TEnum="EFeedbackType" @bind-Value="_report.Type" Label="@L["Feedback_Type"].Value" Disabled="_busy" />
+            <MudTextField @bind-Value="_report.Subject" Label="@L["Feedback_Subject"].Value" Required="true"
+                          RequiredError="@L["Feedback_Required"].Value" MaxLength="200" Immediate="true" Disabled="_busy" />
+            <MudTextField @bind-Value="_report.Description" Label="@L["Feedback_Description"].Value" Required="true"
+                          RequiredError="@L["Feedback_Required"].Value" MaxLength="10000" Lines="6" Immediate="true" Disabled="_busy" />
+            <MudTextField @bind-Value="_report.Page" Label="@L["Feedback_Page"].Value" MaxLength="2048" Disabled="_busy"
+                          HelperText="@L["Feedback_PageHelp"].Value" Error="_pageError" ErrorText="@L["Feedback_PageInvalid"].Value" />
+            <MudText Typo="Typo.caption">@L["Feedback_Version"]: @_report.AppVersion</MudText>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_busy">@L["Btn_Cancel"]</MudButton>
+        <MudButton OnClick="SubmitAsync" Disabled="_busy" Color="Color.Primary" Variant="Variant.Filled">@L["Feedback_Send"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly CreateFeedbackDto _report = new();
+    private MudForm? _form;
+    private bool _busy;
+    private bool _error;
+    private bool _pageError;
+
+    protected override void OnInitialized()
+    {
+        _report.Page = FeedbackPageContext.FromUri(Navigation.Uri);
+        // Informational version includes the build revision when the SDK supplies it.
+        var assembly = typeof(FeedbackDialog).Assembly;
+        var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(assembly)?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString();
+        _report.AppVersion = version is { Length: > 100 } ? version[..100] : version;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task SubmitAsync()
+    {
+        // Guard in code as well as disabling the button: queued clicks must not create duplicates.
+        if (_busy || _form is null) return;
+        _busy = true;
+        _error = false;
+        _pageError = false;
+        try
+        {
+            await _form.Validate();
+            if (!_form.IsValid || string.IsNullOrWhiteSpace(_report.Subject) || string.IsNullOrWhiteSpace(_report.Description)) return;
+            var safePage = FeedbackPageContext.NormalizeInput(_report.Page, Navigation.Uri);
+            if (!string.IsNullOrWhiteSpace(_report.Page) && safePage is null) { _pageError = true; return; }
+            _report.Page = safePage;
+            var created = await Api.CreateAsync(_report, _lifetime.Token);
+            MudDialog.Close(DialogResult.Ok(created.Id));
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception) { _error = true; } // Keep the same model so the user can retry without retyping.
+        finally { _busy = false; }
+    }
+
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

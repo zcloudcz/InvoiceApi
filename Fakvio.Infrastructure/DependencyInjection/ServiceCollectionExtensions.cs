@@ -1,4 +1,4 @@
-﻿using AresService;
+using AresService;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.AiProviders;
 using Fakvio.Infrastructure.Authentication;
@@ -166,6 +166,10 @@ public static class ServiceCollectionExtensions
 
         // Notifications — per-user in-app notifications (e.g., payment matched).
         services.AddScopedWithLogging<INotificationService, NotificationService>();
+        // Deliberately avoid argument-logging proxies: report bodies may contain private information.
+        services.AddScoped<IFeedbackService, FeedbackService>();
+        services.AddScoped<ICompanyMembershipService, CompanyMembershipService>();
+        services.AddScoped<CompanySessionService>();
 
         // Invoice email — receive invoices via email (ISDOC/PDF attachments).
         services.AddScopedWithLogging<IInvoiceMailboxService, InvoiceMailboxService>();

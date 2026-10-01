@@ -83,6 +83,7 @@ public static class McpServerRegistration
                     Version = ServerVersion
                 };
             })
-            .WithToolsFromAssembly(typeof(McpServerRegistration).Assembly, serializerOptions: McpToolJsonOptions.Default);
+            .WithToolsFromAssembly(typeof(McpServerRegistration).Assembly, serializerOptions: McpToolJsonOptions.Default)
+            .WithRequestFilters(CompanyRequestContext.ConfigureFilters);
     }
 }

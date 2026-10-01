@@ -7,25 +7,31 @@
 @inject NavigationManager Navigation
 @inject IStringLocalizer<SharedResource> L
 
-<MudText Typo="Typo.h4" Class="mb-4">Notifikace</MudText>
+<PageTitle>@L["Notification_Title"]</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-4">@L["Notification_Title"]</MudText>
 
 <MudStack Row="true" Spacing="2" Class="mb-4" AlignItems="AlignItems.Center">
-    <MudSwitch T="bool" Value="_unreadOnly" ValueChanged="@OnUnreadOnlyChanged" Color="Color.Primary" Label="Jen nepřečtené" />
+    <MudSwitch T="bool" Value="_unreadOnly" ValueChanged="@OnUnreadOnlyChanged" Color="Color.Primary" Label="@L["Notification_UnreadOnly"].Value" Disabled="@(_loading || _saving)" />
     <MudSpacer />
     <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
-               OnClick="@MarkAllAsReadAsync" Disabled="@(_loading)">
-        Označit vše jako přečtené
+               OnClick="@MarkAllAsReadAsync" Disabled="@(_loading || _saving)">
+        @L["Notification_MarkAllRead"]
     </MudButton>
 </MudStack>
 
+@if (_error)
+{
+    <MudAlert Severity="Severity.Error">@L["Notification_Error"]</MudAlert>
+    <MudButton OnClick="LoadAsync" Disabled="_loading">@L["Feedback_Refresh"]</MudButton>
+}
 @if (_loading)
 {
     <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
 }
-else if (_notifications.Count == 0)
+else if (_notifications.Count == 0 && !_error)
 {
     <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="my-4">
-        Žádné notifikace
+        @L["Notification_Empty"]
     </MudAlert>
 }
 else
@@ -47,7 +53,7 @@ else
                         </MudText>
                     </MudStack>
                     <MudText Typo="Typo.caption" Color="Color.Tertiary" Style="white-space: nowrap;">
-                        @n.CreatedAt.ToString("d.M.yyyy HH:mm")
+                        @n.CreatedAt.ToLocalTime().ToString("g")
                     </MudText>
                     @if (!n.IsRead)
                     {
@@ -72,6 +78,7 @@ else
 @code {
     private List<NotificationDto> _notifications = [];
     private bool _loading = true;
+    private bool _error, _saving;
     private bool _unreadOnly;
     private int _page = 1;
     private int _pageSize = 20;
@@ -87,6 +94,8 @@ else
         _loading = true;
         StateHasChanged();
 
+        try
+        {
         var result = await NotificationService.GetNotificationsAsync(
             page: _page,
             pageSize: _pageSize,
@@ -94,7 +103,10 @@ else
 
         _notifications = result.Items;
         _totalPages = result.TotalPages;
-        _loading = false;
+        _error = false;
+        }
+        catch (Exception) { _error = true; } // Retain the last successful list during a transient outage.
+        finally { _loading = false; }
     }
 
     private async Task OnUnreadOnlyChanged(bool value)
@@ -112,9 +124,13 @@ else
 
     private async Task OnNotificationClickAsync(NotificationDto notification)
     {
+        if (_saving) return;
         if (!notification.IsRead)
         {
-            await NotificationService.MarkAsReadAsync(notification.Id);
+            _saving = true;
+            try { await NotificationService.MarkAsReadAsync(notification.Id); _error = false; }
+            catch (Exception) { _error = true; return; }
+            finally { _saving = false; }
             notification.IsRead = true;
         }
 
@@ -125,15 +141,22 @@ else
 
     private async Task MarkAllAsReadAsync()
     {
-        await NotificationService.MarkAllAsReadAsync();
-        await LoadAsync();
+        if (_saving) return;
+        _saving = true;
+        try
+        {
+            await NotificationService.MarkAllAsReadAsync();
+            await LoadAsync();
+        }
+        catch (Exception) { _error = true; }
+        finally { _saving = false; }
     }
 
     private static string? GetEntityUrl(string entityType, long entityId) => entityType switch
     {
         "Invoice" => $"/invoices/{entityId}",
         "ReceivedInvoice" => $"/received-invoices/{entityId}",
-        "BankTransaction" => $"/payment-matching",
+        "BankTransaction" => "/payments",
         _ => null
     };
 

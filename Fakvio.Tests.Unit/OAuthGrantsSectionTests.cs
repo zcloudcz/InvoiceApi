@@ -43,6 +43,7 @@ public class OAuthGrantsSectionTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(factory);
         Services.AddSingleton(Substitute.For<AuthenticationStateProvider>());
         Services.AddSingleton<ApiKeyApiService>();
+        Services.AddSingleton<CompanyMembershipApiService>();
         Services.AddSingleton<OAuthGrantsApiService>();
         Services.AddSingleton(Substitute.For<IUiErrorHandler>());
         Services.AddSingleton(Substitute.For<ILocalStorageService>());
@@ -122,6 +123,7 @@ public class OAuthGrantsSectionTests : BunitContext, IAsyncLifetime
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (request.Method == HttpMethod.Get && path == "/api/my-companies") return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new[] { new Fakvio.Contracts.Dto.CompanyMembership.CompanyMembershipDto { CompanyId = 1, CompanyName = "Company one", IsDefault = true, IsProvisioned = true } }) });
 
             if (request.Method == HttpMethod.Get && path == "/api/api-key")
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)

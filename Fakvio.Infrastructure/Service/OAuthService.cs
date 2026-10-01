@@ -74,7 +74,7 @@ public class OAuthService : IOAuthService
     }
 
     /// <inheritdoc />
-    public async Task<OAuthConsentUserInfo> GetConsentUserInfoAsync(long userId, CancellationToken ct = default)
+    public async Task<OAuthConsentUserInfo> GetConsentUserInfoAsync(long userId, CancellationToken ct = default, long? companyId = null)
     {
         var user = await _context.User.AsNoTracking()
             .Include(u => u.Company)
@@ -83,14 +83,19 @@ public class OAuthService : IOAuthService
         if (user is null)
             throw new OAuthErrorException(OAuthErrorException.AccessDenied, $"user {userId} not found");
 
-        return new OAuthConsentUserInfo(user.Email, $"{user.FirstName} {user.LastName}".Trim(), user.Company?.CompanyName, IsEligible(user));
+        var selectedCompanyId = companyId ?? user.CompanyId;
+        var companyName = await _context.Client.AsNoTracking()
+            .Where(c => c.Id == selectedCompanyId).Select(c => c.CompanyName).FirstOrDefaultAsync(ct);
+        return new OAuthConsentUserInfo(user.Email, $"{user.FirstName} {user.LastName}".Trim(), companyName,
+            await IsEligibleAsync(user, selectedCompanyId, ct));
     }
 
     /// <inheritdoc />
     public async Task<string> IssueAuthorizationCodeAsync(IssueAuthorizationCodeRequest request, CancellationToken ct = default)
     {
         var user = await _context.User.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.UserId, ct);
-        if (user is null || !IsEligible(user))
+        var companyId = request.CompanyId ?? user?.CompanyId;
+        if (user is null || !await IsEligibleAsync(user, companyId, ct))
             throw new OAuthErrorException(OAuthErrorException.AccessDenied, "user is not eligible for OAuth (inactive, no company, or not allowlisted)");
 
         var rawCode = GenerateSecret();
@@ -99,6 +104,7 @@ public class OAuthService : IOAuthService
         {
             CodeHash = ApiKeyService.ComputeHash(rawCode),
             UserId = request.UserId,
+            CompanyId = companyId,
             ClientId = request.ClientId,
             ClientName = request.ClientName,
             RedirectUri = request.RedirectUri,
@@ -174,17 +180,19 @@ public class OAuthService : IOAuthService
         code.ConsumedAt = DateTime.UtcNow; // plain assignment — safe under the exclusive row lock
 
         var user = await _context.User.FirstOrDefaultAsync(u => u.Id == code.UserId, ct);
-        if (user is null || !IsEligible(user))
+        if (user is null || !await IsEligibleAsync(user, code.CompanyId, ct))
         {
             await _context.SaveChangesAsync(ct); // persist the consumption so a denied code cannot be retried
             await transaction.CommitAsync(ct);
             throw new OAuthErrorException(OAuthErrorException.AccessDenied, "user is not eligible for OAuth (inactive, no company, or not allowlisted)");
         }
 
-        // Supersede any existing grant for the same (user, client, resource) — ADR §4.3: a
+        // Supersede only the same (user, company, client, resource). Consent to another
+        // company must not revoke or replace this company's independent authorization.
+        // ADR §4.3: a
         // reconnect must not pile up rows in "Připojené aplikace".
         var priorGrantIds = await _context.OAuthGrant
-            .Where(g => g.UserId == code.UserId && g.ClientId == code.ClientId && g.Resource == code.Resource && g.RevokedAt == null)
+            .Where(g => g.UserId == code.UserId && g.CompanyId == code.CompanyId && g.ClientId == code.ClientId && g.Resource == code.Resource && g.RevokedAt == null)
             .Select(g => g.Id)
             .ToListAsync(ct);
 
@@ -194,6 +202,7 @@ public class OAuthService : IOAuthService
         var grant = new OAuthGrant
         {
             UserId = code.UserId,
+            CompanyId = code.CompanyId,
             ClientId = code.ClientId,
             ClientName = code.ClientName,
             Scopes = code.Scopes,
@@ -318,7 +327,7 @@ public class OAuthService : IOAuthService
         token.ConsumedAt = DateTime.UtcNow; // plain assignment — safe under the grant's exclusive row lock
 
         var user = await _context.User.FirstOrDefaultAsync(u => u.Id == grant.UserId, ct);
-        if (user is null || !IsEligible(user))
+        if (user is null || !await IsEligibleAsync(user, grant.CompanyId, ct))
         {
             if (user is not null && !user.IsActive)
                 await RevokeGrantAsync(grant.Id, EOAuthGrantRevokedReason.Admin, null, ct);
@@ -430,6 +439,8 @@ public class OAuthService : IOAuthService
                 Id = g.Id,
                 ClientId = g.ClientId,
                 ClientName = g.ClientName,
+                CompanyId = g.CompanyId,
+                CompanyName = _context.Client.Where(c => c.Id == g.CompanyId).Select(c => c.CompanyName).FirstOrDefault(),
                 Scopes = g.Scopes,
                 CreatedAt = g.CreatedAt,
                 LastUsedAt = g.LastUsedAt
@@ -461,19 +472,20 @@ public class OAuthService : IOAuthService
     /// endpoint (both grant types), and — via <c>ApiKeyAuthenticator</c>'s revocation checks —
     /// implicitly at every subsequent request.
     /// </summary>
-    private bool IsEligible(Domain.Entities.User user)
+    private async Task<bool> IsEligibleAsync(Domain.Entities.User user, long? companyId, CancellationToken ct)
     {
         if (!user.IsActive) return false;
-        if (!user.CompanyId.HasValue) return false;
-        // Explicit on top of the CompanyId check above (Codex review): SysAdmin accounts are
-        // supposed to have no CompanyId at all, so the check above already excludes the normal
-        // case — this is defense in depth against a data-inconsistent SysAdmin that somehow
-        // does have one, closing the gap outright rather than relying on an invariant held
-        // elsewhere.
+        if (!companyId.HasValue) return false;
         if (user.Role == Domain.Enums.EUserRole.SysAdmin) return false;
+        // Membership is authoritative: a missing/revoked membership cannot be recovered
+        // from User.CompanyId, which is merely the default for interactive sign-in.
+        if (!await _context.UserCompanyMembership.AsNoTracking().AnyAsync(m =>
+            m.UserId == user.Id && m.CompanyId == companyId && m.IsActive &&
+            m.Company.IsActive && m.Company.IsIssuer &&
+            (m.Role == EUserRole.User || m.Role == EUserRole.Admin), ct)) return false;
         if (_options.AllowAll) return true;
         if (_options.AllowedUserIds.Contains(user.Id)) return true;
-        return user.CompanyId.HasValue && _options.AllowedCompanyIds.Contains(user.CompanyId.Value);
+        return _options.AllowedCompanyIds.Contains(companyId.Value);
     }
 
     // ─── Token/code generation + validation ─────────────────────────────────
@@ -502,6 +514,8 @@ public class OAuthService : IOAuthService
         var entity = new ApiKeyEntity
         {
             UserId = grant.UserId,
+            CompanyId = grant.CompanyId,
+            AllowedCompanyIds = grant.CompanyId.HasValue ? [grant.CompanyId.Value] : [],
             Name = $"OAuth: {grant.ClientName}",
             KeyPrefix = raw[..12],
             KeyHash = ApiKeyService.ComputeHash(raw),

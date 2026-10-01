@@ -44,14 +44,15 @@ public class UserController : ControllerBase
 
     /// <summary>
     /// Gets all users
-    /// SysAdmin can see all users, Admin/User only see users from their company
+    /// Only SysAdmin can list users. Other roles use their own profile endpoint.
     /// </summary>
     /// <param name="companyId">Filter by company ID (SysAdmin only)</param>
     /// <param name="includeInactive">Include inactive users</param>
     /// <returns>List of users</returns>
     /// <response code="200">Returns list of users</response>
-    /// <response code="403">User not authorized to view users from other companies</response>
+    /// <response code="403">Only SysAdmin may list users</response>
     [HttpGet]
+    [Authorize(Roles = "SysAdmin")]
     [ProducesResponseType(typeof(List<UserDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<List<UserDto>>> GetAllUsers(
@@ -60,22 +61,6 @@ public class UserController : ControllerBase
     {
         try
         {
-            var currentUserRole = GetCurrentUserRole();
-            var currentUserCompanyId = GetCurrentUserCompanyId();
-
-            // SysAdmin can view any company, others can only view their own company
-            if (currentUserRole != EUserRole.SysAdmin)
-            {
-                // Non-SysAdmin trying to access different company
-                if (companyId.HasValue && companyId.Value != currentUserCompanyId)
-                {
-                    return Forbid();
-                }
-
-                // Force companyId to current user's company
-                companyId = currentUserCompanyId;
-            }
-
             var users = await _userService.GetAllUsersAsync(companyId, includeInactive);
             return Ok(users);
         }
@@ -94,8 +79,9 @@ public class UserController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Paged result of users</returns>
     /// <response code="200">Returns paged list of users</response>
-    /// <response code="403">User not authorized to view users from other companies</response>
+    /// <response code="403">Only SysAdmin may list users</response>
     [HttpGet("paged")]
+    [Authorize(Roles = "SysAdmin")]
     [ProducesResponseType(typeof(PagedResult<UserDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<PagedResult<UserDto>>> GetUsersPaged(
@@ -106,22 +92,6 @@ public class UserController : ControllerBase
         {
             _logger.LogInformation("GET /api/user/paged - Page: {Page}, PageSize: {PageSize}, Search: {Search}",
                 filter.Page, filter.PageSize, filter.Search);
-
-            var currentUserRole = GetCurrentUserRole();
-            var currentUserCompanyId = GetCurrentUserCompanyId();
-
-            // SysAdmin can view any company, others can only view their own company
-            if (currentUserRole != EUserRole.SysAdmin)
-            {
-                // Non-SysAdmin trying to access different company
-                if (filter.CompanyId.HasValue && filter.CompanyId.Value != currentUserCompanyId)
-                {
-                    return Forbid();
-                }
-
-                // Force companyId to current user's company
-                filter.CompanyId = currentUserCompanyId;
-            }
 
             var result = await _userService.GetUsersPagedAsync(filter, cancellationToken);
 
@@ -151,6 +121,9 @@ public class UserController : ControllerBase
     {
         try
         {
+            // Accountants and ordinary users may read only their own profile.
+            if (!CanAccessUser(id)) return Forbid();
+
             var user = await _userService.GetUserByIdAsync(id);
 
             if (user == null)
@@ -158,8 +131,8 @@ public class UserController : ControllerBase
                 return NotFound(new { message = $"User with ID {id} not found." });
             }
 
-            // Check authorization - users can only view users from their company (except SysAdmin)
-            if (!CanAccessUser(user.CompanyId))
+            // Recheck account access before returning personal data.
+            if (!CanAccessUser(id))
             {
                 return Forbid();
             }
@@ -175,7 +148,7 @@ public class UserController : ControllerBase
 
     /// <summary>
     /// Creates a new user
-    /// Admin can create users in their company, SysAdmin can create users in any company
+    /// Only SysAdmin can create users.
     /// </summary>
     /// <param name="createDto">User creation data</param>
     /// <returns>Created user</returns>
@@ -183,7 +156,7 @@ public class UserController : ControllerBase
     /// <response code="400">Invalid data or email already exists</response>
     /// <response code="403">Not authorized to create users</response>
     [HttpPost]
-    [Authorize(Roles = "Admin,SysAdmin")] // Only Admin and SysAdmin can create users
+    [Authorize(Roles = "SysAdmin")] // Only SysAdmin can create users
     [ProducesResponseType(typeof(UserDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -191,24 +164,6 @@ public class UserController : ControllerBase
     {
         try
         {
-            var currentUserRole = GetCurrentUserRole();
-            var currentUserCompanyId = GetCurrentUserCompanyId();
-
-            // Non-SysAdmin can only create users in their own company
-            if (currentUserRole != EUserRole.SysAdmin)
-            {
-                if (createDto.CompanyId != currentUserCompanyId)
-                {
-                    return Forbid();
-                }
-
-                // Admin cannot create SysAdmin users
-                if (createDto.Role == EUserRole.SysAdmin)
-                {
-                    return BadRequest(new { message = "Only SysAdmin can create SysAdmin users." });
-                }
-            }
-
             var user = await _userService.CreateUserAsync(createDto);
 
             return CreatedAtAction(nameof(GetUserById), new { id = user.Id }, user);
@@ -227,7 +182,7 @@ public class UserController : ControllerBase
 
     /// <summary>
     /// Updates an existing user
-    /// Admin can update users in their company, SysAdmin can update any user
+    /// Only SysAdmin can update user accounts, roles, and company membership.
     /// </summary>
     /// <param name="id">User ID to update</param>
     /// <param name="updateDto">Updated user data</param>
@@ -237,7 +192,7 @@ public class UserController : ControllerBase
     /// <response code="403">Not authorized to update this user</response>
     /// <response code="404">User not found</response>
     [HttpPut("{id}")]
-    [Authorize(Roles = "Admin,SysAdmin")]
+    [Authorize(Roles = "SysAdmin")]
     [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -254,27 +209,9 @@ public class UserController : ControllerBase
             }
 
             // Check authorization
-            if (!CanAccessUser(existingUser.CompanyId))
+            if (!CanAccessUser(id))
             {
                 return Forbid();
-            }
-
-            var currentUserRole = GetCurrentUserRole();
-            var currentUserCompanyId = GetCurrentUserCompanyId();
-
-            // Non-SysAdmin cannot change user to different company
-            if (currentUserRole != EUserRole.SysAdmin && updateDto.CompanyId.HasValue)
-            {
-                if (updateDto.CompanyId.Value != currentUserCompanyId)
-                {
-                    return BadRequest(new { message = "Cannot move user to different company." });
-                }
-            }
-
-            // Admin cannot set role to SysAdmin
-            if (currentUserRole != EUserRole.SysAdmin && updateDto.Role == EUserRole.SysAdmin)
-            {
-                return BadRequest(new { message = "Only SysAdmin can assign SysAdmin role." });
             }
 
             var user = await _userService.UpdateUserAsync(id, updateDto);
@@ -295,7 +232,7 @@ public class UserController : ControllerBase
 
     /// <summary>
     /// Changes user password
-    /// Users can change their own password, Admin can change passwords for users in their company
+    /// Users can change their own password; only SysAdmin can change another user's password.
     /// </summary>
     /// <param name="id">User ID</param>
     /// <param name="changePasswordDto">Password change data</param>
@@ -313,28 +250,14 @@ public class UserController : ControllerBase
     {
         try
         {
-            var currentUserId = GetCurrentUserId();
-            var currentUserRole = GetCurrentUserRole();
+            // Only SysAdmin may change another account's password.
+            if (!CanAccessUser(id)) return Forbid();
 
             // Get target user
             var targetUser = await _userService.GetUserByIdAsync(id);
             if (targetUser == null)
             {
                 return NotFound(new { message = $"User with ID {id} not found." });
-            }
-
-            // Users can change their own password, or Admin/SysAdmin can change passwords for users they manage
-            if (currentUserId != id)
-            {
-                if (currentUserRole == EUserRole.User)
-                {
-                    return Forbid();
-                }
-
-                if (!CanAccessUser(targetUser.CompanyId))
-                {
-                    return Forbid();
-                }
             }
 
             var result = await _userService.ChangePasswordAsync(id, changePasswordDto);
@@ -360,8 +283,7 @@ public class UserController : ControllerBase
 
     /// <summary>
     /// Resets a user's password without requiring the current password.
-    /// Only Admin and SysAdmin can perform this operation.
-    /// Admin can only reset passwords for users in their company.
+    /// Only SysAdmin can perform this operation.
     /// </summary>
     /// <param name="id">User ID</param>
     /// <param name="dto">New password data</param>
@@ -370,7 +292,7 @@ public class UserController : ControllerBase
     /// <response code="403">Not authorized to reset this user's password</response>
     /// <response code="404">User not found</response>
     [HttpPost("{id}/admin-reset-password")]
-    [Authorize(Roles = "Admin,SysAdmin")]
+    [Authorize(Roles = "SysAdmin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -385,8 +307,8 @@ public class UserController : ControllerBase
                 return NotFound(new { message = $"User with ID {id} not found." });
             }
 
-            // Check authorization — Admin can only reset passwords for users in their company
-            if (!CanAccessUser(targetUser.CompanyId))
+            // SysAdmin is the only role allowed to reset passwords.
+            if (!CanAccessUser(id))
             {
                 return Forbid();
             }
@@ -415,7 +337,7 @@ public class UserController : ControllerBase
     /// Why this is a separate, role-gated endpoint instead of a field on UserDto: the token
     /// authenticates the anonymous POST /api/user/set-password call, so exposing it on the
     /// listing DTO handed to every authenticated colleague is an account takeover (issue #364).
-    /// Admin and SysAdmin can already set any password in their scope via
+    /// SysAdmin can already set any password via
     /// <see cref="AdminResetPassword"/>, so this endpoint grants them nothing new.
     /// </summary>
     /// <param name="id">User ID</param>
@@ -424,7 +346,7 @@ public class UserController : ControllerBase
     /// <response code="403">Not authorized to read this user's invitation</response>
     /// <response code="404">User not found, or no valid pending invitation</response>
     [HttpGet("{id}/invitation-token")]
-    [Authorize(Roles = "Admin,SysAdmin")]
+    [Authorize(Roles = "SysAdmin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -438,8 +360,8 @@ public class UserController : ControllerBase
                 return NotFound(new { message = $"User with ID {id} not found." });
             }
 
-            // Admin may only reach users of their own company; SysAdmin is unrestricted.
-            if (!CanAccessUser(targetUser.CompanyId))
+            // SysAdmin is the only role allowed to retrieve invitation credentials.
+            if (!CanAccessUser(id))
             {
                 return Forbid();
             }
@@ -462,7 +384,7 @@ public class UserController : ControllerBase
 
     /// <summary>
     /// Deletes a user (soft delete - sets IsActive = false)
-    /// Admin can delete users in their company, SysAdmin can delete any user
+    /// Only SysAdmin can delete user accounts.
     /// </summary>
     /// <param name="id">User ID to delete</param>
     /// <returns>Success status</returns>
@@ -470,7 +392,7 @@ public class UserController : ControllerBase
     /// <response code="403">Not authorized to delete this user</response>
     /// <response code="404">User not found</response>
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Admin,SysAdmin")]
+    [Authorize(Roles = "SysAdmin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -486,7 +408,7 @@ public class UserController : ControllerBase
             }
 
             // Check authorization
-            if (!CanAccessUser(existingUser.CompanyId))
+            if (!CanAccessUser(id))
             {
                 return Forbid();
             }
@@ -510,7 +432,7 @@ public class UserController : ControllerBase
     /// <summary>
     /// Invites a new user by creating their account and sending an invitation email.
     /// The user will receive an email with a link to set their password.
-    /// Only Admin and SysAdmin can invite users.
+    /// Only SysAdmin can invite users.
     /// </summary>
     /// <param name="inviteDto">Invitation data (email, name, role, company)</param>
     /// <returns>Created user data</returns>
@@ -518,7 +440,7 @@ public class UserController : ControllerBase
     /// <response code="400">Invalid data or email already exists</response>
     /// <response code="403">Not authorized to invite users</response>
     [HttpPost("invite")]
-    [Authorize(Roles = "Admin,SysAdmin")]
+    [Authorize(Roles = "SysAdmin")]
     [ProducesResponseType(typeof(UserDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -526,24 +448,6 @@ public class UserController : ControllerBase
     {
         try
         {
-            var currentUserRole = GetCurrentUserRole();
-            var currentUserCompanyId = GetCurrentUserCompanyId();
-
-            // Non-SysAdmin can only invite users to their own company
-            if (currentUserRole != EUserRole.SysAdmin)
-            {
-                if (inviteDto.CompanyId != currentUserCompanyId)
-                {
-                    return Forbid();
-                }
-
-                // Admin cannot create SysAdmin users
-                if (inviteDto.Role == EUserRole.SysAdmin)
-                {
-                    return BadRequest(new { message = "Only SysAdmin can invite SysAdmin users." });
-                }
-            }
-
             // Create the user with invitation token. The token comes back on the result type,
             // never on the UserDto that goes into the response body (issue #364).
             var invited = await _userService.InviteUserAsync(inviteDto);
@@ -759,34 +663,11 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
-    /// Gets current user's company ID from JWT claims
-    /// Returns null for SysAdmin
+    /// Self-service is limited to the authenticated account. Only SysAdmin manages others;
+    /// sharing a company does not grant access to a colleague's profile or password.
     /// </summary>
-    private long? GetCurrentUserCompanyId()
-    {
-        var companyIdClaim = User.FindFirst("CompanyId")?.Value;
-        return long.TryParse(companyIdClaim, out var companyId) ? companyId : null;
-    }
-
-    /// <summary>
-    /// Checks if current user can access a user from the specified company
-    /// SysAdmin can access any company, others only their own
-    /// </summary>
-    private bool CanAccessUser(long? targetCompanyId)
-    {
-        var currentUserRole = GetCurrentUserRole();
-
-        // SysAdmin can access any user
-        if (currentUserRole == EUserRole.SysAdmin)
-        {
-            return true;
-        }
-
-        var currentUserCompanyId = GetCurrentUserCompanyId();
-
-        // Users can only access users from their own company
-        return targetCompanyId == currentUserCompanyId;
-    }
-
+    private bool CanAccessUser(long targetUserId)
+        => GetCurrentUserRole() == EUserRole.SysAdmin ||
+           (GetCurrentUserId() > 0 && GetCurrentUserId() == targetUserId);
     #endregion
 }

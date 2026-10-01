@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Fakvio.Application.Service;
+using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Authentication.OAuth;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
@@ -81,9 +82,36 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
             return null;
         }
 
+        // A key carries a fixed company grant. Never fall back to the owner's current
+        // default: changing the UI or joining a company must not expand this credential.
+        if (key.User.Role != EUserRole.SysAdmin &&
+            (key.CompanyId is null || !key.AllowedCompanyIds.Contains(key.CompanyId.Value)))
+            return null;
+
+        var membershipRole = key.CompanyId is { } companyId
+            ? await _context.UserCompanyMembership.AsNoTracking()
+                .Where(m => m.UserId == key.UserId && m.CompanyId == companyId && m.IsActive &&
+                    m.Company.IsActive && m.Company.IsIssuer &&
+                    (m.Role == EUserRole.User || m.Role == EUserRole.Admin))
+                .Select(m => (EUserRole?)m.Role).FirstOrDefaultAsync(ct)
+            : null;
+
+        if (key.OAuthGrantId is not null)
+        {
+            if (key.OAuthGrant is not { } grant || grant.UserId != key.UserId ||
+                grant.CompanyId != key.CompanyId || key.CompanyId is null || membershipRole is null ||
+                key.User.Role == EUserRole.SysAdmin ||
+                (!_oauthOptions.AllowAll && !_oauthOptions.AllowedUserIds.Contains(key.UserId) &&
+                 !_oauthOptions.AllowedCompanyIds.Contains(key.CompanyId.Value)))
+                return null;
+        }
+
         await TouchLastUsedAsync(key, ct);
 
-        return BuildPrincipal(key);
+        // A manual key may select a different explicitly granted company in middleware.
+        // Missing default membership confers no role; the middleware rejects it unless a
+        // valid alternate grant is selected before endpoint authorization.
+        return BuildPrincipal(key, key.User.Role == EUserRole.SysAdmin ? EUserRole.SysAdmin : membershipRole ?? EUserRole.User);
     }
 
     /// <summary>
@@ -197,7 +225,7 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
     /// every <c>[Authorize(Roles = …)]</c> answer 403 without a word in the log, and that is
     /// too quiet a failure to leave implicit.
     /// </summary>
-    private static ClaimsPrincipal BuildPrincipal(ApiKeyEntity key)
+    private static ClaimsPrincipal BuildPrincipal(ApiKeyEntity key, EUserRole role)
     {
         var user = key.User;
 
@@ -206,15 +234,15 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Name, user.FullName),
-            new(ClaimTypes.Role, user.Role.ToString()),
+            new(ClaimTypes.Role, role.ToString()),
             new(ApiKeyAuthenticationDefaults.ScopeClaimType, key.Scopes),
             new(ApiKeyAuthenticationDefaults.KeyIdClaimType, key.Id.ToString())
         };
 
         // Same conditional as the JWT path: a SysAdmin has no company, which is what
         // lets ImpersonationMiddleware fill the claim in from X-Company-Id.
-        if (user.CompanyId.HasValue)
-            claims.Add(new Claim("CompanyId", user.CompanyId.Value.ToString()));
+        if (key.CompanyId.HasValue)
+            claims.Add(new Claim("CompanyId", key.CompanyId.Value.ToString()));
 
         // OAuth-specific claims (ADR 0001 §4.5/§4.7) — absent for a manually created key.
         // oauth_grant_id is what ImpersonationMiddleware and ApiKeyRequestGuard key off of to
