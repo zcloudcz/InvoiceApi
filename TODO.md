@@ -31,7 +31,8 @@
 - [x] Add resolver unit tests and token-endpoint integration tests; update DEVGUIDE, USERGUIDE, ADMINGUIDE and OAuth ADR.
 - [x] Open draft PR #467 against `develop`; audit the existing Azure hosts and Forpsi DNS read-only. `fakvio-api` has no `api.fakvio.cz` hostname binding and neither host has OAuth app settings.
 - [ ] Review, merge and release PR #467 before enabling production OAuth.
-- [ ] Production OAuth rollout remains blocked: `api.fakvio.cz` currently resolves to GitHub Pages with a TLS mismatch; configure its DNS/App Service hostname/certificate, apply the OAuth app settings (including `McpOAuth__ConsentUrl`), then verify discovery and a ChatGPT read-only login.
+- [x] Configure Forpsi CNAME/TXT, bind `api.fakvio.cz` to the existing `fakvio-api` App Service, and issue/bind a free managed certificate. Authoritative DNS and direct HTTPS/TLS verification passed; local resolver caches may still serve the old GitHub Pages address until their TTL expires.
+- [ ] After PR #467 is released, apply OAuth app settings (including `McpOAuth__ConsentUrl`) to both existing hosts and enable the flags, then verify discovery and a ChatGPT read-only login.
 
 ## Completed (2026-09-11)
 

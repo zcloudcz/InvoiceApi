@@ -619,8 +619,9 @@ chování, dokud níže uvedené app settings nenastavíte — `McpOAuth:Enabled
 
 1. **Vlastní doména `api.fakvio.cz`** — nastavte CNAME u Forpsi na `fakvio-api.azurewebsites.net`,
    přidejte hostname a managed certifikát na App Service `fakvio-api` a ověřte HTTPS. Audit
-   2026-10-01 zjistil, že `api.fakvio.cz` stále míří na `fakvio.cz` (GitHub Pages) a certifikát
-   neodpovídá; OAuth proto nezapínejte, dokud DNS i TLS neukazují na API. Bez stabilní domény by
+   2026-10-01 byly CNAME/TXT záznamy, hostname a bezplatný managed certifikát nastaveny a
+   přímé HTTPS spojení s API ověřeno. Některé lokální DNS cache mohou do vypršení TTL stále
+   vracet starou adresu GitHub Pages; před zapnutím OAuth ověřte DNS i TLS z běžného klienta. Bez stabilní domény by
    klienti (Claude, ChatGPT) mohli issuer navždy svázat s technickou adresou `*.azurewebsites.net`.
 2. **Sdílené tajemství `ResourceProofSecret`** — vygenerujte 32+ náhodných bytů
    (`openssl rand -base64 32`) a uložte je **stejné** na obou web appech:
