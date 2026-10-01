@@ -7,6 +7,13 @@ namespace Fakvio.Contracts.Dto.ApiKey;
 /// </summary>
 public class CreateApiKeyDto
 {
+    /// <summary>Default company for requests without an explicit company selection.</summary>
+    public long? CompanyId { get; set; }
+
+    /// <summary>Explicit company grants. Empty means only the default company, never all memberships.</summary>
+    [MaxLength(100)]
+    public long[] AllowedCompanyIds { get; set; } = [];
+
     /// <summary>
     /// Label shown in the key list. Required, trimmed, max 100 characters.
     /// </summary>

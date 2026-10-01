@@ -1,5 +1,17 @@
 # Fakvio TODO
 
+## UX audit remediation (2026-10-01)
+
+- [x] Correct all 20 ranked audit findings and related contact, deletion, error-state and mobile-context observations on `codex/ux-audit-fixes`.
+- [x] Add SysAdmin membership inspection/update/revoke/restore in UI/API and two MCP tools (69 total, package version 2.6.0, unpublished).
+- [x] Serialize invite acceptance, membership administration and legacy account edits; prevent profile saves restoring revoked access or replacing independent company roles.
+- [x] Add 81 unit/component/MCP regressions and 7 integration cases relative to the reviewed baseline; full suites: 4,127 unit passed / 4 skipped, 256 integration passed / 3 skipped. PostgreSQL migration/concurrency checks passed on a disposable local instance.
+- [x] Release Blazor rebuild passed; compiler/analyzer/package warnings remain. Browser verified membership revocation, invitation validation, contact preservation, invoice-history navigation, URL normalization, payment pages beyond 50, and credit-note server search.
+- [x] Update USERGUIDE, ADMINGUIDE, DEVGUIDE and MCP README; preserve release-notes ownership.
+- [x] Record audit-to-test mapping, browser evidence and explicit verification limitations in `docs/reviews/2026-10-01-ux-fixes.md`.
+- [ ] Review and merge the stacked feature PRs, then authorize a separate production release. No UX fixes are deployed yet.
+
+
 ## Implemented, awaiting draft PR (2026-10-01): feedback and role presentation
 
 - [x] Shared feedback contracts, owner/company authorization, master persistence and generated migration.
@@ -1208,3 +1220,17 @@ based on how often Czech customers ask for them. Each line is sized as a standal
 - [ ] **API Rate Limiting** — protect against abuse, per-tenant and per-endpoint limits, ASP.NET Core rate limiting middleware
 - [ ] **Performance Optimization** — Redis distributed cache, response compression, lazy loading for large datasets, query optimization
 - [ ] **Apple OAuth** — add Apple sign-in provider (requires separate NuGet package, Apple Developer account setup)
+
+## Multi-company implementation — UI and MCP progress (2026-10-01)
+- [x] Shared company registration inputs, authenticated add/retry dialog, membership selector and confirmed browser reload after switch.
+- [x] Existing-identity invitation acceptance and SysAdmin invitation dialog; localized CZ/EN labels. Backend sends bilingual invitation email and returns a one-time manual link fallback; browser acceptance preserves identity credentials.
+- [x] API-key explicit company picker defaults to current company; key/connected-app company metadata. SysAdmin global-key creation remains available without memberships; focused integrations regression suite 22/22 passed.
+- [x] MCP 2.5.0 company tools and per-invocation context isolation; no machine JWT exchange.
+- [x] Added UI retry/invitation tests and real SDK concurrent company-context/discovery coverage.
+- [x] Central compilation and UI/MCP/login verification: 89 passed, 0 failed (2026-10-01). Includes real SDK concurrent company selection and OAuth consent company echo.
+- [x] Isolated PostgreSQL migration Up/Down passed (coordinator); independent security review of live membership, session, consent and rollback completed. Inactive-issuer, superseded-invitation and machine-retry findings fixed by responsible implementers.
+- [x] Final guides and implementation plan reconciled to actual routes, 67 MCP tools, stateless selection and unchanged legacy login behavior.
+- [x] Final full unit suite: 4,046 passed, 4 skipped, 0 failed; full integration suite: 249 passed, 3 skipped, 0 failed. Both exit 0, including real PostgreSQL migration and concurrent invitation acceptance.
+- [x] Coordinator final review, EF model consistency check (no pending changes), and Release Blazor WebAssembly build (0 warnings/errors).
+- [ ] Merge the reviewed feature through the normal release flow; desktop/mobile browser layout and journey checks remain unrun.
+Production deployment and package publication are outside this task and have not been performed.

@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Dto.CompanyMembership;
 using Fakvio.Contracts.Dto.Feedback;
 using System.Net;
 using System.Net.Http.Json;
@@ -50,6 +51,41 @@ public class FakvioApiClient : IFakvioApiClient
     public FakvioApiClient(HttpClient http)
     {
         _http = http;
+    }
+
+    public async Task<List<CompanyMembershipDto>> GetMyCompaniesAsync(CancellationToken ct = default)
+    {
+        using var response = await _http.GetAsync("api/my-companies", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<List<CompanyMembershipDto>>(JsonOptions, ct) ?? [];
+    }
+
+    public async Task<List<ManagedCompanyMembershipDto>> GetUserCompanyMembershipsAsync(long userId, CancellationToken ct = default)
+    {
+        using var response = await _http.GetAsync($"api/user/{userId}/memberships", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<List<ManagedCompanyMembershipDto>>(JsonOptions, ct) ?? [];
+    }
+
+    public async Task<ManagedCompanyMembershipDto> UpdateUserCompanyMembershipAsync(long userId, long companyId, UpdateCompanyMembershipDto input, CancellationToken ct = default)
+    {
+        using var response = await _http.PutAsJsonAsync($"api/user/{userId}/memberships/{companyId}", input, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<ManagedCompanyMembershipDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<CompanyMembershipDto> CreateMyCompanyAsync(CreateMyCompanyDto company, CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsJsonAsync("api/my-companies", company, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<CompanyMembershipDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<CompanyMembershipDto> RetryCompanyProvisioningAsync(long companyId, CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsync($"api/my-companies/{companyId}/retry-provisioning", null, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<CompanyMembershipDto>(JsonOptions, ct))!;
     }
 
     // All feedback operations use the same configured HttpClient and therefore the same

@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Threading.RateLimiting;
 using Fakvio.API.Middleware;
 using Fakvio.API.Telemetry;
@@ -349,6 +349,8 @@ if (!app.Environment.IsDevelopment())
 
 // Authentication must come before Authorization
 app.UseAuthentication();
+// Resolve the current membership role before any endpoint authorization.
+app.UseMiddleware<CompanyMembershipMiddleware>();
 app.UseAuthorization();
 
 // API-key scope middleware — a read-only key gets 403 on state-changing requests,

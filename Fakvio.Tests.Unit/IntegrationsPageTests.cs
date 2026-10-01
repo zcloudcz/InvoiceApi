@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // IntegrationsPageTests — bUnit coverage for /settings/integrations (issue #237).
 //
 // ApiKeyServiceTests covers the server side. This file covers the part the user
@@ -108,6 +108,7 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(factory);
         Services.AddSingleton(Substitute.For<AuthenticationStateProvider>());
         Services.AddSingleton<ApiKeyApiService>();
+        Services.AddSingleton<CompanyMembershipApiService>();
         // OAuthGrantsApiService — the stub 404s on /api/oauth/grants (unhandled route),
         // which the service turns into an empty list, same as the API does with the feature
         // flag off. This page's own tests are about API keys, not OAuth grants (see
@@ -244,6 +245,35 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
             _api.CreateCount.ShouldBe(1, "the create dialog did not reach the API"));
     }
 
+    [Fact]
+    public async Task SysAdminWithoutMemberships_CanCreateAndSeeGlobalPlatformKey()
+    {
+        var authorization = AddAuthorization();
+        authorization.SetAuthorized("sysadmin@example.test");
+        authorization.SetRoles("SysAdmin");
+        _api.Memberships.Clear();
+        var page = RenderPageWithKeys(ActiveKey());
+        page.WaitForAssertion(() => page.Markup.ShouldContain(Localized("CompanyMembership_PlatformAccess")));
+        await CreateKeyNamed(page, NewKeyName);
+        var request = _api.LastCreateRequest.ShouldNotBeNull();
+        request.CompanyId.ShouldBeNull();
+        request.AllowedCompanyIds.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RegularUserWithoutMemberships_CannotCreateGlobalPlatformKey()
+    {
+        _api.Memberships.Clear();
+        var page = RenderPageWithKeys();
+        var trigger = page.FindComponent<Fakvio.UI.Shared.Components.Shared.ResponsiveButton>();
+        await page.InvokeAsync(() => trigger.Instance.OnClick.InvokeAsync());
+        page.WaitForAssertion(() =>
+        {
+            var create = page.FindAll("button").First(b => b.TextContent.Contains(Localized("Btn_Create")));
+            create.HasAttribute("disabled").ShouldBeTrue();
+        });
+        page.Markup.ShouldNotContain(Localized("CompanyMembership_PlatformAccess"));
+    }
     // ── List ──────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -301,6 +331,8 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
         var request = _api.LastCreateRequest.ShouldNotBeNull();
         request.Name.ShouldBe(NewKeyName);
         request.Scopes.ShouldBe(ScopeRead);
+        request.CompanyId.ShouldBe(1);
+        request.AllowedCompanyIds.ShouldBe(new long[] { 1 });
         request.ExpiresAt.ShouldBeNull("an untouched date picker means the key never expires");
     }
 
@@ -573,10 +605,12 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
         /// <summary>Body of the last POST /api/api-key, exactly as the page serialized it.</summary>
         public CreateApiKeyDto? LastCreateRequest { get; private set; }
 
+        public List<Fakvio.Contracts.Dto.CompanyMembership.CompanyMembershipDto> Memberships { get; } = [new() { CompanyId = 1, CompanyName = "Company one", IsDefault = true, IsProvisioned = true }];
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (request.Method == HttpMethod.Get && path == "/api/my-companies") return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Memberships) };
 
             if (request.Method == HttpMethod.Get && path == "/api/api-key")
                 return Json(HttpStatusCode.OK, Keys);
@@ -635,5 +669,35 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
             Content = new StringContent(
                 JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json")
         };
+    }
+
+    [Fact]
+    public async Task RevealedKey_BlocksAnotherCreationUntilAcknowledged()
+    {
+        var page = RenderPageWithKeys(ActiveKey());
+        await CreateKeyNamed(page, NewKeyName);
+        page.WaitForAssertion(() => page.Markup.ShouldContain(RawKey));
+        var create = page.FindComponents<Fakvio.UI.Shared.Components.Shared.ResponsiveButton>()
+            .Single(x => x.Instance.Label == Localized("Integration_NewKey"));
+        create.Instance.Disabled.ShouldBeTrue();
+        // Exercise the callback too: a queued event must not bypass the visible disabled state.
+        await page.InvokeAsync(() => create.Instance.OnClick.InvokeAsync());
+        _api.CreateCount.ShouldBe(1);
+        page.Markup.ShouldContain(RawKey);
+        page.FindComponents<MudButton>().Single(x => x.Instance.ChildContent is not null &&
+            x.Markup.Contains(Localized("Integration_KeySaved"))).Find("button").Click();
+        create.Instance.Disabled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task CompanyGrantSelection_FormatsNamesInsteadOfIds()
+    {
+        var page = RenderPageWithKeys(ActiveKey());
+        ClickButtonTitled(page, Localized("Integration_NewKey"));
+        page.WaitForAssertion(() => page.FindComponents<MudSelect<long>>().Count.ShouldBe(1));
+        var selector = page.FindComponent<MudSelect<long>>();
+        selector.Instance.MultiSelectionTextFunc.ShouldNotBeNull()(["1"]).ShouldBe("Company one");
+        await page.InvokeAsync(() => selector.Instance.SelectedValuesChanged.InvokeAsync([1L]));
+        selector.Instance.SelectedValues.ShouldContain(1L);
     }
 }

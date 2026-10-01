@@ -58,6 +58,8 @@ před vystavením první faktury. Chcete-li adresu odstranit, udělejte to tam.
 
 ---
 
+Pokud byl účet vytvořen, ale odeslání emailu selhalo, zůstane na stránce registrace upozornění. Na přihlášení použijte **Zapomenuté heslo** pro nové zaslání; pokud email nedorazí, kontaktujte podporu. Výpadek služby při dvoufázovém ověření se zobrazuje odděleně od nesprávného kódu. V nastavení ověřovací aplikace lze ruční klíč zkopírovat ikonou kopírování; při selhání schránky jej zkopírujte ručně.
+
 ## 1. Přehled (Dashboard)
 
 **Stránka:** `/` (úvodní stránka po přihlášení)
@@ -96,6 +98,8 @@ Chybí-li něco červeného, doplníte to na příslušných stránkách — kar
 Stejný seznam najdete i v detailu faktury ve stavu Draft — tam se zobrazí jako barevný
 banner omezený na vystavitele té konkrétní faktury, takže vidíte přesně to, co by vystavení
 zablokovalo. Tam se odložit nedá — jde o poslední varování před kliknutím na Vystavit.
+
+Kontrolní seznam používá názvy polí odpovídající formulářům. Pokud oprava vyžaduje vyšší oprávnění, místo nefunkčního odkazu uvede, koho kontaktovat: nastavení EPO řeší SysAdmin, číselné řady Účetní nebo SysAdmin.
 
 ### KPI karty (klikatelné — navigují na příslušný seznam)
 
@@ -236,6 +240,8 @@ Co je dobré vědět:
 **Vytvoření importem:**
 - Z gridu: rozbalovací menu → „Import faktur" → `/invoices/import?target=IssuedInvoice`
 
+Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukládání je tlačítko Vytvořit/Uložit dočasně vypnuté, aby opakované kliknutí neposlalo další požadavek. Při neúspěšném načtení přehledu se zobrazí chyba s možností opakování, nikoli zpráva o prázdném seznamu. Filtr částky v hlavičce přehledu není nabízen.
+
 ### 2.5 Editace faktury
 
 - Detail faktury na `/invoices/{id}` — klikněte na řádek nebo ikonu oka
@@ -326,6 +332,8 @@ Dobropis (credit note) opravuje nebo ruší vydanou fakturu.
 
 **Alternativně:** Otevřete detail faktury → tlačítko „Vystavit dobropis" (pokud existuje, závisí na konfiguraci)
 
+Při změně typu nového dokladu na **Dobropis** se zobrazí vyhledávání původní faktury. Hledejte podle čísla nebo zákazníka; hledání probíhá i mezi staršími vystavenými a zaplacenými fakturami. Zpřesněte hledaný text, pokud je výsledků mnoho. Bez výběru původní faktury nelze dobropis vytvořit.
+
 ### Specifika dobropisu
 
 - V gridu faktur jsou dostupné přes URL parametr `?type=CreditNote`
@@ -383,6 +391,8 @@ Kliknutím na řádek nebo ikonu oka otevřete detail klienta.
 6. Přidejte bankovní účty
 7. Klikněte „Vytvořit"
 
+Při editaci klienta mění pole Email a Telefon první kontakt příslušného typu. Další uložené kontakty, jejich popisky a označení hlavního kontaktu zůstávají zachované. Smazání klienta z přehledu i detailu vyžaduje potvrzení; zrušení potvrzení nic nemění. Během ukládání je opakované odeslání zablokované.
+
 ### 5.3 Fakturační nastavení klienta
 
 V detailu klienta sekce „Fakturační nastavení" (BillingSettings):
@@ -398,7 +408,7 @@ Tyto hodnoty se automaticky aplikují při vytváření nové faktury pro tohoto
 
 ### 5.4 Historie faktur klienta
 
-V detailu klienta se zobrazuje tabulka faktur tohoto klienta (server-side stránkování).
+V detailu klienta se zobrazuje tabulka faktur tohoto klienta (server-side stránkování). Číslo faktury otevře její detail. Stav filtrujte výběrem nad tabulkou; hlavička tabulky nenabízí druhý filtr stavu ani nepodporovaný filtr částky.
 
 ### 5.5 Import klientů z Fakturoidu / iDokladu
 
@@ -486,6 +496,8 @@ faktura zůstane vystavená, uvidíte to jako chybu u plánu a další perioda s
 neodeslaný e-mail se negeneruje znovu.
 
 ---
+
+Sazby DPH, číselné řady a šablony dokumentů může běžný **Uživatel** prohlížet. Zápisové akce vyžadují roli **Účetní** nebo **SysAdmin**; rozhraní je běžnému uživateli nenabízí ani po otevření detailu šablony přímým odkazem.
 
 ## 7. Šablony dokumentů (ContentTemplates — PDF + email)
 
@@ -921,6 +933,10 @@ Aplikace podporuje dvě jazykové mutace:
 
 ---
 
+### Stránkování plateb a výběr pro párování
+
+Historie plateb načítá zvolenou stránku ze serveru a umožňuje změnit počet řádků. Změna filtru vrátí historii na první stránku. Také nespárované příchozí platby mají vlastní stránky. Hromadné párování zpracuje označené řádky, nebo aktuální stránku, pokud nic neoznačíte. Při přechodu na jinou stránku či obnovení nespárovaných plateb se předchozí výběr zruší. Chyba načtení se zobrazí samostatně; použijte tlačítko obnovení.
+
 ## 17. Notifikace
 
 **Přístup:** ikona zvonečku 🔔 v pravém horním rohu navigace (vedle tlačítka odhlášení)
@@ -964,6 +980,8 @@ Kompletní seznam všech notifikací se stránkováním a filtry:
 **Akce:**
 - Kliknutím na řádek → přechod na detail dokladu + označení jako přečtené
 - „Označit vše jako přečtené" — hromadné označení
+
+Při výpadku notifikací zůstane poslední načtený seznam a objeví se chyba s možností opakování. Neúspěšné označení za přečtené nemaže upozornění ani nesnižuje počet nepřečtených položek. Odkaz na bankovní transakce vede do přehledu Plateb. Ovládání zvonečku, seznamu i tabulek respektuje zvolený jazyk.
 
 ### Typy notifikací
 
@@ -1128,7 +1146,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 63 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 69 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1341,8 +1359,22 @@ znovu přihlásit.
 
 Po přihlášení otevřete formulář ikonou brouka vpravo nahoře. Vyberte **Chyba**, **Nápad** nebo **Připomínka**, napište předmět (nejvýše 200 znaků) a popis (nejvýše 10 000 znaků). Připojí se aktuální stránka bez parametrů a verze aplikace. Přílohy ani odesílání emailu tato funkce nepodporuje.
 
-Po odeslání přejdete na detail hlášení. V nabídce **Moje hlášení** (`/feedback`) najdete pouze vlastní hlášení pro aktuální firmu; lze je filtrovat podle typu a stavu. Správce může nastavit stav **Nové**, **Řeší se**, **Vyřešeno** nebo **Zamítnuto** a přidat veřejnou odpověď, kterou uvidíte v detailu. Při chybě odeslání zůstane rozepsaný text ve formuláři.
+Po odeslání přejdete na detail hlášení. V nabídce **Moje hlášení** (`/feedback`) najdete pouze vlastní hlášení pro aktuální firmu; lze je filtrovat podle typu a stavu. Správce může nastavit stav **Nové**, **Řeší se**, **Vyřešeno** nebo **Zamítnuto** a přidat veřejnou odpověď, kterou uvidíte v detailu. Při chybě odeslání zůstane rozepsaný text ve formuláři. Do pole Stránka můžete vložit místní cestu nebo celou URL této aplikace; parametry a fragment se neukládají. Cizí či neplatná URL zobrazí chybu přímo u pole.
 
 Stejné odeslání a sledování nabízí MCP nástroje `submit_feedback`, `list_feedback`, `get_feedback`; odeslání vyžaduje oprávnění k zápisu.
 
 Role dříve označená **Admin** se zobrazuje jako **Účetní** (anglicky **Accountant**). Zachovává dosavadní pracovní oprávnění kromě správy uživatelů; ta je nyní dostupná jen systémovému správci. Úprava vlastního profilu, hesla a osobních nastavení zůstává dostupná. Štítek role vedle jména v záhlaví byl odstraněn.
+
+## Více firem pod jedním účtem
+
+Jeden email zůstává jednou přihlašovací identitou. Nabídka firmy v záhlaví ukazuje dostupná členství a role. Vyberte firmu a potvrďte přepnutí; aplikace se znovu načte s daty vybrané firmy. Neuložené změny předem uložte. Účetní je zobrazovaný název role Admin; správu uživatelů má pouze SysAdmin.
+
+Volbou **Přidat firmu** založíte další firmu bez nové registrace nebo změny hesla. Pokud příprava firmy selže, použijte **Opakovat nastavení**; opakuje se příprava stejné firmy. Firmu lze vybrat po dokončení přípravy.
+
+SysAdmin může pozvat existující účet do další firmy. Otevřete odkaz pod pozvaným emailem a zvolte přijetí pozvánky. Pokud nejste přihlášení, přihlaste se tlačítkem na stránce pozvánky; stejná karta se poté vrátí k přijetí. Pozvánka nemění heslo ani externí přihlášení. SysAdmin může změnit roli nebo odebrat přístup jen k jedné firmě; ostatní členství zůstávají zachována.
+
+V **Nastavení → Integrace** vyberte firmy, ke kterým smí nový API klíč přistupovat. Aktuální firma je předvybraná a výběr zobrazuje názvy firem. Po vytvoření nejprve bezpečně uložte zobrazený klíč a potvrďte to tlačítkem; do té doby nelze vytvořit další klíč. Existující klíče automaticky nezískávají přístup k nově přidaným firmám. Připojené OAuth aplikace zůstávají vázané na firmu schválenou při připojení.
+
+Neplatné nebo vypršené schválení OAuth zobrazí vysvětlení a pokyn zahájit připojení znovu. Při dočasné chybě načtení lze požadavek zopakovat.
+
+MCP nástroje přijímají volitelný `companyId` pro každé volání osobním API klíčem s odpovídajícím oprávněním. `list_companies` zobrazí dostupná aktivní členství a `select_company` ověří výběr; `companyId` opakujte při dalších voláních, protože se neukládá. S OAuth parametr vynechte a použijte firmu schválenou při připojení. `add_company` vyžaduje zápis a samotným vytvořením nerozšíří oprávnění použitého klíče. Správa členství jiných uživatelů je dostupná pouze SysAdminovi; podrobnosti jsou v ADMINGUIDE.

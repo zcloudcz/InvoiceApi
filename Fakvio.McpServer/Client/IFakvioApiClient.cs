@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Dto.CompanyMembership;
 using Fakvio.Contracts.Dto.Feedback;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.ApiKey;
@@ -31,6 +32,15 @@ namespace Fakvio.McpServer.Client;
 /// </summary>
 public interface IFakvioApiClient
 {
+    /// <summary>Lists the active memberships explicitly available to the current credential.</summary>
+    Task<List<CompanyMembershipDto>> GetMyCompaniesAsync(CancellationToken ct = default);
+    Task<List<ManagedCompanyMembershipDto>> GetUserCompanyMembershipsAsync(long userId, CancellationToken ct = default);
+    Task<ManagedCompanyMembershipDto> UpdateUserCompanyMembershipAsync(long userId, long companyId, UpdateCompanyMembershipDto input, CancellationToken ct = default);
+    /// <summary>Creates a company without broadening the calling credential's grants.</summary>
+    Task<CompanyMembershipDto> CreateMyCompanyAsync(CreateMyCompanyDto company, CancellationToken ct = default);
+    /// <summary>Retries setup of the caller's existing company creation operation.</summary>
+    Task<CompanyMembershipDto> RetryCompanyProvisioningAsync(long companyId, CancellationToken ct = default);
+
     // Feedback identity and permissions are always resolved by the authenticated API.
     /// <summary>POST /api/feedback — submit feedback for the authenticated user/company.</summary>
     Task<FeedbackDto> CreateFeedbackAsync(CreateFeedbackDto dto, CancellationToken ct = default);

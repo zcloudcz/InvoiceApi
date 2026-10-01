@@ -65,7 +65,7 @@ public class TwoFactorApiService : ApiClientBase
     {
         try
         {
-            var response = await _httpClient.PostAsJsonAsync("/api/twofactor/verify",
+            using var response = await _httpClient.PostAsJsonAsync("/api/twofactor/verify",
                 new { SessionToken = sessionToken, Code = code });
 
             if (response.IsSuccessStatusCode)
@@ -80,7 +80,8 @@ public class TwoFactorApiService : ApiClientBase
             if (RateLimitExceededException.Matches(response.StatusCode))
                 throw new RateLimitExceededException();
 
-            return null;
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) return null;
+            throw new ApiException(response.StatusCode, "Two-factor verification is unavailable.", "/api/twofactor/verify");
         }
         catch (RateLimitExceededException)
         {
@@ -89,7 +90,7 @@ public class TwoFactorApiService : ApiClientBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during 2FA verification");
-            return null;
+            throw;
         }
     }
 

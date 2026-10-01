@@ -6,12 +6,24 @@
 @implements IDisposable
 
 <MudButton Href="@(Admin ? "/sysadmin/feedback" : "/feedback")" StartIcon="@Icons.Material.Filled.ArrowBack">@L[Admin ? "Feedback_Inbox" : "Feedback_Mine"]</MudButton>
-@if (_error) { <MudAlert Severity="Severity.Error">@L["Feedback_Error"]</MudAlert> }
+<UnsavedChangesLock IsDirty="IsDirty" />
+@if (_error)
+{
+    <MudAlert Severity="Severity.Error">@L["Feedback_Error"]</MudAlert>
+    @if (_report is null) { <MudButton OnClick="RetryAsync">@L["Feedback_Refresh"]</MudButton> }
+}
 @if (_loading) { <MudProgressLinear Indeterminate="true" /> }
 @if (_report is not null)
 {
     <MudPaper Class="pa-4 mt-4">
         <MudText Typo="Typo.h4">@_report.Subject</MudText>
+        @if (Admin)
+        {
+            <AuthorizeView Roles="SysAdmin">
+                <MudText>@L["User_Company"]: @(_report.CompanyName ?? $"#{_report.CompanyId}")</MudText>
+                <MudText>@L["Feedback_Reporter"]: @(_report.ReporterEmail ?? $"#{_report.UserId}")</MudText>
+            </AuthorizeView>
+        }
         <MudText>@L[$"EFeedbackType_{_report.Type}"] · @L[$"EFeedbackStatus_{_report.Status}"]</MudText>
         <MudText Typo="Typo.caption">@L["Feedback_Created"]: @_report.CreatedAt.ToLocalTime()</MudText>
         @* Normal Razor text stays HTML-escaped; never render reports as MarkupString. *@
@@ -44,6 +56,10 @@
     private (long, bool)? _loadedKey;
     private CancellationTokenSource? _load;
     private readonly CancellationTokenSource _lifetime = new();
+    private bool IsDirty => Admin && _report is not null &&
+        (_status != _report.Status || (_response ?? "") != (_report.PublicResponse ?? ""));
+
+    private Task RetryAsync() { _loadedKey = null; return OnParametersSetAsync(); }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -79,7 +95,13 @@
         try
         {
             var report = await Api.UpdateAsync(id, new UpdateFeedbackStatusDto { Status = _status, PublicResponse = _response }, _lifetime.Token);
-            if (Id == id) { _report = report; Snackbar.Add(L["Feedback_Saved"], Severity.Success); }
+            if (Id == id)
+            {
+                _report = report;
+                _status = report.Status;
+                _response = report.PublicResponse;
+                Snackbar.Add(L["Feedback_Saved"], Severity.Success);
+            }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         catch (Exception) { if (Id == id) _error = true; }

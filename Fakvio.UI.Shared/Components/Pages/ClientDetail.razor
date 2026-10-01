@@ -10,6 +10,7 @@
 @inject FakvioService InvoiceService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@(_isCreateMode ? L["Client_New"] : L["Client_Detail"])</PageTitle>
@@ -46,7 +47,7 @@ else
             @* Create mode — Save/Cancel buttons *@
             <MudButton Variant="Variant.Text" OnClick="GoBack">@L["Btn_Cancel"]</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="SaveClient">@L["Btn_Create"]</MudButton>
+                       Disabled="_saving" OnClick="SaveClient">@L["Btn_Create"]</MudButton>
         }
         else if (!_isEditing)
         {
@@ -61,9 +62,11 @@ else
             @* Edit mode — Save/Cancel buttons *@
             <MudButton Variant="Variant.Text" OnClick="CancelEditing">@L["Btn_Cancel"]</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="SaveClient">@L["Btn_Save"]</MudButton>
+                       Disabled="_saving" OnClick="SaveClient">@L["Btn_Save"]</MudButton>
         }
     </div>
+
+    @if (_saving) { <MudProgressLinear Indeterminate="true" Class="mb-2" /> }
 
     @* Client information cards — shared layout for create/view/edit *@
     <MudGrid>
@@ -361,9 +364,7 @@ else
                 @* Document number column with chip display *@
                 <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" Sortable="true">
                     <CellTemplate>
-                        <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
-                            @context.Item.DocumentNumber
-                        </MudChip>
+                        <MudLink Href="@($"/invoices/{context.Item.Id}")">@context.Item.DocumentNumber</MudLink>
                     </CellTemplate>
                 </PropertyColumn>
                 @* Issue date — short date format *@
@@ -379,13 +380,13 @@ else
                     </FilterTemplate>
                 </PropertyColumn>
                 @* Total with VAT — bold amount + currency code *@
-                <PropertyColumn Property="x => x.TotalWithVat" Title="@L["Invoice_TotalWithVat"].Value" Sortable="true">
+                <PropertyColumn Property="x => x.TotalWithVat" Title="@L["Invoice_TotalWithVat"].Value" Sortable="true" Filterable="false">
                     <CellTemplate>
                         <strong>@context.Item.TotalWithVat.ToString("N2") @context.Item.CurrencyCode</strong>
                     </CellTemplate>
                 </PropertyColumn>
                 @* Status column with colored chip *@
-                <PropertyColumn Property="x => x.Status" Title="@L["Label_Status"].Value" Sortable="false">
+                <PropertyColumn Property="x => x.Status" Title="@L["Label_Status"].Value" Sortable="false" Filterable="false">
                     <CellTemplate>
                         <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Item.Status)">
                             @GetStatusText(context.Item.Status)
@@ -609,8 +610,12 @@ else
     /// Saves client data — creates a new client or updates an existing one.
     /// On create success, navigates to the new client's detail page.
     /// </summary>
+    private bool _saving;
+
     private async Task SaveClient()
     {
+        if (_saving) return;
+        _saving = true;
         try
         {
             // Build address and contact lists from form data
@@ -649,7 +654,7 @@ else
                     TaxNumber = _editClient.TaxNumber,
                     IsVatPayer = _editClient.IsVatPayer,
                     IsIssuer = _editClient.IsIssuer,
-                    IsActive = true,
+                    IsActive = _client!.IsActive,
                     Language = _editClient.Language,
                     Color = _editClient.Color ?? "",
                     PeppolId = _editClient.PeppolId ?? "",
@@ -673,26 +678,8 @@ else
                     IsPrimary = a.IsPrimary
                 }).ToList();
 
-                // Contacts
-                updateDto.Contact = new List<UpdateContactDto>();
-                if (!string.IsNullOrWhiteSpace(_emailContact))
-                {
-                    updateDto.Contact.Add(new UpdateContactDto
-                    {
-                        ContactType = EContactType.Email,
-                        ContactValue = _emailContact,
-                        IsPrimary = true
-                    });
-                }
-                if (!string.IsNullOrWhiteSpace(_phoneContact))
-                {
-                    updateDto.Contact.Add(new UpdateContactDto
-                    {
-                        ContactType = EContactType.Phone,
-                        ContactValue = _phoneContact,
-                        IsPrimary = updateDto.Contact.Count == 0
-                    });
-                }
+                // Retain extra contacts and metadata when editing the two visible fields.
+                updateDto.Contact = ClientContactEditor.Merge(_client!.Contact, _emailContact, _phoneContact);
 
                 // Billing settings
                 updateDto.BillingSettings = new UpdateBillingSettingsDto
@@ -726,6 +713,7 @@ else
         {
             Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
+        finally { _saving = false; }
     }
 
     /// <summary>
@@ -765,6 +753,8 @@ else
     /// </summary>
     private async Task DeleteClient()
     {
+        if (await DialogService.ShowMessageBox(L["Msg_ConfirmDeleteTitle"], L["Common_DeleteConfirm"],
+            yesText: L["Btn_Delete"], cancelText: L["Btn_Cancel"]) != true) return;
         try
         {
             if (await ClientService.DeleteAsync(Id))

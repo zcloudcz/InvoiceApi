@@ -168,6 +168,8 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<INotificationService, NotificationService>();
         // Deliberately avoid argument-logging proxies: report bodies may contain private information.
         services.AddScoped<IFeedbackService, FeedbackService>();
+        services.AddScoped<ICompanyMembershipService, CompanyMembershipService>();
+        services.AddScoped<CompanySessionService>();
 
         // Invoice email — receive invoices via email (ISDOC/PDF attachments).
         services.AddScopedWithLogging<IInvoiceMailboxService, InvoiceMailboxService>();

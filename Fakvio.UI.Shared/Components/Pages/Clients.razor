@@ -143,6 +143,8 @@
     /// </summary>
     private async Task DeleteClientAsync(long id)
     {
+        if (await DialogService.ShowMessageBox(L["Msg_ConfirmDeleteTitle"], L["Common_DeleteConfirm"],
+            yesText: L["Btn_Delete"], cancelText: L["Btn_Cancel"]) != true) return;
         try
         {
             var success = await ClientService.DeleteAsync(id);

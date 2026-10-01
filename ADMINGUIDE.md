@@ -1133,4 +1133,32 @@ Uživatel vidí jen vlastní hlášení v aktuální firmě. Odeslané texty se 
 
 MCP 2.4.0 poskytuje i nástroje pro centrální přehled/detail a změnu stavu. Používají stejné chráněné HTTP endpointy; vyžadují skutečnou roli SysAdmin a změna stavu také scope zápisu u strojových přihlašovacích údajů. Samotný název nástroje žádné oprávnění nepřidává.
 
-Role **Účetní / Accountant** používá interně původní roli `Admin`, ale nově nemá správu uživatelů. Uživatele a jejich pozvánky spravuje SysAdmin; samotnému uživateli zůstávají osobní profil, heslo a preference. Běžným uživatelům se volba SysAdmin v roli nenabízí. Opakovaná registrace se stejným emailem je nadále odmítnuta; více firem pod jednou identitou zatím není implementováno.
+Role **Účetní / Accountant** používá interně původní roli `Admin`, ale nově nemá správu uživatelů. Uživatele a jejich pozvánky spravuje SysAdmin; samotnému uživateli zůstávají osobní profil, heslo a preference. Běžným uživatelům se volba SysAdmin v roli nenabízí. Opakovaná registrace se stejným emailem je nadále odmítnuta; další firma se přidává pod přihlášeným účtem přes členství popsané níže.
+
+## Členství ve firmách a pozvánky
+
+Jedna přihlašovací identita může mít více členství. Každé uděluje roli Uživatel nebo Účetní (interně Admin), nikdy SysAdmin. Globální impersonace SysAdmina je samostatná funkce.
+
+V **Uživatelích** zvolte **Pozvat existující účet**, vyberte firmu a roli a vyplňte email. Chybějící firma se označí přímo ve formuláři. Pozvánka se posílá dvojjazyčným emailem; jednorázový odkaz lze předat ručně také při selhání SMTP. Přijetí vyžaduje přihlášení pozvaného účtu. Opakované pozvání zneplatní předchozí čekající odkazy. Platnost je 48 hodin; v úložišti zůstává pouze hash tokenu. Tato pozvánka neslouží k nastavení hesla.
+
+### Správa jednotlivých členství
+
+U konkrétního uživatele otevřete akci **Členství ve firmách**. Dialog ukazuje jeho aktivní i odebraná členství, firmu, roli a označení výchozí firmy. U požadované firmy nastavte Uživatel/Účetní a aktivitu a uložte daný řádek. Odebrání přístupu vyžaduje potvrzení se jménem firmy. Obnovení přístupu vyžaduje aktivní účet a aktivní firmu. Chcete-li odebranou firmu znovu nastavit jako výchozí v profilu účtu, nejprve zde obnovte členství; samotná změna profilu přístup neobnovuje.
+
+Změna se týká pouze vybraného členství. Nemění ostatní firmy, výchozí firmu účtu ani seznam firem udělených existujícím API klíčům či OAuth připojením. Čekající pozvánky pro dané členství se při administrátorské změně zneplatní, aby starý odkaz neobnovil odebraný přístup nebo původní vyšší roli. Následující požadavky ověřují aktuální členství; starý podepsaný token sám o sobě přístup nezachová.
+
+Přehled poskytuje `GET /api/user/{userId}/memberships`; změnu role a aktivity `PUT /api/user/{userId}/memberships/{companyId}`. Obě operace vyžadují SysAdmina. Stejnou hranici používají MCP nástroje `list_user_company_memberships` (čtení) a `update_user_company_membership` (zápis). Aktualizace vyžaduje scope zápisu a nemůže založit členství, které ještě neexistuje.
+
+Pokud příprava nové firmy selže, lze ji opakovat z nabídky firem bez založení dalšího účtu nebo duplicitní firmy. Při diagnostice kontrolujte uloženou operaci a stav provisioningu.
+
+### Obnova chyb a zpracování hlášení
+
+Přehled i detail zpětné vazby ukazují firmu a email autora; pokud identita chybí, zobrazí její ID. Rozepsaná veřejná odpověď nebo změna stavu upozorní před odchodem bez uložení. Při selhání načtení lze detail obnovit, při selhání uložení zůstává rozepsaný obsah zachovaný.
+
+Kontrolní seznam připravenosti ukazuje uživatelské názvy chybějících polí. Uživatel bez oprávnění dostane pokyn kontaktovat Účetního nebo SysAdmina místo odkazu do zakázaného editoru. Běžný Uživatel může sazby DPH, číselné řady a šablony dokumentů pouze prohlížet; Účetní je může spravovat.
+
+Výpadky notifikací a dvoufázového ověření mají odlišnou zprávu od prázdného seznamu či nesprávného kódu. Registrace s neodeslaným emailem ponechá viditelné upozornění a možnost vyžádat další email přes zapomenuté heslo. Při potížích s OAuth se odlišuje neplatný odkaz od dočasné chyby služby.
+
+### Nasazení a návrat změn
+
+Tato větev dosud nebyla nasazena do produkce. Před návratem vícefiremního modelu zrušte přihlašovací údaje, jejichž oprávnění by se po obnovení staré interpretace `User.CompanyId` změnila. Neodstraňujte vazby na firmy při ponechání těchto klíčů/OAuth grantů v platnosti. Zkontrolujte sestupnou migraci a zachovejte zálohu.
