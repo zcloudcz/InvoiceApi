@@ -1864,4 +1864,27 @@
   <data name="Feedback_Subject" xml:space="preserve"><value>Subject</value></data>
   <data name="Feedback_Type" xml:space="preserve"><value>Type</value></data>
   <data name="Feedback_Version" xml:space="preserve"><value>Application version</value></data>
+  <data name="CompanyMembership_Accept" xml:space="preserve"><value>Accept invitation</value></data>
+  <data name="CompanyMembership_Accepted" xml:space="preserve"><value>Invitation accepted. Refresh the page to find the company in the selector.</value></data>
+  <data name="CompanyMembership_AcceptInfo" xml:space="preserve"><value>Accept using the account matching the invited email. Your password stays the same.</value></data>
+  <data name="CompanyMembership_AcceptTitle" xml:space="preserve"><value>Accept company invitation</value></data>
+  <data name="CompanyMembership_Add" xml:space="preserve"><value>Add company</value></data>
+  <data name="CompanyMembership_CredentialNotice" xml:space="preserve"><value>Existing API keys and connected apps do not automatically gain access to the new company.</value></data>
+  <data name="CompanyMembership_Error" xml:space="preserve"><value>The request failed. Check your access and try again.</value></data>
+  <data name="CompanyMembership_GrantedCompanies" xml:space="preserve"><value>Allowed companies</value></data>
+  <data name="CompanyMembership_GrantHelp" xml:space="preserve"><value>Select only the companies this key may access. The current company is selected by default.</value></data>
+  <data name="CompanyMembership_InvitationCreated" xml:space="preserve"><value>Invitation created. Share this one-time link with the invited user.</value></data>
+  <data name="CompanyMembership_InvitationError" xml:space="preserve"><value>The invitation is not valid for this account, has expired, or was already used.</value></data>
+  <data name="CompanyMembership_InvitationLink" xml:space="preserve"><value>Invitation link</value></data>
+  <data name="CompanyMembership_InvitationToken" xml:space="preserve"><value>Invitation token</value></data>
+  <data name="CompanyMembership_Invite" xml:space="preserve"><value>Create invitation</value></data>
+  <data name="CompanyMembership_InviteExisting" xml:space="preserve"><value>Invite existing account</value></data>
+  <data name="CompanyMembership_LoginRequired" xml:space="preserve"><value>Sign in using the invited email, then reopen the invitation link.</value></data>
+  <data name="CompanyMembership_ProvisioningFailed" xml:space="preserve"><value>The company was created, but setup is incomplete. Retry setup.</value></data>
+  <data name="CompanyMembership_Retry" xml:space="preserve"><value>Retry setup</value></data>
+  <data name="CompanyMembership_Select" xml:space="preserve"><value>Companies</value></data>
+  <data name="CompanyMembership_Switch" xml:space="preserve"><value>Switch</value></data>
+  <data name="CompanyMembership_SwitchConfirm" xml:space="preserve"><value>Switch company? Unsaved changes will be discarded.</value></data>
+  <data name="CompanyMembership_CountryCode" xml:space="preserve"><value>Two-letter country code, for example CZ or SK.</value></data>
+  <data name="CompanyMembership_PlatformAccess" xml:space="preserve"><value>Platform access (SysAdmin)</value></data>
 </root>

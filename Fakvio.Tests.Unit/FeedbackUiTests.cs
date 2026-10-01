@@ -175,6 +175,7 @@ public class FeedbackUiTests : BunitContext, IAsyncLifetime
         Services.AddSingleton<CompanyApiService>();
         Services.AddSingleton<NotificationApiService>();
         ComponentFactories.AddStub<NavMenu>();
+        ComponentFactories.AddStub<CompanyMembershipSelector>();
         var cut = Render<MainLayout>();
         cut.HasComponent<FeedbackButton>().ShouldBe(authenticated);
         // The raw JWT role must no longer be printed next to the account name.

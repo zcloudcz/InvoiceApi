@@ -168,6 +168,7 @@
             var result = await ConsentApi.DecideAsync(new OAuthConsentDecisionDto
             {
                 Ticket = _ticket,
+                CompanyId = _info?.CompanyId,
                 Allow = allow,
                 Scope = allow ? _selectedScope : null
             });

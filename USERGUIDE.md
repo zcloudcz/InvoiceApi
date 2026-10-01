@@ -1128,7 +1128,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 63 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 67 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1346,3 +1346,15 @@ Po odeslání přejdete na detail hlášení. V nabídce **Moje hlášení** (`/
 Stejné odeslání a sledování nabízí MCP nástroje `submit_feedback`, `list_feedback`, `get_feedback`; odeslání vyžaduje oprávnění k zápisu.
 
 Role dříve označená **Admin** se zobrazuje jako **Účetní** (anglicky **Accountant**). Zachovává dosavadní pracovní oprávnění kromě správy uživatelů; ta je nyní dostupná jen systémovému správci. Úprava vlastního profilu, hesla a osobních nastavení zůstává dostupná. Štítek role vedle jména v záhlaví byl odstraněn.
+
+## Multiple companies under one account
+
+One email remains one login identity. The company menu in the header lists available memberships and their roles. Select a company and confirm switching; unsaved changes are discarded and the application reloads its company-specific data. Accountant is the display name of the existing Admin role. User management remains restricted to SysAdmin.
+
+Use **Add company** in that menu to create another company without registering another user or changing your password. If company setup fails, use **Retry setup**; the operation reuses the same company. A company becomes selectable once setup is complete.
+
+A SysAdmin can invite an existing account into another company. Open the invitation link while signed in with the invited email and choose **Accept invitation**. If you are signed out, use the login button on the invitation page; the same tab returns to the invitation after login. An invitation does not change your password or external login.
+
+Under **Settings → Integrations**, API-key creation offers the companies that key may access; the current company is selected by default. Existing keys never automatically gain access to newly created or joined companies. Connected OAuth applications display their consent company and remain bound to it.
+
+MCP tools accept an optional companyId for each call using a personal API key with an explicit grant to that company. list_companies shows the credential's allowed active memberships, and select_company validates a choice; repeat companyId on later calls because selection is not stored. With OAuth, omit companyId and use the company approved at consent. add_company requires write scope and does not automatically grant the calling credential access to the result.

@@ -188,6 +188,108 @@ public class OAuthServiceTests : IAsyncLifetime
     // ─── Authorization code exchange (T2, T3, T6) ───────────────────────────
 
     [SkippableFact]
+    public async Task CompanyConsent_StaysPinnedAcrossDefaultChangeAndRefresh()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+        var (code, verifier) = await IssueCodeAsync();
+        await using (var change = CreateMasterContext())
+        {
+            change.Client.Add(new Client { Id = OwnerCompanyId + 1, CompanyName = "Second company", RegistrationNumber = "99998201", IsIssuer = true, IsActive = true });
+            change.UserCompanyMembership.Add(new UserCompanyMembership
+            {
+                UserId = OwnerUserId, CompanyId = OwnerCompanyId + 1, Role = EUserRole.Admin, IsActive = true
+            });
+            (await change.User.SingleAsync(u => u.Id == OwnerUserId)).CompanyId = OwnerCompanyId + 1;
+            await change.SaveChangesAsync();
+        }
+
+        OAuthTokenResult tokens;
+        await using (var exchange = CreateMasterContext())
+            tokens = await CreateService(exchange).ExchangeAuthorizationCodeAsync(
+                new ExchangeAuthorizationCodeRequest(code, RedirectUri, ClientId, verifier, Resource));
+        await using (var refresh = CreateMasterContext())
+            await CreateService(refresh).RefreshAsync(new RefreshTokenRequest(tokens.RefreshToken, null, Resource));
+        await using var verify = CreateMasterContext();
+        (await verify.OAuthGrant.SingleAsync()).CompanyId.ShouldBe(OwnerCompanyId);
+        var keys = await verify.ApiKey.ToListAsync();
+        keys.Count.ShouldBe(2);
+        foreach (var key in keys)
+        {
+            key.CompanyId.ShouldBe(OwnerCompanyId);
+            key.AllowedCompanyIds.ShouldBe(new[] { OwnerCompanyId });
+        }
+    }
+
+    [SkippableFact]
+    public async Task Refresh_RejectsRevokedMembershipEvenWhenDefaultCompanyStillMatches()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+        var tokens = await IssueAndExchangeAsync();
+        await using (var revoke = CreateMasterContext())
+        {
+            (await revoke.UserCompanyMembership.SingleAsync(m => m.UserId == OwnerUserId)).IsActive = false;
+            await revoke.SaveChangesAsync();
+        }
+        await using var refresh = CreateMasterContext();
+        var failure = await Should.ThrowAsync<OAuthErrorException>(() => CreateService(refresh)
+            .RefreshAsync(new RefreshTokenRequest(tokens.RefreshToken, null, Resource)));
+        failure.ErrorCode.ShouldBe(OAuthErrorException.AccessDenied);
+    }
+
+    [SkippableFact]
+    public async Task Consent_RejectsCompanyWithoutMembership()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+        await using var context = CreateMasterContext();
+        var failure = await Should.ThrowAsync<OAuthErrorException>(() => CreateService(context).IssueAuthorizationCodeAsync(
+            new IssueAuthorizationCodeRequest(OwnerUserId, ClientId, "Test", RedirectUri, ChallengeFor(NewCodeVerifier()),
+                "read", Resource, OwnerCompanyId + 1)));
+        failure.ErrorCode.ShouldBe(OAuthErrorException.AccessDenied);
+        (await context.OAuthAuthorizationCode.CountAsync()).ShouldBe(0);
+    }
+
+    [SkippableFact]
+    public async Task ConsentAndRefresh_RejectInactiveIssuerWithActiveMembership()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+        var tokens = await IssueAndExchangeAsync();
+        await using (var deactivate = CreateMasterContext())
+        {
+            (await deactivate.Client.SingleAsync(c => c.Id == OwnerCompanyId)).IsActive = false;
+            await deactivate.SaveChangesAsync();
+        }
+        await using var context = CreateMasterContext();
+        (await CreateService(context).GetConsentUserInfoAsync(OwnerUserId)).IsEligible.ShouldBeFalse();
+        await Should.ThrowAsync<OAuthErrorException>(() => CreateService(context).RefreshAsync(
+            new RefreshTokenRequest(tokens.RefreshToken, null, Resource)));
+    }
+
+    [SkippableFact]
+    public async Task ConsentForSecondCompany_DoesNotSupersedeFirstCompanyGrant()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+        await IssueAndExchangeAsync();
+        var verifier = NewCodeVerifier();
+        string code;
+        await using (var issue = CreateMasterContext())
+        {
+            issue.Client.Add(new Client { Id = OwnerCompanyId + 1, CompanyName = "Second consent", RegistrationNumber = "99998202", IsIssuer = true, IsActive = true });
+            issue.UserCompanyMembership.Add(new UserCompanyMembership
+            {
+                UserId = OwnerUserId, CompanyId = OwnerCompanyId + 1, Role = EUserRole.User, IsActive = true
+            });
+            await issue.SaveChangesAsync();
+            code = await CreateService(issue).IssueAuthorizationCodeAsync(new IssueAuthorizationCodeRequest(
+                OwnerUserId, ClientId, "Test", RedirectUri, ChallengeFor(verifier), "read", Resource, OwnerCompanyId + 1));
+        }
+        await using (var exchange = CreateMasterContext())
+            await CreateService(exchange).ExchangeAuthorizationCodeAsync(new ExchangeAuthorizationCodeRequest(
+                code, RedirectUri, ClientId, verifier, Resource));
+        await using var verify = CreateMasterContext();
+        (await verify.OAuthGrant.CountAsync(g => g.RevokedAt == null)).ShouldBe(2);
+    }
+
+    [SkippableFact]
     public async Task ExchangeAuthorizationCodeAsync_HappyPath_IssuesTokens()
     {
         Skip.IfNot(_databaseAvailable, SkipReason);

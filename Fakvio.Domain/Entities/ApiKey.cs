@@ -15,12 +15,17 @@ namespace Fakvio.Domain.Entities;
 /// user's credential, so it shares the user's lifetime and gets FK cascade for
 /// free. Same reasoning as UserPreferences.
 ///
-/// Deliberately NO CompanyId column: the tenant is derived from User.CompanyId
-/// at authentication time, so moving a user between companies moves their keys
-/// with them instead of leaving a stale binding behind.
+/// Company grants are fixed at issuance. Adding a membership or switching the UI
+/// must never silently grant an existing machine credential access to another company.
 /// </summary>
 public class ApiKey : BaseEntity
 {
+    /// <summary>Default company, pinned at issuance. Null only for a global SysAdmin key.</summary>
+    public long? CompanyId { get; set; }
+
+    /// <summary>Explicitly authorized companies, intersected with live memberships on every request.</summary>
+    public long[] AllowedCompanyIds { get; set; } = [];
+
     /// <summary>
     /// FK to the owning user (master DB). Cascade delete — deleting the user
     /// removes their keys.

@@ -73,7 +73,7 @@ public class UserService : IUserService
         // Filter by company if specified
         if (companyId.HasValue)
         {
-            query = query.Where(u => u.CompanyId == companyId.Value);
+            query = query.Where(u => _context.UserCompanyMembership.Any(m => m.UserId == u.Id && m.CompanyId == companyId.Value && m.IsActive));
         }
 
         // Filter by active status
@@ -87,7 +87,8 @@ public class UserService : IUserService
             .ThenBy(u => u.FirstName)
             .ToListAsync(cancellationToken);
 
-        return users.Select(u => MapToDto(u)).ToList();
+        var result = users.Select(u => MapToDto(u)).ToList();
+        return result;
     }
 
     /// <summary>
@@ -107,11 +108,11 @@ public class UserService : IUserService
         if (!filter.IncludeInactive)
             query = query.Where(u => u.IsActive);
 
-        if (filter.Role.HasValue)
+        if (filter.Role.HasValue && !filter.CompanyId.HasValue)
             query = query.Where(u => u.Role == filter.Role.Value);
 
         if (filter.CompanyId.HasValue)
-            query = query.Where(u => u.CompanyId == filter.CompanyId.Value);
+            query = query.Where(u => _context.UserCompanyMembership.Any(m => m.UserId == u.Id && m.CompanyId == filter.CompanyId.Value && m.IsActive && (!filter.Role.HasValue || m.Role == filter.Role.Value)));
 
         if (filter.NeverLoggedIn.HasValue)
         {
@@ -143,8 +144,9 @@ public class UserService : IUserService
         var pagedResult = await query.ToPagedResultAsync(filter.Page, filter.PageSize, cancellationToken);
 
         // Map to DTOs
+        var items = pagedResult.Items.Select(u => MapToDto(u)).ToList();
         return new PagedResult<UserDto>(
-            pagedResult.Items.Select(u => MapToDto(u)).ToList(),
+            items,
             pagedResult.TotalCount,
             pagedResult.PageNumber,
             pagedResult.PageSize);
@@ -297,6 +299,18 @@ public class UserService : IUserService
             user.CompanyId = updateDto.CompanyId.Value;
         }
 
+        // An explicit administrator edit updates only the default membership, preserving other company roles.
+        if ((updateDto.Role.HasValue || updateDto.CompanyId.HasValue) && user.CompanyId.HasValue && user.Role != EUserRole.SysAdmin)
+        {
+            var membership = await _context.UserCompanyMembership.SingleOrDefaultAsync(m => m.UserId == user.Id && m.CompanyId == user.CompanyId, cancellationToken);
+            if (membership is null)
+                _context.UserCompanyMembership.Add(new UserCompanyMembership { UserId = user.Id, CompanyId = user.CompanyId.Value, Role = user.Role });
+            else
+            {
+                membership.Role = user.Role;
+                if (updateDto.CompanyId.HasValue) membership.IsActive = true;
+            }
+        }
         // Update active status if provided
         if (updateDto.IsActive.HasValue)
         {

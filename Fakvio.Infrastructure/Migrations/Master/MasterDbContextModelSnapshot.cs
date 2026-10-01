@@ -92,6 +92,15 @@ namespace Fakvio.Infrastructure.Migrations.Master
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.PrimitiveCollection<long[]>("AllowedCompanyIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint[]")
+                        .HasDefaultValueSql("ARRAY[]::bigint[]");
+
+                    b.Property<long?>("CompanyId")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -500,6 +509,62 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         .IsUnique();
 
                     b.ToTable("Client");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.CompanyMembershipInvitation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CompanyId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("CompanyMembershipInvitation", t =>
+                        {
+                            t.HasCheckConstraint("CK_CompanyMembershipInvitation_Role", "\"Role\" IN (0, 1)");
+                        });
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.CompanySystemSettings", b =>
@@ -1342,6 +1407,9 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<long?>("CompanyId")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime?>("ConsumedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1408,6 +1476,9 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<long?>("CompanyId")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2129,6 +2200,57 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         });
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.UserCompanyMembership", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CompanyId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("CreationOperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "IsActive");
+
+                    b.HasIndex("UserId", "CompanyId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "CreationOperationId")
+                        .IsUnique();
+
+                    b.ToTable("UserCompanyMembership", t =>
+                        {
+                            t.HasCheckConstraint("CK_UserCompanyMembership_Role", "\"Role\" IN (0, 1)");
+                        });
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.UserPreferences", b =>
                 {
                     b.Property<long>("Id")
@@ -2339,6 +2461,21 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Navigation("PreferredCurrency");
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.CompanyMembershipInvitation", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.Client", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fakvio.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.CompanySystemSettings", b =>
                 {
                     b.HasOne("Fakvio.Domain.Entities.Client", "Company")
@@ -2417,6 +2554,25 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.UserCompanyMembership", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.Client", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fakvio.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.UserPreferences", b =>

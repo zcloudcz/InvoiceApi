@@ -269,6 +269,36 @@ public class McpSdkInvocationTests
     /// host talking to a real <see cref="McpClient"/> over an in-memory pipe pair, with only the
     /// outbound HTTP call to Fakvio.API stubbed.
     /// </summary>
+    [Fact]
+    public async Task CompanyContext_IsAdvertisedAndForwardedPerConcurrentSdkInvocation()
+    {
+        await using var session = await McpSdkTestSession.StartAsync();
+        var tools = await session.Client.ListToolsAsync(cancellationToken: session.Deadline.Token);
+        tools.Select(x => x.Name).ShouldContain("list_companies");
+        tools.Select(x => x.Name).ShouldContain("select_company");
+        tools.Select(x => x.Name).ShouldContain("add_company");
+        tools.Select(x => x.Name).ShouldContain("retry_company_setup");
+        tools.Single(x => x.Name == "submit_feedback").JsonSchema.GetProperty("properties")
+            .GetProperty("companyId").GetProperty("type").GetString().ShouldBe("integer");
+
+        var calls = Enumerable.Range(1, 12).Select(async company =>
+        {
+            var result = await session.Client.CallToolAsync("submit_feedback", new Dictionary<string, object?>
+            {
+                ["companyId"] = company,
+                ["feedback"] = new { type = "Bug", subject = $"Company {company}", description = "Details" }
+            }, cancellationToken: session.Deadline.Token);
+            result.IsError.ShouldNotBe(true);
+        });
+        await Task.WhenAll(calls);
+        foreach (var company in Enumerable.Range(1, 12))
+            session.Api.FeedbackCompanyHeaders[$"Company {company}"].ShouldBe(company.ToString());
+        await session.Client.CallToolAsync("submit_feedback", new Dictionary<string, object?>
+        {
+            ["feedback"] = new { type = "Bug", subject = "Default company", description = "Details" }
+        }, cancellationToken: session.Deadline.Token);
+        session.Api.FeedbackCompanyHeaders["Default company"].ShouldBe("");
+    }
     private sealed class McpSdkTestSession : IAsyncDisposable
     {
         private readonly IHost _host;
@@ -335,6 +365,7 @@ public class McpSdkInvocationTests
         private static readonly Regex CreateInvoiceFromTemplatePath =
             new(@"/api/invoicetemplate/(?<id>\d+)/create-invoice$", RegexOptions.Compiled);
 
+        public System.Collections.Concurrent.ConcurrentDictionary<string, string> FeedbackCompanyHeaders { get; } = new();
         public string? LastFeedbackBody { get; private set; }
         public CreateReceivedInvoiceDto? LastReceivedInvoiceRequest { get; private set; }
         public CreateClientDto? LastCreateClientRequest { get; private set; }
@@ -351,7 +382,11 @@ public class McpSdkInvocationTests
             var path = request.RequestUri!.AbsolutePath;
             if (path == "/api/feedback" && request.Method == HttpMethod.Post)
             {
-                LastFeedbackBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                var bodyText = await request.Content!.ReadAsStringAsync(cancellationToken);
+                LastFeedbackBody = bodyText;
+                using var body = System.Text.Json.JsonDocument.Parse(bodyText);
+                var subject = body.RootElement.GetProperty("subject").GetString()!;
+                FeedbackCompanyHeaders[subject] = request.Headers.TryGetValues("X-Selected-Company-Id", out var values) ? values.Single() : "";
                 return Json(new FeedbackDto { Id = 42 });
             }
 

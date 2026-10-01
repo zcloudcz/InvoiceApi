@@ -79,25 +79,10 @@
                                       AdornmentIcon="@Icons.Material.Filled.Person" />
                     </MudStack>
 
-                    @* Company name *@
-                    <MudTextField @bind-Value="_request.CompanyName"
-                                  Label="@L["Register_CompanyName"].Value"
-                                  Variant="Variant.Outlined"
-                                  Required="true"
-                                  Adornment="Adornment.Start"
-                                  AdornmentIcon="@Icons.Material.Filled.Business" />
-
-                    @* IČO (required) with ARES button *@
-                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End">
-                        <MudTextField @bind-Value="_request.RegistrationNumber"
-                                      Label="@L["Register_RegistrationNumber"].Value"
-                                      Variant="Variant.Outlined"
-                                      Required="true"
-                                      Adornment="Adornment.Start"
-                                      AdornmentIcon="@Icons.Material.Filled.Numbers"
-                                      Style="flex: 1" />
-
-                        <MudButton Variant="Variant.Outlined"
+                    <CompanyIdentityFields @bind-CompanyName="_request.CompanyName" @bind-RegistrationNumber="_request.RegistrationNumber"
+                        @bind-Street="_request.Street" @bind-City="_request.City" @bind-PostalCode="_request.PostalCode"
+                        @bind-Country="_request.Country" Disabled="_isSubmitting">
+<MudButton Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    Disabled="@(_isLoadingAres || string.IsNullOrWhiteSpace(_request.RegistrationNumber))"
                                    OnClick="LoadFromAresAsync"
@@ -112,43 +97,11 @@
                                 @L["Register_LoadAres"]
                             }
                         </MudButton>
-                    </MudStack>
-
-                    @* ARES result feedback *@
-                    @if (!string.IsNullOrEmpty(_aresMessage))
-                    {
-                        <MudAlert Severity="@_aresSeverity" Dense="true">@_aresMessage</MudAlert>
-                    }
-
-                    @*
-                        Registered office address — pre-filled by the ARES lookup so the user
-                        sees what will be printed on the invoices and can correct it.
-                        Optional: when left empty, the server falls back to the ARES address.
-                    *@
-                    <MudText Typo="Typo.subtitle2" Class="mt-2">@L["Register_AddressSection"]</MudText>
-
-                    <MudTextField @bind-Value="_request.Street"
-                                  Label="@L["Client_Street"].Value"
-                                  Variant="Variant.Outlined"
-                                  Adornment="Adornment.Start"
-                                  AdornmentIcon="@Icons.Material.Filled.Home" />
-
-                    <MudStack Row="true" Spacing="2">
-                        <MudTextField @bind-Value="_request.PostalCode"
-                                      Label="@L["Client_PostalCode"].Value"
-                                      Variant="Variant.Outlined"
-                                      Style="flex: 1" />
-
-                        <MudTextField @bind-Value="_request.City"
-                                      Label="@L["Client_City"].Value"
-                                      Variant="Variant.Outlined"
-                                      Style="flex: 2" />
-                    </MudStack>
-
-                    <MudTextField @bind-Value="_request.Country"
-                                  Label="@L["Client_Country"].Value"
-                                  Variant="Variant.Outlined" />
-
+                        @if (!string.IsNullOrEmpty(_aresMessage))
+                        {
+                            <MudAlert Severity="@_aresSeverity" Dense="true">@_aresMessage</MudAlert>
+                        }
+                    </CompanyIdentityFields>
                     @* Submit button *@
                     <MudButton ButtonType="ButtonType.Button"
                                Variant="Variant.Filled"

@@ -135,6 +135,7 @@
 
             // OAuth consent detour (ADR 0001 §4.2) — same reasoning as Login.razor: a 2FA
             // login can be the SECOND step of the same consent flow, so it must return there too.
+            if (await CompanyInvitationReturnStorage.TryResumeAsync(JS, Navigation)) return;
             var pendingOAuthTicket = await OAuthConsentReturnStorage.ConsumeAsync(JS);
             if (!string.IsNullOrEmpty(pendingOAuthTicket))
             {

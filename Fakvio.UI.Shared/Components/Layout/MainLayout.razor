@@ -58,6 +58,7 @@
                         </MudSelect>
                     </AuthorizeView>
 
+                    <AuthorizeView Context="companyContext"><Authorized>@if (!companyContext.User.IsInRole("SysAdmin")) { <CompanyMembershipSelector /> }</Authorized></AuthorizeView>
                     <FeedbackButton />
                     @* User profile menu — avatar + name opens personal settings (preferences, 2FA) *@
                     <MudMenu Dense="true" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">

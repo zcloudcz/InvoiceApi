@@ -1,0 +1,54 @@
+@page "/company-invitations/accept"
+@inject CompanyMembershipApiService Api
+@inject IStringLocalizer<SharedResource> L
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+<PageTitle>@L["CompanyMembership_AcceptTitle"]</PageTitle>
+<MudContainer MaxWidth="MaxWidth.Small">
+    <MudText Typo="Typo.h4">@L["CompanyMembership_AcceptTitle"]</MudText>
+    <AuthorizeView>
+        <Authorized>
+            <MudText Class="my-4">@L["CompanyMembership_AcceptInfo"]</MudText>
+            @if (_accepted) { <MudAlert Severity="Severity.Success">@L["CompanyMembership_Accepted"]</MudAlert> }
+            else
+            {
+                @if (_error) { <MudAlert Severity="Severity.Error">@L["CompanyMembership_InvitationError"]</MudAlert> }
+                <MudTextField @bind-Value="_token" Label="@L["CompanyMembership_InvitationToken"].Value" InputType="InputType.Password" Disabled="_busy" Immediate="true" />
+                <MudButton OnClick="AcceptAsync" Disabled="@(_busy || string.IsNullOrWhiteSpace(_token))" Color="Color.Primary" Variant="Variant.Filled">@L["CompanyMembership_Accept"]</MudButton>
+            }
+        </Authorized>
+        <NotAuthorized><MudAlert Severity="Severity.Info">@L["CompanyMembership_LoginRequired"]</MudAlert><MudButton OnClick="LoginAsync">@L["Btn_Login"]</MudButton></NotAuthorized>
+    </AuthorizeView>
+</MudContainer>
+@code {
+    private string? _token;
+    private bool _busy, _error, _accepted;
+    private readonly CancellationTokenSource _lifetime = new();
+    protected override void OnInitialized()
+    {
+        // Invitation secrets live in the fragment: they are not sent in HTTP URLs or referrers.
+        _token = Uri.UnescapeDataString(new Uri(Navigation.Uri).Fragment.TrimStart('#'));
+    }
+    private async Task LoginAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_token) && _token.Length <= 200)
+            await CompanyInvitationReturnStorage.StoreAsync(JS, _token);
+        Navigation.NavigateTo("/login", replace: true);
+    }
+    private async Task AcceptAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_token)) return;
+        _busy = true; _error = false;
+        try
+        {
+            await Api.AcceptAsync(_token, _lifetime.Token);
+            _token = null; _accepted = true;
+            Navigation.NavigateTo("/", forceLoad: true, replace: true);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception) { _error = true; }
+        finally { _busy = false; }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

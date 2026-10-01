@@ -89,8 +89,8 @@ public sealed class FeedbackService(MasterDbContext db, ICurrentUserService curr
         var companyId = tenant.GetCurrentCompanyId();
         // A stale token, forged tenant header, or unbound machine credential must not grant access.
         if (companyId is not > 0 ||
-            (user.CompanyId != companyId && !(tenant.IsSysAdmin() && user.Role == EUserRole.SysAdmin)) ||
-            !await db.Client.AnyAsync(c => c.Id == companyId && c.IsIssuer, ct))
+            (!(tenant.IsSysAdmin() && user.Role == EUserRole.SysAdmin) && !await db.UserCompanyMembership.AnyAsync(m => m.UserId == user.Id && m.CompanyId == companyId && m.IsActive, ct)) ||
+            !await db.Client.AnyAsync(c => c.Id == companyId && c.IsIssuer && c.IsActive, ct))
             throw new UnauthorizedAccessException("An authorized company context is required.");
         return (user.Id, companyId.Value);
     }

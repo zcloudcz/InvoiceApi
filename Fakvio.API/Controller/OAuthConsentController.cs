@@ -76,7 +76,7 @@ public class OAuthConsentController : ControllerBase
         if (payload is null)
             return BadRequest(new { error = "invalid_ticket" });
 
-        var userInfo = await _oauthService.GetConsentUserInfoAsync(userId.Value, ct);
+        var userInfo = await _oauthService.GetConsentUserInfoAsync(userId.Value, ct, GetCompanyId());
         var isTrustedClient = IsTrustedHost(payload.ClientId);
 
         return Ok(new OAuthConsentInfoDto
@@ -89,6 +89,7 @@ public class OAuthConsentController : ControllerBase
             RequestedScopes = payload.Scope,
             UserEmail = userInfo.Email,
             CompanyName = userInfo.CompanyName,
+            CompanyId = GetCompanyId(),
             IsEligible = userInfo.IsEligible
         });
     }
@@ -117,6 +118,11 @@ public class OAuthConsentController : ControllerBase
             return Ok(new OAuthConsentDecisionResultDto { RedirectUrl = BuildRedirectUrl(payload, "error=access_denied") });
         }
 
+        // A different tab may have switched the interactive session since the consent
+        // screen was rendered. Require the exact company the user actually saw.
+        if (dto.CompanyId is null || dto.CompanyId != GetCompanyId())
+            return BadRequest(new { error = "company_changed", message = "Reload consent for the selected company." });
+
         // The granted scope may only narrow what was requested at /oauth/authorize — never
         // widen it (same T12 reasoning as the refresh endpoint). Silently clamping instead of
         // rejecting keeps a manipulated request from ever reaching a wider grant than the
@@ -126,7 +132,7 @@ public class OAuthConsentController : ControllerBase
         try
         {
             var code = await _oauthService.IssueAuthorizationCodeAsync(
-                new IssueAuthorizationCodeRequest(userId.Value, payload.ClientId, payload.ClientName, payload.RedirectUri, payload.CodeChallenge, grantedScope, payload.Resource),
+                new IssueAuthorizationCodeRequest(userId.Value, payload.ClientId, payload.ClientName, payload.RedirectUri, payload.CodeChallenge, grantedScope, payload.Resource, GetCompanyId()),
                 ct);
 
             _logger.LogWarning("OAuth.ConsentGranted: user {UserId} client {ClientId} scope {Scope}", userId.Value, payload.ClientId, grantedScope);
@@ -142,6 +148,9 @@ public class OAuthConsentController : ControllerBase
             return Ok(new OAuthConsentDecisionResultDto { RedirectUrl = BuildRedirectUrl(payload, "error=access_denied") });
         }
     }
+
+    private long? GetCompanyId()
+        => long.TryParse(User.FindFirstValue("CompanyId"), out var id) ? id : null;
 
     private string BuildRedirectUrl(OAuthAuthorizeTicketPayload payload, string outcomeQuery)
     {

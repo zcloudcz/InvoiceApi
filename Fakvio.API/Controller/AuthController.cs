@@ -448,50 +448,12 @@ public class AuthController : ControllerBase
     [Authorize]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<LoginResponse>> RefreshToken()
+    public async Task<ActionResult<LoginResponse>> RefreshToken([FromServices] CompanySessionService sessions, CancellationToken ct)
     {
-        try
-        {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-            if (string.IsNullOrEmpty(userIdClaim) || !long.TryParse(userIdClaim, out var userId))
-            {
-                return Unauthorized(new { message = "Invalid user ID in token." });
-            }
-
-            // Generate new token
-            var token = await _authService.GenerateJwtTokenAsync(userId);
-
-            var expirationHours = 24; // Could be read from configuration
-            var expiresAt = DateTime.UtcNow.AddHours(expirationHours);
-
-            var email = User.FindFirst(ClaimTypes.Email)?.Value ?? "";
-            var fullName = User.FindFirst(ClaimTypes.Name)?.Value ?? "";
-            var role = User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-            var companyIdClaim = User.FindFirst("CompanyId")?.Value;
-
-            long? companyId = null;
-            if (!string.IsNullOrEmpty(companyIdClaim) && long.TryParse(companyIdClaim, out var parsedCompanyId))
-            {
-                companyId = parsedCompanyId;
-            }
-
-            return Ok(new LoginResponse
-            {
-                Token = token,
-                ExpiresAt = expiresAt,
-                UserId = userId,
-                Email = email,
-                FullName = fullName,
-                Role = Enum.Parse<EUserRole>(role),
-                CompanyId = companyId,
-                CompanyName = null // Could fetch from database if needed
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during token refresh");
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred during token refresh." });
-        }
+        if (User.HasClaim(c => c.Type == Fakvio.Infrastructure.Authentication.ApiKeyAuthenticationDefaults.ScopeClaimType))
+            return Forbid();
+        long? companyId = long.TryParse(User.FindFirst("CompanyId")?.Value, out var selected) ? selected : null;
+        try { return Ok(await sessions.CreateAsync(companyId, ct)); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
     }
 }

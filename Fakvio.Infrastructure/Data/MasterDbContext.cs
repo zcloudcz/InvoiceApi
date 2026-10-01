@@ -145,6 +145,8 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
     /// <summary>Central feedback inbox, explicitly scoped by owner and company in FeedbackService.</summary>
     public DbSet<FeedbackReport> FeedbackReport { get; set; }
+    public DbSet<UserCompanyMembership> UserCompanyMembership { get; set; }
+    public DbSet<CompanyMembershipInvitation> CompanyMembershipInvitation { get; set; }
 
     /// <summary>
     /// Billing settings for companies (issuers) — bank account, payment method, due date config.
@@ -235,9 +237,30 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Ignore<InvoiceMailbox>();
         modelBuilder.Ignore<InboundInvoiceEmail>();
 
+        modelBuilder.Entity<UserCompanyMembership>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.ToTable(t => t.HasCheckConstraint("CK_UserCompanyMembership_Role", "\"Role\" IN (0, 1)"));
+            entity.HasIndex(m => new { m.UserId, m.CompanyId }).IsUnique();
+            entity.HasIndex(m => new { m.UserId, m.CreationOperationId }).IsUnique();
+            entity.HasIndex(m => new { m.CompanyId, m.IsActive });
+            entity.HasOne(m => m.User).WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(m => m.Company).WithMany().HasForeignKey(m => m.CompanyId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<CompanyMembershipInvitation>(entity =>
+        {
+            entity.HasKey(i => i.Id);
+            entity.ToTable(t => t.HasCheckConstraint("CK_CompanyMembershipInvitation_Role", "\"Role\" IN (0, 1)"));
+            entity.Property(i => i.TokenHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(i => i.TokenHash).IsUnique();
+            entity.Property(i => i.ConsumedAt).IsConcurrencyToken();
+            entity.HasOne<User>().WithMany().HasForeignKey(i => i.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Client>().WithMany().HasForeignKey(i => i.CompanyId).OnDelete(DeleteBehavior.Cascade);
+        });
         ConfigureUser(modelBuilder);
         ConfigureUserPreferences(modelBuilder);
         ConfigureApiKey(modelBuilder);
+        modelBuilder.Entity<ApiKey>().Property(k => k.AllowedCompanyIds).HasColumnType("bigint[]").HasDefaultValueSql("ARRAY[]::bigint[]");
         ConfigureOAuthGrant(modelBuilder);
         ConfigureOAuthAuthorizationCode(modelBuilder);
         ConfigureOAuthRefreshToken(modelBuilder);
@@ -1217,6 +1240,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
     public override int SaveChanges()
     {
+        InitializeNewUserMemberships();
         UpdateTimestamps();
         NormalizeDateTimesToUtc();
         return base.SaveChanges();
@@ -1224,6 +1248,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        InitializeNewUserMemberships();
         UpdateTimestamps();
         NormalizeDateTimesToUtc();
         return base.SaveChangesAsync(cancellationToken);
@@ -1232,6 +1257,26 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     /// <summary>
     /// Automatically sets timestamps and audit user IDs on every save operation.
     /// </summary>
+    /// <summary>
+    /// Initializes only newly created accounts, in the same save as the identity.
+    /// Existing accounts are never repaired: revoked/deleted access must stay denied.
+    /// </summary>
+    private void InitializeNewUserMemberships()
+    {
+        var users = ChangeTracker.Entries<User>().Where(e => e.State == EntityState.Added
+            && e.Entity.CompanyId.HasValue && e.Entity.Role != EUserRole.SysAdmin).Select(e => e.Entity).ToList();
+        foreach (var user in users)
+        {
+            if (ChangeTracker.Entries<UserCompanyMembership>().Any(e => e.State != EntityState.Deleted
+                && (ReferenceEquals(e.Entity.User, user) || (user.Id > 0 && e.Entity.UserId == user.Id))
+                && e.Entity.CompanyId == user.CompanyId)) continue;
+            UserCompanyMembership.Add(new UserCompanyMembership
+            {
+                User = user, CompanyId = user.CompanyId!.Value,
+                Role = user.Role == EUserRole.Admin ? EUserRole.Admin : EUserRole.User
+            });
+        }
+    }
     private void UpdateTimestamps()
     {
         var currentUserId = _currentUserService?.GetCurrentUserId();

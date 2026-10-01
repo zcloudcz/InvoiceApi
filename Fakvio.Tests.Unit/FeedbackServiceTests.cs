@@ -32,6 +32,19 @@ public class FeedbackServiceTests : IDisposable
         _service = new FeedbackService(_db, _user, _tenant, NullLogger<FeedbackService>.Instance);
     }
 
+    [Fact]
+    public async Task SecondaryCompanyMembership_ControlsFeedbackOwnerScope()
+    {
+        _db.Client.Add(new Client { Id = 21, IsIssuer = true, RegistrationNumber = "87654321" });
+        _db.UserCompanyMembership.Add(new UserCompanyMembership { UserId = 10, CompanyId = 21, Role = EUserRole.User });
+        await _db.SaveChangesAsync();
+        _tenant.GetCurrentCompanyId().Returns(21);
+        (await _service.CreateAsync(Valid())).CompanyId.ShouldBe(21);
+        _db.User.Single().CompanyId.ShouldBe(20);
+        _db.UserCompanyMembership.Single(m => m.CompanyId == 21).IsActive = false;
+        await _db.SaveChangesAsync();
+        await Should.ThrowAsync<UnauthorizedAccessException>(() => _service.CreateAsync(Valid()));
+    }
     private static CreateFeedbackDto Valid() => new() { Type = EFeedbackType.Idea, Subject = " A subject ", Description = " <script>inert text</script> ", Page = "/invoices?token=secret#fragment", AppVersion = "2.4" };
 
     [Fact]

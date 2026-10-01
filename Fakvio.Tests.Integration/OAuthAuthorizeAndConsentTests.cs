@@ -144,6 +144,7 @@ public class OAuthAuthorizeAndConsentTests
         factory.InitializeDatabase();
         var email = "consent-apikey@test.cz";
         var password = factory.SeedRegularUser(email, userId: 900, companyId: 10);
+        SeedIssuer(factory, 10);
         var client = factory.CreateClient();
         var login = await AuthHelper.LoginAsync(client, email, password);
         AuthHelper.SetAuthToken(client, login.Token!);
@@ -168,6 +169,7 @@ public class OAuthAuthorizeAndConsentTests
         factory.InitializeDatabase();
         var email = "consent-owner@test.cz";
         var password = factory.SeedRegularUser(email, userId: 901, companyId: 11);
+        SeedIssuer(factory, 11);
 
         var anonClient = factory.CreateClient(new() { AllowAutoRedirect = false });
         var authorizeResponse = await anonClient.GetAsync(BuildAuthorizeUrl(AuthorizeQuery()));
@@ -183,9 +185,16 @@ public class OAuthAuthorizeAndConsentTests
         var info = await describeResponse.Content.ReadFromJsonAsync<OAuthConsentInfoDto>();
         info!.ClientId.ShouldBe(ClientId);
         info.IsEligible.ShouldBeTrue(); // AllowAll=true in StubResolverFactory
+        info.CompanyId.ShouldBe(11);
+
+        // Consent must describe the exact company on screen, even if another tab changed
+        // the current session before this POST. A mismatched choice cannot issue a code.
+        var mismatched = await client.PostAsJsonAsync("/api/oauth/consent/decision",
+            new OAuthConsentDecisionDto { Ticket = ticket, Allow = true, Scope = "read", CompanyId = 12 });
+        mismatched.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         var decisionResponse = await client.PostAsJsonAsync("/api/oauth/consent/decision",
-            new OAuthConsentDecisionDto { Ticket = ticket, Allow = true, Scope = "read" });
+            new OAuthConsentDecisionDto { Ticket = ticket, Allow = true, Scope = "read", CompanyId = 11 });
 
         decisionResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var result = await decisionResponse.Content.ReadFromJsonAsync<OAuthConsentDecisionResultDto>();
@@ -200,6 +209,7 @@ public class OAuthAuthorizeAndConsentTests
         factory.InitializeDatabase();
         var email = "consent-denier@test.cz";
         var password = factory.SeedRegularUser(email, userId: 902, companyId: 12);
+        SeedIssuer(factory, 12);
 
         var anonClient = factory.CreateClient(new() { AllowAutoRedirect = false });
         var authorizeResponse = await anonClient.GetAsync(BuildAuthorizeUrl(AuthorizeQuery()));
@@ -216,6 +226,13 @@ public class OAuthAuthorizeAndConsentTests
         result!.RedirectUrl.ShouldContain("error=access_denied");
     }
 
+    private static void SeedIssuer(FakvioFactory factory, long companyId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Fakvio.Infrastructure.Data.MasterDbContext>();
+        db.Client.Add(new Fakvio.Domain.Entities.Client { Id = companyId, IsIssuer = true, CompanyName = "Consent test", RegistrationNumber = companyId.ToString() });
+        db.SaveChanges();
+    }
     private static OAuthClientDocument TrustedDocument()
         => new(ClientId, "Claude Code", [RedirectUri]);
 

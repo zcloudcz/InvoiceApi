@@ -1864,4 +1864,27 @@
   <data name="Feedback_Subject" xml:space="preserve"><value>Předmět</value></data>
   <data name="Feedback_Type" xml:space="preserve"><value>Typ</value></data>
   <data name="Feedback_Version" xml:space="preserve"><value>Verze aplikace</value></data>
+  <data name="CompanyMembership_Accept" xml:space="preserve"><value>Přijmout pozvání</value></data>
+  <data name="CompanyMembership_Accepted" xml:space="preserve"><value>Pozvání přijato. Společnost je dostupná v přepínači po obnovení stránky.</value></data>
+  <data name="CompanyMembership_AcceptInfo" xml:space="preserve"><value>Pozvání přijměte pod účtem s e-mailem, na který bylo odesláno. Heslo zůstane stejné.</value></data>
+  <data name="CompanyMembership_AcceptTitle" xml:space="preserve"><value>Přijmout pozvání do společnosti</value></data>
+  <data name="CompanyMembership_Add" xml:space="preserve"><value>Přidat společnost</value></data>
+  <data name="CompanyMembership_CredentialNotice" xml:space="preserve"><value>Stávající API klíče a připojené aplikace nezískají automaticky přístup k nové společnosti.</value></data>
+  <data name="CompanyMembership_Error" xml:space="preserve"><value>Akce se nezdařila. Zkontrolujte přístup a zkuste to znovu.</value></data>
+  <data name="CompanyMembership_GrantedCompanies" xml:space="preserve"><value>Povolené společnosti</value></data>
+  <data name="CompanyMembership_GrantHelp" xml:space="preserve"><value>Vyberte jen společnosti, ke kterým smí tento klíč přistupovat. Výchozí je aktuální společnost.</value></data>
+  <data name="CompanyMembership_InvitationCreated" xml:space="preserve"><value>Pozvání vytvořeno. Předejte tento jednorázový odkaz pozvanému uživateli.</value></data>
+  <data name="CompanyMembership_InvitationError" xml:space="preserve"><value>Pozvání není platné pro tento účet, vypršelo nebo již bylo použito.</value></data>
+  <data name="CompanyMembership_InvitationLink" xml:space="preserve"><value>Odkaz pozvání</value></data>
+  <data name="CompanyMembership_InvitationToken" xml:space="preserve"><value>Kód pozvání</value></data>
+  <data name="CompanyMembership_Invite" xml:space="preserve"><value>Vytvořit pozvání</value></data>
+  <data name="CompanyMembership_InviteExisting" xml:space="preserve"><value>Pozvat existující účet</value></data>
+  <data name="CompanyMembership_LoginRequired" xml:space="preserve"><value>Přihlaste se pod pozvaným e-mailem a poté znovu otevřete odkaz pozvání.</value></data>
+  <data name="CompanyMembership_ProvisioningFailed" xml:space="preserve"><value>Společnost je vytvořená, ale její příprava ještě není dokončená. Zkuste přípravu znovu.</value></data>
+  <data name="CompanyMembership_Retry" xml:space="preserve"><value>Znovu připravit</value></data>
+  <data name="CompanyMembership_Select" xml:space="preserve"><value>Společnosti</value></data>
+  <data name="CompanyMembership_Switch" xml:space="preserve"><value>Přepnout</value></data>
+  <data name="CompanyMembership_SwitchConfirm" xml:space="preserve"><value>Přepnout společnost? Neuložené změny budou zahozeny.</value></data>
+  <data name="CompanyMembership_CountryCode" xml:space="preserve"><value>Dvoupísmenný kód země, například CZ nebo SK.</value></data>
+  <data name="CompanyMembership_PlatformAccess" xml:space="preserve"><value>Přístup k platformě (SysAdmin)</value></data>
 </root>

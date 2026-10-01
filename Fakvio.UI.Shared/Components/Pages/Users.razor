@@ -6,6 +6,7 @@
 @inject UserApiService UserService
 @inject ClientApiService ClientService
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @* Localization service for multi-language support *@
 @inject IStringLocalizer<SharedResource> L
 
@@ -23,6 +24,7 @@
             QuickFilter="@FilterFunc"
             RowClick="@(args => OpenEditDialog(args.Item))">
     <ToolBarContent>
+        <MudButton OnClick="InviteExistingUserAsync" StartIcon="@Icons.Material.Filled.PersonAdd">@L["CompanyMembership_InviteExisting"]</MudButton>
         <ResponsiveButton Label="@L["User_New"].Value"
                           StartIcon="@Icons.Material.Filled.Add"
                           OnClick="OpenCreateDialog" Class="mr-4" />
@@ -155,6 +157,7 @@
 </MudDialog>
 
 @code {
+    private Task<IDialogReference> InviteExistingUserAsync() => DialogService.ShowAsync<InviteCompanyMemberDialog>(L["CompanyMembership_InviteExisting"], new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small });
     private FakvioGrid<UserDto>? _dataGrid;
     private List<UserDto> _users = new();
     private List<ClientDto> _companies = new();

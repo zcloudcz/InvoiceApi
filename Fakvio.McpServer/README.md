@@ -270,7 +270,7 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (63)
+## Dostupné nástroje (67)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
@@ -389,3 +389,13 @@ SysAdmin policy, with read scope for reads and write scope for updates. Read/wri
 scopes alone do not grant SysAdmin. This release does not grant keys new roles. Denied
 calls return `forbidden`; guessed or inaccessible user report IDs return `not_found`.
 Report content is plain text, and page query strings/fragments are removed by the API.
+
+### 2.5.0 — Explicit company context
+
+A personal API key can explicitly authorize multiple companies. Every tool accepts an optional top-level `companyId`; this applies to that call only. `list_companies` lists the intersection of active memberships and the key's grants. `select_company(selectedCompanyId)` validates a choice and returns the ID to repeat on subsequent calls. Selection never mints a token or changes global/session state.
+
+OAuth access tokens remain bound to the consent company: omit `companyId`, even when it equals that company. Browser company switching does not alter API-key or OAuth grants.
+
+`add_company(company)` requires write scope. Supply a stable UUID `operationId` and reuse it after a timeout. `retry_company_setup(targetCompanyId)` retries an existing creation operation only when the credential explicitly grants that company and the identity is its authorized creator. If creation needs recovery before a new credential is issued, retry from the authenticated browser. Neither grants the calling credential access to the resulting company; explicitly authorize a new key or consent in the browser before using it.
+
+Company membership invitations are accepted interactively by the invited signed-in identity in the browser; scoped API keys and OAuth tokens cannot exchange an invitation or company selection for broader credentials.

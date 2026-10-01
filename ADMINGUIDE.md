@@ -1133,4 +1133,16 @@ Uživatel vidí jen vlastní hlášení v aktuální firmě. Odeslané texty se 
 
 MCP 2.4.0 poskytuje i nástroje pro centrální přehled/detail a změnu stavu. Používají stejné chráněné HTTP endpointy; vyžadují skutečnou roli SysAdmin a změna stavu také scope zápisu u strojových přihlašovacích údajů. Samotný název nástroje žádné oprávnění nepřidává.
 
-Role **Účetní / Accountant** používá interně původní roli `Admin`, ale nově nemá správu uživatelů. Uživatele a jejich pozvánky spravuje SysAdmin; samotnému uživateli zůstávají osobní profil, heslo a preference. Běžným uživatelům se volba SysAdmin v roli nenabízí. Opakovaná registrace se stejným emailem je nadále odmítnuta; více firem pod jednou identitou zatím není implementováno.
+Role **Účetní / Accountant** používá interně původní roli `Admin`, ale nově nemá správu uživatelů. Uživatele a jejich pozvánky spravuje SysAdmin; samotnému uživateli zůstávají osobní profil, heslo a preference. Běžným uživatelům se volba SysAdmin v roli nenabízí. Opakovaná registrace se stejným emailem je nadále odmítnuta; další firma se přidává pod přihlášeným účtem přes členství popsané níže.
+
+## Company memberships and invitations
+
+The same User identity may have multiple company memberships. Each membership grants User or Admin (displayed as Accountant / Účetní); it cannot grant SysAdmin. User and membership administration remains SysAdmin-only. Global SysAdmin impersonation remains distinct from ordinary membership selection.
+
+On **Users**, choose **Invite existing account** to issue a membership invitation with a company and role. The application emails a bilingual invitation. The returned one-time link is also available for manual delivery, including when SMTP fails. Acceptance requires that user's authenticated account. Resending invalidates previous pending links. Invitation tokens expire after 48 hours, are hashed in storage, and are separate from password-setup invitations; do not reset a user's password to add them to another company.
+
+Failed self-service company setup can be retried from the company menu without creating another issuer or account. Check the durable operation and provisioning state when investigating failures.
+
+API keys expose their explicit allowed company IDs and immutable default context. Legacy keys retain only their original company. OAuth grants display the consent company; switching a browser session does not change any credential's authority. Revoking a membership or reducing its role must affect subsequent browser and machine requests; never treat an old signed company claim as current membership authorization.
+
+Before rolling back multi-company storage, revoke credentials that would change scope when interpreted through the old User.CompanyId default. Do not simply drop company-binding columns and keep those keys or OAuth grants active. Review the generated rollback migration and preserve a backup; this implementation has not applied a migration to production.
