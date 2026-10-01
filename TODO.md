@@ -1247,3 +1247,9 @@ based on how often Czech customers ask for them. Each line is sized as a standal
 - [x] Coordinator final review, EF model consistency check (no pending changes), and Release Blazor WebAssembly build (0 warnings/errors).
 - [ ] Merge the reviewed feature through the normal release flow; desktop/mobile browser layout and journey checks remain unrun.
 Production deployment and package publication are outside this task and have not been performed.
+# OAuth production connection (2026-10-01)
+
+- [x] Identify the ChatGPT connection failure in production telemetry: consent succeeds, token exchange returns HTTP 500 because Npgsql retry strategy rejects an unwrapped transaction.
+- [x] Wrap authorization-code exchange and refresh transactions in EF's execution strategy; add PostgreSQL regression tests with retry enabled.
+- [x] Correct the ChatGPT user guide and integration page to use Settings → Apps instead of Plugins.
+- [ ] Merge and deploy PR #473 to production, then retry the connection in ChatGPT and confirm tool discovery.

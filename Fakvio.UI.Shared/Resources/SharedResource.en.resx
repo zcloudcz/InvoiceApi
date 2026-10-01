@@ -1736,10 +1736,10 @@
   <data name="Integration_Subtitle" xml:space="preserve"><value>Connect Fakvio to ChatGPT without an API key, or manage keys for other AI clients below.</value></data>
   <data name="Integration_ChatGptTitle" xml:space="preserve"><value>ChatGPT on the web — no API key</value></data>
   <data name="Integration_ChatGptIntro" xml:space="preserve"><value>Just sign in with your Fakvio account. Never paste your password or API key into a ChatGPT conversation.</value></data>
-  <data name="Integration_ChatGptStep1" xml:space="preserve"><value>Open ChatGPT in your browser. Find Fakvio under Plugins or Apps. If it is missing, your workspace admin must add it first using the server address below.</value></data>
+  <data name="Integration_ChatGptStep1" xml:space="preserve"><value>Open ChatGPT in your browser. Find Fakvio under Settings → Apps. If it is missing, your workspace admin must add it first using the server address below.</value></data>
   <data name="Integration_ChatGptStep2" xml:space="preserve"><value>Choose Connect for Fakvio, sign in to Fakvio, and approve the requested access. We recommend Read only for your first connection.</value></data>
   <data name="Integration_ChatGptStep3" xml:space="preserve"><value>In a new chat, select Fakvio from the tools and try: “Show my latest invoices.”</value></data>
-  <data name="Integration_ChatGptOpen" xml:space="preserve"><value>Open ChatGPT Plugins</value></data>
+  <data name="Integration_ChatGptOpen" xml:space="preserve"><value>Open ChatGPT</value></data>
   <data name="Integration_ChatGptServerLabel" xml:space="preserve"><value>Server address for one-time setup by your ChatGPT admin</value></data>
   <data name="Integration_ChatGptAdminNote" xml:space="preserve"><value>Cannot add an app in ChatGPT? Ask your ChatGPT workspace admin to make Fakvio available. Custom MCP app creation depends on your ChatGPT plan and workspace settings.</value></data>
   <data name="Integration_ApiKeysTitle" xml:space="preserve"><value>API keys for other clients</value></data>

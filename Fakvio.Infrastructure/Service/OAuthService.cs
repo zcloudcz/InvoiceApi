@@ -121,6 +121,19 @@ public class OAuthService : IOAuthService
     /// <inheritdoc />
     public async Task<OAuthTokenResult> ExchangeAuthorizationCodeAsync(ExchangeAuthorizationCodeRequest request, CancellationToken ct = default)
     {
+        // Production enables Npgsql retries. EF requires the complete transaction to run
+        // inside its execution strategy, otherwise even the first query fails with HTTP 500.
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(
+            cancel => ExchangeAuthorizationCodeInTransactionAsync(request, cancel), ct);
+    }
+
+    private async Task<OAuthTokenResult> ExchangeAuthorizationCodeInTransactionAsync(
+        ExchangeAuthorizationCodeRequest request, CancellationToken ct)
+    {
+        // A retry must reload database state instead of reusing entities mutated by a failed
+        // attempt. The authorization code is always looked up again under its row lock below.
+        _context.ChangeTracker.Clear();
         var hash = ApiKeyService.ComputeHash(request.Code);
 
         // Codex review finding (high, T3): the previous version consumed the code with an
@@ -233,6 +246,14 @@ public class OAuthService : IOAuthService
     /// <inheritdoc />
     public async Task<OAuthTokenResult> RefreshAsync(RefreshTokenRequest request, CancellationToken ct = default)
     {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(cancel => RefreshInTransactionAsync(request, cancel), ct);
+    }
+
+    private async Task<OAuthTokenResult> RefreshInTransactionAsync(RefreshTokenRequest request, CancellationToken ct)
+    {
+        // Discard tracked values from a rolled-back attempt before checking token reuse.
+        _context.ChangeTracker.Clear();
         var hash = ApiKeyService.ComputeHash(request.RefreshToken);
 
         // Codex review finding (high, T5): the previous version read the grant's RevokedAt

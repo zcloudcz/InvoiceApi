@@ -1343,8 +1343,8 @@ povolení pošle, a zvolíte **Jen čtení** (výchozí) nebo **Čtení i zápis
 
 **ChatGPT na webu — běžný uživatel:**
 
-1. Otevřete [ChatGPT Pluginy](https://chatgpt.com/plugins) v prohlížeči a přihlaste se. Podle
-   podoby vašeho účtu může být Fakvio také v **Nastavení → Aplikace**.
+1. Otevřete [ChatGPT](https://chatgpt.com/) v prohlížeči, přihlaste se a přejděte do
+   **Nastavení → Aplikace**.
 2. Najděte **Fakvio** a zvolte **Připojit**. Pokud ho v seznamu nevidíte, požádejte správce
    pracovního prostoru ChatGPT o jeho přidání; sami nemusíte vytvářet API klíč.
 3. Na stránce Fakvia se přihlaste svým běžným účtem. Zkontrolujte název aplikace, firmu a
@@ -1353,13 +1353,13 @@ povolení pošle, a zvolíte **Jen čtení** (výchozí) nebo **Čtení i zápis
    „Zobraz moje poslední faktury.“ Když v další zprávě chcete nová data z Fakvia, vyberte
    aplikaci znovu nebo ji v textu označte.
 
-**Jednorázové přidání správcem ChatGPT nebo uživatelem s vývojářským režimem:** v ChatGPT
-zapněte **Developer mode** (obvykle **Nastavení → Zabezpečení a přihlášení**, případně
-**Nastavení → Aplikace → Pokročilá nastavení**). Otevřete **Pluginy → +** nebo
-**Nastavení → Aplikace → Vytvořit**, zadejte název **Fakvio**, adresu
-`https://mcp.fakvio.cz/mcp` a přihlášení **OAuth**. Spusťte načtení nástrojů, dokončete
-přihlášení do Fakvia a aplikaci vytvořte. Ve firemním pracovním prostoru ji správce následně
-zpřístupní ostatním členům. Nabídky i dostupnost se liší podle plánu a nastavení ChatGPT;
+**Jednorázové přidání správcem ChatGPT nebo oprávněným vývojářem:** zapněte
+**Developer mode** v **Nastavení → Aplikace → Pokročilá nastavení** nebo při vytváření
+aplikace v **Nastavení pracovního prostoru → Aplikace → Vytvořit**. Pak otevřete
+**Aplikace → Vytvořit**, zadejte název **Fakvio**, adresu `https://mcp.fakvio.cz/mcp`
+a přihlášení **OAuth**. Spusťte **Scan Tools**, dokončete přihlášení do Fakvia a aplikaci
+vytvořte. Správce pracovního prostoru ji následně publikuje pro ostatní členy.
+Nabídky i dostupnost se liší podle plánu a nastavení ChatGPT;
 viz [aktuální návod OpenAI](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt).
 
 > API klíč z §20.1 v ChatGPT na webu nepoužívejte. K přihlášení slouží OAuth; heslo ani klíč

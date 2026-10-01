@@ -104,9 +104,10 @@ public class OAuthServiceTests : IAsyncLifetime
             await _dataSourceFactory.DisposeAsync();
     }
 
-    private MasterDbContext CreateMasterContext()
+    private MasterDbContext CreateMasterContext(bool enableRetryOnFailure = false)
         => new(new DbContextOptionsBuilder<MasterDbContext>()
-            .UseNpgsql(_dataSourceFactory!.GetForSchema(_schemaName, includePublicInSearchPath: false))
+            .UseNpgsql(_dataSourceFactory!.GetForSchema(_schemaName, includePublicInSearchPath: false),
+                options => { if (enableRetryOnFailure) options.EnableRetryOnFailure(); })
             .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))
             .Options);
 
@@ -307,6 +308,35 @@ public class OAuthServiceTests : IAsyncLifetime
         // between minting the token and this assertion are expected to shave a little off.
         result.ExpiresIn.ShouldBeInRange(3595, 3600);
         result.Scope.ShouldBe("read");
+    }
+
+    [SkippableFact]
+    public async Task ExchangeAuthorizationCodeAsync_WithProductionRetryStrategy_IssuesTokens()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var (code, verifier) = await IssueCodeAsync();
+        await using var context = CreateMasterContext(enableRetryOnFailure: true);
+
+        var result = await CreateService(context).ExchangeAuthorizationCodeAsync(
+            new ExchangeAuthorizationCodeRequest(code, RedirectUri, ClientId, verifier, Resource));
+
+        result.AccessToken.ShouldStartWith("fak_oat_");
+    }
+
+    [SkippableFact]
+    public async Task RefreshAsync_WithProductionRetryStrategy_RotatesToken()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var initial = await IssueAndExchangeAsync();
+        await using var context = CreateMasterContext(enableRetryOnFailure: true);
+
+        var result = await CreateService(context).RefreshAsync(
+            new RefreshTokenRequest(initial.RefreshToken, null, Resource));
+
+        result.AccessToken.ShouldStartWith("fak_oat_");
+        result.RefreshToken.ShouldNotBe(initial.RefreshToken);
     }
 
     [SkippableFact]
