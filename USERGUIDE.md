@@ -1128,7 +1128,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 57 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 63 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1336,3 +1336,13 @@ nové připojení (staré tím zmizí ze seznamu, žádné duplicity).
 **všechny** vaše připojené aplikace najednou (API klíče zůstávají beze změny — jsou to jiný,
 samostatně spravovaný typ přístupu). Po takové změně je tedy potřeba se v claude.ai/ChatGPT
 znovu přihlásit.
+
+## Zpětná vazba: chyby, nápady a postřehy
+
+Po přihlášení otevřete formulář ikonou brouka vpravo nahoře. Vyberte **Chyba**, **Nápad** nebo **Připomínka**, napište předmět (nejvýše 200 znaků) a popis (nejvýše 10 000 znaků). Připojí se aktuální stránka bez parametrů a verze aplikace. Přílohy ani odesílání emailu tato funkce nepodporuje.
+
+Po odeslání přejdete na detail hlášení. V nabídce **Moje hlášení** (`/feedback`) najdete pouze vlastní hlášení pro aktuální firmu; lze je filtrovat podle typu a stavu. Správce může nastavit stav **Nové**, **Řeší se**, **Vyřešeno** nebo **Zamítnuto** a přidat veřejnou odpověď, kterou uvidíte v detailu. Při chybě odeslání zůstane rozepsaný text ve formuláři.
+
+Stejné odeslání a sledování nabízí MCP nástroje `submit_feedback`, `list_feedback`, `get_feedback`; odeslání vyžaduje oprávnění k zápisu.
+
+Role dříve označená **Admin** se zobrazuje jako **Účetní** (anglicky **Accountant**). Zachovává dosavadní pracovní oprávnění kromě správy uživatelů; ta je nyní dostupná jen systémovému správci. Úprava vlastního profilu, hesla a osobních nastavení zůstává dostupná. Štítek role vedle jména v záhlaví byl odstraněn.

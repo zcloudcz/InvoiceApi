@@ -270,7 +270,7 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (57)
+## Dostupné nástroje (63)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
@@ -369,3 +369,23 @@ Unit testy jsou v `Fakvio.Tests.Unit/McpServer/` (mockovaný `IFakvioApiClient`)
 ```bash
 dotnet test Fakvio.Tests.Unit/Fakvio.Tests.Unit.csproj --filter "FullyQualifiedName~McpServer"
 ```
+
+## Feedback tools (2.4.0)
+
+- `submit_feedback`: accepts a typed `feedback` object with `type` (`Bug`, `Idea`,
+  `Observation`), `subject`, `description`, optional local `page` and `appVersion`.
+- `list_feedback`: lists only the authenticated user's reports in the selected company.
+  Optional `page` (default 1), `pageSize` (default 25, maximum 100), `type`, and `status`.
+- `get_feedback`: reads an accessible report by `id`, including the public response.
+- `list_admin_feedback`, `get_admin_feedback`, `update_feedback_status`: call the
+  protected `/api/sysadmin/feedback` endpoints. The update takes `id` and a typed
+  `update` object with `status` (`New`, `InProgress`, `Resolved`, `Declined`) and
+  optional `publicResponse`.
+
+All operations use the configured authenticated HTTP client. Creation accepts no
+owner, company, or status overrides. User reads require read scope and submission
+requires write scope. Global inbox operations additionally require the API's
+SysAdmin policy, with read scope for reads and write scope for updates. Read/write
+scopes alone do not grant SysAdmin. This release does not grant keys new roles. Denied
+calls return `forbidden`; guessed or inaccessible user report IDs return `not_found`.
+Report content is plain text, and page query strings/fragments are removed by the API.

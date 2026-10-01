@@ -1,0 +1,4 @@
+@page "/sysadmin/feedback/{Id:long}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
+<FeedbackDetail Id="Id" Admin="true" />
+@code { [Parameter] public long Id { get; set; } }

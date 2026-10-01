@@ -380,7 +380,7 @@
   <data name="User_ResetPasswordInfo" xml:space="preserve"><value>Jako administrátor můžete nastavit nové heslo bez znalosti stávajícího.</value></data>
   <data name="User_NewPassword" xml:space="preserve"><value>Nové heslo</value></data>
   <data name="User_RoleUser" xml:space="preserve"><value>Uživatel</value></data>
-  <data name="User_RoleAdmin" xml:space="preserve"><value>Administrátor</value></data>
+  <data name="User_RoleAdmin" xml:space="preserve"><value>Účetní</value></data>
   <data name="User_RoleSysAdmin" xml:space="preserve"><value>Systémový admin</value></data>
   <data name="User_ChangePassword" xml:space="preserve"><value>Změnit heslo</value></data>
   <data name="User_Deactivate" xml:space="preserve"><value>Deaktivovat</value></data>
@@ -1839,4 +1839,29 @@
   <data name="Integration_ConnectedAppRemoveConfirmTitle" xml:space="preserve"><value>Odebrat připojenou aplikaci?</value></data>
   <data name="Integration_ConnectedAppRemoveConfirmText" xml:space="preserve"><value>Aplikace {0} ztratí přístup k vašemu účtu. Tuto akci nelze vrátit zpět.</value></data>
   <data name="Integration_ConnectedAppRemoveSuccess" xml:space="preserve"><value>Aplikace byla odpojena.</value></data>
+  <data name="EFeedbackStatus_Declined" xml:space="preserve"><value>Zamítnuto</value></data>
+  <data name="EFeedbackStatus_InProgress" xml:space="preserve"><value>Řeší se</value></data>
+  <data name="EFeedbackStatus_New" xml:space="preserve"><value>Nové</value></data>
+  <data name="EFeedbackStatus_Resolved" xml:space="preserve"><value>Vyřešeno</value></data>
+  <data name="EFeedbackType_Bug" xml:space="preserve"><value>Chyba</value></data>
+  <data name="EFeedbackType_Idea" xml:space="preserve"><value>Nápad</value></data>
+  <data name="EFeedbackType_Observation" xml:space="preserve"><value>Připomínka</value></data>
+  <data name="Feedback_Created" xml:space="preserve"><value>Vytvořeno</value></data>
+  <data name="Feedback_Description" xml:space="preserve"><value>Popis</value></data>
+  <data name="Feedback_Error" xml:space="preserve"><value>Akce se nezdařila. Zkontrolujte údaje a oprávnění a zkuste to znovu.</value></data>
+  <data name="Feedback_Inbox" xml:space="preserve"><value>Hlášení uživatelů</value></data>
+  <data name="Feedback_Mine" xml:space="preserve"><value>Moje hlášení</value></data>
+  <data name="Feedback_Open" xml:space="preserve"><value>Otevřít hlášení</value></data>
+  <data name="Feedback_Page" xml:space="preserve"><value>Stránka (bez parametrů)</value></data>
+  <data name="Feedback_Refresh" xml:space="preserve"><value>Obnovit</value></data>
+  <data name="Feedback_Report" xml:space="preserve"><value>Nahlásit chybu nebo nápad</value></data>
+  <data name="Feedback_Required" xml:space="preserve"><value>Vyplňte toto pole.</value></data>
+  <data name="Feedback_Response" xml:space="preserve"><value>Veřejná odpověď</value></data>
+  <data name="Feedback_Saved" xml:space="preserve"><value>Odpověď a stav byly uloženy.</value></data>
+  <data name="Feedback_Send" xml:space="preserve"><value>Odeslat</value></data>
+  <data name="Feedback_Sent" xml:space="preserve"><value>Hlášení bylo odesláno.</value></data>
+  <data name="Feedback_Status" xml:space="preserve"><value>Stav</value></data>
+  <data name="Feedback_Subject" xml:space="preserve"><value>Předmět</value></data>
+  <data name="Feedback_Type" xml:space="preserve"><value>Typ</value></data>
+  <data name="Feedback_Version" xml:space="preserve"><value>Verze aplikace</value></data>
 </root>

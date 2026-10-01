@@ -1341,10 +1341,10 @@ Co v katalogu **záměrně není**:
 | Vynecháno | Proč |
 |-----------|------|
 | Auth flow (`/login`, `/register`, `/set-password`, `/verify-email`, callbacky) | Asistent běží v session přihlášeného uživatele — navigace ven z aplikace. |
-| SysAdmin-only stránky (`/logs`, `/system-settings`, `/companies`, `/company-settings`, `/currencies`, `/ai-instructions`, `/send-email`, `/sysadmin/*`) | Tenant uživatel by dostal jen „access denied". |
+| SysAdmin-only stránky (`/logs`, `/system-settings`, `/companies`, `/company-settings`, `/currencies`, `/ai-instructions`, `/send-email`, `/users`, `/sysadmin/*`) | Tenant uživatel by dostal jen „access denied". |
 | Routy s parametrem (`/invoices/{id}`, `/payments/{id}`, `/received-invoices/{id}`, detaily šablon) | Potřebují nejdřív dohledat entitu; dnes existuje jen resoluce klienta (target `client_detail` → `/clients/{id}`). |
 
-Stránky s `[Authorize(Roles = "Admin,SysAdmin")]` (`/users`, `/tax-configs`) v katalogu
+Stránky s `[Authorize(Roles = "Admin,SysAdmin")]` (`/tax-configs`) v katalogu
 **jsou** — `Admin` je tenantová role.
 
 Hlídá to `NavigateToolRouteCatalogTests`: čte reálnou routovací tabulku reflexí
@@ -1496,7 +1496,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 57 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 63 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1574,6 +1574,11 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `PauseRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
 | `ResumeRecurringSchedule` | Idempotent | — | ❌ | zatím bez tasku |
 | `DeleteRecurringSchedule` | **Destructive** | — | ❌ | zatím bez tasku |
+| **Zpětná vazba (6)** |
+| `SubmitFeedback` | Create | — | ❌ | MCP + UI; chat umí navigovat na přehled |
+| `ListFeedback`, `GetFeedback` | Read | — | ❌ | vlastní uživatel + firma |
+| `ListAdminFeedback`, `GetAdminFeedback` | Read | — | ❌ | SysAdmin |
+| `UpdateFeedbackStatus` | Write | — | ❌ | SysAdmin; veřejná odpověď |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
@@ -1586,8 +1591,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 57 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 15 mezer: daně (5, zatím bez tasku),
+**Součty:** 63 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 21 mezer: zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
@@ -1674,7 +1679,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **57 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring (po jednom souboru v `Tools/`).
+- **63 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -1693,7 +1698,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
   Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
   podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
-- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 56 nástrojů.**
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro běžné MCP nástroje.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
   Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
@@ -3274,3 +3279,15 @@ Nový vývojář / AI agent — pro rychlou orientaci přečti v tomto pořadí:
 9. `Fakvio.UI.Shared/Services/CustomAuthenticationStateProvider.cs` — auth na klientu.
 
 Pro hlubší investigation použij `Explore` agenta s konkrétní otázkou — ne grep naslepo.
+
+## Feedback reports (October 2026)
+
+Authenticated users can submit bugs, ideas and observations from the header and follow their own reports. `FeedbackService` is the shared boundary for the Blazor client and MCP HTTP calls. Reports live in master `FeedbackReport`; no tenant database, worker or external ticketing integration is involved. Migration `20261001105750_AddFeedbackReports` adds bounded text columns, restricted user/company foreign keys and indexes for owner/company, newest-first inbox and status paging.
+
+- `POST /api/feedback`, `GET /api/feedback`, `GET /api/feedback/{id}` derive the active user and effective company from trusted context. The service rechecks the user's persisted company (or authorized SysAdmin impersonation). Every personal query filters both user and company before pagination. Inaccessible IDs return 404.
+- `GET /api/sysadmin/feedback`, `GET /api/sysadmin/feedback/{id}`, `PATCH /api/sysadmin/feedback/{id}` require SysAdmin in HTTP authorization and the service, including its persisted user role. The global inbox works without impersonation. API keys/OAuth retain their existing authentication and read/write-scope restrictions; the feature grants no additional role.
+- Page is one-based, page size 1–100 (default 25), ordering is `CreatedAt DESC, Id DESC`. Undefined enums and invalid pagination return 400. Subject and description are trimmed and required (200/10,000 characters); public response 10,000, page 2,048, version 100. The server removes query/fragment and rejects non-local or unsafe paths. Report content is plain text, never rendered as HTML.
+- Feedback deliberately avoids argument-logging service proxies and response-body logging. Logs carry report IDs/statuses only. The HTTP adapter propagates cancellation; failed dialogs retain text and prevent repeated submission while pending.
+- MCP 2.4.0 adds `submit_feedback`, `list_feedback`, `get_feedback`, `list_admin_feedback`, `get_admin_feedback`, `update_feedback_status`. Clients use the shared contracts and API, never direct database access. See the MCP README for exact tool names and authorization.
+
+UI role `Admin` is presented as **Accountant / Účetní**. The persisted enum/JWT role remains `Admin`; user-management endpoints and navigation are restricted to SysAdmin. Self-service profile/password/preferences remain available. This does not implement multiple company memberships; registration still rejects an existing email.

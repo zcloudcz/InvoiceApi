@@ -143,6 +143,9 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     /// </summary>
     public DbSet<AppLog> AppLog { get; set; }
 
+    /// <summary>Central feedback inbox, explicitly scoped by owner and company in FeedbackService.</summary>
+    public DbSet<FeedbackReport> FeedbackReport { get; set; }
+
     /// <summary>
     /// Billing settings for companies (issuers) — bank account, payment method, due date config.
     /// Stored in master DB so SysAdmin can manage company billing settings (e.g., bank account)
@@ -250,6 +253,21 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         ConfigureContentTemplate(modelBuilder);
         ConfigureSystemConfiguration(modelBuilder);
         ConfigureAppLog(modelBuilder);
+        modelBuilder.Entity<FeedbackReport>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Subject).HasMaxLength(200).IsRequired();
+            entity.Property(r => r.Description).HasMaxLength(10000).IsRequired();
+            entity.Property(r => r.Page).HasMaxLength(2048);
+            entity.Property(r => r.AppVersion).HasMaxLength(100);
+            entity.Property(r => r.PublicResponse).HasMaxLength(10000);
+            // Keep reports when users/companies are referenced; deletion requires an explicit retention decision.
+            entity.HasOne<User>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Client>().WithMany().HasForeignKey(r => r.CompanyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(r => new { r.UserId, r.CompanyId, r.CreatedAt, r.Id });
+            entity.HasIndex(r => new { r.Status, r.CreatedAt, r.Id });
+            entity.HasIndex(r => new { r.CreatedAt, r.Id });
+        });
         ConfigureAresCache(modelBuilder);
         ConfigureTaxYearConfig(modelBuilder);
 

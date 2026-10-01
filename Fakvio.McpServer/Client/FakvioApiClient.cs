@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Dto.Feedback;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -51,6 +52,52 @@ public class FakvioApiClient : IFakvioApiClient
         _http = http;
     }
 
+    // All feedback operations use the same configured HttpClient and therefore the same
+    // credentials as the other tools. Never attach a user/company override here.
+    public async Task<FeedbackDto> CreateFeedbackAsync(CreateFeedbackDto dto, CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsJsonAsync("api/feedback", dto, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<FeedbackDto>(JsonOptions, ct))!;
+    }
+
+    public Task<PagedResult<FeedbackDto>> GetFeedbackAsync(FeedbackFilterDto filter, CancellationToken ct = default)
+        => GetFeedbackPageAsync("api/feedback", filter, ct);
+
+    public Task<PagedResult<FeedbackDto>> GetAdminFeedbackAsync(FeedbackFilterDto filter, CancellationToken ct = default)
+        => GetFeedbackPageAsync("api/sysadmin/feedback", filter, ct);
+
+    public Task<FeedbackDto> GetFeedbackByIdAsync(long id, CancellationToken ct = default)
+        => GetFeedbackDetailAsync($"api/feedback/{id}", ct);
+
+    public Task<FeedbackDto> GetAdminFeedbackByIdAsync(long id, CancellationToken ct = default)
+        => GetFeedbackDetailAsync($"api/sysadmin/feedback/{id}", ct);
+
+    public async Task<FeedbackDto> UpdateFeedbackStatusAsync(long id, UpdateFeedbackStatusDto dto, CancellationToken ct = default)
+    {
+        using var response = await _http.PatchAsJsonAsync($"api/sysadmin/feedback/{id}", dto, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<FeedbackDto>(JsonOptions, ct))!;
+    }
+
+    private async Task<PagedResult<FeedbackDto>> GetFeedbackPageAsync(string path, FeedbackFilterDto filter, CancellationToken ct)
+    {
+        // Forward even invalid paging values: the API owns validation consistently for UI and MCP.
+        var query = $"?page={filter.Page}&pageSize={filter.PageSize}";
+        if (filter.Type.HasValue) query += $"&type={(int)filter.Type.Value}";
+        if (filter.Status.HasValue) query += $"&status={(int)filter.Status.Value}";
+        using var response = await _http.GetAsync(path + query, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<PagedResult<FeedbackDto>>(JsonOptions, ct))!;
+    }
+
+    private async Task<FeedbackDto> GetFeedbackDetailAsync(string path, CancellationToken ct)
+    {
+        using var response = await _http.GetAsync(path, ct);
+        // Inaccessible and missing reports both retain the API's 404; no ownership information leaks.
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<FeedbackDto>(JsonOptions, ct))!;
+    }
     // ── Invoice endpoints ──────────────────────────────────────────────
 
     public async Task<PagedResult<InvoiceDto>> GetInvoicesPagedAsync(InvoiceFilterDto filter, CancellationToken ct = default)

@@ -1,0 +1,68 @@
+@using Fakvio.Contracts.Dto.Feedback
+@using Fakvio.Domain.Enums
+@inject FeedbackApiService Api
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+@implements IDisposable
+
+<MudText Typo="Typo.h4" Class="mb-4">@L[Admin ? "Feedback_Inbox" : "Feedback_Mine"]</MudText>
+@if (_error) { <MudAlert Severity="Severity.Error">@L["Feedback_Error"]</MudAlert> }
+<MudStack Row="true" Class="mb-4 flex-wrap">
+    <EnumSelect TEnum="EFeedbackType" Nullable="true" NullableValue="_type" NullableValueChanged="TypeChanged" Label="@L["Feedback_Type"].Value" />
+    <EnumSelect TEnum="EFeedbackStatus" Nullable="true" NullableValue="_status" NullableValueChanged="StatusChanged" Label="@L["Feedback_Status"].Value" />
+    <MudButton OnClick="Reload" StartIcon="@Icons.Material.Filled.Refresh">@L["Feedback_Refresh"]</MudButton>
+</MudStack>
+<FakvioGrid T="FeedbackDto" GridKey="@(Admin ? "feedback-inbox" : "feedback-mine")" ServerData="LoadAsync" @ref="_grid" RowsPerPage="25" RowClick="Open">
+    <Columns>
+        <PropertyColumn Property="x => x.Subject" Title="@L["Feedback_Subject"].Value" Filterable="false" Sortable="false" />
+        <TemplateColumn Title="@L["Feedback_Type"].Value" Filterable="false" Sortable="false">
+            <CellTemplate>@L[$"EFeedbackType_{context.Item.Type}"]</CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn Title="@L["Feedback_Status"].Value" Filterable="false" Sortable="false">
+            <CellTemplate>@L[$"EFeedbackStatus_{context.Item.Status}"]</CellTemplate>
+        </TemplateColumn>
+        <PropertyColumn Property="x => x.CreatedAt" Title="@L["Feedback_Created"].Value" Filterable="false" Sortable="false" />
+        <TemplateColumn Filterable="false" Sortable="false">
+            <CellTemplate><MudIconButton Icon="@Icons.Material.Filled.Visibility" title="@L["Feedback_Open"]" aria-label="@L["Feedback_Open"].Value" OnClick="@(() => Navigate(context.Item.Id))" /></CellTemplate>
+        </TemplateColumn>
+    </Columns>
+</FakvioGrid>
+
+@code {
+    [Parameter] public bool Admin { get; set; }
+    private FakvioGrid<FeedbackDto>? _grid;
+    private EFeedbackType? _type;
+    private EFeedbackStatus? _status;
+    private bool _error;
+    private readonly CancellationTokenSource _lifetime = new();
+
+    private async Task<GridData<FeedbackDto>> LoadAsync(GridState<FeedbackDto> state)
+    {
+        _error = false;
+        try
+        {
+            var page = await Api.ListAsync(new FeedbackFilterDto
+                { Page = state.Page + 1, PageSize = state.PageSize, Type = _type, Status = _status }, Admin, _lifetime.Token);
+            return new GridData<FeedbackDto> { Items = page.Items, TotalItems = page.TotalCount };
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { return new(); }
+        catch (Exception)
+        {
+            _error = true;
+            await InvokeAsync(StateHasChanged);
+            return new() { Items = [], TotalItems = 0 };
+        }
+    }
+
+    private Task Reload() => _grid?.ReloadAsync() ?? Task.CompletedTask;
+    private async Task TypeChanged(EFeedbackType? value) { _type = value; await ResetPageAsync(); }
+    private async Task StatusChanged(EFeedbackStatus? value) { _status = value; await ResetPageAsync(); }
+    private async Task ResetPageAsync()
+    {
+        if (_grid?.Grid is { } grid) grid.CurrentPage = 0;
+        await Reload();
+    }
+    private void Open(DataGridRowClickEventArgs<FeedbackDto> args) => Navigate(args.Item.Id);
+    private void Navigate(long id) => Navigation.NavigateTo($"{(Admin ? "/sysadmin/feedback" : "/feedback")}/{id}");
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

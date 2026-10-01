@@ -1,5 +1,5 @@
 @page "/users"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,SysAdmin")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
 @using Fakvio.Contracts.Dto.User
 @using Fakvio.Contracts.Dto.Client
 @using Fakvio.Domain.Enums
@@ -105,7 +105,9 @@
                 <MudSelect @bind-Value="_currentUser.Role" Label="@L["User_Role"].Value" Required="true">
                     <MudSelectItem Value="@EUserRole.User">@L["User_RoleUser"]</MudSelectItem>
                     <MudSelectItem Value="@EUserRole.Admin">@L["User_RoleAdmin"]</MudSelectItem>
-                    <MudSelectItem Value="@EUserRole.SysAdmin">@L["User_RoleSysAdmin"]</MudSelectItem>
+                    <AuthorizeView Roles="SysAdmin">
+                        <MudSelectItem Value="@EUserRole.SysAdmin">@L["User_RoleSysAdmin"]</MudSelectItem>
+                    </AuthorizeView>
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="6">

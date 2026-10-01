@@ -20,8 +20,8 @@ namespace Fakvio.Tests.Unit;
 /// Regression tests for issue #364 — privilege escalation inside a tenant.
 ///
 /// The hole: <c>UserDto</c> carried the raw <c>InvitationToken</c>, and every user-listing
-/// endpoint (<c>GET /api/user</c>, <c>GET /api/user/paged</c>, <c>GET /api/user/{id}</c>) is
-/// open to any authenticated member of a company. Because
+/// endpoint (<c>GET /api/user</c>, <c>GET /api/user/paged</c>, <c>GET /api/user/{id}</c>) was
+/// previously open to any authenticated member of a company. Because
 /// <c>POST /api/user/set-password</c> accepts that token anonymously, the token IS a
 /// credential. And since the forgot-password flow recycles the very same field
 /// (<c>IUserService.ForgotPasswordAsync</c>), a plain <c>User</c> only had to poll the list
@@ -132,8 +132,8 @@ public class UserInvitationTokenLeakTests : IDisposable
     }
 
     /// <summary>
-    /// GET /api/user/{id} is only [Authorize]d as well — a colleague can read it for anyone
-    /// in their own company, so it must not carry the token either.
+    /// GET /api/user/{id} previously allowed a colleague to read anyone
+    /// in their own company; the self-profile response must still never carry credentials.
     /// </summary>
     [Fact]
     public async Task GetUserByIdAsync_DoesNotSerializeInvitationToken()
@@ -233,19 +233,19 @@ public class UserInvitationTokenLeakTests : IDisposable
     }
 
     /// <summary>
-    /// The narrow path must stay narrow. Admin and SysAdmin can already set any password in
+    /// The narrow path must stay narrow. Only SysAdmin can set any password in
     /// their scope (POST /api/user/{id}/admin-reset-password), so the token grants them
     /// nothing new — but widening this gate to plain [Authorize] would restore issue #364
     /// under a different URL.
     /// </summary>
     [Fact]
-    public void GetInvitationTokenEndpoint_IsRestrictedToAdminAndSysAdmin()
+    public void GetInvitationTokenEndpoint_IsRestrictedToSysAdmin()
     {
         var attribute = typeof(UserController)
             .GetMethod(nameof(UserController.GetInvitationToken))!
             .GetCustomAttribute<AuthorizeAttribute>();
 
         attribute.ShouldNotBeNull();
-        attribute.Roles.ShouldBe("Admin,SysAdmin");
+        attribute.Roles.ShouldBe("SysAdmin");
     }
 }

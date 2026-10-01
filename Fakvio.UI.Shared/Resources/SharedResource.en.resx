@@ -380,7 +380,7 @@
   <data name="User_ResetPasswordInfo" xml:space="preserve"><value>As an administrator you can set a new password without knowing the current one.</value></data>
   <data name="User_NewPassword" xml:space="preserve"><value>New password</value></data>
   <data name="User_RoleUser" xml:space="preserve"><value>User</value></data>
-  <data name="User_RoleAdmin" xml:space="preserve"><value>Administrator</value></data>
+  <data name="User_RoleAdmin" xml:space="preserve"><value>Accountant</value></data>
   <data name="User_RoleSysAdmin" xml:space="preserve"><value>System administrator</value></data>
   <data name="User_ChangePassword" xml:space="preserve"><value>Change password</value></data>
   <data name="User_Deactivate" xml:space="preserve"><value>Deactivate</value></data>
@@ -1839,4 +1839,29 @@
   <data name="Integration_ConnectedAppRemoveConfirmTitle" xml:space="preserve"><value>Remove this connected app?</value></data>
   <data name="Integration_ConnectedAppRemoveConfirmText" xml:space="preserve"><value>{0} will lose access to your account. This cannot be undone.</value></data>
   <data name="Integration_ConnectedAppRemoveSuccess" xml:space="preserve"><value>The application has been disconnected.</value></data>
+  <data name="EFeedbackStatus_Declined" xml:space="preserve"><value>Declined</value></data>
+  <data name="EFeedbackStatus_InProgress" xml:space="preserve"><value>In progress</value></data>
+  <data name="EFeedbackStatus_New" xml:space="preserve"><value>New</value></data>
+  <data name="EFeedbackStatus_Resolved" xml:space="preserve"><value>Resolved</value></data>
+  <data name="EFeedbackType_Bug" xml:space="preserve"><value>Bug</value></data>
+  <data name="EFeedbackType_Idea" xml:space="preserve"><value>Idea</value></data>
+  <data name="EFeedbackType_Observation" xml:space="preserve"><value>Observation</value></data>
+  <data name="Feedback_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Feedback_Description" xml:space="preserve"><value>Description</value></data>
+  <data name="Feedback_Error" xml:space="preserve"><value>The request failed. Check your entries and permissions and try again.</value></data>
+  <data name="Feedback_Inbox" xml:space="preserve"><value>Feedback inbox</value></data>
+  <data name="Feedback_Mine" xml:space="preserve"><value>My reports</value></data>
+  <data name="Feedback_Open" xml:space="preserve"><value>Open report</value></data>
+  <data name="Feedback_Page" xml:space="preserve"><value>Page (without parameters)</value></data>
+  <data name="Feedback_Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Feedback_Report" xml:space="preserve"><value>Report a bug or idea</value></data>
+  <data name="Feedback_Required" xml:space="preserve"><value>This field is required.</value></data>
+  <data name="Feedback_Response" xml:space="preserve"><value>Public response</value></data>
+  <data name="Feedback_Saved" xml:space="preserve"><value>Response and status saved.</value></data>
+  <data name="Feedback_Send" xml:space="preserve"><value>Send</value></data>
+  <data name="Feedback_Sent" xml:space="preserve"><value>Your report was submitted.</value></data>
+  <data name="Feedback_Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Feedback_Subject" xml:space="preserve"><value>Subject</value></data>
+  <data name="Feedback_Type" xml:space="preserve"><value>Type</value></data>
+  <data name="Feedback_Version" xml:space="preserve"><value>Application version</value></data>
 </root>

@@ -1,4 +1,4 @@
-﻿using Fakvio.UI.Shared.Services;
+using Fakvio.UI.Shared.Services;
 using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -57,6 +57,7 @@ public static class ServiceCollectionExtensions
         // AddApiClient<T> wires the IClientLogger into every ApiClientBase-derived service so any
         // exception caught in the base class is forwarded to the server-side AppLog table.
         // Without this wrapper, errors would only land in the browser console.
+        services.AddApiClient<FeedbackApiService>();
         services.AddApiClient<VatRateApiService>();
         services.AddApiClient<ClientApiService>();
         services.AddApiClient<FakvioService>();

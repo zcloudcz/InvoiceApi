@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Dto.Feedback;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http.Json;
@@ -246,6 +247,23 @@ public class McpSdkInvocationTests
         session.Api.LastCreateRecurringScheduleRequest.DayOfMonth.ShouldBe(15);
     }
 
+    [Fact]
+    public async Task SubmitFeedback_SdkBindsStringEnumAndDoesNotForwardOwnerOverrides()
+    {
+        await using var session = await McpSdkTestSession.StartAsync();
+        var result = await session.Client.CallToolAsync("submit_feedback", new Dictionary<string, object?>
+        {
+            ["feedback"] = new { type = "Idea", subject = "Short title", description = "Details", userId = 999, companyId = 999, status = "Resolved" }
+        }, cancellationToken: session.Deadline.Token);
+        result.IsError.ShouldNotBe(true);
+        session.Api.LastFeedbackBody.ShouldNotBeNull();
+        using var body = System.Text.Json.JsonDocument.Parse(session.Api.LastFeedbackBody!);
+        body.RootElement.GetProperty("type").GetInt32().ShouldBe(1);
+        body.RootElement.GetProperty("subject").GetString().ShouldBe("Short title");
+        body.RootElement.TryGetProperty("userId", out _).ShouldBeFalse();
+        body.RootElement.TryGetProperty("companyId", out _).ShouldBeFalse();
+        body.RootElement.TryGetProperty("status", out _).ShouldBeFalse();
+    }
     /// <summary>
     /// Minimal in-process MCP session: a real <see cref="McpServerRegistration.AddFakvioMcpServer"/>
     /// host talking to a real <see cref="McpClient"/> over an in-memory pipe pair, with only the
@@ -317,6 +335,7 @@ public class McpSdkInvocationTests
         private static readonly Regex CreateInvoiceFromTemplatePath =
             new(@"/api/invoicetemplate/(?<id>\d+)/create-invoice$", RegexOptions.Compiled);
 
+        public string? LastFeedbackBody { get; private set; }
         public CreateReceivedInvoiceDto? LastReceivedInvoiceRequest { get; private set; }
         public CreateClientDto? LastCreateClientRequest { get; private set; }
         public long? LastUpdateClientId { get; private set; }
@@ -330,6 +349,11 @@ public class McpSdkInvocationTests
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/feedback" && request.Method == HttpMethod.Post)
+            {
+                LastFeedbackBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return Json(new FeedbackDto { Id = 42 });
+            }
 
             if (path.EndsWith("/api/currency/active", StringComparison.Ordinal))
             {

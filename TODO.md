@@ -1,5 +1,18 @@
 # Fakvio TODO
 
+## Implemented, awaiting draft PR (2026-10-01): feedback and role presentation
+
+- [x] Shared feedback contracts, owner/company authorization, master persistence and generated migration.
+- [x] Localized header form, personal tracking, SysAdmin inbox and public response; no role chip beside name.
+- [x] MCP HTTP parity and package version 2.4.0 (not published).
+- [x] Accountant / Účetní display label; user-management UI limited to SysAdmin.
+- [x] Release verification: 3,986 unit tests passed (4 existing DB smoke skips); 239 integration tests passed (3 external-service skips). Includes 70 feedback unit/UI/MCP cases, 14 feedback HTTP/migration cases, and 33 user-management cases. Generated migration applied to disposable PostgreSQL; column, FK and index checks passed.
+- [x] Independent feedback security review and coordinating-agent user-management review: no findings.
+- [ ] Draft PR; no feedback production deployment or MCP 2.4.0 publication performed.
+- [ ] Browser visual check at normal/narrow widths remains unperformed; interaction/authorization/localization verified by bUnit.
+- [ ] Separately authorized next feature: one identity with company memberships, add-company and existing-user invitation acceptance. Current duplicate-email registration remains rejected (verified; not implemented in this branch).
+
+
 ## Completed (2026-09-11)
 
 ### Výchozí řazení faktur: od nejnovější ✅
@@ -1103,7 +1116,10 @@ Comprehensive browser-based UI tests using Microsoft.Playwright.NUnit (Chromium 
 - [x] **NavigateTool** (Infrastructure/Service/ChatTools): new IChatTool for navigation — resolves client names via IClientService.GetClientsPagedAsync, builds URLs for new_invoice, new_credit_note, client_detail, client_list, invoice_list, new_client; handles single match (navigate), multiple matches (disambiguate), no match (error)
 - [x] **ChatToolExecutor extended**: added NavigationKeywordPattern [GeneratedRegex] (otevři, ukaž, přejdi, naviguj, zobraz, open, show, go to, new invoice, new client, etc.); DetectToolIntent now triggers on EITHER (IČO + keyword) OR (navigation keyword); BuildToolInstructions includes navigate tool with examples
 - [x] **ChatService pending action**: _pendingUiAction field captured from toolResult.UiAction after tool execution; GetPendingUiAction() method on IChatService interface; scoped per-request (safe for concurrent users)
-- [x] **ChatController SSE action event**: after [DONE], sends `event: action\ndata: {json}\n\n` if pending action exists — uses standard SSE event: field for type discrimination
+- [x] **ChatController SSE action event**: after [DONE], sends `event: action
+data: {json}
+
+` if pending action exists — uses standard SSE event: field for type discrimination
 - [x] **ChatApiService**: new ChatStreamEvent class (Text/Action discriminated union); StreamMessageAsync returns IAsyncEnumerable<ChatStreamEvent>; parses SSE event: lines, tracks currentEventType, yields text or action events; continues reading after [DONE] for action events
 - [x] **ChatPanel navigation**: injects NavigationManager, captures pendingAction during streaming, executes NavigateTo(url) after 800ms delay (lets user see AI response first)
 - [x] **DI registration**: NavigateTool added to ServiceCollectionExtensions.cs
@@ -1192,4 +1208,3 @@ based on how often Czech customers ask for them. Each line is sized as a standal
 - [ ] **API Rate Limiting** — protect against abuse, per-tenant and per-endpoint limits, ASP.NET Core rate limiting middleware
 - [ ] **Performance Optimization** — Redis distributed cache, response compression, lazy loading for large datasets, query optimization
 - [ ] **Apple OAuth** — add Apple sign-in provider (requires separate NuGet package, Apple Developer account setup)
-

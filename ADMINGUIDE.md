@@ -52,7 +52,7 @@ Chipy s počty logů pro každou úroveň: Critical / Error / Warning / Informat
 
 ## 2. Správa uživatelů
 
-**Stránka:** `/users` (přístupná pro Admin i SysAdmin)
+**Stránka:** `/users` (přístupná pouze pro SysAdmin)
 
 ### Přehled uživatelů
 
@@ -68,7 +68,7 @@ Dostupné akce per uživatel:
 | Role | Oprávnění |
 |------|----------|
 | **SysAdmin** | Přístup ke všem stránkám systému, správa firem, logy, systémové nastavení |
-| **Admin** | Správa uživatelů v rámci své firmy, stejná fakturační práva jako User |
+| **Účetní / Accountant** (interně `Admin`) | Dosavadní pracovní a fakturační oprávnění; bez správy uživatelů |
 | **User** | Standardní uživatel — faktury, klienti, šablony, přijaté faktury, přehled DPH |
 
 ### Vytvoření nového uživatele
@@ -1124,3 +1124,13 @@ federated credential. Mění se jen tehdy, když se mění samotná app registra
 | Test emailu | `/send-email` |
 | Dashboard SysAdmin | `/` (bez impersonace) |
 | Diagnostika DB / auth režimu | `GET /api/diagnostic/health` (jen API, bez UI) |
+
+## Centrální příjem zpětné vazby
+
+SysAdmin najde přehled všech hlášení v nabídce zpětné vazby na `/sysadmin/feedback`. Přehled je uložen v master databázi a funguje bez impersonace firmy. Filtrujte typ a stav, otevřete detail a změňte stav na Nové, Řeší se, Vyřešeno nebo Zamítnuto. Volitelná veřejná odpověď (do 10 000 znaků) je viditelná autorovi v jeho detailu; nepoužívejte ji pro interní poznámky.
+
+Uživatel vidí jen vlastní hlášení v aktuální firmě. Odeslané texty se zobrazují jako prostý text; neposílají se emailem ani do GitHubu. Kontext stránky neobsahuje query ani fragment. Při nasazení se aplikuje master migrace `20261001105750_AddFeedbackReports`; tabulka obsahuje vazby na uživatele a firmu s omezeným mazáním, aby odstranění vlastníka neproběhlo bez rozhodnutí o uchování hlášení.
+
+MCP 2.4.0 poskytuje i nástroje pro centrální přehled/detail a změnu stavu. Používají stejné chráněné HTTP endpointy; vyžadují skutečnou roli SysAdmin a změna stavu také scope zápisu u strojových přihlašovacích údajů. Samotný název nástroje žádné oprávnění nepřidává.
+
+Role **Účetní / Accountant** používá interně původní roli `Admin`, ale nově nemá správu uživatelů. Uživatele a jejich pozvánky spravuje SysAdmin; samotnému uživateli zůstávají osobní profil, heslo a preference. Běžným uživatelům se volba SysAdmin v roli nenabízí. Opakovaná registrace se stejným emailem je nadále odmítnuta; více firem pod jednou identitou zatím není implementováno.

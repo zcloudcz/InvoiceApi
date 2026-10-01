@@ -41,6 +41,8 @@ public class TenantContextMiddleware
         "/api/company",
         "/api/system-configuration", // SMTP + JWT settings — master DB, SysAdmin only
         "/api/dashboard/sysadmin",   // SysAdmin dashboard — master DB, no tenant needed
+        "/api/feedback",             // Central report storage; service validates owner and company.
+        "/api/sysadmin/feedback",    // Global inbox must work without tenant impersonation.
         "/api/logs",                 // Application logs — master DB, SysAdmin only
         "/api/twofactor",            // 2FA setup/verify — operates on master DB User table
         "/api/cloud-storage",        // Cloud storage settings — stored in master DB CompanySystemSettings
