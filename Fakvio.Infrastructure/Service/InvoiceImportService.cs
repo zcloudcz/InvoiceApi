@@ -36,6 +36,8 @@ public class InvoiceImportService : IInvoiceImportService
     private readonly IInvoiceService _invoiceService;
     private readonly IReceivedInvoiceService _receivedInvoiceService;
     private readonly ICurrencyService _currencyService;
+    private readonly IIsdocImportParser _isdocParser;
+    private readonly IUblImportParser _ublParser;
     private readonly ILogger<InvoiceImportService> _logger;
 
     public InvoiceImportService(
@@ -48,7 +50,9 @@ public class InvoiceImportService : IInvoiceImportService
         IInvoiceService invoiceService,
         IReceivedInvoiceService receivedInvoiceService,
         ICurrencyService currencyService,
-        ILogger<InvoiceImportService> logger)
+        ILogger<InvoiceImportService> logger,
+        IIsdocImportParser isdocParser,
+        IUblImportParser ublParser)
     {
         _context = context;
         _qrExtractor = qrExtractor;
@@ -60,6 +64,8 @@ public class InvoiceImportService : IInvoiceImportService
         _receivedInvoiceService = receivedInvoiceService;
         _currencyService = currencyService;
         _logger = logger;
+        _isdocParser = isdocParser;
+        _ublParser = ublParser;
     }
 
     // ─── Preview ─────────────────────────────────────────────────────────
@@ -124,6 +130,57 @@ public class InvoiceImportService : IInvoiceImportService
         _logger.LogInformation(
             "Import preview for {FileName}: Source={Source}, Valid={Valid}, Validations={Count}",
             fileName, data.Source, preview.IsValid, preview.Validations.Count);
+
+        return preview;
+    }
+
+    // ─── Structured import (ISDOC / UBL, F1.10) ────────────────────────────
+
+    /// <summary>
+    /// Previews the import of a structured invoice document (ISDOC or UBL/Peppol BIS).
+    /// Routed by file extension: .isdoc/.isdocx → ISDOC, anything else (.xml) → UBL.
+    /// No QR/AI/regex waterfall — the parser either recognizes the document or it doesn't.
+    /// Reuses the same preview-building and validation logic as the PDF pipeline
+    /// (<see cref="BuildPreview"/>), so the resulting DTO behaves identically for the
+    /// caller (same client-resolution, duplicate-detection and required-field rules).
+    /// </summary>
+    public async Task<InvoiceImportPreviewDto> PreviewStructuredImportAsync(
+        byte[] fileBytes, string fileName, EImportTarget target, CancellationToken ct = default)
+    {
+        var isIsdoc = fileName.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase)
+                   || fileName.EndsWith(".isdocx", StringComparison.OrdinalIgnoreCase);
+        var sourceLabel = isIsdoc ? "ISDOC" : "UBL";
+
+        _logger.LogInformation("Starting {Source} import preview for {FileName}, target: {Target}",
+            sourceLabel, fileName, target);
+
+        InvoiceExtractedData? data;
+        if (isIsdoc)
+        {
+            var xmlText = IsdocZipReader.ExtractXmlText(fileBytes, _logger, fileName);
+            data = xmlText != null ? _isdocParser.Parse(xmlText) : null;
+        }
+        else
+        {
+            data = _ublParser.Parse(fileBytes);
+        }
+
+        if (data == null)
+        {
+            _logger.LogWarning("Failed to extract {Source} data from {FileName} — not a valid/recognized document",
+                sourceLabel, fileName);
+            return CreateErrorPreview(fileName,
+                $"Could not read this file as a valid {sourceLabel} document. " +
+                "Please check the file, or use the PDF import instead.");
+        }
+
+        // No QR code in a structured XML document — an empty result lets BuildPreview
+        // reuse exactly the same preview/validation path as the PDF pipeline.
+        var preview = await BuildPreview(data, fileName, new QrExtractionResult(), target, ct);
+
+        _logger.LogInformation(
+            "Structured import preview for {FileName}: Source={Source}, Valid={Valid}, Validations={Count}",
+            fileName, sourceLabel, preview.IsValid, preview.Validations.Count);
 
         return preview;
     }

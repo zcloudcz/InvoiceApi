@@ -1,4 +1,5 @@
 using Fakvio.McpServer.Client;
+using Fakvio.McpServer.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -41,6 +42,22 @@ public static class McpApiKeyMiddleware
     /// </summary>
     public static async Task InvokeAsync(HttpContext context, RequestDelegate next)
     {
+        // Protected Resource Metadata is how an MCP client discovers the authorization server
+        // BEFORE it has any credential at all (ADR 0001 §1.3 "Discovery") — gating it would be
+        // a chicken-and-egg problem, not a security boundary.
+        //
+        // Matched by EXACT path (GET only — the two PRM routes are GET-mapped in McpHttpHost),
+        // not a "/.well-known" prefix (Codex review finding): this host serves nothing else
+        // today, but a prefix bypass would silently make any FUTURE endpoint placed under that
+        // namespace public too, without anyone touching this file to notice.
+        if (HttpMethods.IsGet(context.Request.Method) &&
+            (context.Request.Path.Equals("/.well-known/oauth-protected-resource/mcp", StringComparison.OrdinalIgnoreCase) ||
+             context.Request.Path.Equals("/.well-known/oauth-protected-resource", StringComparison.OrdinalIgnoreCase)))
+        {
+            await next(context);
+            return;
+        }
+
         // Fast path: no credential at all cannot possibly validate, so do not spend an API
         // round-trip on it. Anything else — wrong scheme, expired key, garbage — is decided
         // by the API below, so this middleware never has to know what a valid key looks like.
@@ -64,6 +81,27 @@ public static class McpApiKeyMiddleware
             return;
         }
 
+        // Audience check (ADR §4.4/§4.6, threat T6): an OAuth-issued access token is only good
+        // for the resource it was granted for. A manually created API key (OAuthGrantId null)
+        // has no resource binding at all and skips this — it is a deliberate exception (§4.4),
+        // not an oversight.
+        //
+        // Deliberately NOT gated on this host's own OAuthEnabled flag (Codex review finding):
+        // the API is what decided this credential is OAuth-backed, so if it says so, the
+        // audience must hold regardless of whether THIS host's local discovery/challenge flag
+        // happens to be on — two independently misconfigured flags must not turn into "one of
+        // them being off silently disables an unrelated security check."
+        var settings = context.RequestServices.GetRequiredService<McpServerSettings>();
+        if (identity.OAuthGrantId is not null)
+        {
+            var ownResource = $"{settings.PublicUrl?.TrimEnd('/')}{McpHttpHost.EndpointPath}";
+            if (!string.Equals(identity.OAuthResource, ownResource, StringComparison.Ordinal))
+            {
+                Challenge(context, $"OAuth token resource '{identity.OAuthResource}' does not match this server's resource '{ownResource}'");
+                return;
+            }
+        }
+
         await next(context);
     }
 
@@ -85,6 +123,14 @@ public static class McpApiKeyMiddleware
             .LogInformation("MCP request rejected: {Reason}.", reason);
 
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        context.Response.Headers.WWWAuthenticate = "Bearer";
+
+        // Flag off ⇒ the bare "Bearer" challenge, byte-for-byte what today's clients already
+        // get (T15) — resource_metadata is what tells an OAuth-aware client to start the
+        // sign-in flow (ADR §1.3 "Discovery"), so pointing it at a metadata document that 404s
+        // would be worse than not mentioning OAuth at all.
+        var settings = context.RequestServices.GetRequiredService<McpServerSettings>();
+        context.Response.Headers.WWWAuthenticate = settings.OAuthEnabled
+            ? $"Bearer resource_metadata=\"{settings.PublicUrl?.TrimEnd('/')}/.well-known/oauth-protected-resource/mcp\", scope=\"read write\""
+            : "Bearer";
     }
 }

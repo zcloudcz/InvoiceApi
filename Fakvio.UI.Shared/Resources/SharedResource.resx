@@ -64,6 +64,7 @@
   <data name="Btn_Back" xml:space="preserve"><value>Zpět</value></data>
   <data name="Btn_ExportPdf" xml:space="preserve"><value>Export PDF</value></data>
   <data name="Btn_ExportIsdoc" xml:space="preserve"><value>Stáhnout ISDOC</value></data>
+  <data name="Btn_ExportUbl" xml:space="preserve"><value>Stáhnout e-fakturu (UBL)</value></data>
   <data name="Btn_SendEmail" xml:space="preserve"><value>Odeslat e-mailem</value></data>
   <data name="Btn_Preview" xml:space="preserve"><value>Náhled</value></data>
   <data name="Btn_CreateFromTemplate" xml:space="preserve"><value>Vytvořit ze šablony</value></data>
@@ -358,6 +359,9 @@
   <data name="Client_FetchFromAres" xml:space="preserve"><value>Načítat z ARES</value></data>
   <data name="Client_Language" xml:space="preserve"><value>Jazyk dokumentů</value></data>
   <data name="Client_Color" xml:space="preserve"><value>Barva klienta</value></data>
+  <data name="Client_PeppolId" xml:space="preserve"><value>Peppol ID (přepis)</value></data>
+  <data name="Client_PeppolIdHelp" xml:space="preserve"><value>Volitelné. Nechte prázdné — Fakvio ho odvodí z DIČ a země. Vyplňte jen když odvození nestačí (formát „schéma:hodnota", např. 0245:2020123456).</value></data>
+  <data name="Client_PeppolIdInvalid" xml:space="preserve"><value>Formát musí být „schéma:hodnota", např. 0245:2020123456.</value></data>
   <data name="Company_Subtitle" xml:space="preserve"><value>Správa společností vystavujících faktury</value></data>
   <data name="Company_NoRecords" xml:space="preserve"><value>Nebyly nalezeny žádné společnosti.</value></data>
   <data name="Company_Detail" xml:space="preserve"><value>Detail společnosti</value></data>
@@ -476,6 +480,8 @@
   <data name="Invoice_PdfFailed" xml:space="preserve"><value>Nepodařilo se vygenerovat PDF</value></data>
   <data name="Invoice_IsdocDownloaded" xml:space="preserve"><value>ISDOC stažen</value></data>
   <data name="Invoice_IsdocFailed" xml:space="preserve"><value>Nepodařilo se exportovat ISDOC</value></data>
+  <data name="Invoice_UblDownloaded" xml:space="preserve"><value>E-faktura (UBL) stažena</value></data>
+  <data name="Invoice_UblFailed" xml:space="preserve"><value>Nepodařilo se exportovat e-fakturu (UBL)</value></data>
   <data name="Invoice_EmailSentTo" xml:space="preserve"><value>Faktura odeslána na {0}</value></data>
   <data name="Invoice_EmailFailed" xml:space="preserve"><value>Nepodařilo se odeslat email</value></data>
   <data name="Invoice_CreatingTemplate" xml:space="preserve"><value>Vytvářím šablonu...</value></data>
@@ -991,6 +997,7 @@
   <data name="Bulk_Email" xml:space="preserve"><value>Odeslat e-mailem</value></data>
   <data name="Bulk_Pdf" xml:space="preserve"><value>Stáhnout PDF</value></data>
   <data name="Bulk_Isdoc" xml:space="preserve"><value>Stáhnout ISDOC</value></data>
+  <data name="Bulk_Ubl" xml:space="preserve"><value>Stáhnout e-faktury (UBL)</value></data>
   <data name="Bulk_ClearSelection" xml:space="preserve"><value>Zrušit výběr</value></data>
   <data name="Bulk_ConfirmTitle" xml:space="preserve"><value>Potvrzení hromadné akce</value></data>
   <data name="Bulk_ConfirmIssue" xml:space="preserve"><value>Opravdu chcete vystavit {0} fakturu/faktur?</value></data>
@@ -1241,8 +1248,8 @@
   <data name="Import_SelectTarget" xml:space="preserve"><value>Vyberte typ importu</value></data>
   <data name="Import_IssuedInvoice" xml:space="preserve"><value>Vydaná faktura</value></data>
   <data name="Import_ReceivedInvoice" xml:space="preserve"><value>Přijatá faktura</value></data>
-  <data name="Import_UploadFiles" xml:space="preserve"><value>Nahrát PDF soubory</value></data>
-  <data name="Import_SelectPdfs" xml:space="preserve"><value>Vybrat PDF soubory</value></data>
+  <data name="Import_UploadFiles" xml:space="preserve"><value>Nahrát soubory (PDF, ISDOC, UBL)</value></data>
+  <data name="Import_SelectPdfs" xml:space="preserve"><value>Vybrat soubory</value></data>
   <data name="Import_Analyze" xml:space="preserve"><value>Analyzovat</value></data>
   <data name="Import_Preview" xml:space="preserve"><value>Náhled extrahovaných dat</value></data>
   <data name="Import_FileName" xml:space="preserve"><value>Název souboru</value></data>
@@ -1706,6 +1713,20 @@
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Vlastní firma nemá bankovní účet, na faktuře by chybělo, kam zaplatit.</value></data>
   <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>Pro tento typ dokladu není aktivní žádná číselná řada.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>Nejsou vyplněny hlavičkové údaje EPO, bez nich nepůjde vyexportovat přiznání k DPH.</value></data>
+  <!-- UBL / Peppol e-faktura export (ADR 0002, F1.5) — kódy EINVOICE_* jsou per-doklad, ne tenant-wide. -->
+  <data name="Readiness_Code_EINVOICE_DRAFT" xml:space="preserve"><value>Doklad je zatím jen koncept (Draft) — před exportem e-faktury ho nejdřív vystavte.</value></data>
+  <data name="Readiness_Code_EINVOICE_PROFORMA_NOT_SUPPORTED" xml:space="preserve"><value>Zálohová faktura (proforma) není daňový doklad a e-fakturu z ní vystavit nelze.</value></data>
+  <data name="Readiness_Code_EINVOICE_BUYER_MISSING" xml:space="preserve"><value>Doklad nemá vyplněného odběratele.</value></data>
+  <data name="Readiness_Code_EINVOICE_SELLER_ENDPOINT_MISSING" xml:space="preserve"><value>Z údajů vaší firmy nejde odvodit Peppol adresu (chybí DIČ nebo země).</value></data>
+  <data name="Readiness_Code_EINVOICE_BUYER_ENDPOINT_MISSING" xml:space="preserve"><value>Z údajů odběratele nejde odvodit Peppol adresu (chybí DIČ nebo země).</value></data>
+  <data name="Readiness_Code_EINVOICE_ADDRESS_INCOMPLETE" xml:space="preserve"><value>Adresa (ulice, město, PSČ nebo země) není úplná.</value></data>
+  <data name="Readiness_Code_EINVOICE_PAYMENT_ACCOUNT_MISSING" xml:space="preserve"><value>Doklad má platbu bankovním převodem, ale chybí IBAN nebo číslo účtu.</value></data>
+  <data name="Readiness_Code_EINVOICE_OUT_OF_SCOPE_MIXED" xml:space="preserve"><value>Doklad kombinuje řádky mimo předmět DPH s běžnými řádky, což e-faktura neumožňuje.</value></data>
+  <data name="Readiness_Code_EINVOICE_REVERSE_CHARGE_VAT_ID_MISSING" xml:space="preserve"><value>Doklad má řádek s přenesenou daňovou povinností, ale chybí IČ DPH vaší firmy nebo odběratele.</value></data>
+  <data name="Readiness_Code_EINVOICE_SELLER_VAT_ID_MISSING" xml:space="preserve"><value>Jste plátce DPH a doklad má zdanitelný řádek, ale vaší firmě chybí IČ DPH.</value></data>
+  <data name="Readiness_Code_EINVOICE_SK_NON_EUR_CURRENCY" xml:space="preserve"><value>Slovenský vystavitel může e-fakturu zatím vystavit jen v EUR.</value></data>
+  <data name="Readiness_Code_EINVOICE_NO_LINES" xml:space="preserve"><value>Doklad nemá žádné položky k vyfakturování.</value></data>
+  <data name="Readiness_Code_EINVOICE_CREDIT_NOTE_MIXED_SIGN_LINES" xml:space="preserve"><value>Dobropis kombinuje kladné a záporné řádky — opravte znaménka, aby bylo jasné, jestli jde o snížení, nebo navýšení.</value></data>
   <!-- Setup checklist on the dashboard (issue #210) -->
   <data name="SetupChecklist_Title" xml:space="preserve"><value>Dokončit nastavení</value></data>
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Připomenout později</value></data>
@@ -1796,4 +1817,26 @@
   <data name="Recurring_NoSchedules" xml:space="preserve"><value>Zatím žádný plán opakování.</value></data>
   <data name="Recurring_SaveSuccess" xml:space="preserve"><value>Plán opakování byl uložen.</value></data>
   <data name="Recurring_DeleteSuccess" xml:space="preserve"><value>Plán opakování byl smazán.</value></data>
+  <data name="Btn_Allow" xml:space="preserve"><value>Povolit</value></data>
+  <data name="Btn_Deny" xml:space="preserve"><value>Zamítnout</value></data>
+  <data name="OAuthConsent_Title" xml:space="preserve"><value>Souhlas s přístupem</value></data>
+  <data name="OAuthConsent_HeadingFormat" xml:space="preserve"><value>{0} chce přístup k vašemu Fakviu</value></data>
+  <data name="OAuthConsent_VerifiedApp" xml:space="preserve"><value>Ověřená aplikace</value></data>
+  <data name="OAuthConsent_RedirectsTo" xml:space="preserve"><value>Po povolení budete přesměrováni na: {0}</value></data>
+  <data name="OAuthConsent_LoopbackWarning" xml:space="preserve"><value>Tato aplikace běží na vašem počítači (localhost).</value></data>
+  <data name="OAuthConsent_SignedInAs" xml:space="preserve"><value>Přihlášen jako {0} — firma {1}</value></data>
+  <data name="OAuthConsent_ClosedBeta" xml:space="preserve"><value>OAuth je zatím v uzavřeném testu a váš účet zatím nemá přístup.</value></data>
+  <data name="OAuthConsent_ChooseScope" xml:space="preserve"><value>Zvolte rozsah přístupu</value></data>
+  <data name="OAuthConsent_ScopeRead" xml:space="preserve"><value>Jen čtení</value></data>
+  <data name="OAuthConsent_ScopeReadWrite" xml:space="preserve"><value>Čtení i zápis (vystavit, odeslat, označit zaplaceno, smazat)</value></data>
+  <data name="OAuthConsent_InvalidTicket" xml:space="preserve"><value>Tento odkaz je neplatný nebo vypršel. Zkuste připojení znovu z aplikace.</value></data>
+  <data name="OAuthConsent_Error" xml:space="preserve"><value>Souhlas se nepodařilo zpracovat. Zkuste to prosím znovu.</value></data>
+  <data name="OAuthConsent_ErrorGeneric" xml:space="preserve"><value>Souhlas se nepodařilo zpracovat: {0}</value></data>
+  <data name="Integration_ConnectedAppsTitle" xml:space="preserve"><value>Připojené aplikace</value></data>
+  <data name="Integration_ConnectedAppsSubtitle" xml:space="preserve"><value>Aplikace, kterým jste přes OAuth povolili přístup k vašemu účtu (Claude.ai, ChatGPT, …).</value></data>
+  <data name="Integration_ConnectedAppClient" xml:space="preserve"><value>Aplikace</value></data>
+  <data name="Integration_ConnectedAppRemove" xml:space="preserve"><value>Odebrat</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmTitle" xml:space="preserve"><value>Odebrat připojenou aplikaci?</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmText" xml:space="preserve"><value>Aplikace {0} ztratí přístup k vašemu účtu. Tuto akci nelze vrátit zpět.</value></data>
+  <data name="Integration_ConnectedAppRemoveSuccess" xml:space="preserve"><value>Aplikace byla odpojena.</value></data>
 </root>

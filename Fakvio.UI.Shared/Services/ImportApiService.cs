@@ -6,7 +6,7 @@ namespace Fakvio.UI.Shared.Services;
 
 /// <summary>
 /// Blazor service for communicating with the Import API endpoints.
-/// Handles PDF upload (multipart/form-data) for preview and JSON POST for confirm.
+/// Handles file upload (PDF, ISDOC, UBL — multipart/form-data) for preview and JSON POST for confirm.
 ///
 /// Unlike other API services, the preview endpoint requires multipart/form-data
 /// for file uploads, which is not supported by ApiClientBase. So this service
@@ -23,13 +23,14 @@ public class ImportApiService : ApiClientBase
     }
 
     /// <summary>
-    /// Uploads PDF files and returns extraction previews.
+    /// Uploads invoice files (PDF, ISDOC, or UBL/Peppol XML — see F1.10 in
+    /// docs/adr/0002-sk-einvoicing-peppol.md) and returns extraction previews.
     /// Uses multipart/form-data encoding for the file uploads.
     ///
     /// Each file is sent as a form file named "files", and the target
     /// is sent as a form field named "target".
     /// </summary>
-    /// <param name="files">List of (fileName, pdfBytes) tuples.</param>
+    /// <param name="files">List of (fileName, fileBytes) tuples.</param>
     /// <param name="target">Import target: IssuedInvoice or ReceivedInvoice.</param>
     /// <returns>List of preview DTOs (one per file).</returns>
     public async Task<List<InvoiceImportPreviewDto>> PreviewAsync(
@@ -41,11 +42,13 @@ public class ImportApiService : ApiClientBase
             // Build multipart form data content
             using var content = new MultipartFormDataContent();
 
-            // Add each PDF file
+            // Add each file with a content type matching its extension — the server routes
+            // by file name extension, not by this header, but sending the right one avoids
+            // the confusing "application/pdf" label on an .xml/.isdoc upload.
             foreach (var (fileName, bytes) in files)
             {
                 var fileContent = new ByteArrayContent(bytes);
-                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(GuessContentType(fileName));
                 content.Add(fileContent, "files", fileName);
             }
 
@@ -74,6 +77,19 @@ public class ImportApiService : ApiClientBase
             return new List<InvoiceImportPreviewDto>();
         }
     }
+
+    /// <summary>
+    /// Best-effort content type for the multipart upload, based on file extension.
+    /// Purely cosmetic for the HTTP request — ImportController routes by file name.
+    /// </summary>
+    private static string GuessContentType(string fileName) => fileName switch
+    {
+        _ when fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) => "application/pdf",
+        _ when fileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) => "application/xml",
+        _ when fileName.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase) => "application/xml",
+        _ when fileName.EndsWith(".isdocx", StringComparison.OrdinalIgnoreCase) => "application/zip",
+        _ => "application/octet-stream",
+    };
 
     /// <summary>
     /// Confirms the import of previously previewed invoices.

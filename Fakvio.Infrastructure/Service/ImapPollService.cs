@@ -244,6 +244,7 @@ public class ImapPollService : IImapPollService
             var invoiceProcessor = new InvoiceEmailProcessor(
                 scopedTenantCtx,
                 tenantScope.ServiceProvider.GetRequiredService<IIsdocImportParser>(),
+                tenantScope.ServiceProvider.GetRequiredService<IUblImportParser>(),
                 tenantScope.ServiceProvider.GetRequiredService<IInvoiceEmailClassifier>(),
                 tenantScope.ServiceProvider.GetRequiredService<IInvoiceImportService>(),
                 tenantScope.ServiceProvider.GetRequiredService<IClientService>(),

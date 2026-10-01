@@ -854,6 +854,9 @@ public class TenantProvisioningService : ITenantProvisioningService
             IsIssuer = true,
             IsActive = true,
             LastAresFetchDate = masterCompany.LastAresFetchDate,
+            // Peppol ID override (ADR 0002, F1.8) — carried over so a value set on the master
+            // company before provisioning is not silently dropped for the tenant's own issuer.
+            PeppolId = masterCompany.PeppolId,
             CreatedAt = DateTime.UtcNow
         };
 

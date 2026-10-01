@@ -4,6 +4,7 @@ using System.Text;
 using System.Xml.Linq;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Service.Ubl;
 
 namespace Fakvio.Infrastructure.Service.Isdoc;
 
@@ -214,7 +215,10 @@ internal static class IsdocMapper
         var street = address?.Street ?? string.Empty;
         var city = address?.City ?? string.Empty;
         var postalCode = address?.PostalCode ?? string.Empty;
-        var countryCode = string.IsNullOrWhiteSpace(address?.Country) ? "CZ" : address!.Country;
+        // ISO 3166-1 alpha-2 code, not the free-text country name Fakvio's address form stores
+        // (issue noted in ADR 0002 §1.3) — shared with the UBL export (F1.1) so both formats
+        // agree on the same country for the same address.
+        var countryCode = UblCodes.CountryToIso2(address?.Country) ?? "CZ";
 
         yield return new XElement(Ns + "PostalAddress",
             new XElement(Ns + "StreetName", street),

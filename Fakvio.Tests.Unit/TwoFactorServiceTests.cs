@@ -33,6 +33,7 @@ public class TwoFactorServiceTests : IDisposable
     private readonly IEmailService _emailService;
     private readonly IContentTemplateService _contentTemplateService;
     private readonly IDataProtectionProvider _dataProtectionProvider;
+    private readonly IOAuthService _oauthService;
 
     public TwoFactorServiceTests()
     {
@@ -50,6 +51,7 @@ public class TwoFactorServiceTests : IDisposable
         // Mock dependencies
         _emailService = Substitute.For<IEmailService>();
         _contentTemplateService = Substitute.For<IContentTemplateService>();
+        _oauthService = Substitute.For<IOAuthService>();
         var logger = Substitute.For<ILogger<TwoFactorService>>();
 
         // Configuration with app name
@@ -67,6 +69,7 @@ public class TwoFactorServiceTests : IDisposable
             _emailService,
             _contentTemplateService,
             configuration,
+            _oauthService,
             logger);
 
         SeedTestData();
@@ -397,6 +400,16 @@ public class TwoFactorServiceTests : IDisposable
         user.TotpSecretEncrypted.ShouldBeNull();
         user.TwoFactorEnabledAt.ShouldBeNull();
         user.TwoFactorSessionToken.ShouldBeNull();
+    }
+
+    /// <summary>Q6 (ADR 0001 §9) — disabling 2FA must revoke every OAuth grant of that user.</summary>
+    [Fact]
+    public async Task DisableTwoFactor_RevokesAllOAuthGrants()
+    {
+        await _service.DisableTwoFactorAsync(1);
+
+        await _oauthService.Received(1).RevokeAllGrantsForUserAsync(
+            1, EOAuthGrantRevokedReason.CredentialChanged, Arg.Any<CancellationToken>());
     }
 
     // ─── Status Tests ────────────────────────────────────────────────────────

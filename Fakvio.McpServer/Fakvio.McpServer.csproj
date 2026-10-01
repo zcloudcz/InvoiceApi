@@ -18,7 +18,7 @@
          the publish step pushes with the skip-duplicate flag, so a master build that did not
          touch this number is a no-op instead of a failure. Bump it in the same PR that
          changes the tool, or the fix ships to CI artifacts and to nobody else. -->
-    <Version>2.1.0</Version>
+    <Version>2.3.0</Version>
     <Authors>zCloud</Authors>
     <Company>zCloud</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

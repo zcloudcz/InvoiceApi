@@ -264,6 +264,42 @@ Dostupný z detailu faktury — viz příslušné tlačítko. ISDOC je český s
 
 **Hromadný ISDOC export:** zaškrtněte faktury → toolbar → „Stáhnout ISDOC" → stáhne se ZIP archiv s `.isdoc` soubory. Koncepty (Draft) se přeskakují — nevydaná faktura nemá právně platný ISDOC.
 
+### 2.8a Export e-faktury (UBL / Peppol BIS)
+
+**Co to je:** od 1. 1. 2027 musí slovenští plátci DPH vystavovat tuzemské (SK→SK) faktury jako
+strukturovanou e-fakturu ve formátu **UBL 2.1 / Peppol BIS Billing 3.0**, posílanou přes síť
+Peppol. Fakvio zatím (fáze 1) e-fakturu neodesílá samo — vygeneruje XML soubor, který nahrajete
+do aplikace svého „digitálního poštáře" (viz seznam certifikovaných poskytovatelů na webu
+Finanční správy SR). I mimo SK je export užitečný jako komfort pro odběratele v Peppol síti a
+příprava na celoevropskou e-fakturaci (ViDA) od 1. 7. 2030.
+
+**Kdy použít:**
+- Vystavujete fakturu slovenskému odběrateli (nebo jinému odběrateli v síti Peppol).
+- Chcete e-fakturu nahrát do aplikace svého poštáře místo ručního přepisování údajů.
+
+**Stažení:** v detailu faktury tlačítko „Stáhnout e-fakturu (UBL)" vedle tlačítka ISDOC. Tlačítko
+je zakázané u konceptů (Draft) a u proforem — proforma není daňový doklad a e-fakturu z ní
+vystavit nejde.
+
+**Hromadný export:** zaškrtněte faktury → toolbar → „Stáhnout e-faktury (UBL)" → stáhne se ZIP
+archiv s `.xml` soubory. Koncepty a proformy se přeskakují stejně jako u ISDOC.
+
+**Co zkontrolovat, když export selže:** Fakvio před vygenerováním XML kontroluje, jestli má
+faktura vše potřebné pro platnou e-fakturu. Když ne, zobrazí se seznam konkrétních problémů
+místo souboru — nejčastěji:
+- **DIČ a země** vaší firmy nebo odběratele — z nich se odvozuje Peppol adresa; když odvození
+  nejde (DPH skupina, neobvyklý formát DIČ), nastavte přepis v poli „Peppol ID" u klienta / na
+  stránce Moje firma (§5, §10).
+- **Adresa** (ulice, město, PSČ, země) musí být kompletní.
+- **Platba bankovním převodem** musí mít IBAN nebo číslo účtu.
+- **Slovenský vystavitel** může zatím e-fakturu vystavit jen v měně **EUR**.
+
+**Automatická příloha v e-mailu:** když faktuře pošlete přes „Odeslat emailem" (§2.9) a
+odběratel je slovenský (nebo má nastavený přepis Peppol ID), Fakvio k PDF a ISDOC automaticky
+přidá i UBL XML. Když se e-faktura nedá vygenerovat (viz problémy výše), příloha se prostě
+vynechá — email se vždy odešle. **Pozor:** poslat e-fakturu jinak než přes Peppol síť
+(např. e-mailem) je u slovenského plátce DPH legální jen se souhlasem příjemce.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"
@@ -338,6 +374,10 @@ Kliknutím na řádek nebo ikonu oka otevřete detail klienta.
    - DIČ, plátce DPH (přepínač)
    - Jazyk dokumentů (cs / en) — v tomto jazyce se generují PDF a emaily pro tohoto klienta
    - Barva (volitelná) — barevně označí řádky tohoto klienta v gridu faktur
+   - **Peppol ID (přepis)** — volitelné, nechte prázdné. Fakvio adresu pro e-fakturu (Peppol)
+     odvodí samo z DIČ a země klienta; pole vyplňte jen když odvození nestačí (DPH skupina,
+     zahraniční klient bez SK/CZ DIČ apod.). Formát `schéma:hodnota`, např. `0245:2020123456`
+     (SK) — viz §2.8a Export e-faktury.
 4. Přidejte adresy (fakturační, doručovací…) tlačítkem „+ Adresa"
 5. Přidejte kontakty (email, telefon)
 6. Přidejte bankovní účty
@@ -487,7 +527,9 @@ Správa faktur, které vaše firma přijala od dodavatelů.
 
 Dvě možnosti:
 1. **Ruční zadání:** „+ Nová přijatá faktura" → formulář
-2. **Import:** „Import" → `/received-invoices/import?target=ReceivedInvoice` → nahrání souboru (PDF/XML)
+2. **Import:** „Import" → `/received-invoices/import?target=ReceivedInvoice` → nahrání souboru
+   (PDF, ISDOC, nebo UBL/Peppol BIS XML — viz kap. 18 „Podporované formáty příloh" pro detaily
+   o rozpoznání UBL faktur a dobropisů)
 
 ### Stavy přijatých faktur
 
@@ -591,6 +633,9 @@ Správa informací o vaší firmě (vydavatele faktur).
 - IČ — tlačítko „ARES" automaticky doplní z registru
 - Název firmy, obchodní název
 - DIČ, plátce DPH
+- **Peppol ID (přepis)** — volitelné, nechte prázdné. Adresu pro e-fakturu (Peppol) Fakvio
+  odvodí samo z DIČ a země vaší firmy; vyplňte jen když odvození nestačí. Formát
+  `schéma:hodnota`, např. `0245:2020123456` (SK) — viz §2.8a Export e-faktury.
 
 **Adresy:** sídlo, provozovna, fakturační adresa (přes dialog Adresa)
 
@@ -946,9 +991,10 @@ Systém umožňuje automatický příjem a zpracování faktur zaslaných emaile
 
 ### Jak to funguje
 
-1. Dodavatel (nebo vy) pošle email s fakturou (PDF nebo ISDOC příloha) na vygenerovanou adresu
+1. Dodavatel (nebo vy) pošle email s fakturou (PDF, ISDOC nebo UBL/Peppol XML příloha) na vygenerovanou adresu
 2. Systém automaticky:
-   - Rozpozná typ dokumentu z příloh (ISDOC má přednost před PDF)
+   - Rozpozná typ dokumentu z příloh (ISDOC a UBL mají přednost před PDF — jsou to strukturovaná
+     data bez potřeby AI, takže rozpoznání je spolehlivější)
    - Určí, zda jde o **přijatou fakturu** (od dodavatele) nebo **vydanou fakturu** (naši) — porovnáním IČO
    - Pokud dodavatel v systému neexistuje, automaticky ho založí (z ARES dle IČO)
    - Pokud faktura se stejným číslem již existuje, přidá přílohy k existujícímu dokladu
@@ -1010,8 +1056,15 @@ V sekci **Nastavení firmy** máte k dispozici:
 |--------|-------------|-------|
 | ISDOC (.isdoc) | Nejvyšší | Český standard pro elektronické faktury — strukturovaný XML |
 | ISDOCX (.isdocx) | Nejvyšší | ZIP kontejner s ISDOC XML uvnitř |
+| UBL / Peppol BIS (.xml) | Nejvyšší | Evropský standard elektronické fakturace (EN 16931) — používá se v síti Peppol, povinný pro SK plátce DPH od 1. 1. 2027. Podporuje faktury i dobropisy. |
 | PDF | Vysoká | Rozpoznání přes QR kód, AI, nebo textovou analýzu |
 | Email bez příloh | Nízká | Pokus o rozpoznání z těla emailu (pouze AI) |
+
+**Poznámka k UBL:** faktura se rozpozná podle IČO/DIČ dodavatele (dohledá se existující
+klient, jinak se založí nový), načtou se položky, DPH, splatnost, variabilní symbol a
+IBAN přímo z XML — bez použití AI. Nevalidní nebo poškozený UBL soubor se bezpečně
+odmítne (čitelná chybová hláška) a nezpůsobí pád zpracování; pokud email obsahuje i jinou
+přílohu (např. PDF), ta se zpracuje samostatně beze změny.
 
 
 ---
@@ -1075,8 +1128,8 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 49 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
-výpočty, šablony, měny, nastavení, platby a upomínky.
+volání Fakvia. Nabízí 57 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
 
@@ -1221,6 +1274,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
 | Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury, vypsat platné měny (pro vystavení faktury v cizí měně), vypsat i založit/upravit číselné řady, vypsat platné sazby DPH, upravit údaje o firmě a adresu, přidat bankovní účet |
 | Platby a upomínky | Vypsat bankovní platby a jejich stav spárování, zobrazit detail platby, vypsat odeslané upomínky (i k jedné faktuře), zobrazit nastavení upomínek |
+| Opakované faktury | Vypsat a zobrazit plány (i pro konkrétní šablonu), založit nový plán, upravit frekvenci/datum/limity, pozastavit a obnovit, smazat |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
@@ -1260,3 +1314,25 @@ požadavek AI už neprojde. Vzít zpět to nejde; místo revokovaného klíče s
   přečtěte si, co se chystá udělat.
 - Dává smysl mít **víc klíčů** — jeden na aplikaci či počítač. Když jeden ztratíte, revokujete
   ho bez dopadu na ostatní.
+
+### 20.8 Připojení přes claude.ai / ChatGPT (OAuth) — třetí cesta
+
+Kromě API klíče (§20.1–20.7) jde Fakvio připojit k **claude.ai** a **ChatGPT** i bez klíče —
+stačí v daném klientovi zadat adresu Fakvio MCP serveru a přihlásit se běžným Fakvio účtem
+(heslo, SSO, 2FA — cokoli používáte dnes). Klient se nejdřív zeptá na souhlas: uvidíte, o
+kterou aplikaci jde (podle adresy, ne podle jména, které si aplikace sama zvolila), kam vás po
+povolení pošle, a zvolíte **Jen čtení** (výchozí) nebo **Čtení i zápis**.
+
+> Tahle cesta je v postupném zavádění (uzavřený test) — pokud vám claude.ai/ChatGPT po zadání
+> adresy nenabídne přihlášení, zatím se k vám ještě nedostala; použijte API klíč (§20.1).
+
+**Správa připojených aplikací.** Na stránce **Nastavení → Integrace** přibyla pod klíči sekce
+**Připojené aplikace** — jedna aplikace = jeden řádek (název, oprávnění, kdy vzniklo, kdy
+naposledy použito). Tlačítko **Odebrat** okamžitě ukončí přístup té aplikace — stejně
+neodvolatelně jako revokace API klíče. Když se znovu přihlásíte přes stejnou aplikaci, vznikne
+nové připojení (staré tím zmizí ze seznamu, žádné duplicity).
+
+**Souvislost s heslem a 2FA.** Změna nebo reset hesla a vypnutí dvoufázového ověření odpojí
+**všechny** vaše připojené aplikace najednou (API klíče zůstávají beze změny — jsou to jiný,
+samostatně spravovaný typ přístupu). Po takové změně je tedy potřeba se v claude.ai/ChatGPT
+znovu přihlásit.

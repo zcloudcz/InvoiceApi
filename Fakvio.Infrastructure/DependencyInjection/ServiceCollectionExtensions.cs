@@ -149,6 +149,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
         services.AddScopedWithLogging<IIsdocExportService, IsdocExportService>();
+        services.AddScopedWithLogging<IUblExportService, UblExportService>();
         services.AddScopedWithLogging<IQrPaymentService, QrPaymentService>();
         services.AddScopedWithLogging<IEmailService, EmailService>();
         services.AddScopedWithLogging<IContentTemplateService, ContentTemplateService>();
@@ -171,6 +172,9 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IInvoiceEmailProcessor, InvoiceEmailProcessor>();
         services.AddScopedWithLogging<IInvoiceEmailClassifier, InvoiceEmailClassifier>();
         services.AddSingleton<IIsdocImportParser, IsdocImportParser>();
+        // UBL/Peppol BIS Billing 3.0 import (F1.10) — same email pipeline + manual upload,
+        // see docs/adr/0002-sk-einvoicing-peppol.md.
+        services.AddSingleton<IUblImportParser, UblImportParser>();
 
         // Payment reminders (dunning) — settings CRUD, dunning job, manual send/cancel.
         services.AddScopedWithLogging<IReminderService, ReminderService>();
@@ -363,6 +367,11 @@ public static class ServiceCollectionExtensions
         // Uses ConcurrentQueue for non-blocking enqueue; flushed by
         // LogFlushService (IHostedService in the API host, every 5 seconds).
         services.AddSingleton<ILoggerProvider>(new DatabaseLoggerProvider(LogLevel.Information));
+
+        // ── MCP OAuth 2.1 (ADR 0001) ─────────────────────────────────────────
+        // Registered unconditionally — McpOAuth:Enabled is checked at the controller/middleware
+        // level, not here (see docs/adr/0001-mcp-oauth21.md §5.1).
+        services.AddMcpOAuth(configuration);
 
         return services;
     }

@@ -22,5 +22,12 @@ public interface IApiKeyAuthenticator
     /// (<c>AuthService.GenerateJwtTokenAsync</c>) plus the key's scopes, so impersonation,
     /// tenant resolution and <c>[Authorize(Roles = …)]</c> behave identically.
     /// </summary>
-    Task<ClaimsPrincipal?> AuthenticateAsync(string rawKey, CancellationToken ct = default);
+    /// <param name="rawKey">The bearer credential (an API key or an OAuth access token).</param>
+    /// <param name="resourceProofHeader">
+    /// Value of the internal <c>X-Fakvio-Resource-Proof</c> header (ADR 0001,
+    /// docs/adr/0001-mcp-oauth21.md §4.4), added only by the MCP host. Required, and checked in
+    /// constant time, when <paramref name="rawKey"/> resolves to an OAuth-issued access token;
+    /// ignored for a manually created key.
+    /// </param>
+    Task<ClaimsPrincipal?> AuthenticateAsync(string rawKey, string? resourceProofHeader = null, CancellationToken ct = default);
 }

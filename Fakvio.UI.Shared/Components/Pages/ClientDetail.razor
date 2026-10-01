@@ -114,6 +114,10 @@ else
                                         Placeholder="#FF5722"
                                         Adornment="Adornment.Start"
                                         AdornmentIcon="@Icons.Material.Filled.Palette" />
+                        <MudTextField @bind-Value="_editClient.PeppolId" Label="@L["Client_PeppolId"].Value"
+                                      HelperText="@L["Client_PeppolIdHelp"].Value"
+                                      Validation="@(new Func<string, string?>(ValidatePeppolId))"
+                                      Class="mt-3" />
                     }
                     else
                     {
@@ -151,6 +155,12 @@ else
                                              Style="@($"background-color:{_client.Color}; color:white;")">
                                         @_client.Color
                                     </MudChip>
+                                </MudListItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_client.PeppolId))
+                            {
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.AlternateEmail">
+                                    <strong>@L["Client_PeppolId"]:</strong> @_client.PeppolId
                                 </MudListItem>
                             }
                         </MudList>
@@ -529,6 +539,7 @@ else
             IsIssuer = _client.IsIssuer,
             Language = _client.Language,
             Color = _client.Color,
+            PeppolId = _client.PeppolId,
             FetchFromAres = false,
             // Tax regime fields
             TaxRegime = _client.TaxRegime,
@@ -641,6 +652,7 @@ else
                     IsActive = true,
                     Language = _editClient.Language,
                     Color = _editClient.Color ?? "",
+                    PeppolId = _editClient.PeppolId ?? "",
                     RefreshFromAres = _editClient.FetchFromAres,
                     // Tax regime fields
                     TaxRegime = _editClient.TaxRegime,
@@ -933,6 +945,16 @@ else
         "en" => "English (en)",
         _ => language
     };
+
+    /// <summary>
+    /// Client-side mirror of the <c>[RegularExpression]</c> on <c>CreateClientDto.PeppolId</c> /
+    /// <c>UpdateClientDto.PeppolId</c> (ADR 0002, F1.8) — catches an obviously wrong format
+    /// before the round-trip to the API. Empty is valid (means "no override").
+    /// </summary>
+    private string? ValidatePeppolId(string value)
+        => string.IsNullOrEmpty(value) || System.Text.RegularExpressions.Regex.IsMatch(value, @"^\d{4}:[A-Za-z0-9.\-:]+$")
+            ? null
+            : L["Client_PeppolIdInvalid"].Value;
 
     /// <summary>
     /// Looks up localized display name for an enum value.

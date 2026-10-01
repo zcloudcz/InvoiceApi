@@ -73,6 +73,7 @@ public class ApiKeyController : ControllerBase
         // rewritten CompanyId by the time we get here.
         var companyId = User.FindFirstValue("CompanyId");
         var apiKeyId = User.FindFirstValue(ApiKeyAuthenticationDefaults.KeyIdClaimType);
+        var oauthGrantId = User.FindFirstValue(ApiKeyAuthenticationDefaults.OAuthGrantIdClaimType);
 
         return Ok(new ApiKeyIdentityDto
         {
@@ -82,7 +83,9 @@ public class ApiKeyController : ControllerBase
             Role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty,
             CompanyId = long.TryParse(companyId, out var parsedCompanyId) ? parsedCompanyId : null,
             Scopes = User.FindFirstValue(ApiKeyAuthenticationDefaults.ScopeClaimType),
-            ApiKeyId = long.TryParse(apiKeyId, out var parsedKeyId) ? parsedKeyId : null
+            ApiKeyId = long.TryParse(apiKeyId, out var parsedKeyId) ? parsedKeyId : null,
+            OAuthGrantId = long.TryParse(oauthGrantId, out var parsedGrantId) ? parsedGrantId : null,
+            OAuthResource = User.FindFirstValue(ApiKeyAuthenticationDefaults.OAuthResourceClaimType)
         });
     }
 

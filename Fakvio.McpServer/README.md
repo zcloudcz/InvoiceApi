@@ -38,6 +38,17 @@ Ukázka staré (1.0.2) a nové (2.0.0) volby `create_invoice`:
 **2.1.0** je jen doplnění nástrojů (story N3 — nastavení, platby, upomínky), zpětně
 kompatibilní — žádné volání ze 2.0.0 se neláme.
 
+**2.2.0** doplňuje 7 nástrojů nad opakovanými fakturami (`Tools/RecurringTools.cs`, DEVGUIDE
+§4.13) — `list_recurring_schedules`, `get_recurring_schedule`, `create_recurring_schedule`,
+`update_recurring_schedule`, `pause_recurring_schedule`, `resume_recurring_schedule`,
+`delete_recurring_schedule`. Zpětně kompatibilní, žádné volání ze 2.1.0 se neláme.
+
+**2.3.0** doplňuje 1 nástroj — `export_invoice_ubl` (`Tools/InvoiceTools.cs`, ADR 0002 N7) —
+export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace 2027, ViDA
+2030). Vrací base64 XML stejně jako `export_invoice_isdoc`; při nepřipravené faktuře (Draft,
+proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
+žádné volání ze 2.2.0 se neláme.
+
 ---
 
 Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
@@ -130,6 +141,10 @@ Server se konfiguruje **jen proměnnými prostředí** (žádný `appsettings.js
 | `FAKVIO_API_TOKEN` | jen pro `stdio` | – | Bearer credential — API klíč `fak_live_…` (doporučeno) nebo JWT token. Posílá se beze změny v hlavičce `Authorization`; API rozliší obojí podle prefixu (`fak_` vs `eyJ`), takže server nemusí vědět, co drží. Chybí-li ve stdio režimu, vypíše chybu na stderr a skončí s exit code 1. V HTTP režimu se nepoužívá. |
 | `FAKVIO_API_URL` | ne | `https://localhost:7047` | Base URL API, např. `https://localhost:7047` (lokální `Fakvio.API`, viz `Fakvio.API/Properties/launchSettings.json`) nebo `https://api.fakvio.cz`. |
 | `ASPNETCORE_URLS` | ne | Kestrel default | Jen `http` režim — na čem server poslouchá, standardní ASP.NET Core proměnná. |
+| `FAKVIO_MCP_OAUTH_ENABLED` | ne | `false` | Jen `http` režim (ADR 0001, `docs/adr/0001-mcp-oauth21.md`). `true` = zveřejní Protected Resource Metadata na `/.well-known/oauth-protected-resource(/mcp)` a přidá `resource_metadata`/`scope` do 401 challenge. `false` = dnešní chování beze změny. |
+| `FAKVIO_MCP_PUBLIC_URL` | jen s OAuth | – | Vlastní veřejná adresa hostu, např. `https://mcp.fakvio.cz` — použije se pro `resource` v PRM i pro `resource_metadata` v challenge. |
+| `FAKVIO_OAUTH_ISSUER` | jen s OAuth | – | Issuer autorizačního serveru, např. `https://api.fakvio.cz` — zveřejní se v PRM jako `authorization_servers`. |
+| `FAKVIO_MCP_RESOURCE_PROOF_SECRET` | jen s OAuth | – | Sdílené tajemství s API (`McpOAuth:ResourceProofSecret`) — posílá se v hlavičce `X-Fakvio-Resource-Proof` na každém odchozím requestu; bez něj API odmítne OAuth tokeny (T6, confused deputy). |
 
 ### HTTP režim
 
@@ -255,11 +270,11 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (49)
+## Dostupné nástroje (57)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 10 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, DeleteInvoice |
+| `Tools/InvoiceTools.cs` | 11 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, DeleteInvoice |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
@@ -269,6 +284,7 @@ dostane, klíč revokujte na `/settings/integrations` — přestane platit okam�
 | `Tools/CodeListTools.cs` | 1 | ListCurrencies |
 | `Tools/SettingsTools.cs` | 6 | ListNumberSequences, ListVatRates, CreateNumberSequence, UpdateNumberSequence, UpdateMyCompany, AddBankAccount |
 | `Tools/PaymentTools.cs` | 4 | ListPayments, GetPayment, ListReminders, GetReminderSettings |
+| `Tools/RecurringTools.cs` | 7 | ListRecurringSchedules, GetRecurringSchedule, CreateRecurringSchedule, UpdateRecurringSchedule, PauseRecurringSchedule, ResumeRecurringSchedule, DeleteRecurringSchedule |
 
 Zdroj pravdy je vždy kód — atributy `[McpServerTool]` v `Tools/`:
 
@@ -304,7 +320,7 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 - Deserializace vstupu od modelu má **vlastní menší `try`** před tím hlavním, aby `JsonException`
   z poškozené úspěšné odpovědi API spadla do sanitizované větve, a ne modelu zpátky jako „vstup
   je špatně" i s textem výjimky.
-- `ExportInvoicePdf` a `ExportInvoiceIsdoc` vracejí soubor jako
+- `ExportInvoicePdf`, `ExportInvoiceIsdoc` a `ExportInvoiceUbl` vracejí soubor jako
   `base64Content` + `fileName`, `mimeType`, `sizeBytes`. Uložení souboru
   je na klientovi.
 - Logy jdou **výhradně na stderr** (`LogToStandardErrorThreshold = Trace`).

@@ -257,6 +257,14 @@ else
                    StartIcon="@Icons.Material.Filled.Download"
                    Disabled="@(_invoice.Status == EInvoiceStatus.Draft)"
                    OnClick="DownloadIsdoc">@L["Btn_ExportIsdoc"]</MudButton>
+        @* UBL / Peppol eInvoice download (ADR 0002, F1.6) — disabled for Draft (nothing issued
+           yet) and Proforma (not a tax document, [FAQ] I/34); UblExportService's own pre-flight
+           still gates finer-grained problems (missing Peppol ID, incomplete address, …), shown
+           via the issues list on failure instead of a generic error. *@
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Download"
+                   Disabled="@(_invoice.Status == EInvoiceStatus.Draft || _invoice.DocumentType == EDocumentType.Proforma)"
+                   OnClick="DownloadUbl">@L["Btn_ExportUbl"]</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Email"
                    OnClick="@(() => _showEmailDialog = true)">@L["Btn_SendEmail"]</MudButton>
     </div>
@@ -1847,6 +1855,40 @@ else
             }
         }
         catch (Exception ex) { Snackbar.Add($"Error downloading ISDOC: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Downloads the invoice as a UBL 2.1 / Peppol BIS Billing 3.0 XML file via JS interop
+    /// (ADR 0002, F1.6). Unlike <see cref="DownloadIsdoc"/>, a refused export carries structured
+    /// readiness issues (missing Peppol ID, incomplete address, …) — shown via
+    /// <see cref="ReadinessIssueText"/>, the same wording <c>ReadinessBanner</c>/<c>SetupChecklist</c>
+    /// already use for the very same codes, so the user reads one consistent sentence either way.
+    /// </summary>
+    private async Task DownloadUbl()
+    {
+        if (_invoice == null) return;
+        try
+        {
+            var fileName = $"{_invoice.DocumentNumber ?? Id.ToString()}.xml";
+            var result = await InvoiceService.ExportUblAsync(Id, fileName);
+
+            if (result.IsSuccess && result.FileBytes != null)
+            {
+                var base64 = Convert.ToBase64String(result.FileBytes);
+                await JS.InvokeVoidAsync("downloadFile", result.FileName ?? fileName, base64, "application/xml");
+                Snackbar.Add(L["Invoice_UblDownloaded"].Value, Severity.Success);
+            }
+            else if (result.Issues.Count > 0)
+            {
+                var text = string.Join(" ", result.Issues.Select(i => ReadinessIssueText.Describe(L, i)));
+                Snackbar.Add(text, Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add(result.ErrorMessage ?? L["Invoice_UblFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error downloading UBL: {ex.Message}", Severity.Error); }
     }
 
     /// <summary>

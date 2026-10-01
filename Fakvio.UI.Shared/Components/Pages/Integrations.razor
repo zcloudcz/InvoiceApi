@@ -12,7 +12,9 @@
 @page "/settings/integrations"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using Fakvio.Contracts.Dto.ApiKey
+@using Fakvio.Contracts.Dto.OAuth
 @inject ApiKeyApiService ApiKeyService
+@inject OAuthGrantsApiService OAuthGrantsService
 @inject IConfiguration Configuration
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -119,6 +121,44 @@
     </NoRecordsContent>
 </FakvioGrid>
 
+@* ── Připojené aplikace (ADR 0001 §4.8) ────────────────────────────────────────
+   Hidden entirely while McpOAuth:Enabled is off (OAuthGrantsApiService turns the
+   API's 404 into an empty list) — nothing to show for a feature that is not live. *@
+@if (_grants.Count > 0)
+{
+    <MudText Typo="Typo.h5" GutterBottom="true" Class="mt-8">@L["Integration_ConnectedAppsTitle"]</MudText>
+    <MudText Class="mb-4">@L["Integration_ConnectedAppsSubtitle"]</MudText>
+
+    <FakvioGrid T="OAuthGrantDto" GridKey="oauth-grants" Items="_grants" Loading="_grantsLoading">
+        <Columns>
+            <PropertyColumn Property="x => x.ClientId" Title="@L["Integration_ConnectedAppClient"].Value">
+                <CellTemplate>
+                    <MudText Typo="Typo.body2">@context.Item.ClientId</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Item.ClientName</MudText>
+                </CellTemplate>
+            </PropertyColumn>
+            <PropertyColumn Property="x => x.Scopes" Title="@L["Integration_Scope"].Value">
+                <CellTemplate>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@ScopeLabel(context.Item.Scopes)</MudChip>
+                </CellTemplate>
+            </PropertyColumn>
+            <PropertyColumn Property="x => x.CreatedAt" Title="@L["Integration_Created"].Value">
+                <CellTemplate>@FormatDate(context.Item.CreatedAt)</CellTemplate>
+            </PropertyColumn>
+            <PropertyColumn Property="x => x.LastUsedAt" Title="@L["Integration_LastUsed"].Value">
+                <CellTemplate>@(context.Item.LastUsedAt is null ? L["Integration_NeverUsed"].Value : FormatDate(context.Item.LastUsedAt.Value))</CellTemplate>
+            </PropertyColumn>
+            <TemplateColumn T="OAuthGrantDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
+                <CellTemplate>
+                    <MudIconButton Icon="@Icons.Material.Filled.LinkOff" Size="Size.Small" Color="Color.Error"
+                                   Title="@L["Integration_ConnectedAppRemove"].Value"
+                                   OnClick="@(() => RevokeGrantAsync(context.Item))" />
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </FakvioGrid>
+}
+
 @* ── Create dialog ─────────────────────────────────────────────────────────── *@
 <MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
     <TitleContent>
@@ -161,6 +201,9 @@
     private bool _loading;
     private bool _saving;
 
+    private IReadOnlyList<OAuthGrantDto> _grants = [];
+    private bool _grantsLoading;
+
     private MudForm? _form;
     private bool _showCreateDialog;
     private bool _formValid;
@@ -181,7 +224,7 @@
         CloseButton = true
     };
 
-    protected override Task OnInitializedAsync() => ReloadAsync();
+    protected override Task OnInitializedAsync() => Task.WhenAll(ReloadAsync(), ReloadGrantsAsync());
 
     private async Task ReloadAsync()
     {
@@ -197,6 +240,47 @@
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task ReloadGrantsAsync()
+    {
+        _grantsLoading = true;
+        try
+        {
+            _grants = await OAuthGrantsService.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorHandler.Handle(ex, "Integrations.LoadGrants");
+        }
+        finally
+        {
+            _grantsLoading = false;
+        }
+    }
+
+    private async Task RevokeGrantAsync(OAuthGrantDto grant)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Integration_ConnectedAppRemoveConfirmTitle"].Value,
+            string.Format(L["Integration_ConnectedAppRemoveConfirmText"].Value, grant.ClientId),
+            yesText: L["Integration_ConnectedAppRemove"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed != true)
+            return;
+
+        try
+        {
+            if (await OAuthGrantsService.RevokeAsync(grant.Id))
+                Snackbar.Add(L["Integration_ConnectedAppRemoveSuccess"].Value, Severity.Success);
+
+            await ReloadGrantsAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorHandler.Handle(ex, "Integrations.RevokeGrant");
         }
     }
 

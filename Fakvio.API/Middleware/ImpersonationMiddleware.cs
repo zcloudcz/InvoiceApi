@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Fakvio.Infrastructure.Authentication;
 
 namespace Fakvio.API.Middleware;
 
@@ -32,7 +33,16 @@ public class ImpersonationMiddleware
         {
             var roleClaim = context.User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (roleClaim == "SysAdmin" &&
+            // An OAuth-issued access token (ADR 0001, docs/adr/0001-mcp-oauth21.md §4.7)
+            // must never be able to impersonate a company via X-Company-Id — it is a
+            // credential a third-party MCP client presented, not a first-party admin
+            // session, and SysAdmin accounts do not receive OAuth grants in the first
+            // place (Q9). This is defense in depth for that invariant: the header is
+            // simply ignored whenever the "oauth_grant_id" claim is present, regardless
+            // of role.
+            var isOAuthPrincipal = context.User.FindFirst(ApiKeyAuthenticationDefaults.OAuthGrantIdClaimType) is not null;
+
+            if (roleClaim == "SysAdmin" && !isOAuthPrincipal &&
                 context.Request.Headers.TryGetValue("X-Company-Id", out var companyIdHeader))
             {
                 var headerValue = companyIdHeader.FirstOrDefault();

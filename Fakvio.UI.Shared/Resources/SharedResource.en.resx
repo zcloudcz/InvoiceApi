@@ -64,6 +64,7 @@
   <data name="Btn_Back" xml:space="preserve"><value>Back</value></data>
   <data name="Btn_ExportPdf" xml:space="preserve"><value>Export PDF</value></data>
   <data name="Btn_ExportIsdoc" xml:space="preserve"><value>Download ISDOC</value></data>
+  <data name="Btn_ExportUbl" xml:space="preserve"><value>Download eInvoice (UBL)</value></data>
   <data name="Btn_SendEmail" xml:space="preserve"><value>Send by email</value></data>
   <data name="Btn_Preview" xml:space="preserve"><value>Preview</value></data>
   <data name="Btn_CreateFromTemplate" xml:space="preserve"><value>Create from template</value></data>
@@ -358,6 +359,9 @@
   <data name="Client_FetchFromAres" xml:space="preserve"><value>Fetch from ARES</value></data>
   <data name="Client_Language" xml:space="preserve"><value>Document language</value></data>
   <data name="Client_Color" xml:space="preserve"><value>Client color</value></data>
+  <data name="Client_PeppolId" xml:space="preserve"><value>Peppol ID (override)</value></data>
+  <data name="Client_PeppolIdHelp" xml:space="preserve"><value>Optional. Leave empty — Fakvio derives it from the tax number and country. Only set it when the derivation is not enough (format "scheme:value", e.g. 0245:2020123456).</value></data>
+  <data name="Client_PeppolIdInvalid" xml:space="preserve"><value>Format must be "scheme:value", e.g. 0245:2020123456.</value></data>
   <data name="Company_Subtitle" xml:space="preserve"><value>Manage invoicing companies</value></data>
   <data name="Company_NoRecords" xml:space="preserve"><value>No companies found.</value></data>
   <data name="Company_Detail" xml:space="preserve"><value>Company detail</value></data>
@@ -476,6 +480,8 @@
   <data name="Invoice_PdfFailed" xml:space="preserve"><value>Failed to generate PDF</value></data>
   <data name="Invoice_IsdocDownloaded" xml:space="preserve"><value>ISDOC downloaded</value></data>
   <data name="Invoice_IsdocFailed" xml:space="preserve"><value>Failed to export ISDOC</value></data>
+  <data name="Invoice_UblDownloaded" xml:space="preserve"><value>eInvoice (UBL) downloaded</value></data>
+  <data name="Invoice_UblFailed" xml:space="preserve"><value>Failed to export eInvoice (UBL)</value></data>
   <data name="Invoice_EmailSentTo" xml:space="preserve"><value>Invoice sent to {0}</value></data>
   <data name="Invoice_EmailFailed" xml:space="preserve"><value>Failed to send email</value></data>
   <data name="Invoice_CreatingTemplate" xml:space="preserve"><value>Creating template...</value></data>
@@ -991,6 +997,7 @@
   <data name="Bulk_Email" xml:space="preserve"><value>Send Email</value></data>
   <data name="Bulk_Pdf" xml:space="preserve"><value>Download PDF</value></data>
   <data name="Bulk_Isdoc" xml:space="preserve"><value>Download ISDOC</value></data>
+  <data name="Bulk_Ubl" xml:space="preserve"><value>Download eInvoices (UBL)</value></data>
   <data name="Bulk_ClearSelection" xml:space="preserve"><value>Clear Selection</value></data>
   <data name="Bulk_ConfirmTitle" xml:space="preserve"><value>Confirm Bulk Action</value></data>
   <data name="Bulk_ConfirmIssue" xml:space="preserve"><value>Are you sure you want to issue {0} invoice(s)?</value></data>
@@ -1241,8 +1248,8 @@
   <data name="Import_SelectTarget" xml:space="preserve"><value>Select Import Target</value></data>
   <data name="Import_IssuedInvoice" xml:space="preserve"><value>Issued Invoice</value></data>
   <data name="Import_ReceivedInvoice" xml:space="preserve"><value>Received Invoice</value></data>
-  <data name="Import_UploadFiles" xml:space="preserve"><value>Upload PDF Files</value></data>
-  <data name="Import_SelectPdfs" xml:space="preserve"><value>Select PDF Files</value></data>
+  <data name="Import_UploadFiles" xml:space="preserve"><value>Upload files (PDF, ISDOC, UBL)</value></data>
+  <data name="Import_SelectPdfs" xml:space="preserve"><value>Select files</value></data>
   <data name="Import_Analyze" xml:space="preserve"><value>Analyze</value></data>
   <data name="Import_Preview" xml:space="preserve"><value>Preview Extracted Data</value></data>
   <data name="Import_FileName" xml:space="preserve"><value>File Name</value></data>
@@ -1706,6 +1713,20 @@
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Your company has no bank account, so invoices would not say where to pay.</value></data>
   <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>There is no active number sequence for this document type.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>EPO header data is missing, so the VAT return cannot be exported.</value></data>
+  <!-- UBL / Peppol eInvoice export (ADR 0002, F1.5) — EINVOICE_* codes are per-document, not tenant-wide. -->
+  <data name="Readiness_Code_EINVOICE_DRAFT" xml:space="preserve"><value>The document is still a draft — complete it before exporting the eInvoice.</value></data>
+  <data name="Readiness_Code_EINVOICE_PROFORMA_NOT_SUPPORTED" xml:space="preserve"><value>A pro-forma invoice is not a tax document and cannot be exported as an eInvoice.</value></data>
+  <data name="Readiness_Code_EINVOICE_BUYER_MISSING" xml:space="preserve"><value>The document has no buyer set.</value></data>
+  <data name="Readiness_Code_EINVOICE_SELLER_ENDPOINT_MISSING" xml:space="preserve"><value>A Peppol address could not be derived from your company's data (missing VAT number or country).</value></data>
+  <data name="Readiness_Code_EINVOICE_BUYER_ENDPOINT_MISSING" xml:space="preserve"><value>A Peppol address could not be derived from the buyer's data (missing VAT number or country).</value></data>
+  <data name="Readiness_Code_EINVOICE_ADDRESS_INCOMPLETE" xml:space="preserve"><value>The address (street, city, postal code or country) is incomplete.</value></data>
+  <data name="Readiness_Code_EINVOICE_PAYMENT_ACCOUNT_MISSING" xml:space="preserve"><value>The document uses bank transfer, but neither an IBAN nor an account number is set.</value></data>
+  <data name="Readiness_Code_EINVOICE_OUT_OF_SCOPE_MIXED" xml:space="preserve"><value>The document mixes out-of-scope lines with regular lines, which the eInvoice format does not allow.</value></data>
+  <data name="Readiness_Code_EINVOICE_REVERSE_CHARGE_VAT_ID_MISSING" xml:space="preserve"><value>The document has a reverse-charge line, but your company's or the buyer's VAT number is missing.</value></data>
+  <data name="Readiness_Code_EINVOICE_SELLER_VAT_ID_MISSING" xml:space="preserve"><value>You are a VAT payer and the document has a chargeable line, but your company has no VAT number.</value></data>
+  <data name="Readiness_Code_EINVOICE_SK_NON_EUR_CURRENCY" xml:space="preserve"><value>A Slovak issuer can currently only export an eInvoice in EUR.</value></data>
+  <data name="Readiness_Code_EINVOICE_NO_LINES" xml:space="preserve"><value>The document has no billable lines.</value></data>
+  <data name="Readiness_Code_EINVOICE_CREDIT_NOTE_MIXED_SIGN_LINES" xml:space="preserve"><value>The credit note mixes positive and negative lines — fix the signs so it is clear whether this is a reduction or an increase.</value></data>
   <!-- Setup checklist on the dashboard (issue #210) -->
   <data name="SetupChecklist_Title" xml:space="preserve"><value>Finish setup</value></data>
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Remind me later</value></data>
@@ -1796,4 +1817,26 @@
   <data name="Recurring_NoSchedules" xml:space="preserve"><value>No recurring schedules yet.</value></data>
   <data name="Recurring_SaveSuccess" xml:space="preserve"><value>Recurring schedule saved.</value></data>
   <data name="Recurring_DeleteSuccess" xml:space="preserve"><value>Recurring schedule deleted.</value></data>
+  <data name="Btn_Allow" xml:space="preserve"><value>Allow</value></data>
+  <data name="Btn_Deny" xml:space="preserve"><value>Deny</value></data>
+  <data name="OAuthConsent_Title" xml:space="preserve"><value>Grant access</value></data>
+  <data name="OAuthConsent_HeadingFormat" xml:space="preserve"><value>{0} wants to access your Fakvio account</value></data>
+  <data name="OAuthConsent_VerifiedApp" xml:space="preserve"><value>Verified application</value></data>
+  <data name="OAuthConsent_RedirectsTo" xml:space="preserve"><value>After you allow, you will be redirected to: {0}</value></data>
+  <data name="OAuthConsent_LoopbackWarning" xml:space="preserve"><value>This application is running on your computer (localhost).</value></data>
+  <data name="OAuthConsent_SignedInAs" xml:space="preserve"><value>Signed in as {0} — company {1}</value></data>
+  <data name="OAuthConsent_ClosedBeta" xml:space="preserve"><value>OAuth is currently in closed testing and your account does not have access yet.</value></data>
+  <data name="OAuthConsent_ChooseScope" xml:space="preserve"><value>Choose access scope</value></data>
+  <data name="OAuthConsent_ScopeRead" xml:space="preserve"><value>Read only</value></data>
+  <data name="OAuthConsent_ScopeReadWrite" xml:space="preserve"><value>Read and write (issue, send, mark paid, delete)</value></data>
+  <data name="OAuthConsent_InvalidTicket" xml:space="preserve"><value>This link is invalid or has expired. Please try connecting again from the application.</value></data>
+  <data name="OAuthConsent_Error" xml:space="preserve"><value>Could not process your consent. Please try again.</value></data>
+  <data name="OAuthConsent_ErrorGeneric" xml:space="preserve"><value>Could not process your consent: {0}</value></data>
+  <data name="Integration_ConnectedAppsTitle" xml:space="preserve"><value>Connected apps</value></data>
+  <data name="Integration_ConnectedAppsSubtitle" xml:space="preserve"><value>Applications you have granted OAuth access to your account (Claude.ai, ChatGPT, …).</value></data>
+  <data name="Integration_ConnectedAppClient" xml:space="preserve"><value>Application</value></data>
+  <data name="Integration_ConnectedAppRemove" xml:space="preserve"><value>Remove</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmTitle" xml:space="preserve"><value>Remove this connected app?</value></data>
+  <data name="Integration_ConnectedAppRemoveConfirmText" xml:space="preserve"><value>{0} will lose access to your account. This cannot be undone.</value></data>
+  <data name="Integration_ConnectedAppRemoveSuccess" xml:space="preserve"><value>The application has been disconnected.</value></data>
 </root>

@@ -62,6 +62,7 @@ public class ProformaCrossLinkControllerTests
             _invoiceService,
             _pdfService,
             _isdocService,
+            Substitute.For<IUblExportService>(),
             _emailService,
             _qrService,
             _cloudStorage,
