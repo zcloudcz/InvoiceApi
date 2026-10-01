@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Změny pro vývojáře
+
+- **#468** — Připojení webového ChatGPT k Fakviu přes OAuth přijímá jeho registrační metadata a vrací oprávnění ve správném formátu; dokončení přihlášení a obnovení přístupu tak může fungovat. (PR #467, `0abdc55`)
+
 ## 2026.10.01 — 2026-10-01
 
 - **#456** — Faktury, dobropisy a daňové doklady k záloze jdou stáhnout jako e-faktura UBL / Peppol BIS 3.0 (vedle ISDOC) — jednotlivě, hromadně i přes MCP; slovenským odběratelům se UBL přikládá k e-mailu. Příprava na povinnou e-fakturaci na Slovensku od 2027 (odesílání přes Peppol přijde ve fázi 2). (PR #456, `499e029`)

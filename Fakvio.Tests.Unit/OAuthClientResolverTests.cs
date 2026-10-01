@@ -20,6 +20,7 @@ namespace Fakvio.Tests.Unit;
 public class OAuthClientResolverTests
 {
     private const string ClientId = "https://claude.ai/oauth/claude-code-client-metadata";
+    private const string ChatGptClientId = "https://chatgpt.com/oauth/client.json";
 
     private static readonly string ValidDocument = $$"""
         {
@@ -181,6 +182,93 @@ public class OAuthClientResolverTests
         var result = await resolver.ResolveAsync(ClientId);
 
         result.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_AcceptsChatGptCimdWhenPublicClientAuthIsSupported()
+    {
+        // ChatGPT's current CIMD prefers private_key_jwt but also supports "none".
+        // Fakvio is a public client server, so the shared "none" method is the one to use.
+        var body = $$"""
+            {"client_id":"{{ChatGptClientId}}","client_name":"ChatGPT",
+             "redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],
+             "token_endpoint_auth_method":"private_key_jwt",
+             "token_endpoint_auth_methods_supported":["none","private_key_jwt"]}
+            """;
+        var resolver = CreateResolver(out _, response: OkJson(body));
+
+        var result = await resolver.ResolveAsync(ChatGptClientId);
+
+        result.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RejectsPluralAuthMethodsWithoutNone()
+    {
+        var body = $$"""
+            {"client_id":"{{ChatGptClientId}}","client_name":"ChatGPT",
+             "redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],
+             "token_endpoint_auth_methods_supported":["private_key_jwt"]}
+            """;
+        var resolver = CreateResolver(out _, response: OkJson(body));
+
+        (await resolver.ResolveAsync(ChatGptClientId)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RejectsEmptyPluralAuthMethods()
+    {
+        var body = $$"""
+            {"client_id":"{{ChatGptClientId}}","client_name":"ChatGPT",
+             "redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],
+             "token_endpoint_auth_methods_supported":[]}
+            """;
+        var resolver = CreateResolver(out _, response: OkJson(body));
+
+        (await resolver.ResolveAsync(ChatGptClientId)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RejectsMalformedPluralAuthMethods()
+    {
+        var body = $$"""
+            {"client_id":"{{ChatGptClientId}}","client_name":"ChatGPT",
+             "redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],
+             "token_endpoint_auth_methods_supported":"none"}
+            """;
+        var resolver = CreateResolver(out _, response: OkJson(body));
+
+        (await resolver.ResolveAsync(ChatGptClientId)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RejectsNullPluralAuthMethods()
+    {
+        var body = $$"""
+            {"client_id":"{{ChatGptClientId}}","client_name":"ChatGPT",
+             "redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],
+             "token_endpoint_auth_methods_supported":null}
+            """;
+        var resolver = CreateResolver(out _, response: OkJson(body));
+
+        (await resolver.ResolveAsync(ChatGptClientId)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_AcceptsLegacyDocumentWithoutAuthMethod()
+    {
+        var resolver = CreateResolver(out _);
+
+        (await resolver.ResolveAsync(ClientId)).ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_AcceptsLegacyDocumentWithNoneAuthMethod()
+    {
+        var body = ValidDocument.Replace("\"redirect_uris\":", "\"token_endpoint_auth_method\":\"none\",\"redirect_uris\":");
+        var resolver = CreateResolver(out _, response: OkJson(body));
+
+        (await resolver.ResolveAsync(ClientId)).ShouldNotBeNull();
     }
 
     [Theory]
