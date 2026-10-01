@@ -30,9 +30,14 @@
 - [x] Return OAuth scopes as space-separated values on both authorization-code exchange and refresh responses; keep the internal API-key/database representation unchanged.
 - [x] Add resolver unit tests and token-endpoint integration tests; update DEVGUIDE, USERGUIDE, ADMINGUIDE and OAuth ADR.
 - [x] Open draft PR #467 against `develop`; audit the existing Azure hosts and Forpsi DNS read-only. `fakvio-api` has no `api.fakvio.cz` hostname binding and neither host has OAuth app settings.
-- [ ] Review, merge and release PR #467 before enabling production OAuth.
+- [x] Review and test PR #467 (4,134 unit / 256 integration passed), merge into `develop`, promote through `TEST-ENV`, and release to `master` via PR #470. API, MCP, and BlazorUI production workflows all passed.
 - [x] Configure Forpsi CNAME/TXT, bind `api.fakvio.cz` to the existing `fakvio-api` App Service, and issue/bind a free managed certificate. Authoritative DNS and direct HTTPS/TLS verification passed; local resolver caches may still serve the old GitHub Pages address until their TTL expires.
-- [ ] After PR #467 is released, apply OAuth app settings (including `McpOAuth__ConsentUrl`) to both existing hosts and enable the flags, then verify discovery and a ChatGPT read-only login.
+- [x] Configure both production hosts with matching 32-byte resource-proof secrets, issuer/resource/consent URLs and user-selected `McpOAuth__AllowAll=true`; enable both flags after the API, MCP and UI production deploys passed. API authorization-server metadata, MCP protected-resource metadata and the `/mcp` 401 discovery challenge were verified live.
+- [ ] Complete a real ChatGPT read-only OAuth consent, MCP tool call, refresh and revocation check. The browser is waiting for the user to sign in to ChatGPT.
+- [ ] Resolve security issue #471: the GitHub Pages consent URL serves the Blazor 404.html fallback with HTTP 404 and without the `frame-ancestors` / `X-Frame-Options` headers required by ADR T9. The clickjacking check has not passed.
+- [x] Add a localized, beginner-friendly ChatGPT connection path at the top of Integrations and detailed user/admin setup steps in USERGUIDE. Release build succeeds with 0 errors; deployment is pending.
+- [x] Tester gate for PR #473: add bUnit coverage for the ChatGPT link and guide placement; 4,135 unit tests and 260 integration tests passed (4 and 7 skipped respectively). No GitHub CI checks are configured.
+- [x] Audit reported 'Účetní' role display: PR #462 renamed the `Admin=1` label to Accountant/Účetní without changing the stored role; it also restricted user management/invitations to SysAdmin. No production row was queried. Product decision on restoring the original label/permissions is separate from this OAuth rollout.
 
 ## Completed (2026-09-11)
 
@@ -1243,3 +1248,9 @@ based on how often Czech customers ask for them. Each line is sized as a standal
 - [x] Coordinator final review, EF model consistency check (no pending changes), and Release Blazor WebAssembly build (0 warnings/errors).
 - [ ] Merge the reviewed feature through the normal release flow; desktop/mobile browser layout and journey checks remain unrun.
 Production deployment and package publication are outside this task and have not been performed.
+# OAuth production connection (2026-10-01)
+
+- [x] Identify the ChatGPT connection failure in production telemetry: consent succeeds, token exchange returns HTTP 500 because Npgsql retry strategy rejects an unwrapped transaction.
+- [x] Wrap authorization-code exchange and refresh transactions in EF's execution strategy; add PostgreSQL regression tests with retry enabled.
+- [x] Correct the ChatGPT user guide and integration page to use Settings → Apps instead of Plugins.
+- [ ] Merge and deploy PR #473 to production, then retry the connection in ChatGPT and confirm tool discovery.

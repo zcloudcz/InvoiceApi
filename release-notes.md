@@ -22,6 +22,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#472** — Ve Fakviu je návod na připojení ChatGPT krok za krokem, včetně odkazu do nastavení aplikací a adresy MCP serveru; správce najde samostatný postup pro první nastavení. (PR #473, `4a9b4f1`)
 - **#468** — Připojení webového ChatGPT k Fakviu přes OAuth přijímá jeho registrační metadata a vrací oprávnění ve správném formátu; dokončení přihlášení a obnovení přístupu tak může fungovat. (PR #467, `0abdc55`)
 
 ## 2026.10.01 — 2026-10-01
