@@ -613,4 +613,42 @@ public class ReceivedInvoiceServiceTests : IDisposable
         paid!.Status.ShouldBe(EReceivedInvoiceStatus.Paid);
         paid.PaidAt.ShouldNotBeNull();
     }
+
+    // ── Reverse charge (PDP) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_ReverseChargeItem_SelfAssessesVat_SupplierBillsNone()
+    {
+        _context.ReverseChargeCode.Add(new ReverseChargeCode { Id = 5, Code = "4", NameCs = "Stavebni prace", ParagraphRef = "92e" });
+        _context.SaveChanges();
+        var dto = CreateValidDto();
+        dto.Items[0].VatRegime = EVatRegime.ReverseCharge;
+        dto.Items[0].ReverseChargeCodeId = 5;
+
+        var result = await _service.CreateAsync(dto);
+
+        // 1000 base: we pay 1000 (no VAT billed), but must self-assess 210.
+        result.TotalVat.ShouldBe(0m);
+        result.TotalWithVat.ShouldBe(1000m);
+        result.Items[0].InformationalVatAmount.ShouldBe(210m);
+        result.Items[0].VatRegime.ShouldBe(EVatRegime.ReverseCharge);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ReverseChargeWithoutCode_Throws()
+    {
+        var dto = CreateValidDto();
+        dto.Items[0].VatRegime = EVatRegime.ReverseCharge;
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateAsync(dto));
+    }
+
+    [Fact]
+    public async Task CreateAsync_CodeOnStandardItem_Throws()
+    {
+        var dto = CreateValidDto();
+        dto.Items[0].ReverseChargeCodeId = 5;
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateAsync(dto));
+    }
 }

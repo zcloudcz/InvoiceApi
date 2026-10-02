@@ -1,0 +1,21 @@
+@*
+    VAT accounting regime dropdown (Standard / ReverseCharge / Exempt / OutOfScope).
+    Thin wrapper over EnumSelect so every screen shares one component.
+
+    Usage: <VatRegimeSelect @bind-Value="item.VatRegime" Dense="true" />
+*@
+@using Fakvio.Domain.Enums
+
+<EnumSelect TEnum="EVatRegime" Value="Value" ValueChanged="ValueChanged"
+            Label="@(Label ?? L["InvoiceItem_VatRegime"].Value)"
+            Margin="Margin.Dense" Dense="Dense" Disabled="Disabled" />
+
+@code {
+    [Inject] private IStringLocalizer<SharedResource> L { get; set; } = default!;
+
+    [Parameter] public EVatRegime Value { get; set; }
+    [Parameter] public EventCallback<EVatRegime> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool Dense { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+}

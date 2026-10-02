@@ -274,8 +274,55 @@
                         }
                         @L["EpoDownloadControlStatement"]
                     </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Preview"
+                               OnClick="LoadSummaryPreview"
+                               Disabled="_epoDownloading">
+                        @L["EpoSummaryPreview"]
+                    </MudButton>
                 </MudItem>
             </MudGrid>
+
+            @* DPHSHV (EU summary statement) preview. Supplies default to services (code 3);
+               tick "Goods" per customer to report them as goods (code 0). *@
+            @if (_shvRows is not null)
+            {
+                <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">@L["EpoSummaryTitle"]</MudText>
+                @if (_shvRows.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">@L["EpoSummaryEmpty"]</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="_shvRows" Dense="true" Hover="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>@L["EpoSummaryCountry"]</MudTh>
+                            <MudTh>@L["EpoSummaryVatId"]</MudTh>
+                            <MudTh>@L["EpoSummaryClient"]</MudTh>
+                            <MudTh>@L["EpoSummaryInvoices"]</MudTh>
+                            <MudTh>@L["EpoSummaryTotal"]</MudTh>
+                            <MudTh>@L["EpoSummaryGoods"]</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.CountryCode</MudTd>
+                            <MudTd>@context.VatId</MudTd>
+                            <MudTd>@context.ClientName</MudTd>
+                            <MudTd>@context.InvoiceCount</MudTd>
+                            <MudTd>@context.TotalCzk.ToString("N0") CZK</MudTd>
+                            <MudTd>
+                                <MudCheckBox T="bool" Value="@(context.SupplyCode == 0)" Dense="true"
+                                             ValueChanged="@(v => ToggleGoods(context, v))" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+                               StartIcon="@Icons.Material.Filled.FileDownload"
+                               OnClick="DownloadSummaryStatement" Disabled="_epoDownloading">
+                        @L["EpoDownloadSummaryStatement"]
+                    </MudButton>
+                }
+            }
         </MudPaper>
     }
 }
@@ -302,6 +349,10 @@
     private bool _epoDownloading;
     // Tracks which button is active to show spinner on the right button only.
     private string? _epoActiveButton;
+
+    // DPHSHV preview rows (null = not loaded yet) and the "goods" keys the user ticked.
+    private List<SummaryStatementRowDto>? _shvRows;
+    private readonly HashSet<string> _shvGoods = [];
 
     // Error state
     private bool _epoHeaderIncomplete;
@@ -400,6 +451,22 @@
     private Task DownloadVatReturn()
         => DownloadEpoAsync("return", () =>
             VatReportService.DownloadEpoVatReturnAsync(_epoYear, _epoPeriod, _epoPeriodType));
+
+    private Task DownloadSummaryStatement()
+        => DownloadEpoAsync("summary", () =>
+            VatReportService.DownloadEpoSummaryStatementAsync(_epoYear, _epoPeriod, _epoPeriodType, _shvGoods));
+
+    private async Task LoadSummaryPreview()
+        => _shvRows = await VatReportService.GetSummaryStatementPreviewAsync(
+            _epoYear, _epoPeriod, _epoPeriodType, _shvGoods);
+
+    /// <summary>Flips a customer between services (3) and goods (0) and refreshes the row locally.</summary>
+    private void ToggleGoods(SummaryStatementRowDto row, bool isGoods)
+    {
+        var key = row.CountryCode + row.VatId;
+        if (isGoods) _shvGoods.Add(key); else _shvGoods.Remove(key);
+        row.SupplyCode = isGoods ? 0 : 3;
+    }
 
     private Task DownloadControlStatement()
         => DownloadEpoAsync("control", () =>

@@ -212,6 +212,7 @@ else
                         <MudTh>@L["InvoiceItem_Unit"]</MudTh>
                         <MudTh>@L["InvoiceItem_UnitPrice"]</MudTh>
                         <MudTh>@L["InvoiceItem_VatRate"]</MudTh>
+                        <MudTh>@L["InvoiceItem_VatRegime"]</MudTh>
                         <MudTh>@L["Invoice_TotalBeforeVat"]</MudTh>
                         <MudTh>@L["Invoice_TotalVat"]</MudTh>
                         <MudTh>@L["Invoice_TotalWithVat"]</MudTh>
@@ -229,6 +230,14 @@ else
                             <MudTd><MudTextField @bind-Value="context.Unit" Variant="Variant.Text" Margin="Margin.Dense" /></MudTd>
                             <MudTd><MudNumericField T="decimal" Value="context.UnitPrice" ValueChanged="@((decimal v) => { context.UnitPrice = v; RecalculateItem(context); })" Variant="Variant.Text" Margin="Margin.Dense" /></MudTd>
                             <MudTd><MudNumericField T="decimal" Value="context.VatRatePercentage" ValueChanged="@((decimal v) => { context.VatRatePercentage = v; RecalculateItem(context); })" Variant="Variant.Text" Margin="Margin.Dense" /></MudTd>
+                            <MudTd>
+                                <VatRegimeSelect Value="context.VatRegime" Dense="true"
+                                                 ValueChanged="@((EVatRegime v) => { context.VatRegime = v; if (v != EVatRegime.ReverseCharge) context.ReverseChargeCodeId = null; RecalculateItem(context); })" />
+                                @if (context.VatRegime == EVatRegime.ReverseCharge)
+                                {
+                                    <ReverseChargeCodeSelect @bind-Value="context.ReverseChargeCodeId" Dense="true" Required="true" />
+                                }
+                            </MudTd>
                             <MudTd>@context.TotalBeforeVat.ToString("N2")</MudTd>
                             <MudTd>@context.VatAmount.ToString("N2")</MudTd>
                             <MudTd>@context.TotalWithVat.ToString("N2")</MudTd>
@@ -245,6 +254,7 @@ else
                             <MudTd>@context.Unit</MudTd>
                             <MudTd>@context.UnitPrice.ToString("N2")</MudTd>
                             <MudTd>@(context.VatRatePercentage > 0 ? $"{context.VatRatePercentage}%" : "0%")</MudTd>
+                            <MudTd>@L[$"EVatRegime_{context.VatRegime}"]</MudTd>
                             <MudTd>@context.TotalBeforeVat.ToString("N2")</MudTd>
                             <MudTd>@context.VatAmount.ToString("N2")</MudTd>
                             <MudTd>@context.TotalWithVat.ToString("N2")</MudTd>
@@ -378,6 +388,8 @@ else
             UnitPrice = i.UnitPrice,
             VatRateId = i.VatRateId,
             VatRatePercentage = i.VatRatePercentage,
+            VatRegime = i.VatRegime,
+            ReverseChargeCodeId = i.ReverseChargeCodeId,
             TotalBeforeVat = i.TotalBeforeVat,
             VatAmount = i.VatAmount,
             TotalWithVat = i.TotalWithVat
@@ -419,7 +431,9 @@ else
             Unit = i.Unit,
             UnitPrice = i.UnitPrice,
             VatRateId = i.VatRateId,
-            VatRatePercentage = i.VatRatePercentage
+            VatRatePercentage = i.VatRatePercentage,
+            VatRegime = i.VatRegime,
+            ReverseChargeCodeId = i.ReverseChargeCodeId
         }).ToList();
 
         if (_isCreateMode)
@@ -556,7 +570,11 @@ else
     private void RecalculateItem(EditableItem item)
     {
         item.TotalBeforeVat = item.Quantity * item.UnitPrice;
-        item.VatAmount = item.TotalBeforeVat * (item.VatRatePercentage / 100m);
+        // Only Standard items carry VAT billed by the supplier; for reverse charge the
+        // recipient (us) self-assesses it, so the invoice itself shows 0 VAT.
+        item.VatAmount = item.VatRegime == EVatRegime.Standard
+            ? item.TotalBeforeVat * (item.VatRatePercentage / 100m)
+            : 0m;
         item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
         _isDirty = true;
     }
@@ -586,6 +604,8 @@ else
         public decimal UnitPrice { get; set; }
         public long? VatRateId { get; set; }
         public decimal VatRatePercentage { get; set; }
+        public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
+        public long? ReverseChargeCodeId { get; set; }
         public decimal TotalBeforeVat { get; set; }
         public decimal VatAmount { get; set; }
         public decimal TotalWithVat { get; set; }

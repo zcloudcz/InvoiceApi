@@ -1,0 +1,33 @@
+@*
+    Reverse charge code (kód předmětu plnění PDP) dropdown, filled from the MFČR reference list.
+    Used when an item's VatRegime is ReverseCharge; the code goes to the control statement
+    (DPHKH1 A.1 / B.1, attribute kod_pred_pl).
+
+    Usage: <ReverseChargeCodeSelect @bind-Value="item.ReverseChargeCodeId" Dense="true" />
+*@
+@using Fakvio.Contracts.Dto.ReverseChargeCode
+@using Fakvio.UI.Shared.Services
+@inject ReverseChargeCodeApiService CodeService
+@inject IStringLocalizer<SharedResource> L
+
+<MudSelect T="long?" Value="Value" ValueChanged="ValueChanged" Clearable="true"
+           Label="@(Label ?? L["InvoiceItem_ReverseChargeCode"].Value)"
+           Margin="Margin.Dense" Dense="Dense" Disabled="Disabled" Required="Required">
+    @foreach (var code in _codes)
+    {
+        <MudSelectItem T="long?" Value="@((long?)code.Id)">@(code.Code) - @(code.NameCs)</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    private List<ReverseChargeCodeDto> _codes = [];
+
+    [Parameter] public long? Value { get; set; }
+    [Parameter] public EventCallback<long?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool Dense { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; }
+
+    protected override async Task OnInitializedAsync() => _codes = await CodeService.GetAllActiveAsync();
+}
