@@ -2035,6 +2035,20 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Aktuální stránka {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Stránka {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Rozbalit nebo sbalit {0}</value></data>
+  <data name="AccountingExport_Open" xml:space="preserve"><value>Export do účetnictví</value></data>
+  <data name="AccountingExport_System" xml:space="preserve"><value>Účetní systém</value></data>
+  <data name="AccountingExport_From" xml:space="preserve"><value>Od</value></data>
+  <data name="AccountingExport_To" xml:space="preserve"><value>Do</value></data>
+  <data name="AccountingExport_IncludeIssued" xml:space="preserve"><value>Vydané faktury</value></data>
+  <data name="AccountingExport_IncludeReceived" xml:space="preserve"><value>Přijaté faktury</value></data>
+  <data name="AccountingExport_Export" xml:space="preserve"><value>Exportovat</value></data>
+  <data name="AccountingExport_Success" xml:space="preserve"><value>Export byl stažen.</value></data>
+  <data name="AccountingExport_Error" xml:space="preserve"><value>Export se nepodařilo vytvořit. Zkontrolujte období a zkuste to znovu.</value></data>
+  <data name="EAccountingSystem_Pohoda" xml:space="preserve"><value>POHODA</value></data>
+  <data name="EAccountingSystem_MoneyS3" xml:space="preserve"><value>Money S3</value></data>
+  <data name="EAccountingSystem_AbraFlexi" xml:space="preserve"><value>ABRA Flexi</value></data>
+  <data name="AccountingExport_Note" xml:space="preserve"><value>Do souboru se nezahrnují doklady, které cílový systém nedokáže správně přijmout: doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi), daňové doklady k přijaté platbě a doklady se sazbou DPH jinou než 21 / 12 / 0 %. Počet vynechaných dokladů se zobrazí po exportu.</value></data>
+  <data name="AccountingExport_Skipped" xml:space="preserve"><value>Vynecháno dokladů, které cílový systém nepodporuje: {0}.</value></data>
   <data name="Nav_Webhooks" xml:space="preserve"><value>Webhooky</value></data>
   <data name="Webhook_Title" xml:space="preserve"><value>Webhooky</value></data>
   <data name="Webhook_Subtitle" xml:space="preserve"><value>Fakvio pošle na vaši URL podepsaný HTTP požadavek při události (vytvoření, odeslání nebo úhrada faktury, přijatá faktura, platba). Hodí se pro napojení e-shopu, účetnictví nebo vlastní aplikace.</value></data>

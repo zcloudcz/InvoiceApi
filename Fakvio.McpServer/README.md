@@ -274,11 +274,11 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (71)
+## Dostupné nástroje (72)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 12 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, DeleteInvoice, SetInvoiceBankAccount |
+| `Tools/InvoiceTools.cs` | 13 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, DeleteInvoice, SetInvoiceBankAccount |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
@@ -326,7 +326,8 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 - Deserializace vstupu od modelu má **vlastní menší `try`** před tím hlavním, aby `JsonException`
   z poškozené úspěšné odpovědi API spadla do sanitizované větve, a ne modelu zpátky jako „vstup
   je špatně" i s textem výjimky.
-- `ExportInvoicePdf`, `ExportInvoiceIsdoc` a `ExportInvoiceUbl` vracejí soubor jako
+- `ExportInvoicePdf`, `ExportInvoiceIsdoc`, `ExportInvoiceUbl` a `ExportAccounting` (hromadný XML export
+  vydaných/přijatých faktur za období pro POHODA / Money S3 / ABRA Flexi) vracejí soubor jako
   `base64Content` + `fileName`, `mimeType`, `sizeBytes`. Uložení souboru
   je na klientovi.
 - Logy jdou **výhradně na stderr** (`LogToStandardErrorThreshold = Trace`).

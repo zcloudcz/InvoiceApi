@@ -610,6 +610,62 @@ public static class InvoiceTools
     }
 
     /// <summary>
+    /// Exports issued and/or received invoices for a date range as a single XML file formatted
+    /// for a Czech accounting system (Pohoda / Money S3 / ABRA Flexi) — "Export do účetnictví".
+    /// Unlike ExportInvoiceIsdoc/ExportInvoiceUbl this covers many invoices in one file, so it's
+    /// the right tool when the user wants a whole month/period handed to their accountant.
+    /// </summary>
+    [McpServerTool(Title = "Export accounting period", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Export issued and/or received invoices for a date range as one XML file for an accounting " +
+        "system. Use this when the user asks to export invoices to Pohoda, Money S3 or ABRA Flexi, " +
+        "or wants a batch/period handover to their accountant — not for a single invoice " +
+        "(use ExportInvoiceIsdoc/ExportInvoiceUbl for that). Documents the target system cannot represent " +
+        "(foreign currency for Money S3/ABRA Flexi, proformas for ABRA Flexi, advance-payment tax receipts, VAT rates other than 21/12/0 %) " +
+        "are left out; skippedDocuments in the result says how many.")]
+    public static async Task<string> ExportAccounting(
+        IFakvioApiClient api,
+        [Description("Target accounting system: 'Pohoda', 'MoneyS3' or 'AbraFlexi'")] string system,
+        [Description("Start date (ISO 8601, e.g., '2026-01-01')")] string dateFrom,
+        [Description("End date (ISO 8601, e.g., '2026-01-31')")] string dateTo,
+        [Description("Include issued invoices/credit notes/proformas (default true)")] bool includeIssued = true,
+        [Description("Include received (incoming) invoices (default true)")] bool includeReceived = true,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            if (!Enum.TryParse<EAccountingSystem>(system, ignoreCase: true, out var parsedSystem))
+                return JsonSerializer.Serialize(new { error = $"Unknown accounting system '{system}'. Use 'Pohoda', 'MoneyS3' or 'AbraFlexi'." }, JsonOptions);
+
+            if (!DateTime.TryParse(dateFrom, out var parsedFrom))
+                return JsonSerializer.Serialize(new { error = $"Invalid dateFrom format: '{dateFrom}'. Use ISO 8601 (e.g., '2026-01-01')." }, JsonOptions);
+
+            if (!DateTime.TryParse(dateTo, out var parsedTo))
+                return JsonSerializer.Serialize(new { error = $"Invalid dateTo format: '{dateTo}'. Use ISO 8601 (e.g., '2026-01-31')." }, JsonOptions);
+
+            var (xmlBytes, skipped) = await api.ExportAccountingAsync(parsedSystem, parsedFrom, parsedTo, includeIssued, includeReceived, ct);
+            var fileName = $"{parsedSystem}_{parsedFrom:yyyyMMdd}-{parsedTo:yyyyMMdd}.xml";
+
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                fileName,
+                mimeType = "application/xml",
+                sizeBytes = xmlBytes.Length,
+                skippedDocuments = skipped,
+                base64Content = Convert.ToBase64String(xmlBytes)
+            }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Soft-deletes a draft invoice.
     /// Only invoices in Draft status can be deleted.
     /// </summary>

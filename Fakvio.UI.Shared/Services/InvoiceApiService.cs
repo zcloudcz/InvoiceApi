@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Fakvio.Contracts.Dto.AccountingExport;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
@@ -17,6 +18,9 @@ namespace Fakvio.UI.Shared.Services;
 /// Inherits ApiClientBase for shared auth, logging, impersonation, and error handling.
 /// All HTTP calls go through the base class methods — no manual header management needed.
 /// </summary>
+/// <summary>Accounting export download: the XML bytes plus how many documents were left out.</summary>
+public record AccountingExportFile(byte[] Content, int SkippedCount);
+
 public class FakvioService : ApiClientBase
 {
     public FakvioService(
@@ -385,6 +389,30 @@ public class FakvioService : ApiClientBase
     {
         var idsParam = string.Join(",", invoiceIds);
         return await GetBytesAsync($"/api/invoice/bulk/ubl?ids={idsParam}");
+    }
+
+    // ─── Accounting export (Pohoda / Money S3 / ABRA Flexi) ──────────────────
+
+    /// <summary>
+    /// Downloads one XML export file containing issued and/or received invoices for a date range,
+    /// formatted for the given accounting system. Used by the AccountingExportDialog shown from
+    /// both the Invoices and ReceivedInvoices pages.
+    /// </summary>
+    public async Task<AccountingExportFile?> ExportAccountingAsync(
+        EAccountingSystem system, DateTime from, DateTime to, bool includeIssued, bool includeReceived)
+    {
+        var request = new AccountingExportRequestDto
+        {
+            From = from,
+            To = to,
+            IncludeIssued = includeIssued,
+            IncludeReceived = includeReceived
+        };
+        var response = await PostForBytesAsync($"/api/accounting-export/{system}", request);
+        if (response is not { } r) return null;
+        // The API leaves out documents the target system cannot represent and reports the count in a header.
+        var skipped = r.Headers.TryGetValues("X-Export-Skipped", out var v) && int.TryParse(v.FirstOrDefault(), out var n) ? n : 0;
+        return new AccountingExportFile(r.Content, skipped);
     }
 
     /// <summary>
