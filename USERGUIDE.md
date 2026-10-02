@@ -282,6 +282,7 @@ Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukl
 
 - Ikonka kopírování v řádku gridu → vytvoří nový Draft se stejnými daty
 - Nová faktura dostane nové číslo dokladu (z číselné řady)
+- Před kopírováním se zobrazí dialog s volbou **„Posunout období v textech“** (výchozí: zapnuto). Měsíce v popisech položek a poznámce (`3/2026`, `03/2026`, `2026-03`, `březen 2026`, `za března`, `March 2026`, `Q1/2026`, `1Q 2026`) se posunou o rozdíl měsíců mezi datem vystavení původní a nové faktury; rok se přepíše při přechodu přes prosinec. Čtvrtletí se posouvají jen o celá čtvrtletí. Čísla faktur, IBAN, úplná data (`15. března 2026`) a zlomky se nemění. API: `POST /api/invoice/{id}/copy?shiftPeriods=false` posun vypne.
 - Po zkopírování se zobrazí toast se číslem nové faktury + grid se obnoví
 - Kopírování není dostupné pro Dobropisy ani Smazané faktury
 
@@ -540,6 +541,8 @@ automatické generování faktur z této šablony:
 **Kdy se faktura vygeneruje:** jednou za app hodinovou kontrolu (`RecurringInvoiceWorker`), jakmile
 nastane naplánovaný termín. Faktura se **rovnou vystaví** (ne koncept) — číslo dokladu se přidělí
 ihned, takže po smazání vygenerované faktury nezůstane v číselné řadě díra.
+
+**Období v textech:** měsíce/čtvrtletí zapsaná v textu položek a poznámky šablony (např. „Hosting 3/2026“) se u každé vygenerované faktury posunou automaticky — text v šabloně se považuje za období před prvním během a n-tá faktura se posune o (n+1) intervalů plánu. Týdenní plány text neposouvají. Zástupné značky typu `{month}` šablony nepodporují.
 
 **Co když aplikace byla dočasně nedostupná:** zmeškaná perioda se dožene v příštím běhu, ale vždy
 jen jedna faktura za cyklus — datum vystavení odpovídá původně plánovanému datu, ne datu, kdy se

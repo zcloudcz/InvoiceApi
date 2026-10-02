@@ -380,6 +380,8 @@ public class RecurringInvoiceService : IRecurringInvoiceService
                 // Owner decision: worker always issues (Completed) — the document number is
                 // consumed immediately, there is no "draft with a hole in the sequence".
                 AutoComplete = true,
+                // Billing periods in the template text ("Hosting 3/2026") advance with each generated invoice.
+                ShiftMonths = RecurrenceCalculator.PeriodShiftMonths(schedule.Frequency, schedule.IntervalCount, schedule.OccurrenceCount),
             },
             ct);
 

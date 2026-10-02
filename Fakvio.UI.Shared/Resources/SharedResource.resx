@@ -473,6 +473,8 @@
   <data name="Invoice_Copy" xml:space="preserve"><value>Zkopírovat fakturu</value></data>
   <data name="Invoice_CopySuccess" xml:space="preserve"><value>Faktura zkopírována jako #{0}</value></data>
   <data name="Invoice_CopyError" xml:space="preserve"><value>Kopírování faktury se nepodařilo</value></data>
+  <data name="Invoice_CopyShiftPeriods" xml:space="preserve"><value>Posunout období v textech</value></data>
+  <data name="Invoice_CopyShiftPeriodsHint" xml:space="preserve"><value>Měsíce a roky v popisech položek a poznámce (např. „3/2026“, „březen 2026“) se posunou podle rozdílu oproti původní faktuře.</value></data>
   <data name="FileName_Invoice" xml:space="preserve"><value>Faktura</value></data>
   <data name="FileName_CreditNote" xml:space="preserve"><value>Dobropis</value></data>
   <data name="FileName_Invoices" xml:space="preserve"><value>Faktury</value></data>

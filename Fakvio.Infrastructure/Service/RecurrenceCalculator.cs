@@ -13,6 +13,23 @@ namespace Fakvio.Infrastructure.Service;
 internal static class RecurrenceCalculator
 {
     /// <summary>
+    /// Months by which period text in the template ("Hosting 3/2026") must move for the next generated invoice:
+    /// the template text is assumed to name the period just BEFORE the first run, so run number N (0-based)
+    /// shifts by (N + 1) schedule intervals. Weekly schedules return 0 (a week never changes a month period).
+    /// </summary>
+    public static int PeriodShiftMonths(ERecurrenceFrequency frequency, int intervalCount, int occurrencesSoFar)
+    {
+        var monthsPerInterval = frequency switch
+        {
+            ERecurrenceFrequency.Monthly => 1,
+            ERecurrenceFrequency.Quarterly => 3,
+            ERecurrenceFrequency.Yearly => 12,
+            _ => 0,
+        };
+        return monthsPerInterval * intervalCount * (occurrencesSoFar + 1);
+    }
+
+    /// <summary>
     /// Computes the next occurrence strictly after <paramref name="from"/>.
     /// </summary>
     /// <param name="from">The previous NextRunAt (the occurrence that just fired).</param>

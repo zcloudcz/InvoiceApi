@@ -533,6 +533,7 @@ public class InvoiceController : ControllerBase
     /// CreditNote sources → 400 Bad Request.
     /// </summary>
     /// <param name="id">Source invoice ID to copy from</param>
+    /// <param name="shiftPeriods">Move billing periods in item texts/notes ("3/2026", "březen 2026") forward by the month difference to today (default true)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The newly created Draft invoice</returns>
     /// <response code="201">Copy created successfully</response>
@@ -546,13 +547,14 @@ public class InvoiceController : ControllerBase
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<InvoiceDto>> CopyInvoice(
         long id,
+        [FromQuery] bool shiftPeriods = true,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("POST /api/invoice/{Id}/copy", id);
 
         try
         {
-            var copy = await _invoiceService.CopyInvoiceAsync(id, cancellationToken);
+            var copy = await _invoiceService.CopyInvoiceAsync(id, shiftPeriods, cancellationToken);
 
             _logger.LogInformation(
                 "Invoice {SourceId} copied → new invoice {CopyId} ({DocNum})",

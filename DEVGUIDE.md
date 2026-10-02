@@ -2766,6 +2766,7 @@ Example — "Create from template" moved to the three-dot overflow menu in `Invo
 
 - Copy / duplicate actions: wrap `MudIconButton` in `MudTooltip` for discoverability.
 - After a mutating action (copy, restore, delete): call `await SearchInvoices()` to refresh the grid — no navigation.
+- Copy opens `CopyInvoiceDialog` (checkbox "shift periods", default on) → `POST /api/invoice/{id}/copy?shiftPeriods=`. Text shifting lives in `Fakvio.Application/Common/Helpers/BillingPeriodShifter` (pure; `3/2026`, `2026-03`, `Q1/2026`, Czech/English month names). Copy shifts by issue-month difference; recurring passes `CreateInvoiceFromTemplateDto.ShiftMonths` = `RecurrenceCalculator.PeriodShiftMonths(...)`. Item `Description`/`Notes` and invoice `Notes` are shifted; templates have no `{month}` placeholders.
 
 ### 7.10 FakvioGrid — POVINNÝ grid pattern
 

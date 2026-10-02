@@ -67,4 +67,10 @@ public class CreateInvoiceFromTemplateDto
     /// If true, invoice is created and immediately completed (assigned document number)
     /// </summary>
     public bool AutoComplete { get; set; } = false;
+
+    /// <summary>
+    /// Months to move billing periods named in the template texts ("Hosting 3/2026" → "4/2026") forward.
+    /// Set by the recurring-invoice worker; 0 (default) leaves texts untouched.
+    /// </summary>
+    public int ShiftMonths { get; set; }
 }
