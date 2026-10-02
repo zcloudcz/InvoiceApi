@@ -5,8 +5,10 @@
 @using Fakvio.Contracts.Dto.Invoice
 @using Fakvio.Contracts.Common.Pagination
 @using Fakvio.Domain.Enums
+@using Fakvio.Contracts.Dto.Vies
 @using Fakvio.UI.Shared.Models
 @inject ClientApiService ClientService
+@inject ViesApiService ViesService
 @inject FakvioService InvoiceService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -102,7 +104,39 @@ else
                         </MudGrid>
                         <MudTextField @bind-Value="_editClient.CompanyName" Label="@L["Client_CompanyName"].Value" Required="true" Class="mb-3" />
                         <MudTextField @bind-Value="_editClient.TradingName" Label="@L["Client_TradingName"].Value" Class="mb-3" />
-                        <MudTextField @bind-Value="_editClient.TaxNumber" Label="@L["Client_TaxNumber"].Value" Class="mb-3" />
+                        <MudGrid Class="mb-1">
+                            <MudItem xs="8">
+                                <MudTextField @bind-Value="_editClient.TaxNumber" Label="@L["Client_TaxNumber"].Value" />
+                            </MudItem>
+                            <MudItem xs="4">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Info" FullWidth="true"
+                                           OnClick="VerifyInVies" Disabled="_verifyingVies">
+                                    @if (_verifyingVies)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                    }
+                                    else
+                                    {
+                                        <span>@L["Vies_Verify"]</span>
+                                    }
+                                </MudButton>
+                            </MudItem>
+                        </MudGrid>
+                        @if (_viesResult != null)
+                        {
+                            @* Valid = green, Invalid = red, Unavailable = "could not verify" (warning, NOT "invalid") *@
+                            <MudAlert Severity="@(_viesResult.Status == EViesCheckStatus.Valid ? Severity.Success : _viesResult.Status == EViesCheckStatus.Invalid ? Severity.Error : Severity.Warning)" Class="mb-3">
+                                @(_viesResult.Status == EViesCheckStatus.Valid ? L["Vies_Valid"].Value : _viesResult.Status == EViesCheckStatus.Invalid ? L["Vies_Invalid"].Value : L["Vies_Unavailable"].Value)
+                                @if (_viesResult.Status == EViesCheckStatus.Valid && !string.IsNullOrWhiteSpace(_viesResult.Name))
+                                {
+                                    <div>@_viesResult.Name</div>
+                                }
+                                @if (_viesResult.Status == EViesCheckStatus.Valid && !string.IsNullOrWhiteSpace(_viesResult.Address))
+                                {
+                                    <div>@_viesResult.Address</div>
+                                }
+                            </MudAlert>
+                        }
                         <MudSwitch @bind-Value="_editClient.IsVatPayer" Label="@L["Client_IsVatPayer"].Value" Color="Color.Primary" />
                         @* Language preference for documents (PDFs, emails) generated for this client *@
                         <MudSelect T="string" @bind-Value="_editClient.Language" Label="@L["Client_Language"].Value" Class="mt-3">
@@ -420,6 +454,8 @@ else
     private string? _errorMessage; // Stores API error message for display instead of generic "Not Found"
     private bool _invoiceLoading = false;
     private bool _fetchingAres = false;
+    private bool _verifyingVies = false;
+    private ViesVerificationResult? _viesResult;
 
     // Mode flags
     private bool _isCreateMode => Id == 0;
@@ -834,6 +870,33 @@ else
         finally
         {
             _fetchingAres = false;
+        }
+    }
+
+    /// <summary>
+    /// Verifies the entered DIČ against the EU VIES registry and shows the outcome inline.
+    /// A VIES outage is shown as "could not verify", never as an invalid DIČ.
+    /// </summary>
+    private async Task VerifyInVies()
+    {
+        if (string.IsNullOrWhiteSpace(_editClient.TaxNumber))
+        {
+            Snackbar.Add(L["Client_TaxNumber"].Value, Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _verifyingVies = true;
+            _viesResult = await ViesService.VerifyAsync(_editClient.TaxNumber);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _verifyingVies = false;
         }
     }
 

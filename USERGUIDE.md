@@ -656,7 +656,8 @@ Správa informací o vaší firmě (vydavatele faktur).
 **Bankovní účty:**
 - Přidávání přes dialog „Bankovní účet"
 - Formát: číslo účtu, kód banky, IBAN, BIC/SWIFT
-- QR kód platba — systém generuje QR kód pro faktury automaticky
+- QR kód platba — systém generuje QR kód pro faktury automaticky; faktury v EUR s IBAN dostanou evropský **QR platba SEPA** (EPC QR), který načte jakákoli SEPA bankovní aplikace
+- Ověření DIČ ve VIES — ve formuláři klienta tlačítko **Ověřit ve VIES** zkontroluje, zda je DIČ registrováno v EU (výpadek služby se zobrazí jako „nelze ověřit“, ne jako neplatné DIČ)
 
 Základní informace, primární adresu i bankovní účet jde nastavit i přes AI (kapitola 20) —
 `update_my_company` a `add_bank_account`.
@@ -1146,7 +1147,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 69 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 70 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
