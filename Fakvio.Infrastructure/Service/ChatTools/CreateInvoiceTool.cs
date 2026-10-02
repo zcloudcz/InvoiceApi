@@ -96,6 +96,13 @@ public class CreateInvoiceTool : IChatTool
             Name = "notes",
             Type = ChatToolParameterType.String,
             Description = "Optional notes to include on the invoice"
+        },
+        new()
+        {
+            Name = "bank_account_id",
+            Type = ChatToolParameterType.Integer,
+            Description = "Optional: one of the issuer's bank account ids to use instead of the " +
+                          "automatic default (see get_my_company for the account list)."
         }
     ];
 
@@ -127,6 +134,10 @@ public class CreateInvoiceTool : IChatTool
         // Optional parameters.
         parameters.TryGetValue("currency", out var currencyCode);
         parameters.TryGetValue("notes", out var notes);
+        long? bankAccountId = parameters.TryGetValue("bank_account_id", out var bankAccountIdRaw)
+            && long.TryParse(bankAccountIdRaw, out var parsedBankAccountId)
+                ? parsedBankAccountId
+                : null;
 
         _logger.LogInformation(
             "CreateInvoiceTool executing: client_name={ClientName}, items={Items}, currency={Currency}",
@@ -200,6 +211,7 @@ public class CreateInvoiceTool : IChatTool
                 IssueDate = DateTime.UtcNow,
                 PaymentMethod = EPaymentMethod.BankTransfer,
                 Notes = notes?.Trim(),
+                BankAccountId = bankAccountId,
                 InvoiceItem = parsedItems.Items!
             };
 

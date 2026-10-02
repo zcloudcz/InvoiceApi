@@ -202,7 +202,10 @@ public static class ClientTools
     [McpServerTool(Title = "Get my company", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get the authenticated user's own company (issuer). " +
         "This is the entity that appears as the sender/creator on invoices. " +
-        "Useful for getting issuerId when creating invoices.")]
+        "Useful for getting issuerId when creating invoices. " +
+        "The response's bankAccount list has each account's id, isDefault and currencyCode — " +
+        "use one of those ids as bankAccountId in create_invoice / create_invoice_from_template / " +
+        "set_invoice_bank_account. There is no separate list_bank_accounts tool, this is it.")]
     public static async Task<string> GetIssuer(
         IFakvioApiClient api,
         CancellationToken ct = default)
