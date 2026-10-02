@@ -516,6 +516,23 @@
   <data name="EPaymentMethod_PayPal" xml:space="preserve"><value>PayPal</value></data>
   <data name="EPaymentMethod_Other" xml:space="preserve"><value>Other</value></data>
 
+  <!-- VAT regime enum labels (localized display for EVatRegime, used by generic EnumSelect) -->
+  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standard</value></data>
+  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Reverse charge</value></data>
+  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Exempt</value></data>
+  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Out of scope</value></data>
+
+  <!-- Reverse charge (PDP, §92a-92e ZDPH) UI on the invoice item editor -->
+  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>VAT regime</value></data>
+  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Reverse charge code</value></data>
+  <data name="Invoice_ReverseChargeToggle" xml:space="preserve"><value>Reverse charge</value></data>
+  <data name="Invoice_ReverseChargeToggle_Hint" xml:space="preserve"><value>Sets reverse charge with the chosen code on every item</value></data>
+  <data name="Invoice_ReverseChargeToggle_SelectCode" xml:space="preserve"><value>Select a reverse charge code</value></data>
+  <data name="InvoiceItem_VatZeroCustomerPays" xml:space="preserve"><value>VAT 0 %, customer pays the tax</value></data>
+  <data name="Invoice_ReverseChargeNote" xml:space="preserve"><value>Tax to be paid by the customer. Reverse charge under §92a of Act No. 235/2004 Coll., on value added tax.</value></data>
+  <data name="Validation_ReverseChargeCodeRequired" xml:space="preserve"><value>A reverse charge code is required for an item with the Reverse Charge VAT regime.</value></data>
+  <data name="Validation_ReverseChargeCodeNotAllowed" xml:space="preserve"><value>A reverse charge code can only be set on an item with the Reverse Charge VAT regime.</value></data>
+
   <!-- Missing billing title key used in Clients.razor -->
   <data name="Billing_Title" xml:space="preserve"><value>Billing Settings</value></data>
 

@@ -516,6 +516,23 @@
   <data name="EPaymentMethod_PayPal" xml:space="preserve"><value>PayPal</value></data>
   <data name="EPaymentMethod_Other" xml:space="preserve"><value>Jiný</value></data>
 
+  <!-- VAT regime enum labels (localized display for EVatRegime, used by generic EnumSelect) -->
+  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standardní</value></data>
+  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Přenesená daňová povinnost</value></data>
+  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Osvobozeno</value></data>
+  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Mimo předmět daně</value></data>
+
+  <!-- Reverse charge (PDP, §92a-92e ZDPH) UI on the invoice item editor -->
+  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>Režim DPH</value></data>
+  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Kód PDP</value></data>
+  <data name="Invoice_ReverseChargeToggle" xml:space="preserve"><value>Přenesená daňová povinnost</value></data>
+  <data name="Invoice_ReverseChargeToggle_Hint" xml:space="preserve"><value>Nastaví u všech položek režim PDP se zvoleným kódem</value></data>
+  <data name="Invoice_ReverseChargeToggle_SelectCode" xml:space="preserve"><value>Vyberte kód předmětu plnění</value></data>
+  <data name="InvoiceItem_VatZeroCustomerPays" xml:space="preserve"><value>DPH 0 %, daň odvede zákazník</value></data>
+  <data name="Invoice_ReverseChargeNote" xml:space="preserve"><value>Daň odvede zákazník. Přenesená daňová povinnost dle §92a zákona č. 235/2004 Sb., o dani z přidané hodnoty.</value></data>
+  <data name="Validation_ReverseChargeCodeRequired" xml:space="preserve"><value>U položky s režimem Přenesená daňová povinnost musí být vybrán kód předmětu plnění.</value></data>
+  <data name="Validation_ReverseChargeCodeNotAllowed" xml:space="preserve"><value>Kód předmětu plnění lze vybrat jen u položky v režimu Přenesená daňová povinnost.</value></data>
+
   <!-- Missing billing title key used in Clients.razor -->
   <data name="Billing_Title" xml:space="preserve"><value>Fakturační nastavení</value></data>
 
