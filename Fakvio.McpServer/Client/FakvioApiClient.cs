@@ -544,6 +544,18 @@ public class FakvioApiClient : IFakvioApiClient
         return (await response.Content.ReadFromJsonAsync<VatReportDto>(JsonOptions, ct))!;
     }
 
+    public async Task<byte[]> ExportVatEpoAsync(string route, int year, int period, string periodType,
+        IEnumerable<string>? goods = null, CancellationToken ct = default)
+    {
+        var url = $"api/vat-report/{route}?year={year}&period={period}&type={Uri.EscapeDataString(periodType)}";
+        foreach (var g in goods ?? [])
+            url += $"&goods={Uri.EscapeDataString(g)}";
+
+        var response = await _http.GetAsync(url, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     // ── Tax estimation endpoints ─────────────────────────────────────────
 
     public async Task<TaxEstimationResult> EstimateTaxAsync(

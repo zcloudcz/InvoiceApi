@@ -2018,4 +2018,20 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Aktuální stránka {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Stránka {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Rozbalit nebo sbalit {0}</value></data>
+  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>Režim DPH</value></data>
+  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Kód předmětu plnění (PDP)</value></data>
+  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standardní</value></data>
+  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Přenesená daňová povinnost</value></data>
+  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Osvobozeno</value></data>
+  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Mimo předmět daně</value></data>
+  <data name="EpoSummaryPreview" xml:space="preserve"><value>Náhled souhrnného hlášení</value></data>
+  <data name="EpoSummaryTitle" xml:space="preserve"><value>Souhrnné hlášení (plnění do EU)</value></data>
+  <data name="EpoSummaryEmpty" xml:space="preserve"><value>V období nejsou žádná plnění pro odběratele z EU s DIČ.</value></data>
+  <data name="EpoSummaryCountry" xml:space="preserve"><value>Stát</value></data>
+  <data name="EpoSummaryVatId" xml:space="preserve"><value>DIČ</value></data>
+  <data name="EpoSummaryClient" xml:space="preserve"><value>Odběratel</value></data>
+  <data name="EpoSummaryInvoices" xml:space="preserve"><value>Faktur</value></data>
+  <data name="EpoSummaryTotal" xml:space="preserve"><value>Hodnota plnění</value></data>
+  <data name="EpoSummaryGoods" xml:space="preserve"><value>Zboží (jinak služba)</value></data>
+  <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Stáhnout EPO – souhrnné hlášení</value></data>
 </root>

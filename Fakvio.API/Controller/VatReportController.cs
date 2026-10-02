@@ -213,6 +213,80 @@ public class VatReportController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Previews the DPHSHV (EU summary statement) rows: issued invoices to EU (non-CZ)
+    /// clients with a VAT id, aggregated by (country, VAT id, supply code).
+    /// </summary>
+    /// <param name="year">Tax year. Must be in [2024, currentYear+1].</param>
+    /// <param name="period">1–12 for Monthly, 1–4 for Quarterly.</param>
+    /// <param name="type">Monthly or Quarterly.</param>
+    /// <param name="goods">
+    /// Customers to report as GOODS (supply code 0) instead of the default SERVICES (3),
+    /// as country prefix + VAT id (e.g. "DE123456789"). Repeat the parameter per customer.
+    /// </param>
+    [HttpGet("epo/summary-statement/preview")]
+    [ProducesResponseType(typeof(List<SummaryStatementRowDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> PreviewEpoSummaryStatement(
+        [FromQuery] int year,
+        [FromQuery] int period,
+        [FromQuery] EVatPeriodType type,
+        [FromQuery] string[]? goods,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _service.GetSummaryStatementRowsAsync(year, period, type, goods, ct));
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return BadRequest(new { code = "INVALID_ARGUMENT", message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Downloads an EPO DPHSHV XML export (EU VAT summary statement — "Souhrnné hlášení")
+    /// validated against the official MFČR XSD. File name: DPHSHV_{year}_M{mm}.xml / _Q{q}.xml.
+    /// Same error contract as the other EPO exports (403 VAT_PAYER_REQUIRED,
+    /// 400 EPO_HEADER_INCOMPLETE / INVALID_ARGUMENT / CONFIGURATION_ERROR — the last one
+    /// also when there is nothing to report).
+    /// </summary>
+    /// <param name="goods">See <see cref="PreviewEpoSummaryStatement"/>.</param>
+    [HttpGet("epo/summary-statement")]
+    [Produces("application/xml", "application/json")]
+    [ProducesResponseType(typeof(byte[]), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> DownloadEpoSummaryStatement(
+        [FromQuery] int year,
+        [FromQuery] int period,
+        [FromQuery] EVatPeriodType type,
+        [FromQuery] string[]? goods,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var bytes = await _service.ExportEpoSummaryStatementAsync(year, period, type, goods, ct);
+            return File(bytes, "application/xml", BuildEpoFilename("DPHSHV", year, period, type));
+        }
+        catch (VatPayerRequiredException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { code = "VAT_PAYER_REQUIRED", message = ex.Message });
+        }
+        catch (EpoHeaderIncompleteException ex)
+        {
+            return BadRequest(new { code = "EPO_HEADER_INCOMPLETE", message = ex.Message, missingFields = ex.MissingFields });
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return BadRequest(new { code = "INVALID_ARGUMENT", message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { code = "CONFIGURATION_ERROR", message = ex.Message });
+        }
+    }
+
     // =========================================================================
     // Private helpers
     // =========================================================================

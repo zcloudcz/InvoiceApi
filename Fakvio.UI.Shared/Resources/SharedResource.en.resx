@@ -2018,4 +2018,20 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Toggle {0}</value></data>
+  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>VAT regime</value></data>
+  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Reverse charge code</value></data>
+  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standard</value></data>
+  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Reverse charge</value></data>
+  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Exempt</value></data>
+  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Out of scope</value></data>
+  <data name="EpoSummaryPreview" xml:space="preserve"><value>Preview summary statement</value></data>
+  <data name="EpoSummaryTitle" xml:space="preserve"><value>EU summary statement (supplies to the EU)</value></data>
+  <data name="EpoSummaryEmpty" xml:space="preserve"><value>No supplies to EU customers with a VAT id in this period.</value></data>
+  <data name="EpoSummaryCountry" xml:space="preserve"><value>Country</value></data>
+  <data name="EpoSummaryVatId" xml:space="preserve"><value>VAT id</value></data>
+  <data name="EpoSummaryClient" xml:space="preserve"><value>Customer</value></data>
+  <data name="EpoSummaryInvoices" xml:space="preserve"><value>Invoices</value></data>
+  <data name="EpoSummaryTotal" xml:space="preserve"><value>Value</value></data>
+  <data name="EpoSummaryGoods" xml:space="preserve"><value>Goods (else service)</value></data>
+  <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Download EPO – summary statement</value></data>
 </root>

@@ -19,7 +19,10 @@ public enum EEpoFormType
     /// Filed monthly (for some quarterly payers also monthly) with
     /// transaction-level detail used to cross-check with trading partners.
     /// </summary>
-    ControlStatement = 2
+    ControlStatement = 2,
+
+    /// <summary>EU VAT summary statement — "Souhrnné hlášení" (DPHSHV).</summary>
+    SummaryStatement = 3
 }
 
 /// <summary>

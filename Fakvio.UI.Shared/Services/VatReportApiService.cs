@@ -71,6 +71,28 @@ public class VatReportApiService : ApiClientBase
         return await DownloadEpoFileAsync(url, "DPHKH1", year, period, type);
     }
 
+    /// <summary>
+    /// Downloads the EPO DPHSHV (EU summary statement) XML. <paramref name="goodsKeys"/> lists
+    /// customers (country prefix + VAT id) to report as goods (code 0) instead of services (3).
+    /// </summary>
+    public async Task<EpoDownloadResult> DownloadEpoSummaryStatementAsync(
+        int year, int period, EVatPeriodType type, IEnumerable<string> goodsKeys)
+    {
+        var url = $"/api/vat-report/epo/summary-statement?year={year}&period={period}&type={(int)type}"
+                  + GoodsQuery(goodsKeys);
+        return await DownloadEpoFileAsync(url, "DPHSHV", year, period, type);
+    }
+
+    /// <summary>Loads the DPHSHV preview rows (EU customers aggregated by country, VAT id and supply code).</summary>
+    public async Task<List<SummaryStatementRowDto>> GetSummaryStatementPreviewAsync(
+        int year, int period, EVatPeriodType type, IEnumerable<string> goodsKeys)
+        => await GetAsync<List<SummaryStatementRowDto>>(
+               $"/api/vat-report/epo/summary-statement/preview?year={year}&period={period}&type={(int)type}"
+               + GoodsQuery(goodsKeys)) ?? [];
+
+    private static string GoodsQuery(IEnumerable<string> goodsKeys)
+        => string.Concat(goodsKeys.Select(k => $"&goods={Uri.EscapeDataString(k)}"));
+
     // =========================================================================
     // Private helpers
     // =========================================================================

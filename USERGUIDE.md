@@ -756,12 +756,23 @@ upravit a uložit — DPH se vynuluje. U vystavené faktury vystavte dobropis a 
 
 **Dostupné pouze pro plátce DPH.**
 
-Sekce „EPO Export" umožňuje stáhnout dva soubory pro portál EPO MFČR:
+Sekce „EPO Export" umožňuje stáhnout soubory pro portál EPO MFČR:
 
 | Soubor | Typ | Obsah |
 |--------|-----|-------|
 | DPHDP3 | XML | Daňové přiznání k DPH |
 | DPHKH1 | XML | Kontrolní hlášení DPH |
+| DPHSHV | XML | Souhrnné hlášení (plnění do jiných států EU) |
+
+**Přenesená daňová povinnost (PDP):** u položky vydané i přijaté faktury nastavte „Režim DPH" na
+„Přenesená daňová povinnost" a vyberte kód předmětu plnění. Vydané plnění se vykáže v řádku 25 přiznání
+a v oddílu A.1 kontrolního hlášení; přijaté plnění si doúčtujete sami (řádky 10/11 a nárok na odpočet
+43/44, oddíl B.1) – dodavatel na faktuře DPH neúčtuje.
+
+**Souhrnné hlášení:** zahrnuje vydané faktury odběratelům z EU (jiný stát než ČR) s DIČ. Tlačítkem
+„Náhled souhrnného hlášení" zobrazíte řádky za stát a DIČ; plnění se standardně vykazují jako služby
+(kód 3), zaškrtnutím „Zboží" u odběratele je vykážete jako dodání zboží (kód 0). Třístranný obchod a
+přemístění obchodního majetku zatím nejsou podporovány.
 
 **Postup:**
 1. Vyberte rok a typ období (Měsíční / Čtvrtletní)
@@ -1146,7 +1157,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 69 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 70 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
