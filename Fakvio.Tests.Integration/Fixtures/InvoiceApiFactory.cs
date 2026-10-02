@@ -93,6 +93,11 @@ public class FakvioFactory : WebApplicationFactory<Program>
             // that happens to cross 06:00 UTC must not start a dunning pass against InMemory.
             RemoveHostedService<ImapPollWorker>(services);
             RemoveHostedService<ReminderWorker>(services);
+            // ExchangeRateWorker + the real ČNB client: tests must never call the internet. The worker is removed and
+            // ICnbExchangeRateClient is replaced by a canned fixing (EUR 24.465, HUF 6.660 per 100 on 2026-10-01).
+            RemoveHostedService<ExchangeRateWorker>(services);
+            services.RemoveAll<ICnbExchangeRateClient>();
+            services.AddSingleton<ICnbExchangeRateClient, FakeCnbExchangeRateClient>();
             // OAuthCleanupService: uses ExecuteUpdateAsync/ExecuteDeleteAsync, which the
             // InMemory EF Core provider used by this factory does not support at all (throws
             // NotSupportedException). The service itself already catches every exception per
@@ -304,4 +309,12 @@ public class FakvioFactory : WebApplicationFactory<Program>
         foreach (var descriptor in descriptors)
             services.Remove(descriptor);
     }
+}
+
+/// <summary>Canned ČNB fixing for integration tests — whatever date is asked, the last fixing is 2026-10-01 (like ČNB on a weekend).</summary>
+public sealed class FakeCnbExchangeRateClient : ICnbExchangeRateClient
+{
+    public Task<CnbDailyRates> GetDailyRatesAsync(DateOnly date, CancellationToken ct = default) =>
+        Task.FromResult(new CnbDailyRates(new DateOnly(2026, 10, 1),
+            [new CnbRateRow("EUR", 1, 24.465m), new CnbRateRow("HUF", 100, 6.660m)]));
 }

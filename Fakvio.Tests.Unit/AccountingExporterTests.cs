@@ -105,6 +105,19 @@ public class AccountingExporterTests
     }
 
     [Fact]
+    public void Pohoda_ForeignCurrencyWithRate_WritesRateAndAmount_AndValidates()
+    {
+        var received = Received("R1", "EUR", ("Hosting", 21m, 100m));
+        received.ExchangeRate = 24.465m;
+        var bytes = new PohodaAccountingExporter().Export([], [received], Issuer());
+
+        var foreign = Parse(bytes).Descendants(Inv + "invoiceSummary").Single().Element(Inv + "foreignCurrency")!;
+        foreign.Element(Typ + "rate")!.Value.ShouldBe("24.465");
+        foreign.Element(Typ + "amount")!.Value.ShouldBe("1");
+        string.Join(Environment.NewLine, Validate(bytes, PohodaSchemas.Value)).ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Pohoda_ForeignCurrency_HasNoFabricatedRate_AndValidates()
     {
         var bytes = new PohodaAccountingExporter().Export([], [Received("R1", "EUR", ("Hosting", 21m, 100m))], Issuer());
@@ -116,6 +129,77 @@ public class AccountingExporterTests
         foreign.Element(Typ + "rate").ShouldBeNull();
         foreign.Element(Typ + "amount").ShouldBeNull();
         string.Join(Environment.NewLine, Validate(bytes, PohodaSchemas.Value)).ShouldBeEmpty();
+    }
+
+    // ── Foreign currency with ČNB rate (DEVGUIDE §4.17) ───────────────────────
+
+    private static Invoice IssuedEur(string number, decimal? rate, params (string Text, decimal Vat, decimal Net)[] lines)
+    {
+        var inv = Issued(number, lines);
+        inv.Currency = new Currency { Code = "EUR" };
+        inv.ExchangeRate = rate;
+        return inv;
+    }
+
+    [Fact]
+    public void MoneyS3_ForeignCurrencyWithRate_WritesValutyAndCzkSummary_AndValidates()
+    {
+        var bytes = new MoneyS3AccountingExporter().Export(
+            [IssuedEur("INV1", 24.5m, ("A", 21m, 100m), ("B", 0m, 10m))],
+            [], Issuer());
+
+        var el = Parse(bytes).Descendants("FaktVyd").Single();
+        var mena = el.Element("Valuty")!.Element("Mena")!;
+        mena.Element("Kod")!.Value.ShouldBe("EUR");
+        mena.Element("Mnozstvi")!.Value.ShouldBe("1");
+        mena.Element("Kurs")!.Value.ShouldBe("24.5");
+        // Foreign summary in EUR, main summary in CZK (base x rate, VAT from the CZK base).
+        el.Element("Valuty")!.Element("Celkem")!.Value.ShouldBe("131.00");
+        el.Element("SouhrnDPH")!.Element("Zaklad22")!.Value.ShouldBe("2450.00");
+        el.Element("SouhrnDPH")!.Element("DPH22")!.Value.ShouldBe("514.50");
+        el.Element("SouhrnDPH")!.Element("Zaklad0")!.Value.ShouldBe("245.00");
+        el.Element("Celkem")!.Value.ShouldBe("3209.50");
+        // Items carry the price in Valuty, not in Cena.
+        el.Descendants("Polozka").ShouldAllBe(p => p.Element("Cena") == null && p.Element("Valuty") != null);
+        string.Join(Environment.NewLine, Validate(bytes, MoneySchemas.Value)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void MoneyS3_ForeignReceivedInvoiceWithRate_Validates()
+    {
+        var received = Received("R1", "EUR", ("Hosting", 21m, 100m));
+        received.ExchangeRate = 25m;
+
+        var bytes = new MoneyS3AccountingExporter().Export([], [received], Issuer());
+
+        Parse(bytes).Descendants("FaktPrij").Single().Element("Valuty")!.Element("Mena")!.Element("Kurs")!.Value.ShouldBe("25");
+        string.Join(Environment.NewLine, Validate(bytes, MoneySchemas.Value)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Flexi_ForeignCurrencyWithRate_WritesMenaKurzKurzMnozstvi_AndStaysWritable()
+    {
+        var received = Received("R1", "EUR", ("Hosting", 21m, 100m));
+        received.ExchangeRate = 0.0666m; // e.g. HUF: per ONE unit, so kurzMnozstvi is always 1
+        var root = Parse(new AbraFlexiAccountingExporter().Export([IssuedEur("INV1", 24.465m, ("A", 21m, 100m))], [received], Issuer())).Root!;
+
+        var issued = root.Element("faktura-vydana")!;
+        issued.Element("mena")!.Value.ShouldBe("code:EUR");
+        issued.Element("kurz")!.Value.ShouldBe("24.465");
+        issued.Element("kurzMnozstvi")!.Value.ShouldBe("1");
+        root.Element("faktura-prijata")!.Element("kurz")!.Value.ShouldBe("0.0666");
+
+        var catalog = FlexiCatalog.Load();
+        foreach (var evidence in root.Elements())
+            catalog.AssertWritable(evidence);
+    }
+
+    [Fact]
+    public void Flexi_CzkInvoice_HasNoCurrencyFields()
+    {
+        var el = Parse(new AbraFlexiAccountingExporter().Export([Issued("INV1", ("A", 21m, 100m))], [], Issuer())).Root!.Element("faktura-vydana")!;
+        el.Element("mena").ShouldBeNull();
+        el.Element("kurz").ShouldBeNull();
     }
 
     [Theory]
@@ -340,8 +424,11 @@ public class AccountingExporterTests
         money.CanExport(proforma).ShouldBeTrue();
         flexi.CanExport(proforma).ShouldBeFalse();
         pohoda.CanExport(eur).ShouldBeTrue();
-        money.CanExport(eur).ShouldBeFalse();
+        money.CanExport(eur).ShouldBeFalse(); // foreign currency without a stored ČNB rate
         flexi.CanExport(eur).ShouldBeFalse();
+        eur.ExchangeRate = 24.465m;           // ... exportable once the rate exists
+        money.CanExport(eur).ShouldBeTrue();
+        flexi.CanExport(eur).ShouldBeTrue();
         pohoda.CanExport(longNumber).ShouldBeTrue();
         pohoda.CanExport(tooLongForPohoda).ShouldBeFalse(); // numberRequested is string20
         money.CanExport(longNumber).ShouldBeTrue(); // number goes to EvCisDokl, Doklad is omitted
