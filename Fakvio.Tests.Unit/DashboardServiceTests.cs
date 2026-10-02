@@ -467,4 +467,41 @@ public class DashboardServiceTests : IDisposable
         result.ReceivablesAging.Bucket61To90.ShouldBe(2000); // 3000 - 1000 paid
         result.ReceivablesAging.BucketOver90.ShouldBe(4000);
     }
+
+    /// <summary>
+    /// Foreign-currency invoices count in CZK when they carry a ČNB rate (Invoice.ExchangeRate, CZK per 1 unit);
+    /// one without a rate stays out of the CZK series rather than being added 1:1.
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardAsync_ForeignInvoices_AreConvertedByStoredRate_AndRateLessOnesAreLeftOut()
+    {
+        var issuer = AddClient("Issuer", isIssuer: true);
+        var client = AddClient("Client");
+        var thisMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 15, 0, 0, 0, DateTimeKind.Utc);
+        var eur = new Currency { Code = "EUR", Symbol = "EUR", Name = "Euro", IsActive = true };
+        _context.Currency.Add(eur);
+        _context.SaveChanges();
+
+        void AddEur(decimal totalWithVat, decimal? rate)
+        {
+            _context.Invoice.Add(new Invoice
+            {
+                DocumentType = EDocumentType.Invoice, Status = EInvoiceStatus.Completed,
+                DocumentNumber = $"E{Guid.NewGuid().ToString()[..6]}", IssueDate = thisMonth, DueDate = thisMonth.AddDays(14),
+                ClientId = client.Id, IssuerId = issuer.Id, CurrencyId = eur.Id,
+                TotalWithVat = totalWithVat, TotalBeforeVat = totalWithVat, ExchangeRate = rate,
+                InvoiceItem = new List<InvoiceItem>()
+            });
+            _context.SaveChanges();
+        }
+
+        AddEur(100m, 24m);    // 2 400 CZK
+        AddEur(5000m, null);  // no rate: excluded
+
+        var result = await _service.GetDashboardAsync();
+
+        result.RevenueByMonth[^1].Amount.ShouldBe(2400m);
+        result.IncomeVsExpenseByMonth[^1].Income.ShouldBe(2400m);
+        result.ReceivablesAging.Bucket0To30.ShouldBe(2400m);
+    }
 }

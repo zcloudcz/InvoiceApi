@@ -28,6 +28,7 @@ public class InvoiceService : IInvoiceService
     private readonly INumberSequenceService _numberSequenceService;
     private readonly ITenantReadinessService _tenantReadinessService;
     private readonly IWebhookPublisher? _webhookPublisher; // optional so manually-constructed instances (tests) work
+    private readonly IExchangeRateService? _exchangeRateService; // optional: without it no ČNB rate is assigned (tests, §4.17)
     private readonly ILogger<InvoiceService> _logger;
 
     /// <summary>
@@ -52,8 +53,10 @@ public class InvoiceService : IInvoiceService
         INumberSequenceService numberSequenceService,
         ITenantReadinessService tenantReadinessService,
         ILogger<InvoiceService> logger,
-        IWebhookPublisher? webhookPublisher = null)
+        IWebhookPublisher? webhookPublisher = null,
+        IExchangeRateService? exchangeRateService = null)
     {
+        _exchangeRateService = exchangeRateService;
         _context = context;
         _masterContext = masterContext;
         _tenantResolver = tenantResolver;
@@ -423,6 +426,7 @@ public class InvoiceService : IInvoiceService
             SWIFT = createDto.SWIFT,
             PaymentMethod = createDto.PaymentMethod,
             CurrencyId = createDto.CurrencyId,
+            ExchangeRate = createDto.ExchangeRate, // manual override (null = ČNB rate is assigned on completion)
             Notes = createDto.Notes,
             InvoiceItem = new List<InvoiceItem>()
         };
@@ -774,6 +778,16 @@ public class InvoiceService : IInvoiceService
         if (updateDto.CurrencyId.HasValue)
             invoice.CurrencyId = updateDto.CurrencyId.Value;
 
+        // Manual exchange rate: only while the document is a draft (a completed one is a tax document,
+        // its rate is fixed). A manual rate carries no ČNB date.
+        if (updateDto.ExchangeRate.HasValue)
+        {
+            if (invoice.Status != EInvoiceStatus.Draft)
+                throw new InvalidOperationException("The exchange rate can be changed only on a draft.");
+            invoice.ExchangeRate = updateDto.ExchangeRate.Value;
+            invoice.ExchangeRateDate = null;
+        }
+
         if (updateDto.Notes != null)
             invoice.Notes = updateDto.Notes;
 
@@ -939,6 +953,7 @@ public class InvoiceService : IInvoiceService
         var invoice = await _context.Invoice
             .Include(i => i.Issuer)
                 .ThenInclude(issuer => issuer.BillingSettings)
+            .Include(i => i.Currency)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
@@ -993,11 +1008,44 @@ public class InvoiceService : IInvoiceService
             }
         }
 
+        await AssignExchangeRateAsync(invoice, cancellationToken);
+
         invoice.Status = EInvoiceStatus.Completed;
 
         await _context.SaveChangesAsync(cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Fills <see cref="Invoice.ExchangeRate"/> for a non-CZK document being issued (DEVGUIDE §4.17):
+    /// the ČNB rate valid for the DUZP (last fixing on or before it, §38 ZDPH). Rules:
+    ///   - CZK: no rate (cleared, in case the currency was changed on the draft).
+    ///   - Manual rate (value without a ČNB date) or a credit note (inherits its original's rate): kept.
+    ///   - Otherwise the ČNB rate is (re)computed; when none is available the rate stays empty and a
+    ///     warning is logged — issuing is never blocked by a ČNB outage (the PDF then simply omits the rate).
+    /// </summary>
+    private async Task AssignExchangeRateAsync(Invoice invoice, CancellationToken ct)
+    {
+        var code = invoice.Currency?.Code;
+        if (string.IsNullOrEmpty(code) || code.Equals("CZK", StringComparison.OrdinalIgnoreCase))
+        {
+            invoice.ExchangeRate = null;
+            invoice.ExchangeRateDate = null;
+            return;
+        }
+
+        var keep = invoice.DocumentType == EDocumentType.CreditNote && invoice.ExchangeRate != null
+                   || invoice.ExchangeRate != null && invoice.ExchangeRateDate == null;
+        if (keep || _exchangeRateService == null) return;
+
+        var duzp = DateOnly.FromDateTime(invoice.TaxableSupplyDate ?? invoice.IssueDate ?? DateTime.UtcNow);
+        var rate = await _exchangeRateService.GetRateAsync(code, duzp, ct);
+        if (rate == null)
+            _logger.LogWarning("No ČNB rate for {Currency} on {Date}; {DocumentType} {Id} is issued without an exchange rate",
+                code, duzp, invoice.DocumentType, invoice.Id);
+        invoice.ExchangeRate = rate?.RatePerUnit;
+        invoice.ExchangeRateDate = rate?.ValidFor;
     }
 
     public async Task<InvoiceDto?> MarkAsPaidAsync(long invoiceId, DateTime? paidAt = null, CancellationToken cancellationToken = default)
@@ -1184,7 +1232,19 @@ public class InvoiceService : IInvoiceService
         createDto.ClientId = originalInvoice.ClientId ?? throw new InvalidOperationException("Original invoice has no ClientId");
         createDto.IssuerId = originalInvoice.IssuerId;
 
+        // A credit note uses the rate of the invoice it corrects (§42 ZDPH) — copy it (and its ČNB date).
+        createDto.ExchangeRate ??= originalInvoice.ExchangeRate;
+        if (originalInvoice.ExchangeRate == null && createDto.ExchangeRate == null)
+            _logger.LogWarning("Original invoice {Id} has no stored exchange rate; credit note will use the rate for its own DUZP", originalInvoiceId);
+
         var creditNote = await CreateInvoiceAsync(createDto, cancellationToken);
+
+        if (originalInvoice.ExchangeRate != null && originalInvoice.ExchangeRateDate != null
+            && createDto.ExchangeRate == originalInvoice.ExchangeRate)
+        {
+            var created = await _context.Invoice.FirstAsync(i => i.Id == creditNote.Id, cancellationToken);
+            created.ExchangeRateDate = originalInvoice.ExchangeRateDate;
+        }
 
         // Mark original invoice as creditnoted
         originalInvoice.Status = EInvoiceStatus.Creditnoted;

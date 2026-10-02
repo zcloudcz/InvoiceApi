@@ -339,6 +339,12 @@ else
                         @* Currency — readonly (changing currency on existing invoice is risky) *@
                         <MudTextField Value="@($"{_invoice.CurrencyCode} ({_invoice.CurrencySymbol})")"
                                       Label="@L["Template_Currency"].Value" ReadOnly="true" Class="mb-3" />
+                        @* Exchange rate (DEVGUIDE §4.17): editable only on a draft in a foreign currency; empty = ČNB rate is filled in on issue. *@
+                        @if (_invoice.Status == EInvoiceStatus.Draft && !string.Equals(_invoice.CurrencyCode, "CZK", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <MudNumericField T="decimal?" @bind-Value="_editDto.ExchangeRate" Label="@L["Invoice_ExchangeRate"].Value"
+                                             HelperText="@L["Invoice_ExchangeRateHint"].Value" Min="0.00000001m" HideSpinButtons="true" Class="mb-3" />
+                        }
                     </MudCardContent>
                 </MudCard>
             </MudItem>
@@ -496,6 +502,13 @@ else
                             <MudListItem T="string" Icon="@Icons.Material.Filled.CurrencyExchange">
                                 <strong>@L["Template_Currency"]:</strong> @_invoice.CurrencyCode (@_invoice.CurrencySymbol)
                             </MudListItem>
+                            @if (_invoice.ExchangeRate.HasValue)
+                            {
+                                @* CZK per ONE unit of the invoice currency; the date is the ČNB fixing it comes from (none = entered manually). *@
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.CurrencyExchange">
+                                    <strong>@L["Invoice_ExchangeRate"]:</strong> 1 @_invoice.CurrencyCode = @_invoice.ExchangeRate.Value.ToString("0.######") CZK@(_invoice.ExchangeRateDate.HasValue ? $" ({L["Invoice_ExchangeRateCnb"]} {_invoice.ExchangeRateDate.Value:d})" : "")
+                                </MudListItem>
+                            }
                         </MudList>
                     </MudCardContent>
                 </MudCard>
@@ -1749,6 +1762,8 @@ else
             SWIFT = _invoice.SWIFT,
             PaymentMethod = _invoice.PaymentMethod,
             CurrencyId = _invoice.CurrencyId,
+            // Only a manually entered rate (no ČNB date) is sent back; an automatic one is recomputed on issue.
+            ExchangeRate = _invoice.Status == EInvoiceStatus.Draft && _invoice.ExchangeRateDate == null ? _invoice.ExchangeRate : null,
             Notes = _invoice.Notes
         };
 

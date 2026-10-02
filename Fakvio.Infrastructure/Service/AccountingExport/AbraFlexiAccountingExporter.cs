@@ -27,8 +27,10 @@ namespace Fakvio.Infrastructure.Service.AccountingExport;
 /// - Received invoices: Flexi assigns its own internal "kod" from its number series; the supplier's
 ///   number goes to cisDosle (+ varSym).
 /// - Only the 2024+ VAT rates 21 % / 12 % / 0 % are mapped; other rates are skipped.
-/// - Foreign-currency documents, proformas and advance-payment tax receipts are skipped (no exchange rate
-///   stored in Fakvio; advance document types are tenant-specific in Flexi).
+/// - Foreign-currency documents are exported only when they carry a ČNB rate (Invoice.ExchangeRate, DEVGUIDE §4.17):
+///   mena = code:XXX, kurz = CZK per 1 unit, kurzMnozstvi = 1; item prices (cenaMj) stay in the document currency
+///   and Flexi computes the CZK sums from the rate. Without a rate the document is skipped.
+///   Proformas and advance-payment tax receipts are skipped (advance document types are tenant-specific in Flexi).
 /// </summary>
 public class AbraFlexiAccountingExporter : IAccountingExporter
 {
@@ -38,12 +40,12 @@ public class AbraFlexiAccountingExporter : IAccountingExporter
 
     public bool CanExport(Invoice invoice) =>
         invoice.DocumentType is EDocumentType.Invoice or EDocumentType.CreditNote
-        && AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
+        && AccountingExportCommon.CurrencyExportable(invoice.Currency?.Code, invoice.ExchangeRate)
         && (invoice.DocumentNumber?.Length ?? 0) is > 0 and <= 20 // faktura-vydana.kod max length
         && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
 
     public bool CanExport(ReceivedInvoice invoice) =>
-        AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
+        AccountingExportCommon.CurrencyExportable(invoice.Currency?.Code, invoice.ExchangeRate)
         && AccountingExportCommon.AllRatesSupported((invoice.Items ?? []).Select(i => i.VatRatePercentage));
 
     public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<ReceivedInvoice> receivedInvoices, Client issuer)
@@ -79,6 +81,7 @@ public class AbraFlexiAccountingExporter : IAccountingExporter
             new XElement("varSym", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 30)),
             new XElement("datVyst", AccountingExportCommon.FormatDate(invoice.IssueDate)));
         AddDates(el, invoice.DueDate, invoice.TaxableSupplyDate ?? invoice.IssueDate);
+        AddCurrency(el, invoice.Currency?.Code, invoice.ExchangeRate);
         AddNote(el, invoice.Notes);
         AddPartner(el, invoice.Client);
 
@@ -97,6 +100,7 @@ public class AbraFlexiAccountingExporter : IAccountingExporter
             new XElement("varSym", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 30)),
             new XElement("datVyst", AccountingExportCommon.FormatDate(invoice.IssueDate)));
         AddDates(el, invoice.DueDate, invoice.TaxableSupplyDate ?? invoice.IssueDate);
+        AddCurrency(el, invoice.Currency?.Code, invoice.ExchangeRate);
         AddNote(el, invoice.Notes);
         AddPartner(el, invoice.Supplier);
 
@@ -110,6 +114,15 @@ public class AbraFlexiAccountingExporter : IAccountingExporter
     {
         if (due.HasValue) el.Add(new XElement("datSplat", AccountingExportCommon.FormatDate(due)));
         if (taxable.HasValue) el.Add(new XElement("duzpPuv", AccountingExportCommon.FormatDate(taxable)));
+    }
+
+    /// <summary>Foreign-currency document: mena + kurz (CZK per kurzMnozstvi units, always 1 here). CZK adds nothing.</summary>
+    private static void AddCurrency(XElement el, string? currencyCode, decimal? exchangeRate)
+    {
+        if (AccountingExportCommon.IsHomeCurrency(currencyCode) || exchangeRate is not > 0m) return;
+        el.Add(new XElement("mena", "code:" + currencyCode!.ToUpperInvariant()),
+               new XElement("kurz", AccountingExportCommon.FormatRate(exchangeRate.Value)),
+               new XElement("kurzMnozstvi", "1"));
     }
 
     private static void AddNote(XElement el, string? notes)

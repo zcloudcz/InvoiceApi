@@ -379,6 +379,12 @@ public class PdfExportService : IPdfExportService
             html = html.Replace(GrandTotalTable, BuildReverseChargeNote(invoice, docLang) + GrandTotalTable);
         }
 
+        // Non-CZK tax document of a VAT payer: exchange rate + VAT recap in CZK (§29 ZDPH) — rendered in code,
+        // same "insert before the grand-total table" approach as the reverse-charge note above.
+        var czkBlock = BuildCzkRecapBlock(invoice, docLang);
+        if (czkBlock.Length > 0)
+            html = html.Replace(GrandTotalTable, czkBlock + GrandTotalTable);
+
         // Replace the QR code placeholder with an inline base64 image.
         // If QR code generation failed or no base64 data, remove the entire QR section.
         if (!string.IsNullOrEmpty(qrCodeBase64))
@@ -435,6 +441,62 @@ public class PdfExportService : IPdfExportService
         html = html.Replace(GrandTotalTable,
             $@"<p style=""margin:8px 0 4px 0; font-style:italic"">{note}</p>" + GrandTotalTable);
         return html;
+    }
+
+    /// <summary>
+    /// Exchange-rate note + VAT recapitulation in CZK for a foreign-currency tax document (DEVGUIDE §4.17).
+    /// §29 ZDPH requires the VAT amount in CZK on the document; §37/§38 ZDPH: the base is converted by the
+    /// ČNB rate and the CZK VAT is computed from the CZK base. Returns "" (nothing printed) when it does not
+    /// apply: CZK invoice, non-VAT-payer issuer, proforma (not a tax document), OSS (uses EUR/ECB) or no rate known.
+    /// Reverse-charge items show the CZK base only (the customer self-assesses the tax).
+    /// </summary>
+    internal static string BuildCzkRecapBlock(Domain.Entities.Invoice invoice, string language)
+    {
+        var code = invoice.Currency?.Code;
+        if (invoice.ExchangeRate is not > 0m || string.IsNullOrEmpty(code) || code.Equals("CZK", StringComparison.OrdinalIgnoreCase)
+            || invoice.Issuer is { IsVatPayer: false } || invoice.DocumentType == EDocumentType.Proforma
+            || invoice.OssCountryCode != null)
+            return "";
+
+        var cs = language == "cs";
+        var fx = invoice.ExchangeRate.Value;
+        string Dec(decimal v) => cs ? v.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",")
+                                    : v.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
+        string Money(decimal v) => v.ToString("N2");
+
+        var rateLine = invoice.ExchangeRateDate is { } d
+            ? (cs ? $"Kurz ČNB ke dni {d:dd.MM.yyyy}: 1 {code} = {Dec(fx)} CZK."
+                  : $"CNB exchange rate of {d:dd.MM.yyyy}: 1 {code} = {Dec(fx)} CZK.")
+            : (cs ? $"Použitý kurz: 1 {code} = {Dec(fx)} CZK."
+                  : $"Exchange rate used: 1 {code} = {Dec(fx)} CZK.");
+
+        var rows = new System.Text.StringBuilder();
+        decimal totalVatCzk = 0m;
+        var groups = (invoice.InvoiceItem ?? [])
+            .Where(i => !i.IsTextRow)
+            .GroupBy(i => (i.VatRatePercentage, ReverseCharge: i.VatRegime == EVatRegime.ReverseCharge))
+            .OrderByDescending(g => g.Key.VatRatePercentage);
+        foreach (var g in groups)
+        {
+            var baseCzk = Math.Round(g.Sum(i => i.TotalBeforeVat) * fx, 2, MidpointRounding.AwayFromZero);
+            if (g.Key.ReverseCharge)
+            {
+                rows.Append($@"<tr><td style=""text-align:center"">{g.Key.VatRatePercentage:N0} % (PDP)</td><td style=""text-align:right"">{Money(baseCzk)}</td><td style=""text-align:right; font-style:italic"">{(cs ? "daň odvede zákazník" : "customer self-assesses VAT")}</td></tr>");
+                continue;
+            }
+            var vatCzk = Math.Round(baseCzk * g.Key.VatRatePercentage / 100m, 2, MidpointRounding.AwayFromZero);
+            totalVatCzk += vatCzk;
+            rows.Append($@"<tr><td style=""text-align:center"">{g.Key.VatRatePercentage:N0} %</td><td style=""text-align:right"">{Money(baseCzk)}</td><td style=""text-align:right"">{Money(vatCzk)} CZK</td></tr>");
+        }
+
+        return $@"<div class=""czk-recap"" style=""margin:8px 0 4px 0"">
+            <p style=""margin:0 0 4px 0; font-style:italic"">{rateLine}</p>
+            <table style=""width:100%; border-collapse:collapse; font-size:0.9em"">
+                <thead><tr><th>{(cs ? "Sazba DPH" : "VAT rate")}</th><th style=""text-align:right"">{(cs ? "Základ v CZK" : "Base in CZK")}</th><th style=""text-align:right"">{(cs ? "DPH v CZK" : "VAT in CZK")}</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table>
+            <p style=""margin:4px 0 0 0; text-align:right""><strong>{(cs ? "DPH celkem v CZK" : "Total VAT in CZK")}: {Money(totalVatCzk)} CZK</strong></p>
+        </div>";
     }
 
     /// <summary>

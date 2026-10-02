@@ -33,6 +33,12 @@ public class ReceivedInvoiceDto
     public string CurrencyCode { get; set; } = string.Empty;
     public string CurrencySymbol { get; set; } = string.Empty;
 
+    /// <summary>CZK per one unit of the document currency (ČNB). Null for CZK / not determined. Read-only here; see Invoice.ExchangeRate.</summary>
+    public decimal? ExchangeRate { get; set; }
+
+    /// <summary>Date of the ČNB fixing the rate comes from; null = manual or none.</summary>
+    public DateOnly? ExchangeRateDate { get; set; }
+
     public EPaymentMethod? PaymentMethod { get; set; }
     public string? BankAccountNumber { get; set; }
     public string? IBAN { get; set; }
