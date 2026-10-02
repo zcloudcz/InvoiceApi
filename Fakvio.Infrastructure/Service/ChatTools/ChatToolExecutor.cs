@@ -305,8 +305,10 @@ public class ChatToolExecutor : IChatToolExecutor
                     ? ToolArgumentReader.ReadArguments(paramsElement)
                     : [];
 
+            // Information level gets parameter NAMES only — see LogParameterValuesAtDebug for why.
             _logger.LogInformation("Parsed tool call: action={Action}, parameters={Parameters}",
-                action, string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
+                action, string.Join(", ", parameters.Keys));
+            LogParameterValuesAtDebug("Parsed tool call", action, parameters);
 
             return new ParsedToolCall
             {
@@ -317,8 +319,7 @@ public class ChatToolExecutor : IChatToolExecutor
         catch (JsonException ex)
         {
             // Not valid JSON — this is a normal text response, not an error.
-            _logger.LogDebug(ex, "AI response is not a JSON tool call (first 200 chars): {Response}",
-                aiResponse[..Math.Min(200, aiResponse.Length)]);
+            _logger.LogDebug(ex, "AI response is not a JSON tool call: {Response}", Truncate(aiResponse));
             return null;
         }
     }
@@ -423,8 +424,14 @@ public class ChatToolExecutor : IChatToolExecutor
         var validationError = ValidateParameters(tool, parameters);
         if (validationError != null)
         {
-            _logger.LogWarning("Tool {ToolName} called with invalid parameters: {Error}",
-                tool.ToolName, validationError);
+            // Names only at Warning (issue #354): validationError quotes the rejected VALUE
+            // ("got '...'"), and Warning lands in the DB log store just like Information — an
+            // invalid create_invoice `items` would otherwise write the whole items JSON to /logs.
+            // The full message still reaches the model through the Failure result below.
+            _logger.LogWarning("Tool {ToolName} called with invalid parameters: {Parameters}",
+                tool.ToolName, string.Join(", ", parameters.Keys));
+            _logger.LogDebug("Tool {ToolName} validation error: {Error}",
+                tool.ToolName, Truncate(validationError));
 
             // Keyed on "is this tool confirmable at all", NOT on awaitingConfirmation: a rejected
             // call never reaches ExecuteAsync even when the caller did send confirm=true. Using
@@ -434,9 +441,16 @@ public class ChatToolExecutor : IChatToolExecutor
                 with { RequiresConfirmation = confirmable is not null };
         }
 
+        // Issue #354: this used to log every parameter VALUE at Information level — the level
+        // that lands in the DB log store SysAdmin reads on /logs. attach_file's
+        // file_content_base64 alone can turn one tool call into megabytes of log text, and
+        // create_client/update_client/send_invoice_email carry PII (name, address, IČO/DIČ,
+        // e-mail) in plain text. Some tools (e.g. UpdateReminderSettingsTool) log only Keys,
+        // but several list/create tools still log values themselves — tracked separately,
+        // this line only guarantees the executor is not one of them.
         _logger.LogInformation("Executing tool {ToolName} with parameters: {Parameters}",
-            tool.ToolName,
-            string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
+            tool.ToolName, string.Join(", ", parameters.Keys));
+        LogParameterValuesAtDebug("Executing tool", tool.ToolName, parameters);
 
         ChatToolResult result;
 
@@ -541,6 +555,46 @@ public class ChatToolExecutor : IChatToolExecutor
     /// </summary>
     private static Dictionary<string, string> NormalizeParameters(Dictionary<string, string> parameters)
         => parameters.ToDictionary(kv => kv.Key, kv => kv.Value.Trim());
+
+    // ─── Parameter Logging (Debug only, values capped) ─────────────────────
+
+    /// <summary>
+    /// Longest a single logged value (parameter value, validation error, raw AI response) may be
+    /// before Debug-level logging truncates it.
+    /// </summary>
+    private const int MaxLoggedValueLength = 200;
+
+    /// <summary>
+    /// Logs full parameter values at Debug — never Information (issue #354) — with each value
+    /// capped so a large payload (attach_file's Base64 file content being the extreme case)
+    /// can never appear whole in any log sink, even one configured down to Debug.
+    /// </summary>
+    private void LogParameterValuesAtDebug(string context, string toolName, Dictionary<string, string> parameters)
+    {
+        if (!_logger.IsEnabled(LogLevel.Debug))
+            return;
+
+        var formatted = parameters.Select(kv => $"{kv.Key}={Truncate(kv.Value)}");
+        _logger.LogDebug("{Context} {ToolName} parameter values: {Parameters}",
+            context, toolName, string.Join(", ", formatted));
+    }
+
+    /// <summary>
+    /// Caps <paramref name="value"/> at <see cref="MaxLoggedValueLength"/> chars + "…".
+    /// An emoji (or any character outside the BMP) is TWO C# chars — a surrogate pair — so a
+    /// plain cut can leave half of it at the end. That lone half is invalid UTF-16 (a strict
+    /// UTF-8 encoder in a log sink may throw on it); stepping back one char keeps the pair whole.
+    /// </summary>
+    private static string Truncate(string value)
+    {
+        if (value.Length <= MaxLoggedValueLength)
+            return value;
+
+        var cut = char.IsHighSurrogate(value[MaxLoggedValueLength - 1])
+            ? MaxLoggedValueLength - 1
+            : MaxLoggedValueLength;
+        return value[..cut] + "…";
+    }
 
     // ─── Central Parameter Validation ─────────────────────────────────────
 
