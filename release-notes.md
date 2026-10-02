@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.02.2 — 2026-10-02
+
 ### Nové funkce
 
 - **#493** — MCP i chat umí upravit existující fakturu (update_invoice — data, symboly, platba, účet, poznámka, položky). Koncept se upraví hned; u vystavené faktury nástroj nejdřív požádá o výslovný souhlas s vrácením do konceptu (revert_invoice_to_draft); zaplacenou fakturu měnit nelze (navrhne dobropis). (PR #493, `dfbeccd`)
