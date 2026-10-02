@@ -316,9 +316,14 @@
                             </MudTd>
                         </RowTemplate>
                     </MudTable>
+                    @if (_epoPeriodType == EVatPeriodType.Quarterly && _shvGoods.Count > 0)
+                    {
+                        <MudAlert Severity="Severity.Warning" Class="mt-2">@L["EpoSummaryQuarterlyGoods"]</MudAlert>
+                    }
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
                                StartIcon="@Icons.Material.Filled.FileDownload"
-                               OnClick="DownloadSummaryStatement" Disabled="_epoDownloading">
+                               OnClick="DownloadSummaryStatement"
+                               Disabled="@(_epoDownloading || (_epoPeriodType == EVatPeriodType.Quarterly && _shvGoods.Count > 0))">
                         @L["EpoDownloadSummaryStatement"]
                     </MudButton>
                 }
@@ -450,7 +455,7 @@
 
     private Task DownloadVatReturn()
         => DownloadEpoAsync("return", () =>
-            VatReportService.DownloadEpoVatReturnAsync(_epoYear, _epoPeriod, _epoPeriodType));
+            VatReportService.DownloadEpoVatReturnAsync(_epoYear, _epoPeriod, _epoPeriodType, _shvGoods));
 
     private Task DownloadSummaryStatement()
         => DownloadEpoAsync("summary", () =>

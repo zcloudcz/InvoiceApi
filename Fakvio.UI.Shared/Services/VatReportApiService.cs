@@ -52,9 +52,12 @@ public class VatReportApiService : ApiClientBase
     /// <param name="year">Tax year, e.g. 2026.</param>
     /// <param name="period">1–12 for Monthly, 1–4 for Quarterly.</param>
     /// <param name="type">Monthly or Quarterly.</param>
-    public async Task<EpoDownloadResult> DownloadEpoVatReturnAsync(int year, int period, EVatPeriodType type)
+    public async Task<EpoDownloadResult> DownloadEpoVatReturnAsync(
+        int year, int period, EVatPeriodType type, IEnumerable<string>? goodsKeys = null)
     {
-        var url = $"/api/vat-report/epo/return?year={year}&period={period}&type={(int)type}";
+        // goods keys decide whether EU supplies land in row 20 (goods) or 21 (services).
+        var url = $"/api/vat-report/epo/return?year={year}&period={period}&type={(int)type}"
+                  + GoodsQuery(goodsKeys ?? []);
         return await DownloadEpoFileAsync(url, "DPHDP3", year, period, type);
     }
 

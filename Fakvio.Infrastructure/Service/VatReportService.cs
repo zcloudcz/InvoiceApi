@@ -208,7 +208,8 @@ public class VatReportService : IVatReportService
         int year,
         int period,
         EVatPeriodType type,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IReadOnlyCollection<string>? goodsKeys = null)
     {
         // ── 1. Input validation ──────────────────────────────────────────────
         ValidatePeriodArgs(year, period, type);
@@ -403,6 +404,12 @@ public class VatReportService : IVatReportService
         var rcRedVatI   = RoundToCzk(rcRedVat);
         var inSumVatI   = RoundToCzk(inSumVat);
 
+        // Rows 20 / 21: supplies to EU customers, from the SAME aggregation as the summary
+        // statement so the two filings reconcile (row 20 = code 0 total, row 21 = code 3 total).
+        var euRows = await GetSummaryStatementRowsAsync(year, period, type, goodsKeys, ct);
+        var euGoods    = euRows.Where(r => r.SupplyCode == 0).Sum(r => r.TotalCzk);
+        var euServices = euRows.Where(r => r.SupplyCode == 3).Sum(r => r.TotalCzk);
+
         // ── 8. Build the XML document ─────────────────────────────────────────
         var doc = BuildDphdp3Xml(
             year, period, type,
@@ -419,7 +426,8 @@ public class VatReportService : IVatReportService
             hasInputVat: inStdBaseI != 0 || inRedBaseI != 0 || rcStdBaseI != 0 || rcRedBaseI != 0,
             inStdBaseI, inStdVatI,
             inRedBaseI, inRedVatI,
-            inSumVatI);
+            inSumVatI,
+            euGoods, euServices);
 
         // ── 9. XSD validation ─────────────────────────────────────────────────
         var schemaSet = _schemaProvider.GetSchemaSet(EEpoFormType.VatReturn, year);
@@ -577,6 +585,7 @@ public class VatReportService : IVatReportService
 
                 if (item.VatRegime == EVatRegime.ReverseCharge)
                 {
+                    RequireCzDic(inv.Client?.TaxNumber, docNum, "A.1", "customer");
                     var code = item.ReverseChargeCode?.Code ?? string.Empty;
                     var key = (docNum, code);
                     if (a1Rows.TryGetValue(key, out var existing))
@@ -660,6 +669,7 @@ public class VatReportService : IVatReportService
                 {
                     var selfAssessedVatCzk = await _currencyService.ConvertToCzkAsync(
                         item.InformationalVatAmount, currencyCode, duzp, ct);
+                    RequireCzDic(rec.Supplier?.TaxNumber, docNum, "B.1", "supplier");
                     var code = item.ReverseChargeCode?.Code ?? string.Empty;
                     var key = (docNum, code);
                     var isStd = item.VatRatePercentage >= 20m;
@@ -784,10 +794,12 @@ public class VatReportService : IVatReportService
     };
 
     /// <summary>
-    /// Splits a client VAT number like "DE 123456789" into (country prefix, id without prefix)
-    /// when the prefix is an EU member state other than CZ; otherwise returns null.
+    /// Returns (country prefix, id without prefix) when the client is an EU customer other
+    /// than CZ, else null. The VAT number is normally "DE 123456789" (prefix used as-is, GR is
+    /// mapped to Greece's VAT prefix EL). When the VAT number has no letter prefix at all, the
+    /// client's address country is used instead; a non-EU letter prefix (e.g. "US") is never overridden.
     /// </summary>
-    internal static (string Country, string VatId)? TryGetEuVatId(string? taxNumber)
+    internal static (string Country, string VatId)? TryGetEuVatId(string? taxNumber, string? addressCountry = null)
     {
         if (string.IsNullOrWhiteSpace(taxNumber)) return null;
 
@@ -795,8 +807,23 @@ public class VatReportService : IVatReportService
         var compact = new string(taxNumber.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
         if (compact.Length < 4) return null;
 
-        var country = compact[..2];
-        return EuVatPrefixes.Contains(country) ? (country, compact[2..]) : null;
+        string country, id;
+        if (char.IsLetter(compact[0]) && char.IsLetter(compact[1]))
+        {
+            country = compact[..2];
+            id = compact[2..];
+        }
+        else
+        {
+            // No prefix on the VAT number: fall back to the address country (free text or ISO).
+            var iso = Ubl.UblCodes.CountryToIso2(addressCountry);
+            if (string.IsNullOrWhiteSpace(addressCountry) || iso is null) return null;
+            country = iso.ToUpperInvariant();
+            id = compact;
+        }
+
+        if (country == "GR") country = "EL";
+        return EuVatPrefixes.Contains(country) ? (country, id) : null;
     }
 
     /// <inheritdoc />
@@ -813,28 +840,51 @@ public class VatReportService : IVatReportService
         var goods = new HashSet<string>(
             (goodsKeys ?? []).Select(k => new string(k.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant()));
 
+        // Invoices and credit notes, each in the period of its own DUZP. Proformas and advance
+        // tax receipts (DPP) are intentionally not included (documented limitation).
         var invoices = await _context.Invoice
             .AsNoTracking()
             .Include(i => i.Currency)
-            .Include(i => i.Client)
+            .Include(i => i.InvoiceItem)
+            .Include(i => i.Client).ThenInclude(c => c!.Address)
             .Where(i => !(i is InvoiceTemplate)
                 && i.TaxableSupplyDate >= fromUtc
                 && i.TaxableSupplyDate <= toUtc
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
-                && i.DocumentType == EDocumentType.Invoice)
+                && (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote))
             .ToListAsync(ct);
 
-        // (country, vatId) -> running total in CZK + invoice count + display name.
+        // (country, vatId) -> running total in CZK + document count + display name.
         var acc = new Dictionary<(string Country, string VatId), (decimal Total, int Count, string? Name)>();
 
         foreach (var inv in invoices)
         {
-            if (TryGetEuVatId(inv.Client?.TaxNumber) is not var (country, vatId)) continue;
+            var addressCountry = inv.Client?.Address
+                .OrderBy(a => a.AddressType == EAddressType.Primary ? 0 : 1)
+                .FirstOrDefault()?.Country;
+            if (TryGetEuVatId(inv.Client?.TaxNumber, addressCountry) is not var (country, vatId)) continue;
 
             var currencyCode = inv.Currency?.Code ?? "CZK";
             var duzp = DateOnly.FromDateTime(inv.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
-            var totalCzk = await _currencyService.ConvertToCzkAsync(inv.TotalBeforeVat, currencyCode, duzp, ct);
+
+            // Only items where the customer pays the tax belong here. Standard items carry
+            // Czech VAT (domestic taxable supply) and reverse charge items go to row 25 / A.1.
+            var totalCzk = 0m;
+            var any = false;
+            foreach (var item in inv.InvoiceItem.Where(i => !i.IsTextRow))
+            {
+                if (item.VatRegime is not (EVatRegime.Exempt or EVatRegime.OutOfScope) || item.VatAmount != 0m)
+                    continue;
+
+                totalCzk += await _currencyService.ConvertToCzkAsync(item.TotalBeforeVat, currencyCode, duzp, ct);
+                any = true;
+            }
+            if (!any) continue;
+
+            // Fakvio does not enforce a sign for credit note rows (same as the UBL export), so
+            // force it: a credit note always reduces the reported value.
+            totalCzk = inv.DocumentType == EDocumentType.CreditNote ? -Math.Abs(totalCzk) : totalCzk;
 
             var key = (country, vatId);
             acc.TryGetValue(key, out var cur);
@@ -850,7 +900,7 @@ public class VatReportService : IVatReportService
                 // 3 = services (default), 0 = goods when the caller flagged this customer.
                 SupplyCode   = goods.Contains(kv.Key.Country + kv.Key.VatId) ? 0 : 3,
                 InvoiceCount = kv.Value.Count,
-                // Law: total value is rounded UP to whole crowns.
+                // Law: total value is rounded to whole crowns upwards (towards +infinity, also for negatives).
                 TotalCzk     = (long)Math.Ceiling(kv.Value.Total)
             })
             .Where(r => r.TotalCzk != 0)
@@ -879,6 +929,12 @@ public class VatReportService : IVatReportService
         if (rows.Count == 0)
             throw new InvalidOperationException(
                 "No supplies to EU customers with a VAT id in this period - nothing to report in the summary statement.");
+
+        // §102(6) ZDPH: a payer who delivers goods (code 0) must file the summary statement monthly.
+        if (type == EVatPeriodType.Quarterly && rows.Any(r => r.SupplyCode == 0))
+            throw new InvalidOperationException(
+                "A quarterly summary statement cannot contain goods (code 0): a payer delivering goods to other " +
+                "EU states must file it monthly (§102 odst. 6 ZDPH). Switch to monthly periods or report these supplies as services.");
 
         // VetaD: R = ordinary summary statement (not a follow-up "N").
         var vetaD = new XElement("VetaD",
@@ -1007,7 +1063,8 @@ public class VatReportService : IVatReportService
         bool hasInputVat,
         long inStdBase, long inStdVat,
         long inRedBase, long inRedVat,
-        long inSumVat)
+        long inSumVat,
+        long euGoods, long euServices)
     {
         // EPO date format: no leading zeros on day or month (e.g. "1.3.2026").
         var dateFrom = periodFrom.ToString(EpoDateFormat);
@@ -1074,12 +1131,15 @@ public class VatReportService : IVatReportService
             dphdp3.Add(veta1);
         }
 
-        // Veta2 — reverse charge, SUPPLIER side (row 25). Base only: the recipient
-        // self-assesses the tax, so no VAT amount is reported here (§92a ZDPH).
-        if (hasOutputRc)
+        // Veta2 — supplies without Czech VAT. Rows: 20 (goods to another EU state, dod_zb),
+        // 21 (services with place of supply in another EU state, pln_sluzby) and 25 (reverse
+        // charge, SUPPLIER side, pln_rez_pren — base only, the recipient self-assesses §92a ZDPH).
+        if (hasOutputRc || euGoods != 0 || euServices != 0)
         {
-            var veta2 = new XElement("Veta2",
-                new XAttribute("pln_rez_pren", outRcBase.ToString()));
+            var veta2 = new XElement("Veta2");
+            if (euGoods != 0)    veta2.Add(new XAttribute("dod_zb", euGoods.ToString()));
+            if (euServices != 0) veta2.Add(new XAttribute("pln_sluzby", euServices.ToString()));
+            if (hasOutputRc)     veta2.Add(new XAttribute("pln_rez_pren", outRcBase.ToString()));
             dphdp3.Add(veta2);
         }
 
@@ -1215,6 +1275,19 @@ public class VatReportService : IVatReportService
     ///
     /// Example: "CZ12345678" → "12345678".
     /// </summary>
+    /// <summary>
+    /// Control statement sections A.1 / B.1 identify the counterparty by Czech DIČ (reverse
+    /// charge is domestic), so fail early with the document number instead of emitting an
+    /// XML the portal would reject.
+    /// </summary>
+    private static void RequireCzDic(string? taxNumber, string documentNumber, string section, string role)
+    {
+        if (string.IsNullOrWhiteSpace(taxNumber) || !taxNumber.TrimStart().StartsWith("CZ", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Document {documentNumber} uses reverse charge, but its {role} has no Czech DIČ (CZ…), " +
+                $"which control statement section {section} requires. Fill in the {role}'s DIČ and retry.");
+    }
+
     private static string StripCzPrefix(string taxNumber)
         => taxNumber.StartsWith("CZ", StringComparison.OrdinalIgnoreCase)
             ? taxNumber[2..]

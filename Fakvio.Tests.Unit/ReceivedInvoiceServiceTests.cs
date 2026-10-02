@@ -651,4 +651,17 @@ public class ReceivedInvoiceServiceTests : IDisposable
 
         await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateAsync(dto));
     }
+
+    [Fact]
+    public async Task CreateAsync_ReverseChargeWithZeroRate_Throws()
+    {
+        _context.ReverseChargeCode.Add(new ReverseChargeCode { Id = 6, Code = "4", NameCs = "x", ParagraphRef = "92e" });
+        _context.SaveChanges();
+        var dto = CreateValidDto();
+        dto.Items[0].VatRegime = EVatRegime.ReverseCharge;
+        dto.Items[0].ReverseChargeCodeId = 6;
+        dto.Items[0].VatRatePercentage = 0;
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateAsync(dto));
+    }
 }

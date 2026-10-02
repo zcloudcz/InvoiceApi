@@ -118,6 +118,9 @@ public static class ReceivedInvoiceTools
         "(anything else, e.g. 'Apple Pay', goes to notes). " +
         "Each item needs: description, quantity, unitPrice, vatRatePercentage (or vatRateId); optional productCode, notes. " +
         "Negative unitPrice is allowed for discount lines. " +
+        "Optional per item: vatRegime (Standard | ReverseCharge | Exempt | OutOfScope, default Standard) and " +
+        "reverseChargeCodeId (id of the kod predmetu plneni, required with ReverseCharge and only then; " +
+        "ReverseCharge also needs vatRatePercentage > 0 - the Czech rate we self-assess). " +
         "To attach the source PDF afterwards, call upload_received_invoice_attachment with the returned id.")]
     public static async Task<string> CreateReceivedInvoice(
         IFakvioApiClient api,

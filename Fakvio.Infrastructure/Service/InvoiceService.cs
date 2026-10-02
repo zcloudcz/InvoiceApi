@@ -1781,6 +1781,10 @@ public class InvoiceService : IInvoiceService
 
             case EVatRegime.ReverseCharge:
                 // PDP: buyer self-assesses VAT — supplier bills 0 VAT.
+                if (item.VatRatePercentage <= 0m)
+                    throw new InvalidOperationException(
+                        $"Invoice item '{item.Description}' uses reverse charge, so it needs the VAT rate that applies " +
+                        "in the Czech Republic (VatRatePercentage > 0).");
                 // The rate and the "would-be" VAT amount are displayed informatively on the document.
                 item.VatAmount = 0;
                 item.TotalWithVat = item.TotalBeforeVat;

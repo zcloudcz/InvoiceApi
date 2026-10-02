@@ -1975,11 +1975,18 @@ Pisemnost
     VetaP   — taxpayer (shared with the other forms)
     VetaR*  — one row per (k_stat, c_vat, k_pln_eu): pln_pocet (invoices), pln_hodnota (CZK, rounded UP)
 ```
-Source = issued, non-draft, non-deleted **invoices** (credit notes are not netted yet) with DUZP in the period whose client
-`TaxNumber` starts with an EU member-state prefix other than CZ (`VatReportService.TryGetEuVatId`; Greece = `EL`).
+Source = items of issued, non-draft, non-deleted **invoices and credit notes** (credit notes negative, in the period of their
+own DUZP, counted in `pln_pocet`) where the customer pays the tax (regime Exempt / OutOfScope, VAT 0 — Standard items with CZ VAT
+and ReverseCharge items are excluded). The client must be an EU customer other than CZ: `TaxNumber` with an EU prefix
+(`VatReportService.TryGetEuVatId`; GR is mapped to `EL`), or, when the VAT number has no letter prefix, the client's address
+country. Totals are summed per item and rounded up. **Limitations:** proformas and advance tax receipts (DPP) are not included.
 Supply code `k_pln_eu` defaults to **3** (services); the request parameter `goods=DE123456789` (repeatable, country + VAT id)
 switches a customer to **0** (goods) — it is a request parameter only, nothing is stored (UI: "Goods" checkbox in the
-preview table on `/vat-report`). Codes 1 (transfer) and 2 (triangulation) are not supported. Nothing to report -> 400
+preview table on `/vat-report`). Codes 1 (transfer) and 2 (triangulation) are not supported. A **quarterly** statement with any goods row is rejected (400
+`CONFIGURATION_ERROR`, §102(6) ZDPH — goods require monthly filing); the UI warns and disables the download.
+The same aggregation feeds DPHDP3 `Veta2`: row 20 `dod_zb` (code 0 total) and row 21 `pln_sluzby` (code 3 total), so the return
+reconciles with the summary statement; `epo/return` therefore accepts the same `goods` parameter. Control statement A.1/B.1
+require the counterparty's CZ DIČ (otherwise `InvalidOperationException` naming the document); reverse charge items need a rate > 0. Nothing to report -> 400
 `CONFIGURATION_ERROR`. MCP: `export_vat_epo(kind=return|control|summary, year, period, periodType, goodsVatIds)`.
 
 **EPO header settings:**

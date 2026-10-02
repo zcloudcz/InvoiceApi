@@ -773,8 +773,10 @@ a v oddílu A.1 kontrolního hlášení; přijaté plnění si doúčtujete sami
 
 **Souhrnné hlášení:** zahrnuje vydané faktury odběratelům z EU (jiný stát než ČR) s DIČ. Tlačítkem
 „Náhled souhrnného hlášení" zobrazíte řádky za stát a DIČ; plnění se standardně vykazují jako služby
-(kód 3), zaškrtnutím „Zboží" u odběratele je vykážete jako dodání zboží (kód 0). Třístranný obchod a
-přemístění obchodního majetku zatím nejsou podporovány.
+(kód 3), zaškrtnutím „Zboží" u odběratele je vykážete jako dodání zboží (kód 0). Zahrnuta jsou jen plnění,
+u nichž daň odvádí odběratel (osvobozeno / mimo předmět daně), včetně dobropisů (záporně). Souhrnné hlášení
+se zároveň promítne do řádků 20 a 21 přiznání. Zboží (kód 0) lze vykázat jen v měsíčním hlášení. Třístranný
+obchod, přemístění obchodního majetku a zálohové doklady (DPP) zatím nejsou podporovány.
 
 **Postup:**
 1. Vyberte rok a typ období (Měsíční / Čtvrtletní)

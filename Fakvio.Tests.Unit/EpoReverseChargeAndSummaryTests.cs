@@ -102,6 +102,29 @@ public class EpoReverseChargeAndSummaryTests : IDisposable
         _context.SaveChanges();
     }
 
+    /// <summary>Issued credit note (stored with the sign the user typed) to the given client.</summary>
+    private void CreditNote(string number, decimal baseAmount, long clientId, DateTime? duzp = null)
+    {
+        var d = duzp ?? Duzp;
+        _context.Invoice.Add(new Invoice
+        {
+            DocumentType = EDocumentType.CreditNote, Status = EInvoiceStatus.Completed, DocumentNumber = number,
+            IssueDate = d, TaxableSupplyDate = d, DueDate = d.AddDays(14),
+            ClientId = clientId, IssuerId = IssuerId, Issuer = _context.Client.Find(IssuerId)!, CurrencyId = 1,
+            TotalBeforeVat = baseAmount, TotalVat = 0, TotalWithVat = baseAmount,
+            InvoiceItem =
+            {
+                new InvoiceItem
+                {
+                    OrderIndex = 1, Description = "Credit", Quantity = 1, UnitPrice = baseAmount,
+                    VatRatePercentage = 0, TotalBeforeVat = baseAmount, VatAmount = 0, TotalWithVat = baseAmount,
+                    VatRegime = EVatRegime.OutOfScope
+                }
+            }
+        });
+        _context.SaveChanges();
+    }
+
     private void Received(string number, decimal baseAmount, EVatRegime regime, decimal vatPct = 21m)
     {
         var rc = regime == EVatRegime.ReverseCharge;
@@ -263,6 +286,113 @@ public class EpoReverseChargeAndSummaryTests : IDisposable
         var goods = await _service.GetSummaryStatementRowsAsync(2026, 3, EVatPeriodType.Monthly, ["de123456789"]);
         goods.Single(r => r.CountryCode == "DE").SupplyCode.ShouldBe(0);
         goods.Single(r => r.CountryCode == "FR").SupplyCode.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task SummaryStatement_StandardCzVatItemToEuClient_IsExcluded()
+    {
+        Issued("INV-DE-STD", 5_000m, DeCustomerId, EVatRegime.Standard); // billed CZ VAT -> domestic supply
+        Issued("INV-DE-RC", 5_000m, DeCustomerId, EVatRegime.ReverseCharge);
+
+        (await _service.GetSummaryStatementRowsAsync(2026, 3, EVatPeriodType.Monthly)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SummaryStatement_MixedInvoice_CountsOnlyCustomerPaysItems()
+    {
+        var net = 1_000m;
+        _context.Invoice.Add(new Invoice
+        {
+            DocumentType = EDocumentType.Invoice, Status = EInvoiceStatus.Completed, DocumentNumber = "INV-MIX",
+            IssueDate = Duzp, TaxableSupplyDate = Duzp, DueDate = Duzp.AddDays(14), ClientId = DeCustomerId,
+            IssuerId = IssuerId, Issuer = _context.Client.Find(IssuerId)!, CurrencyId = 1,
+            TotalBeforeVat = 3 * net, TotalVat = 210, TotalWithVat = 3 * net + 210,
+            InvoiceItem =
+            {
+                new InvoiceItem { OrderIndex = 1, Description = "a", Quantity = 1, UnitPrice = net, TotalBeforeVat = net, TotalWithVat = net, VatRegime = EVatRegime.OutOfScope },
+                new InvoiceItem { OrderIndex = 2, Description = "b", Quantity = 1, UnitPrice = net, VatRatePercentage = 21, TotalBeforeVat = net, VatAmount = 210, TotalWithVat = net + 210, VatRegime = EVatRegime.Standard },
+                new InvoiceItem { OrderIndex = 3, Description = "c", Quantity = 1, UnitPrice = net, TotalBeforeVat = net, TotalWithVat = net, VatRegime = EVatRegime.Exempt }
+            }
+        });
+        _context.SaveChanges();
+
+        var row = (await _service.GetSummaryStatementRowsAsync(2026, 3, EVatPeriodType.Monthly)).ShouldHaveSingleItem();
+        row.TotalCzk.ShouldBe(2_000);
+    }
+
+    [Theory]
+    [InlineData(100)]   // user stored a positive credit note
+    [InlineData(-100)]  // user stored a negative credit note
+    public async Task SummaryStatement_CreditNote_ReducesTotalAndCountsInPeriodOfItsOwnDuzp(decimal stored)
+    {
+        Issued("INV-DE", 1_000m, DeCustomerId, EVatRegime.OutOfScope);
+        CreditNote("CN-DE", stored, DeCustomerId);
+        CreditNote("CN-DE-APRIL", 5_000m, DeCustomerId, new DateTime(2026, 4, 2, 0, 0, 0, DateTimeKind.Utc)); // other period
+
+        var row = (await _service.GetSummaryStatementRowsAsync(2026, 3, EVatPeriodType.Monthly)).ShouldHaveSingleItem();
+
+        row.TotalCzk.ShouldBe(900);
+        row.InvoiceCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task SummaryStatement_QuarterlyWithGoods_Throws_ButQuarterlyServicesWorks()
+    {
+        Issued("INV-DE", 2_000m, DeCustomerId, EVatRegime.OutOfScope);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
+            _service.ExportEpoSummaryStatementAsync(2026, 1, EVatPeriodType.Quarterly, ["DE123456789"]));
+        ex.Message.ShouldContain("monthly");
+
+        var doc = Parse(await _service.ExportEpoSummaryStatementAsync(2026, 1, EVatPeriodType.Quarterly));
+        doc.Descendants("VetaD").Single().Attribute("ctvrt")!.Value.ShouldBe("1");
+    }
+
+    [Fact]
+    public async Task Dphdp3_EuSupplies_FillRows20And21_MatchingSummaryStatement()
+    {
+        Issued("INV-DE", 3_000m, DeCustomerId, EVatRegime.OutOfScope);   // goods (flagged)
+        Issued("INV-FR", 700m, FrCustomerId, EVatRegime.OutOfScope);     // services (default)
+        var goods = new[] { "DE123456789" };
+
+        var doc = Parse(await _service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly, default, goods));
+
+        var veta2 = doc.Descendants("Veta2").Single();
+        veta2.Attribute("dod_zb")!.Value.ShouldBe("3000");
+        veta2.Attribute("pln_sluzby")!.Value.ShouldBe("700");
+    }
+
+    [Fact]
+    public async Task Dphkh1_ReverseCharge_WithoutCzDic_ThrowsWithDocumentNumber()
+    {
+        Received("REC-NODIC", 1_000m, EVatRegime.ReverseCharge);
+        var supplier = _context.Client.Find(CzCustomerId)!;
+        supplier.TaxNumber = null;
+        _context.SaveChanges();
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
+            _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly));
+        ex.Message.ShouldContain("REC-NODIC");
+    }
+
+    [Theory]
+    [InlineData("GR123456789", null, "EL", "123456789")]
+    [InlineData("123456789", "Německo", "DE", "123456789")]    // no prefix -> address country
+    [InlineData("123456789", "Czech Republic", null, null)]    // domestic address
+    [InlineData("123456789", null, null, null)]                // nothing to go on
+    [InlineData("US123456789", "Německo", null, null)]         // explicit non-EU prefix wins
+    public void TryGetEuVatId_FallbackToAddressCountry_AndGreeceMapping(string tax, string? addr, string? country, string? id)
+    {
+        var result = VatReportService.TryGetEuVatId(tax, addr);
+        if (country is null) result.ShouldBeNull();
+        else result.ShouldBe((country, id!));
+    }
+
+    [Fact]
+    public async Task Dphkh1_B1Row_OmitsNothingWhenSupplierHasCzDic()
+    {
+        Received("REC-OK", 1_000m, EVatRegime.ReverseCharge);
+        (await Control()).Descendants("VetaB1").ShouldHaveSingleItem();
     }
 
     [Fact]

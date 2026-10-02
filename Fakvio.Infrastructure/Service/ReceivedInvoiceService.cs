@@ -510,7 +510,12 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
                 break;
 
             case EVatRegime.ReverseCharge:
-                // PDP: supplier billed 0 VAT — WE self-assess it (§92a ZDPH).
+                // PDP: supplier billed 0 VAT — WE self-assess it (§92a ZDPH). A 0 % rate would
+                // silently drop the supply from the VAT filings, so reject it.
+                if (item.VatRatePercentage <= 0m)
+                    throw new InvalidOperationException(
+                        $"Received invoice item '{item.Description}' uses reverse charge, so it needs the VAT rate that applies " +
+                        "in the Czech Republic (VatRatePercentage > 0).");
                 item.VatAmount = 0;
                 item.TotalWithVat = item.TotalBeforeVat;
                 item.InformationalVatAmount = Math.Round(

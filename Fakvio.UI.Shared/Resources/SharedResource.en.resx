@@ -2034,4 +2034,5 @@
   <data name="EpoSummaryTotal" xml:space="preserve"><value>Value</value></data>
   <data name="EpoSummaryGoods" xml:space="preserve"><value>Goods (else service)</value></data>
   <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Download EPO – summary statement</value></data>
+  <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Goods (code 0) can only be reported in a monthly summary statement (§102(6) VAT Act). Switch to monthly periods or untick goods.</value></data>
 </root>

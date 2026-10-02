@@ -89,11 +89,12 @@ public class VatReportController : ControllerBase
         [FromQuery] int year,
         [FromQuery] int period,
         [FromQuery] EVatPeriodType type,
+        [FromQuery] string[]? goods,
         CancellationToken ct = default)
     {
         try
         {
-            var bytes = await _service.ExportEpoVatReturnAsync(year, period, type, ct);
+            var bytes = await _service.ExportEpoVatReturnAsync(year, period, type, ct, goods);
             var filename = BuildEpoFilename("DPHDP3", year, period, type);
 
             _logger.LogInformation(

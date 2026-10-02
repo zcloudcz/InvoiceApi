@@ -234,14 +234,15 @@ public static class ReportingTools
         "'return' = DPHDP3 VAT return (Priznani k DPH), 'control' = DPHKH1 control statement (Kontrolni hlaseni), " +
         "'summary' = DPHSHV EU summary statement (Souhrnne hlaseni, supplies to EU VAT payers). " +
         "Returns the XML as a base64-encoded string. Requires a VAT-payer company with EPO tax office settings. " +
-        "For 'summary', supplies default to services (code 3); pass goodsVatIds to report those customers as goods (code 0).")]
+        "For 'return' and 'summary', supplies to EU customers default to services (return row 21 / summary code 3); pass goodsVatIds " +
+        "to report those customers as goods (row 20 / code 0). A quarterly summary cannot contain goods (monthly filing required).")]
     public static async Task<string> ExportVatEpo(
         IFakvioApiClient api,
         [Description("Filing kind: 'return', 'control' or 'summary'")] string kind,
         [Description("Tax year, e.g. 2026")] int year,
         [Description("Period number: 1-12 for monthly, 1-4 for quarterly")] int period,
         [Description("'Monthly' (default) or 'Quarterly'")] string periodType = "Monthly",
-        [Description("Summary only: customer VAT ids (country prefix + number, e.g. 'DE123456789') to report as goods instead of services")] string[]? goodsVatIds = null,
+        [Description("Return/summary only: customer VAT ids (country prefix + number, e.g. 'DE123456789') to report as goods instead of services")] string[]? goodsVatIds = null,
         CancellationToken ct = default)
     {
         try
