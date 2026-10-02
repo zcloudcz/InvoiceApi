@@ -358,10 +358,10 @@ public class EpoControlStatementExportTests : IDisposable
     }
 
     [Fact]
-    public async Task ExportEpoControlStatementAsync_CreditNoteOfA4Invoice_GoesToA4NegativeEvenBelowLimit()
+    public async Task ExportEpoControlStatementAsync_CreditNoteBelowLimit_GoesToA5_RegardlessOfOriginal()
     {
-        // Original (Feb) was A.4 (12 100 incl. VAT); the March credit note of 2 420 is below the limit
-        // but follows the original into A.4 with its own document number and negative amounts.
+        // Original (Feb) 12 100 incl. VAT was A.4, but the correction itself (2 420) is below 10 000 →
+        // A.5, negative (FS FAQ on the control statement, part X, q. 1 and 4).
         SeedIssuedInvoice(new DateTime(2026, 2, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 12100m, 21m, documentNumber: "INV-ORIG");
         var originalId = _context.Invoice.Single(i => i.DocumentNumber == "INV-ORIG").Id;
         SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 2420m, 21m,
@@ -371,30 +371,51 @@ public class EpoControlStatementExportTests : IDisposable
         var (doc, errors) = ParseAndValidate(bytes);
 
         errors.ShouldBeEmpty();
-        var a4 = doc.Descendants("VetaA4").Single();
-        a4.Attribute("c_evid_dd")!.Value.ShouldBe("CN-1");
-        a4.Attribute("zakl_dane1")!.Value.ShouldBe("-2000.00");
-        a4.Attribute("dan1")!.Value.ShouldBe("-420.00");
-        doc.Descendants("VetaA5").ShouldBeEmpty();
+        doc.Descendants("VetaA4").ShouldBeEmpty();
+        var a5 = doc.Descendants("VetaA5").Single();
+        a5.Attribute("zakl_dane1")!.Value.ShouldBe("-2000.00");
+        a5.Attribute("dan1")!.Value.ShouldBe("-420.00");
     }
 
     [Fact]
-    public async Task ExportEpoControlStatementAsync_CreditNoteOfA5Invoice_GoesToA5Aggregate()
+    public async Task ExportEpoControlStatementAsync_CreditNoteAtOrAboveLimit_GoesToA4NegativeUnderOwnNumber()
     {
-        // Original 5 000 incl. VAT = A.5 → the (small) credit note is A.5 too and reduces its totals.
-        SeedIssuedInvoice(new DateTime(2026, 3, 5, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 6050m, 21m, documentNumber: "INV-SMALL");
-        var originalId = _context.Invoice.Single(i => i.DocumentNumber == "INV-SMALL").Id;
-        SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 1210m, 21m,
-            documentNumber: "CN-2", docType: EDocumentType.CreditNote, originalInvoiceId: originalId);
+        // |correction| = 12 100 >= 10 000 with CZ DIČ → A.4 with its own number, stored positive but reported negative.
+        SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 12100m, 21m,
+            documentNumber: "CN-2", docType: EDocumentType.CreditNote);
 
         var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
         var (doc, errors) = ParseAndValidate(bytes);
 
         errors.ShouldBeEmpty();
-        doc.Descendants("VetaA4").ShouldBeEmpty();
+        var a4 = doc.Descendants("VetaA4").Single();
+        a4.Attribute("c_evid_dd")!.Value.ShouldBe("CN-2");
+        a4.Attribute("zakl_dane1")!.Value.ShouldBe("-10000.00");
+        a4.Attribute("dan1")!.Value.ShouldBe("-2100.00");
+        doc.Descendants("VetaA5").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_CreditNoteWithMixedSignRows_UsesNegativeNet()
+    {
+        // Rows -1000 and +600 at 21 % → net -400 base / -84 VAT in A.5 (|total| 484 < 10 000).
+        SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, -1210m, 21m,
+            documentNumber: "CN-MIX", docType: EDocumentType.CreditNote);
+        var cn = _context.Invoice.Include(i => i.InvoiceItem).Single();
+        cn.InvoiceItem.Add(new InvoiceItem
+        {
+            OrderIndex = 2, Description = "Positive row", Quantity = 1, UnitPrice = 600m,
+            VatRatePercentage = 21m, TotalBeforeVat = 600m, VatAmount = 126m, TotalWithVat = 726m
+        });
+        _context.SaveChanges();
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
         var a5 = doc.Descendants("VetaA5").Single();
-        a5.Attribute("zakl_dane1")!.Value.ShouldBe("4000.00"); // 5000 - 1000
-        a5.Attribute("dan1")!.Value.ShouldBe("840.00");
+        a5.Attribute("zakl_dane1")!.Value.ShouldBe("-400.00"); // -1000 + 600
+        a5.Attribute("dan1")!.Value.ShouldBe("-84.00");        // -210 + 126
     }
 
     [Fact]

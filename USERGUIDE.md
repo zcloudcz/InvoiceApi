@@ -855,7 +855,8 @@ obchod, přemístění obchodního majetku a zálohové doklady (DPP) zatím nej
 
 **Dobropisy (opravné daňové doklady):** vystavené dobropisy se do přiznání (řádky 1/2), přehledu DPH i kontrolního
 hlášení promítají záporně v období svého DUZP. V kontrolním hlášení jsou uvedeny pod vlastním číslem dokladu; do oddílu A.4
-patří, pokud byl původní doklad v A.4 (i když je dobropis sám pod 10 000 Kč), jinak do A.5. Přijaté dobropisy Fakvio
+patří, pokud je absolutní hodnota dobropisu (včetně DPH) alespoň 10 000 Kč a odběratel má české DIČ, jinak do A.5 –
+rozhoduje hodnota samotné opravy, ne původní doklad (viz Časté dotazy Finanční správy ke kontrolnímu hlášení). Přijaté dobropisy Fakvio
 nerozlišuje od běžných přijatých faktur.
 
 **Postup:**

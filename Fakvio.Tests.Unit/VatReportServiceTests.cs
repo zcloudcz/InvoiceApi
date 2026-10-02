@@ -207,6 +207,25 @@ public class VatReportServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetReportAsync_CreditNoteWithMixedSignRows_IsNegativeNetNotSumOfAbs()
+    {
+        // Rows -1000 and +600 (net -400) at 21 % → -400 base / -84 VAT, not -1600.
+        SeedIssuedInvoice(_periodFrom.AddDays(8), EInvoiceStatus.Completed, -1000, 21, docType: EDocumentType.CreditNote);
+        var cn = _context.Invoice.Include(i => i.InvoiceItem).Single();
+        cn.InvoiceItem.Add(new InvoiceItem
+        {
+            OrderIndex = 2, Description = "Positive row", Quantity = 1, UnitPrice = 600,
+            VatRatePercentage = 21, TotalBeforeVat = 600, VatAmount = 126, TotalWithVat = 726
+        });
+        _context.SaveChanges();
+
+        var report = await _service.GetReportAsync(_periodFrom, _periodTo);
+
+        report.OutputVat.Single().BaseAmount.ShouldBe(-400m);
+        report.TotalOutputVat.ShouldBe(-84m);
+    }
+
+    [Fact]
     public async Task GetReportAsync_OutputVat_AggregatesCompletedInvoices()
     {
         // Two completed invoices in period

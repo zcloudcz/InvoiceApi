@@ -2015,10 +2015,11 @@ RC items never count towards the 10 000 CZK A.4/A.5 / B.2/B.3 threshold.
 
 **Credit notes (opravné daňové doklady, §42 ZDPH):** issued `CreditNote` documents are included in DPHDP3 rows 1/2 (and 25),
 the `/vat-report` summary (`GetReportAsync`: output VAT, revenue, document count) and KH A.1/A.4/A.5 — always **negative**
-(`VatReportService.Signed` forces `-Abs`, because Fakvio does not enforce a sign on credit note rows), in the period of the credit
-note's **own DUZP**. In KH a credit note is listed under its own `c_evid_dd`. A.4 vs A.5 follows the **original** document
-(`OriginalInvoiceId`): original total incl. VAT ≥ 10 000 CZK with CZ DIČ → A.4 (even if the credit note alone is below the limit),
-otherwise A.5; without a known original the credit note's own absolute total decides. OSS documents stay excluded. **Received side:**
+(`VatReportService.Signed` forces `-Abs` on the **per-document, per-rate-bucket net** — not per row — because Fakvio does not
+enforce a sign on credit note rows and rows may even mix signs), in the period of the credit note's **own DUZP**. In KH a credit
+note is listed under its own `c_evid_dd`. A.4 vs A.5 is decided by the **absolute value of the correction itself** (CZ DIČ and
+|total incl. VAT| ≥ 10 000 CZK → A.4, else A.5), regardless of the original document — Finanční správa, "Kontrolní hlášení DPH –
+Časté dotazy a odpovědi", part X, q. 1 and 4 (−15 000 → A.4, −5 000 → A.5). OSS documents stay excluded. **Received side:**
 `ReceivedInvoice` has no credit-note flag, so a received credit note is entered as a normal received invoice (negative amounts would
 flow through unchanged) — nothing special is done for B.2/B.3.
 
