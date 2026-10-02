@@ -508,29 +508,7 @@ public class InvoiceService : IInvoiceService
         invoice.TotalVat = totalVat;
         invoice.TotalWithVat = totalBeforeVat + totalVat;
 
-        // A tax receipt for advance payment may only cover what the proforma has received and
-        // no existing DPP covers yet — closes manual duplicates (0.01 tolerance for rounding).
-        if (createDto.DocumentType == EDocumentType.TaxReceiptForAdvance && createDto.OriginalInvoiceId.HasValue)
-        {
-            var proformaId = createDto.OriginalInvoiceId.Value;
-            var source = await _context.Invoice.AsNoTracking()
-                .Where(i => i.Id == proformaId && i.DocumentType == EDocumentType.Proforma)
-                .Select(i => new { i.PaidAmount, i.TotalWithVat })
-                .FirstOrDefaultAsync(cancellationToken);
-            if (source != null)
-            {
-                var covered = await _context.Invoice.AsNoTracking()
-                    .Where(i => i.OriginalInvoiceId == proformaId
-                             && i.DocumentType == EDocumentType.TaxReceiptForAdvance
-                             && i.Status != EInvoiceStatus.Deleted)
-                    .SumAsync(i => (decimal?)i.TotalWithVat, cancellationToken) ?? 0m;
-                var open = Math.Min(source.PaidAmount, source.TotalWithVat) - covered;
-                if (invoice.TotalWithVat > open + 0.01m)
-                    throw new InvalidOperationException(
-                        $"The tax receipt ({invoice.TotalWithVat:F2}) exceeds the received advance not yet covered " +
-                        $"by a tax receipt ({Math.Max(open, 0):F2}).");
-            }
-        }
+        await EnsureTaxReceiptWithinAdvanceAsync(invoice, cancellationToken);
 
         _context.Invoice.Add(invoice);
         await _context.SaveChangesAsync(cancellationToken);
@@ -846,11 +824,45 @@ public class InvoiceService : IInvoiceService
             invoice.TotalBeforeVat = totalBeforeVat;
             invoice.TotalVat = totalVat;
             invoice.TotalWithVat = totalBeforeVat + totalVat;
+
+            // Editing the items must not push a tax receipt over the advance it covers.
+            await EnsureTaxReceiptWithinAdvanceAsync(invoice, cancellationToken);
         }
 
         await _context.SaveChangesAsync(cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// A tax receipt for advance payment may only cover what its proforma has received and no other
+    /// existing DPP covers yet — closes manual duplicates (0.01 tolerance for rounding).
+    /// Used by create and update; the invoice itself is excluded from the "already covered" sum.
+    /// </summary>
+    private async Task EnsureTaxReceiptWithinAdvanceAsync(Invoice invoice, CancellationToken ct)
+    {
+        if (invoice.DocumentType != EDocumentType.TaxReceiptForAdvance || !invoice.OriginalInvoiceId.HasValue)
+            return;
+
+        var proformaId = invoice.OriginalInvoiceId.Value;
+        var source = await _context.Invoice.AsNoTracking()
+            .Where(i => i.Id == proformaId && i.DocumentType == EDocumentType.Proforma)
+            .Select(i => new { i.PaidAmount, i.TotalWithVat })
+            .FirstOrDefaultAsync(ct);
+        if (source == null)
+            return;
+
+        var covered = await _context.Invoice.AsNoTracking()
+            .Where(i => i.OriginalInvoiceId == proformaId
+                     && i.DocumentType == EDocumentType.TaxReceiptForAdvance
+                     && i.Status != EInvoiceStatus.Deleted
+                     && i.Id != invoice.Id)
+            .SumAsync(i => (decimal?)i.TotalWithVat, ct) ?? 0m;
+        var open = Math.Min(source.PaidAmount, source.TotalWithVat) - covered;
+        if (invoice.TotalWithVat > open + 0.01m)
+            throw new InvalidOperationException(
+                $"The tax receipt ({invoice.TotalWithVat:F2}) exceeds the received advance not yet covered " +
+                $"by a tax receipt ({Math.Max(open, 0):F2}).");
     }
 
     public async Task<InvoiceDto?> CompleteInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
@@ -1340,12 +1352,32 @@ public class InvoiceService : IInvoiceService
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
+            // A retry re-runs this delegate: forget DPP entities a failed attempt left tracked.
+            DetachTrackedTaxReceipts(proformaId);
             await using var transaction = await _context.Database.BeginTransactionAsync(ct);
             await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({proformaId})", ct);
             var result = await work();
             await transaction.CommitAsync(ct);
             return result;
         });
+    }
+
+    /// <summary>
+    /// Detaches tracked DPP invoices (and their items) of one proforma — NOT ChangeTracker.Clear(),
+    /// which would also drop the caller's unrelated tracked entities.
+    /// </summary>
+    private void DetachTrackedTaxReceipts(long proformaId)
+    {
+        var receipts = _context.ChangeTracker.Entries<Invoice>()
+            .Where(e => e.Entity.OriginalInvoiceId == proformaId
+                     && e.Entity.DocumentType == EDocumentType.TaxReceiptForAdvance)
+            .ToList();
+        foreach (var entry in _context.ChangeTracker.Entries<InvoiceItem>()
+                     .Where(e => receipts.Any(r => r.Entity == e.Entity.Invoice || r.Entity.Id == e.Entity.InvoiceId))
+                     .ToList())
+            entry.State = EntityState.Detached;
+        foreach (var entry in receipts)
+            entry.State = EntityState.Detached;
     }
 
     /// <summary>Smallest advance worth a tax receipt — rounding dust (e.g. 0.01 left over) is not covered.</summary>
@@ -1437,10 +1469,15 @@ public class InvoiceService : IInvoiceService
         {
             // Do not leave a Draft DPP behind: it would count as "already covered" and block
             // every future issuance. (On PostgreSQL the surrounding transaction rolls back too.)
-            try { await DeleteInvoiceAsync(created.Id, CancellationToken.None); }
-            catch (Exception cleanupEx)
+            // Inside a transaction (PostgreSQL) the rollback does it, and a delete on an aborted
+            // transaction would only fail.
+            if (_context.Database.CurrentTransaction == null)
             {
-                _logger.LogWarning(cleanupEx, "Could not remove draft tax receipt {Id}", created.Id);
+                try { await DeleteInvoiceAsync(created.Id, CancellationToken.None); }
+                catch (Exception cleanupEx)
+                {
+                    _logger.LogWarning(cleanupEx, "Could not remove draft tax receipt {Id}", created.Id);
+                }
             }
             throw;
         }
@@ -1492,16 +1529,7 @@ public class InvoiceService : IInvoiceService
             // The failed attempt may have left half-created DPP entities in the change tracker
             // (rolled back in the DB). Detach them so the caller's next SaveChanges — e.g. the
             // next transaction of a bank-import batch — does not try to persist them.
-            var orphanReceipts = _context.ChangeTracker.Entries<Invoice>()
-                .Where(e => e.Entity.OriginalInvoiceId == proformaId
-                         && e.Entity.DocumentType == EDocumentType.TaxReceiptForAdvance)
-                .ToList();
-            foreach (var entry in _context.ChangeTracker.Entries<InvoiceItem>()
-                         .Where(e => orphanReceipts.Any(r => r.Entity == e.Entity.Invoice || r.Entity.Id == e.Entity.InvoiceId))
-                         .ToList())
-                entry.State = EntityState.Detached;
-            foreach (var entry in orphanReceipts)
-                entry.State = EntityState.Detached;
+            DetachTrackedTaxReceipts(proformaId);
         }
     }
 

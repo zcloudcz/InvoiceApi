@@ -350,4 +350,23 @@ public class AutoTaxReceiptForProformaTests : IDisposable
         receipt.TaxableSupplyDate.ShouldBe(paidOn);
         receipt.IssueDate!.Value.Date.ShouldBe(DateTime.UtcNow.Date);
     }
+
+    [Fact]
+    public async Task UpdateTaxReceipt_ItemsAboveTheAdvance_AreRejected()
+    {
+        var proforma = AddProforma();
+        await _service.MarkAsPaidAsync(proforma.Id);
+        var receipt = (await Receipts(proforma.Id)).Single();
+        // Draft again so it can be edited (as the UI allows for a draft DPP).
+        var tracked = await _context.Invoice.FirstAsync(i => i.Id == receipt.Id);
+        tracked.Status = EInvoiceStatus.Draft;
+        _context.SaveChanges();
+
+        var tooMuch = new UpdateInvoiceDto
+        {
+            InvoiceItem = [new CreateInvoiceItemDto { Description = "x", Quantity = 1, UnitPrice = 5000m, VatRateId = 10 }]
+        };
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.UpdateInvoiceAsync(receipt.Id, tooMuch));
+    }
 }

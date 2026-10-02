@@ -2457,6 +2457,7 @@ Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 | Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | dle `PollIntervalMinutes` (default 30 min) | `0x46414B56494F5059L` |
 | Recurring invoices | `IRecurringInvoiceService.RunCycleAsync` | `RecurringInvoiceWorker` v Infrastructure | hodinově, per-tenant | `0x46414B56494F5249L` ("FAKVIORI") |
 | Webhooky (odchozí doručení + retry) | `IWebhookDispatchService.RunCycleAsync` | `WebhookWorker` v Infrastructure | každou 1 min, per-tenant | `0x46414B56494F5748L` ("FAKVIOWH") |
+| Vystavení DPP k proformě | `InvoiceService.IssueTaxReceiptForPaidProformaAsync` | — (volá se z plateb) | — | `pg_advisory_xact_lock` — klíč = `proformaId` (dynamický, jen PostgreSQL) |
 
 ### 6.4 Když přidáš novou periodickou úlohu
 
