@@ -320,7 +320,8 @@ public static class SettingsTools
     [McpServerTool(Title = "Add bank account", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
         "Add a bank account to the user's own company (the issuer). The account number is " +
         "required, everything else is optional. The very first account of the company always " +
-        "becomes the default one. Fixes ISSUER_BANK_ACCOUNT_MISSING from get_readiness.")]
+        "becomes the default one — the default account is what new invoices automatically use " +
+        "when no bank account is specified. Fixes ISSUER_BANK_ACCOUNT_MISSING from get_readiness.")]
     public static async Task<string> AddBankAccount(
         IFakvioApiClient api,
         [Description("Bank account number, Czech format '1234567890/0100'")] string accountNumber,
@@ -329,6 +330,7 @@ public static class SettingsTools
         [Description("SWIFT/BIC code for international transfers")] string? swift = null,
         [Description("Currency of the account as a 3-letter code, e.g. 'CZK' or 'EUR'")] string? currencyCode = null,
         [Description("Short label that tells the accounts apart, e.g. 'CZK účet'")] string? label = null,
+        [Description("Make this the default account, replacing the current default. The first account of the company is always default regardless of this flag.")] bool isDefault = false,
         CancellationToken ct = default)
     {
         try
@@ -344,7 +346,8 @@ public static class SettingsTools
                 IBAN = iban,
                 SWIFT = swift,
                 CurrencyCode = currencyCode?.ToUpperInvariant(),
-                Label = label
+                Label = label,
+                IsDefault = isDefault
             };
 
             var result = await api.AddBankAccountAsync(issuer.Id, dto, ct);
