@@ -22,6 +22,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Nové funkce
 
+- **#478** — Faktury v EUR s IBAN nesou SEPA QR kód (EPC) místo české QR Platby, takže je zaplatí i zahraniční bankovní aplikace (nulové a záporné částky dál používají QR Platbu). U klienta lze DIČ ověřit ve VIES tlačítkem „Ověřit ve VIES“, přes chat i MCP (verify_vat_vies). (PR #478, `0638a1f`)
 - **#480** — Zálohové faktury: po zaplacení zálohy (ručně i spárováním z banky) plátci DPH automaticky vznikne daňový doklad k přijaté platbě — i při částečné platbě, bez duplicit, s DUZP = den platby (lze vypnout v Moje firma). MCP umí vystavit zálohu, vyúčtovací fakturu (issue_final_invoice), DPP (issue_tax_receipt) a zjistit zbývající zálohu. (PR #480, `865e813`)
 - **#483** — EPO: přiznání k DPH a kontrolní hlášení nově zahrnují přenesenou daňovou povinnost (DP3 ř. 10/11, 25, 43/44; KH A.1/B.1) včetně přijatých faktur v režimu PDP; přibylo souhrnné hlášení (DPHSHV) pro plnění do EU s náhledem a volbou zboží/služby, navazující řádky 20/21 přiznání a MCP nástroj export_vat_epo. (PR #483, `a2bee8e`)
 - **#484** — Režim EU OSS: plátce registrovaný k OSS (nastavení v Moje firma) může u faktury spotřebiteli z jiného státu EU zaškrtnout „Režim OSS“ — položky pak nesou sazbu DPH země odběratele, PDF to uvádí a faktura se nezapočítá do českého přiznání ani KH. Nový čtvrtletní přehled „OSS hlášení“ (CSV, MCP get_oss_report) přepočítává cizí měny kurzem ECB podle pravidel OSS. Sazby EU jsou v číselníku, který spravuje SysAdmin. (PR #484, `dea3ffb`)
