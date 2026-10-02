@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Nové funkce
+
+- **#489** — Ukládání časů do databáze sjednoceno na UTC jedním převodníkem pro obě databáze (dosavadní normalizace u hodnot bez časové zóny nedělala nic); v produkci beze změny, na vývojových strojích zmizí posun o časové pásmo. (PR #489, `d34d664`)
+
 ## 2026.10.02 — 2026-10-02
 
 ### Nové funkce
