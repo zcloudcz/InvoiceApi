@@ -44,6 +44,8 @@ builder.Services.AddHostedService<LogFlushService>();
 builder.Services.AddHostedService<LogCleanupService>();
 builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddHostedService<RecurringInvoiceWorker>();
+// WebhookWorker: sends/retries outbound webhook deliveries every minute (DEVGUIDE §4.15).
+builder.Services.AddHostedService<WebhookWorker>();
 // OAuthCleanupService: sweeps expired OAuth rows every hour (ADR 0001, §4.3). Registered
 // unconditionally — with McpOAuth:Enabled=false there is simply nothing for it to delete.
 builder.Services.AddHostedService<OAuthCleanupService>();
@@ -267,6 +269,9 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+// Webhook SSRF guard: loopback targets (http://localhost) are allowed in Development only.
+Fakvio.Infrastructure.Service.WebhookUrlGuard.AllowLoopback = app.Environment.IsDevelopment();
 
 // Forwarded headers must run before anything that reads the client IP or scheme —
 // first middleware in the pipeline, per Microsoft's own guidance for reverse-proxy setups.

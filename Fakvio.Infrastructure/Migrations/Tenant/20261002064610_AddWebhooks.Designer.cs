@@ -3,6 +3,7 @@ using System;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Fakvio.Infrastructure.Migrations.Tenant
 {
     [DbContext(typeof(TenantDbContext))]
-    partial class TenantDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261002064610_AddWebhooks")]
+    partial class AddWebhooks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2151,10 +2154,6 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<decimal>("InformationalVatAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -2171,9 +2170,6 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasColumnType("numeric(18,4)");
 
                     b.Property<long>("ReceivedInvoiceId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("ReverseChargeCodeId")
                         .HasColumnType("bigint");
 
                     b.Property<decimal>("TotalBeforeVat")
@@ -2210,16 +2206,9 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)");
 
-                    b.Property<int>("VatRegime")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
                     b.HasKey("Id");
 
                     b.HasIndex("ReceivedInvoiceId");
-
-                    b.HasIndex("ReverseChargeCodeId");
 
                     b.HasIndex("VatRateId");
 
@@ -3324,19 +3313,12 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Fakvio.Domain.Entities.ReverseChargeCode", "ReverseChargeCode")
-                        .WithMany()
-                        .HasForeignKey("ReverseChargeCodeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Fakvio.Domain.Entities.VatRate", "VatRate")
                         .WithMany()
                         .HasForeignKey("VatRateId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ReceivedInvoice");
-
-                    b.Navigation("ReverseChargeCode");
 
                     b.Navigation("VatRate");
                 });

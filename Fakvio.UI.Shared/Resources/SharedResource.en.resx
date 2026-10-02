@@ -2025,6 +2025,48 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Toggle {0}</value></data>
+  <data name="Nav_Webhooks" xml:space="preserve"><value>Webhooks</value></data>
+  <data name="Webhook_Title" xml:space="preserve"><value>Webhooks</value></data>
+  <data name="Webhook_Subtitle" xml:space="preserve"><value>Fakvio sends a signed HTTP request to your URL when something happens (invoice created, sent or paid, received invoice, payment). Useful for connecting a shop, accounting software or your own app.</value></data>
+  <data name="Webhook_New" xml:space="preserve"><value>New webhook</value></data>
+  <data name="Webhook_Edit" xml:space="preserve"><value>Edit webhook</value></data>
+  <data name="Webhook_Url" xml:space="preserve"><value>Endpoint URL</value></data>
+  <data name="Webhook_UrlHelper" xml:space="preserve"><value>https:// only – internal network addresses are blocked for security reasons.</value></data>
+  <data name="Webhook_Events" xml:space="preserve"><value>Events</value></data>
+  <data name="Webhook_Event_invoice_created" xml:space="preserve"><value>Invoice created</value></data>
+  <data name="Webhook_Event_invoice_sent" xml:space="preserve"><value>Invoice sent by email</value></data>
+  <data name="Webhook_Event_invoice_paid" xml:space="preserve"><value>Invoice paid</value></data>
+  <data name="Webhook_Event_invoice_cancelled" xml:space="preserve"><value>Invoice cancelled/deleted</value></data>
+  <data name="Webhook_Event_received_invoice_created" xml:space="preserve"><value>Received invoice created</value></data>
+  <data name="Webhook_Event_payment_received" xml:space="preserve"><value>Payment received</value></data>
+  <data name="Webhook_Test" xml:space="preserve"><value>Send test</value></data>
+  <data name="Webhook_TestOk" xml:space="preserve"><value>Test succeeded (HTTP {0}).</value></data>
+  <data name="Webhook_TestFailed" xml:space="preserve"><value>Test failed: {0}</value></data>
+  <data name="Webhook_Deliveries" xml:space="preserve"><value>Deliveries</value></data>
+  <data name="Webhook_Redeliver" xml:space="preserve"><value>Redeliver</value></data>
+  <data name="Webhook_Redelivered" xml:space="preserve"><value>Delivery queued to be sent again.</value></data>
+  <data name="Webhook_RotateSecret" xml:space="preserve"><value>Rotate secret</value></data>
+  <data name="Webhook_RotateConfirmTitle" xml:space="preserve"><value>Rotate signing secret?</value></data>
+  <data name="Webhook_RotateConfirmText" xml:space="preserve"><value>The current secret stops working immediately; your receiver must use the new one.</value></data>
+  <data name="Webhook_DeleteConfirmTitle" xml:space="preserve"><value>Delete webhook?</value></data>
+  <data name="Webhook_DeleteConfirmText" xml:space="preserve"><value>Webhook “{0}” and its delivery history will be deleted.</value></data>
+  <data name="Webhook_Saved" xml:space="preserve"><value>Webhook saved.</value></data>
+  <data name="Webhook_Deleted" xml:space="preserve"><value>Webhook deleted.</value></data>
+  <data name="Webhook_SecretTitle" xml:space="preserve"><value>Webhook signing secret</value></data>
+  <data name="Webhook_SecretWarning" xml:space="preserve"><value>This secret is shown only once. Save it – you use it to verify the signature (Fakvio-Webhook-Signature header) on your side.</value></data>
+  <data name="Webhook_SecretSaved" xml:space="preserve"><value>I have saved the secret</value></data>
+  <data name="Webhook_CopySecret" xml:space="preserve"><value>Copy secret</value></data>
+  <data name="Webhook_NoSubscriptions" xml:space="preserve"><value>You have no webhooks yet.</value></data>
+  <data name="Webhook_NoDeliveries" xml:space="preserve"><value>No deliveries yet.</value></data>
+  <data name="Webhook_Col_Event" xml:space="preserve"><value>Event</value></data>
+  <data name="Webhook_Col_Attempts" xml:space="preserve"><value>Attempts</value></data>
+  <data name="Webhook_Col_NextAttempt" xml:space="preserve"><value>Next attempt</value></data>
+  <data name="Webhook_Col_HttpStatus" xml:space="preserve"><value>HTTP status</value></data>
+  <data name="Webhook_Col_Error" xml:space="preserve"><value>Error</value></data>
+  <data name="Webhook_Col_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Webhook_Status_Pending" xml:space="preserve"><value>Pending</value></data>
+  <data name="Webhook_Status_Succeeded" xml:space="preserve"><value>Delivered</value></data>
+  <data name="Webhook_Status_Failed" xml:space="preserve"><value>Failed</value></data>
   <data name="DashboardWidget_Kpis" xml:space="preserve"><value>Overview tiles</value></data>
   <data name="DashboardWidget_TaxInsurance" xml:space="preserve"><value>Insurance advances and tax</value></data>
   <data name="DashboardWidget_RevenueByMonth" xml:space="preserve"><value>Revenue by month</value></data>
