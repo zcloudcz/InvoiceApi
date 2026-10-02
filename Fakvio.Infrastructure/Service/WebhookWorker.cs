@@ -99,14 +99,7 @@ public class WebhookWorker : BackgroundService
         {
             try
             {
-                using var scope = _scopeFactory.CreateScope();
-                var factory = scope.ServiceProvider.GetRequiredService<ITenantDbContextFactory>();
-                await factory.CreateContextForCompanyAsync(companyId, ct); // also ensures the schema is migrated
-
-                // The factory returns a NEW context; the scoped TenantDbContext that
-                // IWebhookDispatchService receives would otherwise have Schema = null
-                // (-> "public" schema). Set it explicitly, before anything uses the context.
-                scope.ServiceProvider.GetRequiredService<TenantDbContext>().Schema = schemaName;
+                using var scope = await _scopeFactory.CreateTenantScopeAsync(companyId, ct);
 
                 var dispatchService = scope.ServiceProvider.GetRequiredService<IWebhookDispatchService>();
                 await dispatchService.RunCycleAsync(ct);
