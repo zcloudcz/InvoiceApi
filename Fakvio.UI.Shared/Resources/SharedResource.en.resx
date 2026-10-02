@@ -2170,4 +2170,8 @@
   <data name="EpoSummaryGoods" xml:space="preserve"><value>Goods (else service)</value></data>
   <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Download EPO – summary statement</value></data>
   <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Goods (code 0) can only be reported in a monthly summary statement (§102(6) VAT Act). Switch to monthly periods or untick goods.</value></data>
+  <data name="Payments_Import_Title" xml:space="preserve"><value>Statement import (GPC/ABO)</value></data>
+  <data name="Payments_Import_Button" xml:space="preserve"><value>Upload statement</value></data>
+  <data name="Payments_Import_Hint" xml:space="preserve"><value>A .gpc / .abo / .txt file from internet banking (max 5 MB). Re-importing the same statement creates no duplicates. The statement account must be listed in company settings.</value></data>
+  <data name="Payments_Import_Summary" xml:space="preserve"><value>Statements: {0}, newly imported: {1}, duplicates: {2}, matched: {3}, unmatched: {4}.</value></data>
 </root>
