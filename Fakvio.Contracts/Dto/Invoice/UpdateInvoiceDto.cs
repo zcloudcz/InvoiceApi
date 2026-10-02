@@ -91,6 +91,12 @@ public class UpdateInvoiceDto
     public string? Notes { get; set; }
 
     /// <summary>
+    /// Optional optimistic-concurrency guard: when set, the update is rejected with 409 unless the invoice
+    /// currently has exactly this status. Used by MCP/chat (they only edit Drafts); the UI does not send it.
+    /// </summary>
+    public EInvoiceStatus? ExpectedStatus { get; set; }
+
+    /// <summary>
     /// Updated invoice line items
     /// If provided, replaces all existing items
     /// </summary>

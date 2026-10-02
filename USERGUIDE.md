@@ -1282,7 +1282,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 78 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 80 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1420,7 +1420,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 
 | Oblast | Příklady |
 |--------|---------|
-| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
 | Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES, zjistit vystavitele |
 | Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
@@ -1431,7 +1431,9 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Opakované faktury | Vypsat a zobrazit plány (i pro konkrétní šablonu), založit nový plán, upravit frekvenci/datum/limity, pozastavit a obnovit, smazat |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
-„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
+„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“, „Změň splatnost konceptu FAK-2026-002 na 30. 6.“
+
+**Úprava faktury.** AI upraví jen **koncept**; změní jen to, co jste zadali (při změně položek nahradí všechny řádky celým novým seznamem). Už **vystavenou** fakturu sama nezmění: nejdřív se vás zeptá, zda ji smí vrátit na koncept — vystavený doklad se tím stane konceptem, po úpravě ho musíte znovu vystavit a pokud už byl odeslán emailem, poslat klientovi znovu. Zaplacenou nebo dobropisovanou fakturu upravit nejde; opravíte ji dobropisem a novou fakturou.
 
 ---
 

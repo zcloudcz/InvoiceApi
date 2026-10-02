@@ -325,6 +325,11 @@ public class InvoiceController : ControllerBase
             _logger.LogInformation("Invoice {Id} updated successfully", id);
             return Ok(invoice);
         }
+        catch (InvoiceStatusConflictException ex)
+        {
+            _logger.LogWarning("Status conflict updating invoice {Id}: {Message}", id, ex.Message);
+            return Conflict(new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
             _logger.LogWarning("Cannot update invoice {Id}: {Message}", id, ex.Message);
