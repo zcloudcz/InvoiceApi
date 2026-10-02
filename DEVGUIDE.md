@@ -2118,6 +2118,9 @@ normální položka reportu (200), s `issuerId` je to 404.
 | Checklist | `Fakvio.UI.Shared/Components/Shared/SetupChecklist.razor` | Karta „Dokončit nastavení" na dashboardu. Stejné dělení jako banner — položky **seskupené podle závažnosti** pod klíči `Readiness_BlockingTitle` / `Readiness_WarningTitle`, barva ikony nadpis jen opakuje. Severita nesmí být nesená jen barvou (odečítač obrazovky z barvy nepřečte nic, červená vs oranžová je navíc nejhorší dvojice pro barvosleposti) — a report z `TenantReadinessService` není řazený, seskupení tedy drží i pořadí. Bez parametrů → stačí `OnInitializedAsync`, **žádný re-fetch guard** (není co znovu spouštět). Odložení = `bool` v localStorage pod klíčem `setupChecklistDeferred` přes `ILocalStorageService`, čtení v `try/catch` (precedens `GridStateService.LoadAsync`) — sbalí kartu na jedno tlačítko, nesmaže ji. **Dokončenost se neukládá nikdy**, počítá se z reportu, takže nemůže zastarat |
 | Zapojení | `Home.razor` → `SetupChecklist` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` → `ReadinessBanner` (jen stav Draft, `IssuerId` dokladu) | Na dashboardu je checklist nástupcem banneru (#210 nahradil i statickou „Quick Start" osu) — **dvě komponenty se stejným reportem na jedné stránce nikdy**. Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync`, tam se odkládat nedá |
 
+**Průvodce nastavením `/setup`** (`SetupWizard.razor`, MudStepper: Firma → Banka → Fakturace → Uživatelé → Hotovo).
+Každý krok ukládá přes stávající API (`ClientApiService.UpdateAsync` — pozor, adresy i bankovní účty se na API **nahrazují celé**, proto wizard posílá i stávající záznamy; `NumberSequenceApiService` pro chybějící výchozí řady; `BankAccountDialog` a `InviteCompanyMemberDialog` jsou znovupoužité). Hotovost kroků se **neukládá**, počítá ji `SetupWizardPolicy.CompanyStepDone/BankStepDone/BillingStepDone` z `ReadinessReportDto` (kódy `ISSUER_*`, `NUMBER_SEQUENCE_MISSING`). Auto-redirect řeší `Home.razor` (jen ne-SysAdmin, max. 1× za relaci přes `UserPreferencesState.SetupWizardRedirectHandled`): `SetupWizardPolicy.ShouldRedirect` = blokující `ISSUER_*` issue **a** `UserPreferences.SetupWizardDismissedAt == null`. „Přeskočit" (a „Přejít na nástěnku" s nedokončeným setupem) nastaví `SetupWizardDismissedAt`. `SetupChecklist` má tlačítko „Spustit průvodce" → `/setup`.
+
 **UI konzument — konverzační onboarding** (issue #214). Druhá polovina je serverová
 (`AiSystemPrompt.OnboardingInstructions`, §4.7).
 
@@ -2600,6 +2603,12 @@ Pravidla:
 - Balíček: `Markdig` (v `Fakvio.UI.Shared`), čistě managed, funguje v browser-wasm.
 
 ---
+
+### 7.13 Dashboard widgety (modulární nástěnka)
+
+Tenantová nástěnka (`Home.razor`) se skládá z widgetů v `Components/Dashboard/`. Seznam widgetů je **statický registr** `DashboardWidgetRegistry.All` (`Fakvio.UI.Shared/Models/DashboardLayout.cs`): `Id` (stabilní, nikdy nepřejmenovávat), klíč názvu, výchozí viditelnost, šířka (sloupce `md` 1-12). Uživatelské rozložení je `[{id, visible, order}]` v `UserPreferences.DashboardLayoutJson` (Master DB, `api/user-preferences`); `DashboardLayoutMerger.Merge` ho slije s registrem — neznámá id se ignorují, u duplicit vyhrává první, nové widgety se přidají na konec s výchozí viditelností. SysAdmin pohled (bez impersonace) se nemění.
+
+**Jak přidat widget:** (1) komponenta v `Components/Dashboard/` s parametrem `Dashboard` (`DashboardDto`) nebo vlastními daty, (2) řádek v `DashboardWidgetRegistry.All`, (3) `case` v `@switch` v `Home.razor`, (4) klíč `DashboardWidget_<Id>` do obou `.resx`, (5) pokud potřebuje data, rozšířit `DashboardDto` + `DashboardService` (jeden seskupený dotaz, žádné N+1, tenant-scoped) a test v `DashboardServiceTests`. Série `RevenueByMonth`, `IncomeVsExpenseByMonth`, `ReceivablesAging` jsou vždy 12 měsíců/4 koše (měsíce bez aktivity = 0), částky bez DPH v CZK, dobropisy záporně.
 
 ## 8. Tests
 

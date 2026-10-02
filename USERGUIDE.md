@@ -66,6 +66,31 @@ Pokud byl účet vytvořen, ale odeslání emailu selhalo, zůstane na stránce 
 
 Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
 
+### Úprava nástěnky
+
+Nástěnka se skládá z **widgetů** (dlaždic a grafů). Tlačítkem **Upravit nástěnku** (vpravo nad widgety)
+otevřete dialog, kde u každého widgetu přepínačem zobrazíte nebo skryjete a šipkami nahoru/dolů změníte pořadí.
+**Obnovit výchozí** vrátí původní rozložení. Rozložení se ukládá k vašemu uživatelskému účtu, takže vás
+následuje na každé zařízení. Nové widgety přidané v pozdější verzi se objeví automaticky na konci.
+
+Kromě dlaždic a stávajících grafů jsou k dispozici tři nové grafy (vždy za posledních 12 měsíců, v CZK):
+
+| Graf | Co ukazuje |
+|------|-----------|
+| **Tržby po měsících** | Součet vystavených faktur bez DPH; dobropisy se odečítají |
+| **Příjmy vs výdaje po měsících** | Vystavené faktury proti schváleným/zaplaceným přijatým fakturám (bez DPH) |
+| **Neuhrazené pohledávky podle stáří** | Nezaplacená část faktur podle dnů po splatnosti: 0-30 (včetně dosud nesplatných), 31-60, 61-90, 90+ |
+
+### Průvodce nastavením
+
+Při prvním přihlášení vás aplikace sama zavede do **Průvodce nastavením** (`/setup`), pokud firmě chybí údaje
+o vystavovateli (název, IČ, adresa, DIČ u plátců DPH) nebo bankovní účet. Průvodce má kroky
+**Firma** (s možností načíst údaje z ARES), **Banka**, **Fakturace** (splatnost a výchozí číselné řady),
+**Uživatelé** (volitelná pozvánka kolegy) a **Hotovo**. Každý krok se ukládá hned a stav kroků se počítá
+z aktuální připravenosti firmy, takže průvodce můžete kdykoli opustit a vrátit se.
+Tlačítkem **Přeskočit průvodce** ho přestanete nabízet automaticky; ručně ho spustíte tlačítkem
+**Spustit průvodce** na kartě **Dokončit nastavení**. Automatické přesměrování proběhne nejvýše jednou za relaci.
+
 ### Dokončit nastavení (checklist připravenosti)
 
 Pokud vaší firmě chybí něco, co musí být na daňovém dokladu, uvidíte nahoře na dashboardu
@@ -83,6 +108,8 @@ Položky jsou rozdělené do dvou skupin, každá má vlastní nadpis (a barvu k
 Skupina, ve které nic nechybí, se nezobrazí vůbec.
 
 Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
+
+Na kartě je i tlačítko **Spustit průvodce** (viz [Průvodce nastavením](#průvodce-nastavením)).
 
 **Odložení na později.** Tlačítko **Připomenout později** kartu sbalí na jediný řádek
 „Dokončit nastavení (počet)“. Kliknutím na něj se průvodce kdykoli znovu rozbalí — není to
