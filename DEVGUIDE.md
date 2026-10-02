@@ -1835,6 +1835,11 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   percentage (e.g. two overlapping validity periods during a rate change), the tool returns an
   error naming every candidate (`id`, name, validity) instead of guessing — the model resolves it
   by setting `vatRateId` on the item directly.
+- **Pravidlo: číselné meze v DTO jen číselnými přetíženími.** `[Range(0.00000001, 1000000)]`, ne
+  `[Range(typeof(decimal), "0.00000001", "1000000")]` — SDK kopíruje argumenty `Range` do JSON Schema
+  `minimum`/`maximum` doslova, takže řetězcové přetížení vyrobí `"minimum":"0.00000001"` (string).
+  Neplatné schéma jediného toolu stačí, aby ChatGPT odmítl celý `tools/list` („action discovery
+  failed"), Claude to toleruje. Hlídá `ToolDiscoveryTests.EveryToolSchema_UsesNumbersForNumericConstraints`.
 - **Pravidlo: vstup = typovaný parametr/DTO, nikdy JSON string (N2.5).** `ClientTools.CreateClient`/
   `UpdateClient`, `ReceivedInvoiceTools.CreateReceivedInvoice`, `TemplateTools.CreateInvoiceFromTemplate`
   brávaly `string …Json` a deserializovaly ho ručně — nahrazeno typovaným DTO parametrem
