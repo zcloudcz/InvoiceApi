@@ -23,6 +23,7 @@
 @using Fakvio.Domain.Enums
 @inject ReadinessApiService ReadinessService
 @inject ILocalStorageService LocalStorage
+@inject NavigationManager Navigation
 @inject IStringLocalizer<SharedResource> L
 
 @if (_groups.Count > 0)
@@ -44,6 +45,11 @@
                     <MudText Typo="Typo.h6">@L["SetupChecklist_Title"]</MudText>
                 </CardHeaderContent>
                 <CardHeaderActions>
+                    @* Opens the step-by-step setup wizard (/setup) — same readiness report, guided. *@
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Class="mr-2"
+                               OnClick="@(() => Navigation.NavigateTo("/setup"))">
+                        @L["SetupChecklist_StartWizard"]
+                    </MudButton>
                     <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="DeferAsync">
                         @L["SetupChecklist_Defer"]
                     </MudButton>

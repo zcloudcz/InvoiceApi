@@ -2018,4 +2018,44 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Toggle {0}</value></data>
+  <data name="DashboardWidget_Kpis" xml:space="preserve"><value>Overview tiles</value></data>
+  <data name="DashboardWidget_TaxInsurance" xml:space="preserve"><value>Insurance advances and tax</value></data>
+  <data name="DashboardWidget_RevenueByMonth" xml:space="preserve"><value>Revenue by month</value></data>
+  <data name="DashboardWidget_IncomeVsExpense" xml:space="preserve"><value>Income vs expenses by month</value></data>
+  <data name="DashboardWidget_ReceivablesAging" xml:space="preserve"><value>Unpaid receivables by age</value></data>
+  <data name="DashboardWidget_InvoicesByStatus" xml:space="preserve"><value>Invoices by status</value></data>
+  <data name="DashboardWidget_TopClients" xml:space="preserve"><value>Top clients by revenue</value></data>
+  <data name="DashboardWidget_Overdue" xml:space="preserve"><value>Overdue invoices</value></data>
+  <data name="DashboardWidget_RecentInvoices" xml:space="preserve"><value>Recent invoices</value></data>
+  <data name="DashboardWidget_Reminders" xml:space="preserve"><value>Reminders</value></data>
+  <data name="Dashboard_EditLayout" xml:space="preserve"><value>Customize dashboard</value></data>
+  <data name="Dashboard_ResetLayout" xml:space="preserve"><value>Reset to default</value></data>
+  <data name="Dashboard_MoveUp" xml:space="preserve"><value>Move up</value></data>
+  <data name="Dashboard_MoveDown" xml:space="preserve"><value>Move down</value></data>
+  <data name="Dashboard_RevenueByMonth" xml:space="preserve"><value>Revenue by month</value></data>
+  <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Income vs expenses by month</value></data>
+  <data name="Dashboard_Income" xml:space="preserve"><value>Income</value></data>
+  <data name="Dashboard_Expense" xml:space="preserve"><value>Expenses</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Last 12 months, excl. VAT, in CZK</value></data>
+  <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Unpaid receivables by age</value></data>
+  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Days past due, incl. VAT, in CZK</value></data>
+  <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Start setup wizard</value></data>
+  <data name="SetupWizard_Title" xml:space="preserve"><value>Setup wizard</value></data>
+  <data name="SetupWizard_Intro" xml:space="preserve"><value>A few steps and you can issue your first invoice. You can change every step later in settings.</value></data>
+  <data name="SetupWizard_Skip" xml:space="preserve"><value>Skip wizard</value></data>
+  <data name="SetupWizard_NoIssuer" xml:space="preserve"><value>Company not found. Finish the company registration first.</value></data>
+  <data name="SetupWizard_StepCompany" xml:space="preserve"><value>Company</value></data>
+  <data name="SetupWizard_StepBank" xml:space="preserve"><value>Bank</value></data>
+  <data name="SetupWizard_StepBilling" xml:space="preserve"><value>Invoicing</value></data>
+  <data name="SetupWizard_StepUsers" xml:space="preserve"><value>Users (optional)</value></data>
+  <data name="SetupWizard_StepDone" xml:space="preserve"><value>Done</value></data>
+  <data name="SetupWizard_LoadFromAres" xml:space="preserve"><value>Load from ARES</value></data>
+  <data name="SetupWizard_SaveAndContinue" xml:space="preserve"><value>Save and continue</value></data>
+  <data name="SetupWizard_Next" xml:space="preserve"><value>Continue</value></data>
+  <data name="SetupWizard_AddBankAccount" xml:space="preserve"><value>Add bank account</value></data>
+  <data name="SetupWizard_SequencesMissing" xml:space="preserve"><value>Document number sequences are missing. Default sequences for invoices and credit notes will be created on save.</value></data>
+  <data name="SetupWizard_UsersHint" xml:space="preserve"><value>Invite a colleague or accountant. You can skip this step.</value></data>
+  <data name="SetupWizard_AllDone" xml:space="preserve"><value>Everything is set up, you can start issuing invoices.</value></data>
+  <data name="SetupWizard_StillMissing" xml:space="preserve"><value>These items are still missing:</value></data>
+  <data name="SetupWizard_GoToDashboard" xml:space="preserve"><value>Go to dashboard</value></data>
 </root>

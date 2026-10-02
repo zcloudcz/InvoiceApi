@@ -1,0 +1,392 @@
+@page "/setup"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@*
+    SetupWizard.razor — guided first-run setup (Firma → Banka → Fakturace → Uživatelé → Hotovo).
+
+    Every step saves through the same APIs as the regular settings pages (ClientApiService,
+    NumberSequenceApiService, the bank account and invite dialogs), so the wizard is only a
+    friendlier route, never a second source of truth. "Done" is never stored: each step's state
+    comes from the live readiness report (SetupWizardPolicy.*StepDone), same as SetupChecklist.
+    Only the "do not offer me this again" decision is stored (UserPreferences.SetupWizardDismissedAt).
+*@
+@using Fakvio.Contracts.Dto.Client
+@using Fakvio.Contracts.Dto.NumberSequence
+@using Fakvio.Contracts.Dto.Readiness
+@using Fakvio.Contracts.Dto.User
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Models
+@inject ClientApiService ClientService
+@inject NumberSequenceApiService SequenceService
+@inject ReadinessApiService ReadinessService
+@inject UserPreferencesApiService PreferencesService
+@inject UserPreferencesState PreferencesState
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["SetupWizard_Title"] - Fakvio</PageTitle>
+
+<div class="d-flex flex-wrap align-center justify-space-between mb-2">
+    <MudText Typo="Typo.h4">@L["SetupWizard_Title"]</MudText>
+    <MudButton Variant="Variant.Text" OnClick="SkipAsync">@L["SetupWizard_Skip"]</MudButton>
+</div>
+<MudText Class="mb-4">@L["SetupWizard_Intro"]</MudText>
+
+@if (_loading || _issuer is null)
+{
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Warning">@L["SetupWizard_NoIssuer"]</MudAlert>
+    }
+}
+else
+{
+    @* Vertical stepper reads well on phones; steps are non-linear so any step can be revisited. *@
+    <MudStepper @bind-ActiveIndex="_step" NonLinear="true" Vertical="true" ShowResetButton="false" DisableAnimation="true">
+        <ActionContent />
+        <ChildContent>
+            @* ── Firma ───────────────────────────────────────────────────── *@
+            <MudStep Title="@L["SetupWizard_StepCompany"].Value" Completed="@SetupWizardPolicy.CompanyStepDone(_report)">
+                <MudStack Spacing="2">
+                    <MudButton Variant="Variant.Outlined" OnClick="LoadFromAresAsync" Disabled="@(_busy || string.IsNullOrWhiteSpace(_issuer.RegistrationNumber))"
+                               StartIcon="@Icons.Material.Filled.CloudDownload">@L["SetupWizard_LoadFromAres"]</MudButton>
+                    <MudTextField Variant="Variant.Outlined" @bind-Value="_companyName" Label="@L["Register_CompanyName"].Value" Required="true" />
+                    <MudTextField Variant="Variant.Outlined" Value="@_issuer.RegistrationNumber" Label="@L["Register_RegistrationNumber"].Value" ReadOnly="true" />
+                    <MudSwitch T="bool" @bind-Value="_isVatPayer" Label="@L["Client_IsVatPayer"].Value" Color="Color.Primary" />
+                    <MudTextField Variant="Variant.Outlined" @bind-Value="_taxNumber" Label="@L["Client_TaxNumber"].Value" />
+                    <MudTextField Variant="Variant.Outlined" @bind-Value="_street" Label="@L["Client_Street"].Value" />
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" sm="4"><MudTextField Variant="Variant.Outlined" @bind-Value="_postalCode" Label="@L["Client_PostalCode"].Value" /></MudItem>
+                        <MudItem xs="12" sm="8"><MudTextField Variant="Variant.Outlined" @bind-Value="_city" Label="@L["Client_City"].Value" /></MudItem>
+                    </MudGrid>
+                    <MudTextField Variant="Variant.Outlined" @bind-Value="_country" Label="@L["Client_Country"].Value" HelperText="@L["CompanyMembership_CountryCode"].Value" MaxLength="2" />
+                    <div class="d-flex gap-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCompanyAsync" Disabled="_busy">@L["SetupWizard_SaveAndContinue"]</MudButton>
+                    </div>
+                </MudStack>
+            </MudStep>
+
+            @* ── Banka ───────────────────────────────────────────────────── *@
+            <MudStep Title="@L["SetupWizard_StepBank"].Value" Completed="@SetupWizardPolicy.BankStepDone(_report)">
+                <MudStack Spacing="2">
+                    @foreach (var account in _issuer.BankAccount)
+                    {
+                        <MudText Typo="Typo.body2">@account.AccountNumber @(string.IsNullOrWhiteSpace(account.BankName) ? "" : $"({account.BankName})")</MudText>
+                    }
+                    <div class="d-flex flex-wrap gap-2">
+                        <MudButton Variant="Variant.Outlined" OnClick="AddBankAccountAsync" Disabled="_busy"
+                                   StartIcon="@Icons.Material.Filled.Add">@L["SetupWizard_AddBankAccount"]</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => _step = 2)">@L["SetupWizard_Next"]</MudButton>
+                    </div>
+                </MudStack>
+            </MudStep>
+
+            @* ── Fakturace ───────────────────────────────────────────────── *@
+            <MudStep Title="@L["SetupWizard_StepBilling"].Value" Completed="@SetupWizardPolicy.BillingStepDone(_report)">
+                <MudStack Spacing="2">
+                    <MudNumericField T="int" Variant="Variant.Outlined" @bind-Value="_dueDays" Min="0" Max="365" Label="@L["Billing_DueDays"].Value" />
+                    @if (!SetupWizardPolicy.BillingStepDone(_report))
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true">@L["SetupWizard_SequencesMissing"]</MudAlert>
+                    }
+                    <div class="d-flex flex-wrap gap-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveBillingAsync" Disabled="_busy">@L["SetupWizard_SaveAndContinue"]</MudButton>
+                    </div>
+                </MudStack>
+            </MudStep>
+
+            @* ── Uživatelé (optional) ────────────────────────────────────── *@
+            <MudStep Title="@L["SetupWizard_StepUsers"].Value" Optional="true">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.body2">@L["SetupWizard_UsersHint"]</MudText>
+                    <div class="d-flex flex-wrap gap-2">
+                        <MudButton Variant="Variant.Outlined" OnClick="InviteAsync" StartIcon="@Icons.Material.Filled.PersonAdd">@L["CompanyMembership_Invite"]</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => _step = 4)">@L["SetupWizard_Next"]</MudButton>
+                    </div>
+                </MudStack>
+            </MudStep>
+
+            @* ── Hotovo ──────────────────────────────────────────────────── *@
+            <MudStep Title="@L["SetupWizard_StepDone"].Value">
+                <MudStack Spacing="2">
+                    @if (_report.IsReady)
+                    {
+                        <MudAlert Severity="Severity.Success">@L["SetupWizard_AllDone"]</MudAlert>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Warning">@L["SetupWizard_StillMissing"]</MudAlert>
+                        @foreach (var issue in _report.Issues.Where(i => i.Severity == EReadinessSeverity.Blocking))
+                        {
+                            <MudText Typo="Typo.body2">• @ReadinessIssueText.Describe(L, issue)</MudText>
+                        }
+                    }
+                    <div>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="FinishAsync">@L["SetupWizard_GoToDashboard"]</MudButton>
+                    </div>
+                </MudStack>
+            </MudStep>
+        </ChildContent>
+    </MudStepper>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private int _step;
+    private ClientDto? _issuer;
+    private ReadinessReportDto _report = new();
+
+    // Firma form state
+    private string _companyName = string.Empty;
+    private string? _taxNumber;
+    private bool _isVatPayer;
+    private string? _street, _city, _postalCode, _country = "CZ";
+
+    // Fakturace form state
+    private int _dueDays = 14;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await ReloadAsync();
+            // Start on the first unfinished step so a returning user does not redo finished ones.
+            _step = !SetupWizardPolicy.CompanyStepDone(_report) ? 0
+                : !SetupWizardPolicy.BankStepDone(_report) ? 1
+                : !SetupWizardPolicy.BillingStepDone(_report) ? 2 : 3;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>Re-reads issuer + readiness; step done-state is always derived from these.</summary>
+    private async Task ReloadAsync()
+    {
+        _issuer = await ClientService.GetIssuerAsync();
+        _report = await ReadinessService.GetReportAsync();
+        if (_issuer is null) return;
+
+        _companyName = _issuer.CompanyName;
+        _taxNumber = _issuer.TaxNumber;
+        _isVatPayer = _issuer.IsVatPayer;
+        var address = PrimaryAddress(_issuer.Address);
+        _street = address?.Street;
+        _city = address?.City;
+        _postalCode = address?.PostalCode;
+        _country = string.IsNullOrWhiteSpace(address?.Country) ? "CZ" : address!.Country;
+        _dueDays = _issuer.BillingSettings?.DueDays is > 0 ? _issuer.BillingSettings.DueDays : 14;
+    }
+
+    private static AddressDto? PrimaryAddress(List<AddressDto> addresses) =>
+        addresses.FirstOrDefault(a => a.IsPrimary) ?? addresses.FirstOrDefault();
+
+    /// <summary>Prefills the Firma form from ARES by IČO (nothing is saved until the user continues).</summary>
+    private async Task LoadFromAresAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var ares = await ClientService.FetchFromAresAsync(_issuer!.RegistrationNumber!);
+            if (ares is null)
+            {
+                Snackbar.Add(L["Ares_NotFound"].Value, Severity.Warning);
+                return;
+            }
+
+            _companyName = ares.CompanyName;
+            _taxNumber = ares.TaxNumber;
+            _isVatPayer = ares.IsVatPayer;
+            var address = ares.Address.FirstOrDefault(a => a.IsPrimary) ?? ares.Address.FirstOrDefault();
+            if (address is not null)
+            {
+                _street = address.Street;
+                _city = address.City;
+                _postalCode = address.PostalCode;
+                _country = address.Country;
+            }
+            Snackbar.Add(L["Ares_DataLoaded"].Value, Severity.Success);
+        });
+    }
+
+    private async Task SaveCompanyAsync()
+    {
+        await RunAsync(async () =>
+        {
+            // The API replaces the whole address list, so keep the non-primary addresses.
+            var primary = PrimaryAddress(_issuer!.Address);
+            var addresses = _issuer.Address
+                .Where(a => a != primary)
+                .Select(ToUpdate)
+                .Append(new UpdateAddressDto
+                {
+                    AddressType = primary?.AddressType ?? EAddressType.Primary,
+                    Street = _street,
+                    City = _city,
+                    PostalCode = _postalCode,
+                    Country = _country,
+                    AddressLine2 = primary?.AddressLine2,
+                    IsPrimary = true
+                }).ToList();
+
+            await ClientService.UpdateAsync(_issuer.Id, new UpdateClientDto
+            {
+                CompanyName = _companyName,
+                TaxNumber = _taxNumber,
+                IsVatPayer = _isVatPayer,
+                Address = addresses
+            });
+            await ReloadAsync();
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            _step = 1;
+        });
+    }
+
+    private static UpdateAddressDto ToUpdate(AddressDto a) => new()
+    {
+        AddressType = a.AddressType, Street = a.Street, City = a.City, PostalCode = a.PostalCode,
+        Country = a.Country, AddressLine2 = a.AddressLine2, IsPrimary = a.IsPrimary
+    };
+
+    /// <summary>Opens the shared bank account dialog and saves the account list (API replaces all).</summary>
+    private async Task AddBankAccountAsync()
+    {
+        var parameters = new DialogParameters<BankAccountDialog>
+        {
+            { x => x.BankAccount, new BankAccountDto { CurrencyCode = "CZK", IsDefault = _issuer!.BankAccount.Count == 0 } },
+            { x => x.DialogTitle, L["SetupWizard_AddBankAccount"].Value }
+        };
+        var dialog = await DialogService.ShowAsync<BankAccountDialog>(L["SetupWizard_AddBankAccount"].Value, parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not BankAccountDto added)
+            return;
+
+        await RunAsync(async () =>
+        {
+            var accounts = _issuer!.BankAccount.Append(added).Select(b => new UpdateBankAccountDto
+            {
+                Label = b.Label, BankName = b.BankName, AccountNumber = b.AccountNumber, IBAN = b.IBAN,
+                SWIFT = b.SWIFT, CurrencyCode = b.CurrencyCode, IsDefault = b.IsDefault
+            }).ToList();
+            await ClientService.UpdateAsync(_issuer.Id, new UpdateClientDto { BankAccount = accounts });
+            await ReloadAsync();
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+        });
+    }
+
+    /// <summary>
+    /// Saves due days and creates the default number sequences readiness says are missing
+    /// (one per document type, first active format) — then moves on.
+    /// </summary>
+    private async Task SaveBillingAsync()
+    {
+        await RunAsync(async () =>
+        {
+            await ClientService.UpdateAsync(_issuer!.Id, new UpdateClientDto
+            {
+                BillingSettings = new UpdateBillingSettingsDto { DueDays = _dueDays }
+            });
+
+            var missing = _report.Issues
+                .Where(i => i.Code == ReadinessCodes.NumberSequenceMissing)
+                .SelectMany(i => i.MissingFields)
+                .Select(f => Enum.TryParse<EDocumentType>(f, out var t) ? t : (EDocumentType?)null)
+                .Where(t => t.HasValue).Select(t => t!.Value).Distinct().ToList();
+
+            if (missing.Count > 0)
+            {
+                var formats = await SequenceService.GetAllFormatsAsync();
+                var format = formats.FirstOrDefault(f => f.FormatPattern == "yyyyNNN") ?? formats.FirstOrDefault();
+                if (format is null)
+                {
+                    Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+                    return;
+                }
+
+                foreach (var type in missing)
+                {
+                    await SequenceService.CreateSequenceAsync(new CreateNumberSequenceDto
+                    {
+                        Name = type.ToString(),
+                        DocumentType = type,
+                        StartingNumber = 1,
+                        IsDefault = true,
+                        NumberSequenceFormatId = format.Id
+                    });
+                }
+            }
+
+            await ReloadAsync();
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            _step = 3;
+        });
+    }
+
+    private async Task InviteAsync() =>
+        await DialogService.ShowAsync<InviteCompanyMemberDialog>(L["CompanyMembership_Invite"].Value,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+    private async Task SkipAsync()
+    {
+        await SavePreferencesAsync(dismiss: true);
+        Navigation.NavigateTo("/");
+    }
+
+    private async Task FinishAsync()
+    {
+        // A finished tenant no longer triggers the redirect (readiness is clean); an unfinished
+        // one that presses "go to dashboard" is treated as a dismissal so it is not bounced back.
+        if (!_report.IsReady)
+            await SavePreferencesAsync(dismiss: true);
+        Navigation.NavigateTo("/");
+    }
+
+    private async Task SavePreferencesAsync(bool dismiss)
+    {
+        try
+        {
+            var current = await PreferencesState.EnsureLoadedAsync();
+            var saved = await PreferencesService.UpdateAsync(new UserPreferencesDto
+            {
+                DefaultGridPageSize = current.DefaultGridPageSize,
+                DashboardLayout = current.DashboardLayout,
+                SetupWizardDismissedAt = dismiss ? DateTime.UtcNow : current.SetupWizardDismissedAt
+            });
+            if (saved is not null)
+                PreferencesState.Set(saved);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>Runs one save action with a busy flag and uniform error reporting.</summary>
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

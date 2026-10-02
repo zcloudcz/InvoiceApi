@@ -1,0 +1,60 @@
+@using Fakvio.Contracts.Dto.Dashboard
+@using Fakvio.Contracts.Dto.Invoice
+@using Fakvio.Domain.Enums
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">@L["Dashboard_RecentInvoices"]</MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/invoices">@L["Btn_ViewAll"]</MudButton>
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (Dashboard.RecentInvoices.Any())
+                {
+                    @* Row click navigates to the invoice detail page *@
+                    <MudTable T="InvoiceDto" Items="@Dashboard.RecentInvoices" Dense="true" Hover="true" Striped="true"
+                              OnRowClick="@(args => { if (args.Item != null) Navigation.NavigateTo($"/invoices/{args.Item.Id}"); })"
+                              RowClass="cursor-pointer">
+                        <HeaderContent>
+                            <MudTh>@L["Table_Number"]</MudTh>
+                            <MudTh>@L["Invoice_Client"]</MudTh>
+                            <MudTh>@L["Table_IssueDate"]</MudTh>
+                            <MudTh>@L["Table_DueDate"]</MudTh>
+                            <MudTh>@L["Label_Total"]</MudTh>
+                            <MudTh>@L["Label_Status"]</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="@L["Table_Number"].Value">
+                                <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
+                                    @context.DocumentNumber
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="@L["Invoice_Client"].Value">@context.ClientName</MudTd>
+                            <MudTd DataLabel="@L["Table_IssueDate"].Value">@context.IssueDate?.ToShortDateString()</MudTd>
+                            <MudTd DataLabel="@L["Table_DueDate"].Value">@context.DueDate?.ToShortDateString()</MudTd>
+                            <MudTd DataLabel="@L["Label_Total"].Value">
+                                <strong>@context.TotalWithVat.ToString("N2") @context.CurrencyCode</strong>
+                            </MudTd>
+                            <MudTd DataLabel="@L["Label_Status"].Value">
+                                <MudChip T="string" Size="Size.Small" Color="@InvoiceStatusDisplay.Color(context.Status)">
+                                    @InvoiceStatusDisplay.Text(L, context.Status)
+                                </MudChip>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary">@L["Dashboard_NoInvoicesYet"] <MudLink Href="/invoices" Color="Color.Primary">@L["Dashboard_CreateFirst"]</MudLink></MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+
+@code {
+    [Parameter, EditorRequired] public DashboardDto Dashboard { get; set; } = new();
+}

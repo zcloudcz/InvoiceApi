@@ -7,6 +7,9 @@
 @using Fakvio.Domain.Enums
 @using Fakvio.Contracts.Dto.Tax
 @using Fakvio.Contracts.Dto.Reminder
+@using Fakvio.Contracts.Dto.User
+@using Fakvio.UI.Shared.Models
+@using Fakvio.UI.Shared.Components.Dashboard
 @using Fakvio.UI.Shared.Services
 @inject DashboardApiService DashboardService
 @inject TaxApiService TaxService
@@ -16,6 +19,10 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject ReadinessApiService ReadinessService
+@inject UserPreferencesApiService PreferencesService
+@inject UserPreferencesState PreferencesState
 @* Localization service for multi-language support *@
 @inject IStringLocalizer<SharedResource> L
 
@@ -167,453 +174,61 @@ else if (_isSysAdmin && !_isImpersonating)
 }
 else
 {
-    @* ════════════════════════════════════════════════════════════════════
-       Regular User Dashboard — shown for User/Admin roles,
-       or for SysAdmin when impersonating a company.
-       Shows tenant-specific invoice/client statistics.
-       ════════════════════════════════════════════════════════════════════ *@
-
-    @* Setup checklist (issue #210) — the first thing a freshly registered tenant sees, so
-       unfinished company settings surface here rather than at the first refused invoice.
-       It reads the whole-tenant readiness report and replaces both the previous ReadinessBanner
-       on this page (same report, same items, but this one can be deferred) and the hard-coded
-       "Quick Start" timeline that used to sit at the bottom. Renders nothing when ready. *@
+    @* Setup checklist (issue #210) — always on top, not a customizable widget: it is guidance,
+       not data, and disappears by itself when the tenant is ready. *@
     <SetupChecklist />
 
-    @* Top statistics cards - 3 KPIs (clickable → navigate to corresponding list page).
-       The first tile forecasts cashflow for the current calendar month: how many issued
-       (Completed) invoices come due before month-end, plus totals without / with VAT. *@
+    @* Modular dashboard: every block below is a widget from DashboardWidgetRegistry. The saved
+       layout (visibility + order) is merged with the registry in _layout, so a widget added in a
+       later release shows up for everybody without a migration. *@
+    <div class="d-flex justify-end mb-2">
+        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Tune" OnClick="EditLayoutAsync">
+            @L["Dashboard_EditLayout"]
+        </MudButton>
+    </div>
+
     <MudGrid>
-        <MudItem xs="12" sm="6" md="4">
-            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/invoices"))">
-                <MudCardContent>
-                    <div class="d-flex justify-space-between align-center mb-4">
-                        <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Color="Color.Primary" Size="Size.Large" />
-                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">@L["Dashboard_ThisMonth"]</MudChip>
-                    </div>
-                    @* Count is the main number; the two totals underneath answer "how much cashflow do I expect?" *@
-                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.InvoicesDueThisMonthCount</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@L["Dashboard_InvoicesDueThisMonth"]</MudText>
-                    <div class="d-flex justify-space-between">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Invoice_TotalBeforeVat"]</MudText>
-                        <MudText Typo="Typo.caption"><strong>@_dashboard.InvoicesDueThisMonthTotalWithoutVat.ToString("N2") CZK</strong></MudText>
-                    </div>
-                    <div class="d-flex justify-space-between">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Invoice_TotalWithVat"]</MudText>
-                        <MudText Typo="Typo.caption"><strong>@_dashboard.InvoicesDueThisMonthTotalWithVat.ToString("N2") CZK</strong></MudText>
-                    </div>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-
-        <MudItem xs="12" sm="6" md="4">
-            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/clients"))">
-                <MudCardContent>
-                    <div class="d-flex justify-space-between align-center mb-4">
-                        <MudIcon Icon="@Icons.Material.Filled.People" Color="Color.Success" Size="Size.Large" />
-                        <MudChip T="string" Color="Color.Success" Size="Size.Small">@L["Label_Active"]</MudChip>
-                    </div>
-                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.TotalClients</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Clients"]</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-
-        <MudItem xs="12" sm="6" md="4">
-            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/invoices"))">
-                <MudCardContent>
-                    <div class="d-flex justify-space-between align-center mb-4">
-                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Warning" Size="Size.Large" />
-                        <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L["Dashboard_Pending"]</MudChip>
-                    </div>
-                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.UnpaidAmount.ToString("N2") CZK</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_UnpaidAmount"]</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-
-        @* KPI tile — count of unmatched / needs-review bank transactions.
-           Hidden when zero AND payment matching is not yet activated, so the
-           tile doesn't add noise for accounts that don't use the feature. *@
-        @if (_unmatchedPaymentsCount > 0)
+        @foreach (var item in _layout.Where(l => l.Visible))
         {
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/payments"))">
-                    <MudCardContent>
-                        <div class="d-flex justify-space-between align-center mb-4">
-                            <MudIcon Icon="@Icons.Material.Filled.Payments" Color="Color.Error" Size="Size.Large" />
-                            <MudChip T="string" Color="Color.Error" Size="Size.Small">@_unmatchedPaymentsCount</MudChip>
-                        </div>
-                        <MudText Typo="Typo.h5" GutterBottom="true">@_unmatchedPaymentsCount</MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Kpi_UnmatchedPayments"]</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        }
-
-        @* ── Alerts tile — "Upozornění" (issue #32) ───────────────────────────
-           Always visible once loaded; shows count + warning colour when > 0.
-           Hidden when count is zero (no noise for healthy tenants). *@
-        @if (_alertDashboard != null && _alertDashboard.TotalOpenCount > 0)
-        {
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="2" Class="rounded-lg cursor-pointer"
-                         @onclick="@(() => _showAlertPanel = !_showAlertPanel)"
-                         Style="border-left: 4px solid var(--mud-palette-warning);">
-                    <MudCardContent>
-                        <div class="d-flex justify-space-between align-center mb-4">
-                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Large" />
-                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">@_alertDashboard.TotalOpenCount</MudChip>
-                        </div>
-                        <MudText Typo="Typo.h5" GutterBottom="true">@_alertDashboard.TotalOpenCount</MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Alerts_OpenCount"]</MudText>
-                    </MudCardContent>
-                </MudCard>
+            var def = DashboardWidgetRegistry.All.First(w => w.Id == item.Id);
+            <MudItem xs="12" md="@def.Width" @key="item.Id">
+                @switch (item.Id)
+                {
+                    case "kpis":
+                        <KpiWidget Dashboard="_dashboard" UnmatchedPaymentsCount="_unmatchedPaymentsCount" AlertDashboard="_alertDashboard" />
+                        break;
+                    case "taxInsurance":
+                        <InsuranceWidget Insurance="_insuranceAdvance" />
+                        break;
+                    case "revenueByMonth":
+                        <RevenueByMonthWidget Dashboard="_dashboard" />
+                        break;
+                    case "incomeVsExpense":
+                        <IncomeVsExpenseWidget Dashboard="_dashboard" />
+                        break;
+                    case "receivablesAging":
+                        <ReceivablesAgingWidget Dashboard="_dashboard" />
+                        break;
+                    case "invoicesByStatus":
+                        <InvoicesByStatusWidget Dashboard="_dashboard" />
+                        break;
+                    case "topClients":
+                        <TopClientsWidget Dashboard="_dashboard" />
+                        break;
+                    case "overdue":
+                        <OverdueWidget Dashboard="_dashboard" />
+                        break;
+                    case "recentInvoices":
+                        <RecentInvoicesWidget Dashboard="_dashboard" />
+                        break;
+                    case "reminders":
+                        <RemindersWidget Reminders="_reminderDashboard" />
+                        break;
+                }
             </MudItem>
         }
     </MudGrid>
-
-    @* ─── Alerts panel — "Upozornění" (issue #32) ────────────────────────────
-       Shows when the tile is clicked (toggle) OR when alerts exist.
-       Lists up to 5 recent open alerts; each row links to the entity detail. *@
-    @if (_showAlertPanel && _alertDashboard != null)
-    {
-        <MudCard Elevation="2" Class="mt-4 mb-2">
-            <MudCardHeader>
-                <CardHeaderContent>
-                    <MudText Typo="Typo.h6">
-                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Class="mr-1" Size="Size.Small" />
-                        @L["Dashboard_Alerts"]
-                    </MudText>
-                </CardHeaderContent>
-                <CardHeaderActions>
-                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
-                                   OnClick="@(() => _showAlertPanel = false)"
-                                   Title="@L["Btn_Close"].Value" />
-                </CardHeaderActions>
-            </MudCardHeader>
-            <MudCardContent>
-                @if (_alertDashboard.RecentAlerts.Count == 0)
-                {
-                    <MudText Color="Color.Secondary">@L["Dashboard_Alerts_Empty"]</MudText>
-                }
-                else
-                {
-                    @* One row per alert: icon + message + link to entity detail *@
-                    <MudList T="string" Dense="true">
-                        @foreach (var alert in _alertDashboard.RecentAlerts)
-                        {
-                            <MudListItem>
-                                <div class="d-flex align-center gap-2">
-                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
-                                    <MudText Typo="Typo.body2" Class="flex-grow-1">@alert.Message</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                        @alert.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")
-                                    </MudText>
-                                    @* Navigate to the related entity detail page *@
-                                    @if (alert.RelatedEntityType == "Invoice")
-                                    {
-                                        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
-                                                       Size="Size.Small"
-                                                       OnClick="@(() => Navigation.NavigateTo($"/invoices/{alert.RelatedEntityId}"))"
-                                                       Title="@L["Btn_View"].Value" />
-                                    }
-                                </div>
-                            </MudListItem>
-                        }
-                    </MudList>
-                }
-            </MudCardContent>
-        </MudCard>
-    }
-
-    @* ─── Tax Estimate & Insurance Advance Cards ─────────────────────────────
-       Two cards side-by-side: (1) next payment date with days-until countdown,
-       (2) monthly insurance advance breakdown (social + health).
-       The previous standalone "Celkem měsíčně" tile was removed — its value
-       (MonthlyTotal = MonthlySocial + MonthlyHealth) was a duplicate of what
-       the breakdown card already shows. The AccountBalance icon is kept on
-       the breakdown card as visual cue. *@
-    @if (_insuranceAdvance != null)
-    {
-        <MudGrid Class="mt-6">
-            <MudItem xs="12" sm="6" md="6">
-                <MudCard Elevation="2" Class="rounded-lg">
-                    <MudCardContent>
-                        <div class="d-flex justify-space-between align-center mb-2">
-                            <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Large"
-                                     Color="@(_insuranceAdvance.DaysUntilPayment <= 5 ? Color.Error : Color.Info)" />
-                            @if (_insuranceAdvance.DaysUntilPayment <= 0)
-                            {
-                                <MudChip T="string" Color="Color.Error" Size="Size.Small">@L["Dashboard_InsuranceOverdue"]</MudChip>
-                            }
-                            else
-                            {
-                                <MudChip T="string" Color="@(_insuranceAdvance.DaysUntilPayment <= 5 ? Color.Warning : Color.Info)" Size="Size.Small">
-                                    @string.Format(L["Dashboard_InsuranceDueIn"].Value, _insuranceAdvance.DaysUntilPayment)
-                                </MudChip>
-                            }
-                        </div>
-                        <MudText Typo="Typo.h6" GutterBottom="true">
-                            @_insuranceAdvance.NextPaymentDate.ToShortDateString()
-                        </MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_InsuranceNextDate"]</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" sm="6" md="6">
-                @* Navigates to tax estimation page — previously on the removed "Celkem měsíčně" tile. *@
-                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/tax-estimation"))">
-                    <MudCardContent>
-                        @* Icon inherited from the removed duplicate tile to preserve visual identity. *@
-                        <div class="d-flex justify-space-between align-center mb-2">
-                            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Tertiary" Size="Size.Large" />
-                            <MudChip T="string" Color="Color.Tertiary" Size="Size.Small">@DateTime.Today.Year</MudChip>
-                        </div>
-                        <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Dashboard_InsuranceAdvance"]</MudText>
-                        <div class="d-flex justify-space-between mb-1">
-                            <MudText>@L["Dashboard_InsuranceSocial"]</MudText>
-                            <MudText><strong>@_insuranceAdvance.MonthlySocial.ToString("N0") @_insuranceAdvance.CurrencyCode</strong></MudText>
-                        </div>
-                        <div class="d-flex justify-space-between">
-                            <MudText>@L["Dashboard_InsuranceHealth"]</MudText>
-                            <MudText><strong>@_insuranceAdvance.MonthlyHealth.ToString("N0") @_insuranceAdvance.CurrencyCode</strong></MudText>
-                        </div>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
-    }
-
-    @* ─── Donut Charts Row — side-by-side: Invoices by Status + Top Clients by Revenue ─── *@
-    @if (_dashboard.InvoiceCountByStatus.Count > 0 || _dashboard.InvoiceTotalByClient.Count > 0)
-    {
-        <MudGrid Class="mt-6">
-            @* Left chart: Invoices by Status (donut) *@
-            @if (_dashboard.InvoiceCountByStatus.Count > 0)
-            {
-                <MudItem xs="12" md="6">
-                    <MudCard Elevation="2" Class="rounded-lg">
-                        <MudCardHeader>
-                            <CardHeaderContent>
-                                <MudText Typo="Typo.h6">@L["Dashboard_InvoicesByStatus"]</MudText>
-                            </CardHeaderContent>
-                        </MudCardHeader>
-                        <MudCardContent Style="min-height: 300px;">
-                            <MudChart ChartType="ChartType.Donut"
-                                      InputData="@GetStatusChartData()"
-                                      InputLabels="@GetStatusChartLabels()"
-                                      Width="300px" Height="300px"
-                                      ChartOptions="@_chartOptions" />
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            }
-
-            @* Right chart: Top Clients by Revenue (donut) *@
-            @if (_dashboard.InvoiceTotalByClient.Count > 0)
-            {
-                <MudItem xs="12" md="6">
-                    <MudCard Elevation="2" Class="rounded-lg">
-                        <MudCardHeader>
-                            <CardHeaderContent>
-                                <MudText Typo="Typo.h6">@L["Dashboard_TopClientsByRevenue"]</MudText>
-                            </CardHeaderContent>
-                        </MudCardHeader>
-                        <MudCardContent Style="min-height: 300px;">
-                            <MudChart ChartType="ChartType.Donut"
-                                      InputData="@GetClientRevenueChartData()"
-                                      InputLabels="@GetClientRevenueChartLabels()"
-                                      Width="300px" Height="300px"
-                                      ChartOptions="@_chartOptions" />
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            }
-        </MudGrid>
-    }
-
-    @* Overdue invoices alert - only shown when there are overdue invoices *@
-    @if (_dashboard.OverdueInvoicesCount > 0)
-    {
-        <MudAlert Severity="Severity.Warning" Class="mt-6 mb-2" Icon="@Icons.Material.Filled.Warning">
-            <strong>@_dashboard.OverdueInvoicesCount</strong> @L["Dashboard_OverdueAlert"]
-        </MudAlert>
-
-        <MudCard Elevation="2" Class="mb-6">
-            <MudCardHeader>
-                <CardHeaderContent>
-                    <MudText Typo="Typo.h6">@L["Dashboard_OverdueInvoices"]</MudText>
-                </CardHeaderContent>
-                <CardHeaderActions>
-                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/invoices">@L["Btn_ViewAll"]</MudButton>
-                </CardHeaderActions>
-            </MudCardHeader>
-            <MudCardContent>
-                @* Row click navigates to the invoice detail page *@
-                <MudTable T="InvoiceDto" Items="@_dashboard.OverdueInvoices" Dense="true" Hover="true" Striped="true"
-                          OnRowClick="@(args => { if (args.Item != null) Navigation.NavigateTo($"/invoices/{args.Item.Id}"); })"
-                          RowClass="cursor-pointer">
-                    <HeaderContent>
-                        <MudTh>@L["Table_Number"]</MudTh>
-                        <MudTh>@L["Invoice_Client"]</MudTh>
-                        <MudTh>@L["Table_DueDate"]</MudTh>
-                        <MudTh>@L["Table_DaysOverdue"]</MudTh>
-                        <MudTh>@L["Label_Total"]</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd DataLabel="@L["Table_Number"].Value">
-                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@context.DocumentNumber</MudChip>
-                        </MudTd>
-                        <MudTd DataLabel="@L["Invoice_Client"].Value">@context.ClientName</MudTd>
-                        <MudTd DataLabel="@L["Table_DueDate"].Value">@context.DueDate?.ToShortDateString()</MudTd>
-                        <MudTd DataLabel="@L["Table_DaysOverdue"].Value">
-                            <MudText Color="Color.Error">@(context.DueDate.HasValue ? (DateTime.Now - context.DueDate.Value).Days : 0) @L["Dashboard_Days"]</MudText>
-                        </MudTd>
-                        <MudTd DataLabel="@L["Label_Total"].Value">
-                            <strong>@context.TotalWithVat.ToString("N2") @context.CurrencyCode</strong>
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
-            </MudCardContent>
-        </MudCard>
-    }
-
-    @* Recent invoices table - last 5 invoices for quick overview *@
-    <MudGrid Class="mt-6">
-        <MudItem xs="12">
-            <MudCard Elevation="2">
-                <MudCardHeader>
-                    <CardHeaderContent>
-                        <MudText Typo="Typo.h6">@L["Dashboard_RecentInvoices"]</MudText>
-                    </CardHeaderContent>
-                    <CardHeaderActions>
-                        <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/invoices">@L["Btn_ViewAll"]</MudButton>
-                    </CardHeaderActions>
-                </MudCardHeader>
-                <MudCardContent>
-                    @if (_dashboard.RecentInvoices.Any())
-                    {
-                        @* Row click navigates to the invoice detail page *@
-                        <MudTable T="InvoiceDto" Items="@_dashboard.RecentInvoices" Dense="true" Hover="true" Striped="true"
-                                  OnRowClick="@(args => { if (args.Item != null) Navigation.NavigateTo($"/invoices/{args.Item.Id}"); })"
-                                  RowClass="cursor-pointer">
-                            <HeaderContent>
-                                <MudTh>@L["Table_Number"]</MudTh>
-                                <MudTh>@L["Invoice_Client"]</MudTh>
-                                <MudTh>@L["Table_IssueDate"]</MudTh>
-                                <MudTh>@L["Table_DueDate"]</MudTh>
-                                <MudTh>@L["Label_Total"]</MudTh>
-                                <MudTh>@L["Label_Status"]</MudTh>
-                            </HeaderContent>
-                            <RowTemplate>
-                                <MudTd DataLabel="@L["Table_Number"].Value">
-                                    <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
-                                        @context.DocumentNumber
-                                    </MudChip>
-                                </MudTd>
-                                <MudTd DataLabel="@L["Invoice_Client"].Value">@context.ClientName</MudTd>
-                                <MudTd DataLabel="@L["Table_IssueDate"].Value">@context.IssueDate?.ToShortDateString()</MudTd>
-                                <MudTd DataLabel="@L["Table_DueDate"].Value">@context.DueDate?.ToShortDateString()</MudTd>
-                                <MudTd DataLabel="@L["Label_Total"].Value">
-                                    <strong>@context.TotalWithVat.ToString("N2") @context.CurrencyCode</strong>
-                                </MudTd>
-                                <MudTd DataLabel="@L["Label_Status"].Value">
-                                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
-                                        @GetStatusText(context.Status)
-                                    </MudChip>
-                                </MudTd>
-                            </RowTemplate>
-                        </MudTable>
-                    }
-                    else
-                    {
-                        <MudText Color="Color.Secondary">@L["Dashboard_NoInvoicesYet"] <MudLink Href="/invoices" Color="Color.Primary">@L["Dashboard_CreateFirst"]</MudLink></MudText>
-                    }
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    </MudGrid>
-
-    @* ── Reminder (Dunning) Dashboard Widget ─────────────────────────────── *@
-    @if (_reminderDashboard != null && (_reminderDashboard.OverdueInvoiceCount > 0 || _reminderDashboard.SentCount > 0 || _reminderDashboard.DraftCount > 0))
-    {
-        <MudGrid Class="mt-6">
-            <MudItem xs="12">
-                <MudCard Elevation="2">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">
-                                <MudIcon Icon="@Icons.Material.Filled.NotificationsActive" Class="mr-1" Size="Size.Small" />
-                                @L["Dashboard_Reminders"]
-                            </MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
-                                       StartIcon="@Icons.Material.Filled.ArrowForward"
-                                       OnClick="@(() => Navigation.NavigateTo("/reminders"))">
-                                @L["Common_ViewAll"]
-                            </MudButton>
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        @* KPI chips — quick overview of reminder status *@
-                        <div class="d-flex flex-wrap gap-3 mb-4">
-                            <MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Schedule">
-                                @_reminderDashboard.DraftCount @L["Dashboard_DraftReminders"]
-                            </MudChip>
-                            <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Send">
-                                @_reminderDashboard.SentCount @L["Dashboard_SentReminders"]
-                            </MudChip>
-                            @if (_reminderDashboard.FailedCount > 0)
-                            {
-                                <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Error">
-                                    @_reminderDashboard.FailedCount @L["Dashboard_FailedReminders"]
-                                </MudChip>
-                            }
-                            <MudChip T="string" Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.TrendingUp">
-                                @_reminderDashboard.RemindersLast30Days @L["Dashboard_RemindersLast30Days"]
-                            </MudChip>
-                            <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Warning">
-                                @_reminderDashboard.OverdueInvoiceCount @L["Dashboard_OverdueInvoices"]
-                                (@_reminderDashboard.TotalOverdueAmount.ToString("N2") CZK)
-                            </MudChip>
-                        </div>
-
-                        @* Recent reminders table *@
-                        @if (_reminderDashboard.RecentReminders.Any())
-                        {
-                            <MudTable T="ReminderDto" Items="@_reminderDashboard.RecentReminders"
-                                      Dense="true" Hover="true" Striped="true"
-                                      OnRowClick="@(args => { if (args.Item != null) Navigation.NavigateTo("/reminders"); })"
-                                      RowClass="cursor-pointer">
-                                <HeaderContent>
-                                    <MudTh>@L["Reminder_Date"]</MudTh>
-                                    <MudTh>@L["Reminder_Invoice"]</MudTh>
-                                    <MudTh>@L["Reminder_Client"]</MudTh>
-                                    <MudTh>@L["Reminder_Level"]</MudTh>
-                                    <MudTh>@L["Reminder_Total"]</MudTh>
-                                    <MudTh>@L["Reminder_Status"]</MudTh>
-                                </HeaderContent>
-                                <RowTemplate>
-                                    <MudTd>@context.ReminderDate.ToShortDateString()</MudTd>
-                                    <MudTd>@context.InvoiceNumber</MudTd>
-                                    <MudTd>@context.ClientName</MudTd>
-                                    <MudTd>@context.Level</MudTd>
-                                    <MudTd><strong>@context.TotalCzk.ToString("N2") CZK</strong></MudTd>
-                                    <MudTd>
-                                        <MudChip T="string" Size="Size.Small" Color="@GetReminderStatusColor(context.Status)">
-                                            @L[$"EReminderStatus_{context.Status}"]
-                                        </MudChip>
-                                    </MudTd>
-                                </RowTemplate>
-                            </MudTable>
-                        }
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
-    }
 }
 
 @code {
@@ -632,14 +247,8 @@ else
     // Alert dashboard data — null while loading or when the API returns an error.
     private AlertDashboardDto? _alertDashboard;
 
-    // Controls whether the alerts detail panel below the tile is expanded.
-    private bool _showAlertPanel;
-
-    // Chart options — shared config for all donut charts on the dashboard
-    private ChartOptions _chartOptions = new()
-    {
-        ChartPalette = new[] { "#1976D2", "#388E3C", "#F57C00", "#D32F2F", "#7B1FA2", "#0097A7", "#FBC02D", "#5D4037", "#455A64", "#C2185B" }
-    };
+    // Widget layout for this user: registry merged with saved preferences (see DashboardLayoutMerger).
+    private List<DashboardWidgetLayoutItemDto> _layout = DashboardLayoutMerger.Merge(DashboardWidgetRegistry.All, null);
 
     /// <summary>
     /// Loads dashboard data when the page initializes.
@@ -671,6 +280,18 @@ else
             }
             else
             {
+                // Preferences are cached per session; a failure falls back to defaults (never breaks the page).
+                var preferences = await PreferencesState.EnsureLoadedAsync();
+                _layout = DashboardLayoutMerger.Merge(DashboardWidgetRegistry.All, preferences.DashboardLayout);
+
+                // First-run onboarding: offer the setup wizard once per session (not for an
+                // impersonating SysAdmin — the preferences belong to the real user).
+                if (!_isSysAdmin && await ShouldOfferSetupWizardAsync(preferences))
+                {
+                    Navigation.NavigateTo("/setup");
+                    return;
+                }
+
                 // Regular user or impersonating SysAdmin → load tenant dashboard
                 _dashboard = await DashboardService.GetDashboardAsync();
 
@@ -725,74 +346,55 @@ else
         }
     }
 
-    // ─── Chart Data Helpers ──────────────────────────────────────────────────
-
     /// <summary>
-    /// Converts the InvoiceCountByStatus dictionary to double[] for MudChart InputData.
-    /// MudChart requires double[] for chart values.
+    /// True once per session when the issuer/bank setup is incomplete and the user has not
+    /// dismissed the wizard. The readiness call is decoration — any failure means "no redirect".
     /// </summary>
-    private double[] GetStatusChartData() =>
-        _dashboard.InvoiceCountByStatus.Values.Select(v => (double)v).ToArray();
-
-    /// <summary>
-    /// Converts the InvoiceCountByStatus dictionary to localized string[] for MudChart InputLabels.
-    /// Uses the same localized status names as the rest of the UI for consistency.
-    /// </summary>
-    private string[] GetStatusChartLabels() =>
-        _dashboard.InvoiceCountByStatus.Select(kvp =>
-        {
-            // Try to parse the status string back to enum for localization
-            if (Enum.TryParse<EInvoiceStatus>(kvp.Key, out var status))
-            {
-                return $"{GetStatusText(status)} ({kvp.Value})";
-            }
-            return $"{kvp.Key} ({kvp.Value})";
-        }).ToArray();
-
-    /// <summary>
-    /// Converts the InvoiceTotalByClient dictionary to double[] for MudChart InputData.
-    /// </summary>
-    private double[] GetClientRevenueChartData() =>
-        _dashboard.InvoiceTotalByClient.Values.Select(v => (double)v).ToArray();
-
-    /// <summary>
-    /// Converts the InvoiceTotalByClient dictionary to string[] for MudChart InputLabels.
-    /// Shows client name with amount for clarity in the legend.
-    /// </summary>
-    private string[] GetClientRevenueChartLabels() =>
-        _dashboard.InvoiceTotalByClient.Select(kvp =>
-            $"{kvp.Key} ({kvp.Value:N0})").ToArray();
-
-    /// <summary>
-    /// Returns the MudBlazor color for each invoice status.
-    /// </summary>
-    private Color GetStatusColor(EInvoiceStatus status)
+    private async Task<bool> ShouldOfferSetupWizardAsync(UserPreferencesDto preferences)
     {
-        return status switch
+        if (PreferencesState.SetupWizardRedirectHandled)
+            return false;
+        PreferencesState.SetupWizardRedirectHandled = true;
+
+        try
         {
-            EInvoiceStatus.Draft => Color.Default,
-            EInvoiceStatus.Completed => Color.Info,
-            EInvoiceStatus.Paid => Color.Success,
-            EInvoiceStatus.Creditnoted => Color.Warning,
-            EInvoiceStatus.Deleted => Color.Dark,
-            _ => Color.Default
-        };
+            var report = await ReadinessService.GetReportAsync();
+            return SetupWizardPolicy.ShouldRedirect(report, preferences);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
-    /// <summary>
-    /// Returns the localized display text for each invoice status.
-    /// </summary>
-    private string GetStatusText(EInvoiceStatus status)
+    /// <summary>Opens the "Upravit nástěnku" dialog and persists the chosen layout.</summary>
+    private async Task EditLayoutAsync()
     {
-        return status switch
+        var parameters = new DialogParameters<EditDashboardLayoutDialog> { { x => x.Layout, _layout } };
+        var dialog = await DialogService.ShowAsync<EditDashboardLayoutDialog>(
+            L["Dashboard_EditLayout"].Value, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not List<DashboardWidgetLayoutItemDto> chosen)
+            return;
+
+        try
         {
-            EInvoiceStatus.Draft => L["Invoice_StatusDraft"].Value,
-            EInvoiceStatus.Completed => L["Invoice_StatusIssued"].Value,
-            EInvoiceStatus.Paid => L["Invoice_StatusPaid"].Value,
-            EInvoiceStatus.Creditnoted => L["Invoice_StatusCancelled"].Value,
-            EInvoiceStatus.Deleted => L["Invoice_StatusCancelled"].Value,
-            _ => status.ToString()
-        };
+            var current = await PreferencesState.EnsureLoadedAsync();
+            var saved = await PreferencesService.UpdateAsync(new UserPreferencesDto
+            {
+                DefaultGridPageSize = current.DefaultGridPageSize,
+                SetupWizardDismissedAt = current.SetupWizardDismissedAt,
+                DashboardLayout = chosen
+            });
+            if (saved is not null)
+                PreferencesState.Set(saved);
+            _layout = DashboardLayoutMerger.Merge(DashboardWidgetRegistry.All, chosen);
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
     }
 
     /// <summary>
@@ -804,19 +406,6 @@ else
         "Error" => Color.Error,
         "Warning" => Color.Warning,
         "Information" => Color.Info,
-        _ => Color.Default
-    };
-
-    /// <summary>
-    /// Returns MudBlazor color for reminder status chips.
-    /// Draft=Default, Sent=Success, Failed=Error, Cancelled=Warning.
-    /// </summary>
-    private static Color GetReminderStatusColor(EReminderStatus status) => status switch
-    {
-        EReminderStatus.Draft => Color.Default,
-        EReminderStatus.Sent => Color.Success,
-        EReminderStatus.Failed => Color.Error,
-        EReminderStatus.Cancelled => Color.Warning,
         _ => Color.Default
     };
 

@@ -1,0 +1,99 @@
+@using Fakvio.Contracts.Dto.Dashboard
+@using Fakvio.Contracts.Dto.Invoice
+@using Fakvio.Domain.Enums
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+@using Fakvio.Contracts.Dto.Reminder
+
+@if (Reminders != null && (Reminders.OverdueInvoiceCount > 0 || Reminders.SentCount > 0 || Reminders.DraftCount > 0))
+{
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.NotificationsActive" Class="mr-1" Size="Size.Small" />
+                            @L["Dashboard_Reminders"]
+                        </MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.ArrowForward"
+                                   OnClick="@(() => Navigation.NavigateTo("/reminders"))">
+                            @L["Common_ViewAll"]
+                        </MudButton>
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    @* KPI chips — quick overview of reminder status *@
+                    <div class="d-flex flex-wrap gap-3 mb-4">
+                        <MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Schedule">
+                            @Reminders.DraftCount @L["Dashboard_DraftReminders"]
+                        </MudChip>
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Send">
+                            @Reminders.SentCount @L["Dashboard_SentReminders"]
+                        </MudChip>
+                        @if (Reminders.FailedCount > 0)
+                        {
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Error">
+                                @Reminders.FailedCount @L["Dashboard_FailedReminders"]
+                            </MudChip>
+                        }
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.TrendingUp">
+                            @Reminders.RemindersLast30Days @L["Dashboard_RemindersLast30Days"]
+                        </MudChip>
+                        <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Warning">
+                            @Reminders.OverdueInvoiceCount @L["Dashboard_OverdueInvoices"]
+                            (@Reminders.TotalOverdueAmount.ToString("N2") CZK)
+                        </MudChip>
+                    </div>
+
+                    @* Recent reminders table *@
+                    @if (Reminders.RecentReminders.Any())
+                    {
+                        <MudTable T="ReminderDto" Items="@Reminders.RecentReminders"
+                                  Dense="true" Hover="true" Striped="true"
+                                  OnRowClick="@(args => { if (args.Item != null) Navigation.NavigateTo("/reminders"); })"
+                                  RowClass="cursor-pointer">
+                            <HeaderContent>
+                                <MudTh>@L["Reminder_Date"]</MudTh>
+                                <MudTh>@L["Reminder_Invoice"]</MudTh>
+                                <MudTh>@L["Reminder_Client"]</MudTh>
+                                <MudTh>@L["Reminder_Level"]</MudTh>
+                                <MudTh>@L["Reminder_Total"]</MudTh>
+                                <MudTh>@L["Reminder_Status"]</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.ReminderDate.ToShortDateString()</MudTd>
+                                <MudTd>@context.InvoiceNumber</MudTd>
+                                <MudTd>@context.ClientName</MudTd>
+                                <MudTd>@context.Level</MudTd>
+                                <MudTd><strong>@context.TotalCzk.ToString("N2") CZK</strong></MudTd>
+                                <MudTd>
+                                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">
+                                        @L[$"EReminderStatus_{context.Status}"]
+                                    </MudChip>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    /// <summary>Null when the reminders feature is not configured — nothing is rendered then.</summary>
+    [Parameter] public ReminderDashboardDto? Reminders { get; set; }
+
+    private static Color StatusColor(EReminderStatus status) => status switch
+    {
+        EReminderStatus.Draft => Color.Default,
+        EReminderStatus.Sent => Color.Success,
+        EReminderStatus.Failed => Color.Error,
+        EReminderStatus.Cancelled => Color.Warning,
+        _ => Color.Default
+    };
+}
