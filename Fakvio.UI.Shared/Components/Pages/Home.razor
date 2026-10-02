@@ -286,7 +286,7 @@ else
 
                 // First-run onboarding: offer the setup wizard once per session (not for an
                 // impersonating SysAdmin — the preferences belong to the real user).
-                if (!_isSysAdmin && await ShouldOfferSetupWizardAsync(preferences))
+                if (!_isSysAdmin && await ShouldOfferSetupWizardAsync(preferences, isAdmin: await IsAdminAsync()))
                 {
                     Navigation.NavigateTo("/setup");
                     return;
@@ -350,22 +350,25 @@ else
     /// True once per session when the issuer/bank setup is incomplete and the user has not
     /// dismissed the wizard. The readiness call is decoration — any failure means "no redirect".
     /// </summary>
-    private async Task<bool> ShouldOfferSetupWizardAsync(UserPreferencesDto preferences)
+    private async Task<bool> ShouldOfferSetupWizardAsync(UserPreferencesDto preferences, bool isAdmin)
     {
-        if (PreferencesState.SetupWizardRedirectHandled)
+        if (!isAdmin || PreferencesState.SetupWizardRedirectHandled)
             return false;
         PreferencesState.SetupWizardRedirectHandled = true;
 
         try
         {
             var report = await ReadinessService.GetReportAsync();
-            return SetupWizardPolicy.ShouldRedirect(report, preferences);
+            return SetupWizardPolicy.ShouldRedirect(report, preferences, isAdmin);
         }
         catch
         {
             return false;
         }
     }
+
+    private async Task<bool> IsAdminAsync() =>
+        (await AuthStateProvider.GetAuthenticationStateAsync()).User.IsInRole("Admin");
 
     /// <summary>Opens the "Upravit nástěnku" dialog and persists the chosen layout.</summary>
     private async Task EditLayoutAsync()

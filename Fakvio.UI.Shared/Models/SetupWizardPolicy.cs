@@ -14,8 +14,12 @@ public static class SetupWizardPolicy
     /// missing AND the user has not dismissed the wizard. Number sequence, EPO etc. are
     /// intentionally not a reason to interrupt the user — the dashboard checklist covers them.
     /// </summary>
-    public static bool ShouldRedirect(ReadinessReportDto report, UserPreferencesDto preferences)
+    public static bool ShouldRedirect(ReadinessReportDto report, UserPreferencesDto preferences, bool isAdmin)
     {
+        // Creating number sequences and bank accounts is Admin-only, so a plain User could not finish the wizard.
+        if (!isAdmin)
+            return false;
+
         if (preferences.SetupWizardDismissedAt is not null)
             return false;
 

@@ -46,10 +46,13 @@
                 </CardHeaderContent>
                 <CardHeaderActions>
                     @* Opens the step-by-step setup wizard (/setup) — same readiness report, guided. *@
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Class="mr-2"
-                               OnClick="@(() => Navigation.NavigateTo("/setup"))">
-                        @L["SetupChecklist_StartWizard"]
-                    </MudButton>
+                    @if (_isAdmin)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Class="mr-2"
+                                   OnClick="@(() => Navigation.NavigateTo("/setup"))">
+                            @L["SetupChecklist_StartWizard"]
+                        </MudButton>
+                    }
                     <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="DeferAsync">
                         @L["SetupChecklist_Defer"]
                     </MudButton>
@@ -100,6 +103,11 @@
 }
 
 @code {
+    /// <summary>The wizard saves Admin-only data (bank accounts, number sequences), so only admins get its button.</summary>
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _isAdmin;
+
     /// <summary>
     /// localStorage key holding the "remind me later" flag. Only the deferral is stored here —
     /// storing completion would be the one piece of state able to contradict the live report.
@@ -127,6 +135,12 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _isAdmin = user.IsInRole("Admin") || user.IsInRole("SysAdmin");
+        }
+
         // Read the flag before the report so the card cannot flash open for a user who parked it.
         try
         {

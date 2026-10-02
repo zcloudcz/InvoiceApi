@@ -107,7 +107,23 @@ public class DashboardLayoutAndSetupWizardTests
     {
         var report = Report((ReadinessCodes.IssuerBankAccountMissing, EReadinessSeverity.Blocking));
 
-        SetupWizardPolicy.ShouldRedirect(report, new UserPreferencesDto()).ShouldBeTrue();
+        SetupWizardPolicy.ShouldRedirect(report, new UserPreferencesDto(), isAdmin: true).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ShouldRedirect_PlainUser_ReturnsFalse()
+    {
+        var report = Report((ReadinessCodes.IssuerBankAccountMissing, EReadinessSeverity.Blocking));
+
+        SetupWizardPolicy.ShouldRedirect(report, new UserPreferencesDto(), isAdmin: false).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Merge_NullIdItem_IsSkipped()
+    {
+        var saved = new List<DashboardWidgetLayoutItemDto> { new() { Id = null!, Visible = true, Order = 0 } };
+
+        DashboardLayoutMerger.Merge(Registry, saved).Count.ShouldBe(3);
     }
 
     [Fact]
@@ -116,7 +132,7 @@ public class DashboardLayoutAndSetupWizardTests
         var report = Report((ReadinessCodes.IssuerMissing, EReadinessSeverity.Blocking));
         var prefs = new UserPreferencesDto { SetupWizardDismissedAt = DateTime.UtcNow };
 
-        SetupWizardPolicy.ShouldRedirect(report, prefs).ShouldBeFalse();
+        SetupWizardPolicy.ShouldRedirect(report, prefs, isAdmin: true).ShouldBeFalse();
     }
 
     [Fact]
@@ -126,13 +142,13 @@ public class DashboardLayoutAndSetupWizardTests
             (ReadinessCodes.NumberSequenceMissing, EReadinessSeverity.Blocking),
             (ReadinessCodes.EpoHeaderIncomplete, EReadinessSeverity.Warning));
 
-        SetupWizardPolicy.ShouldRedirect(report, new UserPreferencesDto()).ShouldBeFalse();
+        SetupWizardPolicy.ShouldRedirect(report, new UserPreferencesDto(), isAdmin: true).ShouldBeFalse();
     }
 
     [Fact]
     public void ShouldRedirect_ReadyTenant_ReturnsFalse()
     {
-        SetupWizardPolicy.ShouldRedirect(new ReadinessReportDto(), new UserPreferencesDto()).ShouldBeFalse();
+        SetupWizardPolicy.ShouldRedirect(new ReadinessReportDto(), new UserPreferencesDto(), isAdmin: true).ShouldBeFalse();
     }
 
     [Fact]

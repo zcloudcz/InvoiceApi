@@ -212,6 +212,7 @@ public class DashboardService : IDashboardService
         var raw = await invoiceQuery
             .Where(i => (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                         && (i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.Paid || i.Status == EInvoiceStatus.PartiallyPaid)
+                        && i.Currency.Code == "CZK"
                         && i.IssueDate >= from && i.IssueDate < toExclusive)
             .GroupBy(i => new { i.IssueDate!.Value.Year, i.IssueDate.Value.Month })
             .Select(g => new
@@ -247,6 +248,7 @@ public class DashboardService : IDashboardService
         var income = await invoiceQuery
             .Where(i => (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                         && (i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.Paid || i.Status == EInvoiceStatus.PartiallyPaid)
+                        && i.Currency.Code == "CZK"
                         && i.IssueDate >= from && i.IssueDate < toExclusive)
             .GroupBy(i => new { i.IssueDate!.Value.Year, i.IssueDate.Value.Month })
             .Select(g => new
@@ -265,6 +267,7 @@ public class DashboardService : IDashboardService
         var expense = await _context.ReceivedInvoice
             .AsNoTracking()
             .Where(r => (r.Status == EReceivedInvoiceStatus.Approved || r.Status == EReceivedInvoiceStatus.Paid)
+                        && r.Currency.Code == "CZK"
                         && r.IssueDate >= from && r.IssueDate < toExclusive)
             .GroupBy(r => new { r.IssueDate!.Value.Year, r.IssueDate.Value.Month })
             .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.TotalBeforeVat) })
@@ -298,7 +301,8 @@ public class DashboardService : IDashboardService
     {
         var unpaid = await invoiceQuery
             .Where(i => i.DocumentType == EDocumentType.Invoice
-                        && (i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.PartiallyPaid))
+                        && (i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.PartiallyPaid)
+                        && i.Currency.Code == "CZK")
             .Select(i => new { i.DueDate, i.TotalWithVat, i.PaidAmount })
             .ToListAsync(ct);
 

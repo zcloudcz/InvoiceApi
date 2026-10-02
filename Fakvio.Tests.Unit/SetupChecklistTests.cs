@@ -187,8 +187,8 @@ public class SetupChecklistTests : BunitContext, IAsyncLifetime
         var cut = Render<SetupChecklist>();
         cut.WaitForAssertion(() => cut.FindAll("div.mud-card").Count.ShouldBe(1));
 
-        // The open card carries two buttons — "start wizard" first, "remind me later" second.
-        cut.FindAll("button")[1].Click();
+        // The open card carries one button for non-admins — "remind me later".
+        cut.Find("button").Click();
 
         cut.WaitForAssertion(() =>
         {

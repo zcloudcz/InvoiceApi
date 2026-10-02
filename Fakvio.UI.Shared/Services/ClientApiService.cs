@@ -103,6 +103,15 @@ public class ClientApiService : ApiClientBase
     }
 
     /// <summary>
+    /// Adds one bank account (POST /api/client/{id}/bank-account). Unlike the replace-all client PUT
+    /// this keeps existing account Ids, so accounts referenced by transactions or mailboxes survive.
+    /// </summary>
+    public async Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto account)
+    {
+        return await PostAsync<CreateBankAccountDto, ClientDto>($"/api/client/{clientId}/bank-account", account);
+    }
+
+    /// <summary>
     /// Updates an existing client.
     /// </summary>
     public async Task<ClientDto?> UpdateAsync(long id, UpdateClientDto updateDto)

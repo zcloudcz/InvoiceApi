@@ -1,5 +1,5 @@
 @page "/setup"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,SysAdmin")]
 @*
     SetupWizard.razor — guided first-run setup (Firma → Banka → Fakturace → Uživatelé → Hotovo).
 
@@ -274,12 +274,12 @@ else
 
         await RunAsync(async () =>
         {
-            var accounts = _issuer!.BankAccount.Append(added).Select(b => new UpdateBankAccountDto
+            // Single-account POST: keeps existing account Ids (the client PUT replaces all of them).
+            await ClientService.AddBankAccountAsync(_issuer!.Id, new CreateBankAccountDto
             {
-                Label = b.Label, BankName = b.BankName, AccountNumber = b.AccountNumber, IBAN = b.IBAN,
-                SWIFT = b.SWIFT, CurrencyCode = b.CurrencyCode, IsDefault = b.IsDefault
-            }).ToList();
-            await ClientService.UpdateAsync(_issuer.Id, new UpdateClientDto { BankAccount = accounts });
+                Label = added.Label, BankName = added.BankName, AccountNumber = added.AccountNumber, IBAN = added.IBAN,
+                SWIFT = added.SWIFT, CurrencyCode = added.CurrencyCode, IsDefault = added.IsDefault
+            });
             await ReloadAsync();
             Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
         });

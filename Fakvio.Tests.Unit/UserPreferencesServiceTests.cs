@@ -88,6 +88,18 @@ public class UserPreferencesServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateAsync_DashboardLayout_DropsNullIdsAndCapsLength()
+    {
+        var layout = Enumerable.Range(0, 80).Select(i => new Fakvio.Contracts.Dto.Dashboard.DashboardWidgetLayoutItemDto { Id = "w" + i, Order = i }).ToList();
+        layout.Insert(0, new Fakvio.Contracts.Dto.Dashboard.DashboardWidgetLayoutItemDto { Id = null!, Order = -1 });
+
+        var saved = await _service.UpdateAsync(1, new UserPreferencesDto { DashboardLayout = layout });
+
+        saved.DashboardLayout!.Count.ShouldBe(50);
+        saved.DashboardLayout.ShouldAllBe(i => i.Id != null);
+    }
+
+    [Fact]
     public async Task UpdateAsync_SecondSave_UpdatesExistingRow()
     {
         await _service.UpdateAsync(1, new UserPreferencesDto { DefaultGridPageSize = 25 });

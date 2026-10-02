@@ -2036,7 +2036,7 @@
   <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Income vs expenses by month</value></data>
   <data name="Dashboard_Income" xml:space="preserve"><value>Income</value></data>
   <data name="Dashboard_Expense" xml:space="preserve"><value>Expenses</value></data>
-  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Last 12 months, excl. VAT, in CZK</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Last 12 months, excl. VAT, CZK invoices only</value></data>
   <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Unpaid receivables by age</value></data>
   <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Days past due, incl. VAT, in CZK</value></data>
   <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Start setup wizard</value></data>

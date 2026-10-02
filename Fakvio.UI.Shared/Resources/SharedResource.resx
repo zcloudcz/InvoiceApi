@@ -2036,7 +2036,7 @@
   <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Příjmy vs výdaje po měsících</value></data>
   <data name="Dashboard_Income" xml:space="preserve"><value>Příjmy</value></data>
   <data name="Dashboard_Expense" xml:space="preserve"><value>Výdaje</value></data>
-  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Posledních 12 měsíců, bez DPH, v CZK</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Posledních 12 měsíců, bez DPH, jen faktury v CZK</value></data>
   <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Neuhrazené pohledávky podle stáří</value></data>
   <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Dny po splatnosti, s DPH, v CZK</value></data>
   <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Spustit průvodce</value></data>

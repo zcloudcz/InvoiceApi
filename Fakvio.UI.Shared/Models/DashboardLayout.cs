@@ -52,7 +52,7 @@ public static class DashboardLayoutMerger
         var known = registry.Select((w, index) => (w.Id, index)).ToDictionary(x => x.Id, x => x.index);
 
         var fromSaved = (saved ?? [])
-            .Where(s => known.ContainsKey(s.Id))
+            .Where(s => s?.Id is not null && known.ContainsKey(s.Id))
             .GroupBy(s => s.Id)
             .Select(g => g.First())
             .OrderBy(s => s.Order)
