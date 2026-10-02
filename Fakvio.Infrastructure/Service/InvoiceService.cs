@@ -1,4 +1,5 @@
 ﻿using Fakvio.Contracts.Common;
+using Fakvio.Application.Common.Helpers;
 using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
@@ -1989,7 +1990,7 @@ public class InvoiceService : IInvoiceService
     // ─── Copy ─────────────────────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public async Task<InvoiceDto> CopyInvoiceAsync(long sourceId, CancellationToken cancellationToken = default)
+    public async Task<InvoiceDto> CopyInvoiceAsync(long sourceId, bool shiftPeriods = true, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Copying invoice {SourceId}", sourceId);
 
@@ -2023,6 +2024,13 @@ public class InvoiceService : IInvoiceService
         //   - VariableSymbol = null, VariableSymbolIsManualOverride = false → backend derives from new DocumentNumber
         //   - OriginalInvoiceId = null (copy is a standalone document, NOT a credit note)
         //   - NumberSequenceId = null → use default pipeline for the document type
+        // Billing-period shift: months between the source issue month and the new (today) issue month.
+        // 0 when copied within the same month, or when the caller opted out (shiftPeriods = false).
+        var issueDate = DateTime.UtcNow;
+        var shiftMonths = shiftPeriods && source.IssueDate is { } srcIssue
+            ? (issueDate.Year - srcIssue.Year) * 12 + issueDate.Month - srcIssue.Month
+            : 0;
+
         var createDto = new CreateInvoiceDto
         {
             DocumentType = source.DocumentType,
@@ -2031,7 +2039,7 @@ public class InvoiceService : IInvoiceService
             IssuerId = source.IssuerId,
             // IssueDate = today so the copy appears as a fresh document.
             // DueDate left null so CalculateDueDate re-derives it from client BillingSettings.
-            IssueDate = DateTime.UtcNow,
+            IssueDate = issueDate,
             DueDate = null,
             // TaxableSupplyDate left null so it defaults to the new IssueDate (Czech accounting: DUZP = IssueDate).
             TaxableSupplyDate = null,
@@ -2049,7 +2057,7 @@ public class InvoiceService : IInvoiceService
             SWIFT = source.SWIFT,
             PaymentMethod = source.PaymentMethod,
             CurrencyId = source.CurrencyId,
-            Notes = source.Notes,
+            Notes = BillingPeriodShifter.Shift(source.Notes, shiftMonths),
             // NumberSequenceId = null → inherit default sequence for the document type.
             // The source may have been generated from a custom sequence, but the copy
             // should use the standard pipeline unless the user explicitly changes it later.
@@ -2061,7 +2069,7 @@ public class InvoiceService : IInvoiceService
                 {
                     OrderIndex = item.OrderIndex,
                     IsTextRow = item.IsTextRow,
-                    Description = item.Description,
+                    Description = BillingPeriodShifter.Shift(item.Description, shiftMonths) ?? item.Description,
                     Quantity = item.Quantity,
                     Unit = item.Unit,
                     UnitPrice = item.UnitPrice,
@@ -2070,7 +2078,7 @@ public class InvoiceService : IInvoiceService
                     VatRegime = item.VatRegime,
                     ReverseChargeCodeId = item.ReverseChargeCodeId,
                     ProductCode = item.ProductCode,
-                    Notes = item.Notes
+                    Notes = BillingPeriodShifter.Shift(item.Notes, shiftMonths)
                 })
                 .ToList()
         };

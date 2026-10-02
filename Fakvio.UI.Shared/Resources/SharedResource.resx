@@ -473,6 +473,8 @@
   <data name="Invoice_Copy" xml:space="preserve"><value>Zkopírovat fakturu</value></data>
   <data name="Invoice_CopySuccess" xml:space="preserve"><value>Faktura zkopírována jako #{0}</value></data>
   <data name="Invoice_CopyError" xml:space="preserve"><value>Kopírování faktury se nepodařilo</value></data>
+  <data name="Invoice_CopyShiftPeriods" xml:space="preserve"><value>Posunout období v textech</value></data>
+  <data name="Invoice_CopyShiftPeriodsHint" xml:space="preserve"><value>Měsíce a roky v popisech položek a poznámce (např. „3/2026“, „březen 2026“) se posunou podle rozdílu oproti původní faktuře.</value></data>
   <data name="FileName_Invoice" xml:space="preserve"><value>Faktura</value></data>
   <data name="FileName_CreditNote" xml:space="preserve"><value>Dobropis</value></data>
   <data name="FileName_Invoices" xml:space="preserve"><value>Faktury</value></data>
@@ -1826,6 +1828,8 @@
   <data name="Recurring_MaxOccurrences" xml:space="preserve"><value>Počet opakování</value></data>
   <data name="Recurring_AutoSend" xml:space="preserve"><value>Rovnou vystavit a odeslat e-mailem</value></data>
   <data name="Recurring_AutoSendHelp" xml:space="preserve"><value>Faktura se vždy vystaví; tento přepínač navíc pošle e-mail klientovi.</value></data>
+  <data name="Recurring_ShiftPeriods" xml:space="preserve"><value>Posouvat období v textech</value></data>
+  <data name="Recurring_ShiftPeriodsHelp" xml:space="preserve"><value>Měsíce a čtvrtletí v textu šablony (např. „3/2026“) se u každé další faktury posunou. Text v šabloně musí odpovídat období první vygenerované faktury.</value></data>
   <data name="Recurring_NextRun" xml:space="preserve"><value>Další běh</value></data>
   <data name="Recurring_LastRun" xml:space="preserve"><value>Poslední běh</value></data>
   <data name="Recurring_OccurrenceCount" xml:space="preserve"><value>Počet vystavení</value></data>

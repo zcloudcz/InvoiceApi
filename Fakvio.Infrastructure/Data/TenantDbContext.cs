@@ -1035,6 +1035,8 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.OccurrenceCount).HasDefaultValue(0);
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.AutoSend).HasDefaultValue(false);
+            entity.Property(e => e.ShiftPeriodsInText).HasDefaultValue(false);
+            entity.Property(e => e.ShiftBaselineOccurrence).HasDefaultValue(0);
 
             // LastError: free-form text, capped at 2000 chars (matches Reminder.ErrorMessage).
             entity.Property(e => e.LastError).HasMaxLength(2000);

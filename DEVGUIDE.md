@@ -2255,7 +2255,7 @@ migrace `20260501102443_Add_RecurringInvoiceSchedule_v51`) — FK na `InvoiceTem
 a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quarterly/Yearly),
 `IntervalCount`, `DayOfMonth` (1-28 — záměrně capped, žádné "poslední den v únoru" klamání) nebo
 `DayOfWeek` (jen pro Weekly), `NextRunAt`/`LastRunAt`/`EndDate`/`MaxOccurrences`/`OccurrenceCount`,
-`IsActive`, `AutoSend`, `LastError` (max 2000 znaků), `RowVersion` (xmin).
+`IsActive`, `AutoSend`, `ShiftPeriodsInText`, `ShiftBaselineOccurrence`, `LastError` (max 2000 znaků), `RowVersion` (xmin).
 
 **Vrstvy:**
 - `IRecurringInvoiceService` (`Fakvio.Application/Service`) — CRUD nad plány + `RunCycleAsync`
@@ -2789,6 +2789,7 @@ Example — "Create from template" moved to the three-dot overflow menu in `Invo
 
 - Copy / duplicate actions: wrap `MudIconButton` in `MudTooltip` for discoverability.
 - After a mutating action (copy, restore, delete): call `await SearchInvoices()` to refresh the grid — no navigation.
+- Copy opens `CopyInvoiceDialog` (checkbox "shift periods", default on) → `POST /api/invoice/{id}/copy?shiftPeriods=`. Text shifting lives in `Fakvio.Application/Common/Helpers/BillingPeriodShifter` (pure; `3/2026`, `2026-03`, `Q1/2026`, Czech/English month names). Copy shifts by issue-month difference; recurring passes the worker-internal (`[JsonIgnore]`) `CreateInvoiceFromTemplateDto.ShiftMonths` = `RecurrenceCalculator.PeriodShiftMonths(freq, interval, OccurrenceCount - ShiftBaselineOccurrence)` only when `RecurringInvoiceSchedule.ShiftPeriodsInText` (create default true via UI/API/MCP `shiftPeriodsInText`; pre-existing rows false; switching ON sets baseline = OccurrenceCount; template text = period of the first invoice after baseline). Locale forms: Czech nominative/genitive/locative. Single-pass regex so ranges shift once each. Item `Description`/`Notes` and invoice `Notes` are shifted; templates have no `{month}` placeholders.
 
 ### 7.10 FakvioGrid — POVINNÝ grid pattern
 

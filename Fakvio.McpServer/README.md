@@ -41,7 +41,7 @@ kompatibilní — žádné volání ze 2.0.0 se neláme.
 **2.2.0** doplňuje 7 nástrojů nad opakovanými fakturami (`Tools/RecurringTools.cs`, DEVGUIDE
 §4.13) — `list_recurring_schedules`, `get_recurring_schedule`, `create_recurring_schedule`,
 `update_recurring_schedule`, `pause_recurring_schedule`, `resume_recurring_schedule`,
-`delete_recurring_schedule`. Zpětně kompatibilní, žádné volání ze 2.1.0 se neláme.
+`delete_recurring_schedule`. Zpětně kompatibilní, žádné volání ze 2.1.0 se neláme. `create_/update_recurring_schedule` mají volitelné `shiftPeriodsInText` (posun období v textech šablony).
 
 **Zálohy (proforma):** `create_invoice` přijímá `documentType: "Proforma"`. Po zaplacení proformy (`mark_invoice_paid`
 nebo bankovní platba) se u plátců DPH automaticky vystaví DPP; `issue_tax_receipt(proformaId)` je ruční/idempotentní cesta,
