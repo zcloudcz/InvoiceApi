@@ -54,7 +54,7 @@ export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace
 proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
 žádné volání ze 2.2.0 se neláme.
 
-**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 72 nástrojů. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
+**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 73 nástrojů. Přibyl `set_invoice_bank_account`, volitelný `bankAccountId` u `create_invoice` a `create_invoice_from_template` a `isDefault` u `add_bank_account`. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
 
 ---
 
@@ -277,11 +277,11 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (72)
+## Dostupné nástroje (73)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 14 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, DeleteInvoice, IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
+| `Tools/InvoiceTools.cs` | 15 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, DeleteInvoice, IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance, SetInvoiceBankAccount |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
@@ -340,6 +340,7 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   `"CreditNote"`) a camelCase fungují díky `McpToolJsonOptions.Default`, které
   `McpServerRegistration` předává do `WithToolsFromAssembly()` — bez něj by SDK čekalo
   PascalCase a číselné enumy. Hlídá `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter`.
+- **Bankovní účet na faktuře.** Když `create_invoice` / `create_invoice_from_template` nedostane `bankAccountId` ani bankovní údaje a platba je převodem (nebo nezadaná), server sám doplní účet vystavitele: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první. Seznam účtů s `id` vrací `get_issuer`; `set_invoice_bank_account(invoiceId, bankAccountId)` účet změní na konceptu/vystavené faktuře; `add_bank_account` umí `isDefault`.
 - **`CreateInvoice` (N2.4) překládá modelem srozumitelný vstup na interní ID** — bez volání API:
   `currency` (ISO kód, výchozí `CZK`) se přeloží přes `list_currencies` na `currencyId`; `issuerId`
   vynechaný znamená vlastní firmu (`get_issuer`); položce bez `vatRateId` doplní ID podle

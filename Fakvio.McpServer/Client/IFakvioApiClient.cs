@@ -69,6 +69,12 @@ public interface IFakvioApiClient
     /// <summary>POST /api/invoice — create a new invoice or credit note.</summary>
     Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto dto, CancellationToken ct = default);
 
+    /// <summary>
+    /// PUT /api/invoice/{id} — update an existing invoice (Draft or Completed only). Used by
+    /// set_invoice_bank_account to change the bank account via UpdateInvoiceDto.BankAccountId.
+    /// </summary>
+    Task<InvoiceDto?> UpdateInvoiceAsync(long id, UpdateInvoiceDto dto, CancellationToken ct = default);
+
     /// <summary>POST /api/invoice/{id}/complete — issue a draft invoice (generates doc number).</summary>
     Task<InvoiceDto> CompleteInvoiceAsync(long id, CancellationToken ct = default);
 

@@ -307,7 +307,19 @@ public class InvoiceService : IInvoiceService
         return invoice == null ? null : MapToDto(invoice);
     }
 
-    public async Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+    public Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+        // Public entry point always applies the bank-account default fill (issue: MCP-created
+        // invoices had no bank account at all). Internal re-use of this pipeline for
+        // proforma→final and invoice-copy passes applyBankAccountDefaulting:false — those two
+        // explicitly copy the source document's bank fields (even when the source has none) and
+        // must not have the resolver silently invent one.
+        => CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: true, cancellationToken);
+
+    public Task<InvoiceDto> CreateImportedInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+        => CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
+
+    private async Task<InvoiceDto> CreateInvoiceCoreAsync(
+        CreateInvoiceDto createDto, bool applyBankAccountDefaulting, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Creating new {DocumentType}", createDto.DocumentType);
 
@@ -388,6 +400,12 @@ public class InvoiceService : IInvoiceService
             Notes = createDto.Notes,
             InvoiceItem = new List<InvoiceItem>()
         };
+
+        // Resolve BankAccountId (if given) or auto-fill from the issuer's accounts when nothing
+        // was supplied at all. See ApplyBankAccountDefaultsAsync for the exact rule.
+        await ApplyBankAccountDefaultsAsync(
+            invoice, createDto.IssuerId, createDto.CurrencyId, createDto.BankAccountId,
+            applyBankAccountDefaulting, cancellationToken);
 
         // Calculate due date using the client's billing settings (respects DueDateCalculationType)
         invoice.DueDate = CalculateDueDate(createDto, client);
@@ -557,6 +575,90 @@ public class InvoiceService : IInvoiceService
         return (await GetInvoiceByIdAsync(invoice.Id, cancellationToken))!;
     }
 
+    /// <summary>
+    /// Resolves the invoice's BankAccountNumber/IBAN/SWIFT from the issuer's stored bank
+    /// accounts. This is the single place all invoice creation/update paths route through for
+    /// bank account resolution — fixes the gap where MCP-created invoices had no bank account
+    /// at all (not even pre-filled), because MCP callers never set the string fields directly.
+    ///
+    /// Two independent jobs, run in order:
+    ///   1. <paramref name="bankAccountId"/> given → load that <see cref="BankAccount"/>
+    ///      (must belong to <paramref name="issuerId"/>, else 400 via InvalidOperationException)
+    ///      and copy its three string fields onto the invoice, overriding whatever explicit
+    ///      strings the caller also sent. This always runs, regardless of
+    ///      <paramref name="applyDefaulting"/> — an explicit ID is never a "guess".
+    ///   2. Otherwise, when <paramref name="applyDefaulting"/> is true AND the invoice has no
+    ///      bank fields at all AND the payment method is bank transfer (or unset — most callers,
+    ///      including every MCP tool, never set a payment method), pick one of the issuer's
+    ///      accounts: IsDefault matching the invoice currency → any account matching the
+    ///      currency → IsDefault (any currency) → first account by Id.
+    ///      If the issuer has no accounts yet, fields are left null — nothing to fill from.
+    ///
+    /// <paramref name="applyDefaulting"/> is false for the proforma→final and copy-invoice paths:
+    /// those already copy the source document's bank fields verbatim (even when empty) and must
+    /// not have step 2 silently invent an account the source never had.
+    /// </summary>
+    private async Task ApplyBankAccountDefaultsAsync(
+        Invoice invoice, long issuerId, long currencyId, long? bankAccountId,
+        bool applyDefaulting, CancellationToken cancellationToken)
+    {
+        if (bankAccountId.HasValue)
+        {
+            var account = await _context.BankAccount
+                .FirstOrDefaultAsync(a => a.Id == bankAccountId.Value && a.ClientId == issuerId, cancellationToken);
+
+            if (account == null)
+                throw new InvalidOperationException(
+                    $"Bank account with ID {bankAccountId} not found for this company.");
+
+            invoice.BankAccountNumber = account.AccountNumber;
+            invoice.IBAN = account.IBAN;
+            invoice.SWIFT = account.SWIFT;
+            return;
+        }
+
+        if (!applyDefaulting)
+            return;
+
+        var hasExplicitBankData = !string.IsNullOrWhiteSpace(invoice.BankAccountNumber)
+            || !string.IsNullOrWhiteSpace(invoice.IBAN)
+            || !string.IsNullOrWhiteSpace(invoice.SWIFT);
+        if (hasExplicitBankData)
+            return;
+
+        // Only auto-fill for bank transfer. Treat "no payment method at all" as bank transfer too
+        // (the common case — most callers, especially MCP/chat, never set PaymentMethod).
+        if (invoice.PaymentMethod.HasValue && invoice.PaymentMethod != EPaymentMethod.BankTransfer)
+            return;
+
+        var issuerAccounts = await _context.BankAccount
+            .Where(a => a.ClientId == issuerId)
+            .OrderBy(a => a.Id) // deterministic rung choice
+            .ToListAsync(cancellationToken);
+
+        if (issuerAccounts.Count == 0)
+            return; // Nothing to fill from — issuer hasn't configured a bank account yet.
+
+        var currencyCode = await _context.Currency
+            .Where(c => c.Id == currencyId)
+            .Select(c => c.Code)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var chosen =
+            issuerAccounts.FirstOrDefault(a => a.IsDefault && CurrencyMatches(a, currencyCode))
+            ?? issuerAccounts.FirstOrDefault(a => CurrencyMatches(a, currencyCode))
+            ?? issuerAccounts.FirstOrDefault(a => a.IsDefault)
+            ?? issuerAccounts.First();
+
+        invoice.BankAccountNumber = chosen.AccountNumber;
+        invoice.IBAN = chosen.IBAN;
+        invoice.SWIFT = chosen.SWIFT;
+
+        static bool CurrencyMatches(BankAccount account, string? currencyCode) =>
+            !string.IsNullOrEmpty(currencyCode)
+            && string.Equals(account.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task<InvoiceDto?> UpdateInvoiceAsync(long invoiceId, UpdateInvoiceDto updateDto, CancellationToken cancellationToken = default)
     {
         var invoice = await _context.Invoice
@@ -604,6 +706,13 @@ public class InvoiceService : IInvoiceService
 
         if (updateDto.SWIFT != null)
             invoice.SWIFT = updateDto.SWIFT;
+
+        // BankAccountId wins over any explicit strings above — same rule as CreateInvoiceAsync.
+        // applyDefaulting: false — an update never auto-invents a bank account that wasn't asked for.
+        if (updateDto.BankAccountId.HasValue)
+            await ApplyBankAccountDefaultsAsync(
+                invoice, invoice.IssuerId, updateDto.CurrencyId ?? invoice.CurrencyId, updateDto.BankAccountId,
+                applyDefaulting: false, cancellationToken);
 
         if (updateDto.PaymentMethod != null)
             invoice.PaymentMethod = updateDto.PaymentMethod;
@@ -1125,7 +1234,9 @@ public class InvoiceService : IInvoiceService
         };
 
         // Re-use the standard invoice creation pipeline (document number, VS, totals, …).
-        var finalInvoice = await CreateInvoiceAsync(createDto, cancellationToken);
+        // applyBankAccountDefaulting: false — the bank fields above were just copied verbatim
+        // from the proforma (even when empty); the resolver must not override that.
+        var finalInvoice = await CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
 
         _logger.LogInformation(
             "Final invoice {FinalId} ({DocNum}) issued from proforma {ProformaId}. " +
@@ -1738,7 +1849,9 @@ public class InvoiceService : IInvoiceService
         //   - ReverseCharge code validation
         //   - Item totals calculation
         //   - Status = Draft (always set by CreateInvoiceAsync)
-        var copy = await CreateInvoiceAsync(createDto, cancellationToken);
+        // applyBankAccountDefaulting: false — bank fields were just copied verbatim from the
+        // source invoice above (even when empty); the resolver must not override that.
+        var copy = await CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
 
         _logger.LogInformation(
             "Invoice copied: source #{SourceId} → new #{CopyId} ({DocNum})",

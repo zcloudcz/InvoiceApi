@@ -89,7 +89,10 @@ public static class TemplateTools
         "Create a new invoice from a template. Clones the template's items and settings " +
         "into a new draft invoice for the specified client. " +
         "Requires templateId and clientId. Optional: issueDate, dueDate, variableSymbol, " +
-        "autoComplete (set true to immediately issue the invoice).")]
+        "autoComplete (set true to immediately issue the invoice), bankAccountId (override the " +
+        "template's own bank account with one of the issuer's accounts — see get_issuer). " +
+        "When the template and bankAccountId are both empty, the server automatically fills in " +
+        "the issuer's default/currency-matching bank account.")]
     public static async Task<string> CreateInvoiceFromTemplate(
         IFakvioApiClient api,
         [Description("The template ID to use as blueprint")] long templateId,

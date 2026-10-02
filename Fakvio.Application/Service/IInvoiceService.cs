@@ -60,6 +60,13 @@ public interface IInvoiceService
     Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Same as <see cref="CreateInvoiceAsync"/> but for importing historical documents (PDF/e-mail/chat
+    /// import): the issuer's default bank account is NOT back-filled when the document has none.
+    /// An explicit BankAccountId is still honoured.
+    /// </summary>
+    Task<InvoiceDto> CreateImportedInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Updates an existing invoice
     /// Only allowed in Draft or Completed status
     /// Cannot change document type or document number once completed
