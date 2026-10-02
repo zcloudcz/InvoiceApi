@@ -18,6 +18,9 @@ namespace Fakvio.UI.Shared.Services;
 /// Inherits ApiClientBase for shared auth, logging, impersonation, and error handling.
 /// All HTTP calls go through the base class methods — no manual header management needed.
 /// </summary>
+/// <summary>Accounting export download: the XML bytes plus how many documents were left out.</summary>
+public record AccountingExportFile(byte[] Content, int SkippedCount);
+
 public class FakvioService : ApiClientBase
 {
     public FakvioService(
@@ -395,7 +398,7 @@ public class FakvioService : ApiClientBase
     /// formatted for the given accounting system. Used by the AccountingExportDialog shown from
     /// both the Invoices and ReceivedInvoices pages.
     /// </summary>
-    public async Task<byte[]?> ExportAccountingAsync(
+    public async Task<AccountingExportFile?> ExportAccountingAsync(
         EAccountingSystem system, DateTime from, DateTime to, bool includeIssued, bool includeReceived)
     {
         var request = new AccountingExportRequestDto
@@ -405,7 +408,11 @@ public class FakvioService : ApiClientBase
             IncludeIssued = includeIssued,
             IncludeReceived = includeReceived
         };
-        return await PostForBytesAsync($"/api/accounting-export/{system}", request);
+        var response = await PostForBytesAsync($"/api/accounting-export/{system}", request);
+        if (response is not { } r) return null;
+        // The API leaves out documents the target system cannot represent and reports the count in a header.
+        var skipped = r.Headers.TryGetValues("X-Export-Skipped", out var v) && int.TryParse(v.FirstOrDefault(), out var n) ? n : 0;
+        return new AccountingExportFile(r.Content, skipped);
     }
 
     /// <summary>

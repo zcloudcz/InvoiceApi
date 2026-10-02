@@ -13,14 +13,13 @@ namespace Fakvio.Infrastructure.Service.AccountingExport;
 /// Importable in POHODA via Soubor &gt; Datová komunikace &gt; XML import.
 ///
 /// Known gaps (DEVGUIDE §4.15):
-/// - Mapped against the publicly documented element names/samples on stormware.cz, not against
-///   a locally embedded/validated XSD (unlike ISDOC, which bundles and validates its schema) —
-///   licensing terms for the Pohoda XSDs were not available to embed them. Test-import a single
-///   invoice before relying on bulk import.
+/// - Validated in the unit tests against the official Stormware XSDs (data/invoice/type .xsd, version 2).
 /// - rateVAT only distinguishes "high"/"low"/"none" — Fakvio's VatRate table has no concept of
 ///   Pohoda's historical "third" (10 %) rate, see <see cref="AccountingExportCommon.ClassifyVatRate"/>.
-/// - Foreign-currency invoices fill the foreignCurrency blocks with rate/amount 1 — Fakvio does not
-///   store the exchange rate used at issue time; set the real rate in POHODA after import.
+/// - Foreign-currency invoices fill the foreignCurrency blocks WITHOUT rate/amount — Fakvio does not
+///   store the exchange rate, so POHODA applies its own rate list for the document date.
+/// - Only the 2024+ VAT rates 21 / 12 / 0 % are mapped; documents with other rates are skipped (CanExport).
+/// - Advance-payment tax receipts (DPP) are skipped; proformas map to issuedProformaInvoice.
 /// </summary>
 public class PohodaAccountingExporter : IAccountingExporter
 {
@@ -34,8 +33,21 @@ public class PohodaAccountingExporter : IAccountingExporter
     private static readonly XNamespace Inv = "http://www.stormware.cz/schema/version_2/invoice.xsd";
     private static readonly XNamespace Typ = "http://www.stormware.cz/schema/version_2/type.xsd";
 
+    // Advance-payment tax receipts (DPP) are not importable as standalone Pohoda invoices
+    // (Pohoda creates them from the advance invoice) — skipped rather than exported as a normal invoice.
+    public bool CanExport(Invoice invoice) =>
+        invoice.DocumentType != EDocumentType.TaxReceiptForAdvance
+        && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
+
+    public bool CanExport(ReceivedInvoice invoice) =>
+        AccountingExportCommon.AllRatesSupported((invoice.Items ?? []).Select(i => i.VatRatePercentage));
+
     public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<ReceivedInvoice> receivedInvoices, Client issuer)
     {
+        // The dataPack ico attribute is mandatory for Pohoda to pick the right accounting unit.
+        if (string.IsNullOrWhiteSpace(issuer.RegistrationNumber))
+            throw new InvalidOperationException("Tenant has no issuer company (Client with IsIssuer = true) configured.");
+
         // Windows-1250 is a Windows code page not present on .NET Core by default —
         // CodePagesEncodingProvider registers it. Reuses the same pattern as CsvTable.cs import.
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -44,7 +56,7 @@ public class PohodaAccountingExporter : IAccountingExporter
         var dataPack = new XElement(Dat + "dataPack",
             new XAttribute("version", "2.0"),
             new XAttribute("id", "Fakvio" + DateTime.UtcNow.Ticks),
-            new XAttribute("ico", issuer.RegistrationNumber ?? string.Empty),
+            new XAttribute("ico", issuer.RegistrationNumber),
             new XAttribute("application", "Fakvio"),
             new XAttribute("note", "Export z Fakvio"));
 
@@ -78,8 +90,8 @@ public class PohodaAccountingExporter : IAccountingExporter
         var invoiceType = invoice.DocumentType switch
         {
             EDocumentType.CreditNote => "issuedCreditNotice",
-            EDocumentType.Proforma => "issuedAdvanceInvoice",
-            _ => "issuedInvoice" // Invoice, TaxReceiptForAdvance — both are real tax documents
+            EDocumentType.Proforma => "issuedProformaInvoice",
+            _ => "issuedInvoice"
         };
 
         var header = new XElement(Inv + "invoiceHeader",
@@ -91,13 +103,11 @@ public class PohodaAccountingExporter : IAccountingExporter
             new XElement(Inv + "dateDue", AccountingExportCommon.FormatDate(invoice.DueDate)));
 
         if (!string.IsNullOrWhiteSpace(invoice.Notes))
-            header.Add(new XElement(Inv + "text", invoice.Notes));
+            header.Add(new XElement(Inv + "text", AccountingExportCommon.Truncate(invoice.Notes, 240)));
 
         header.Add(BuildPartnerIdentity(invoice.Client));
 
-        if (invoice.PaymentMethod.HasValue)
-            header.Add(new XElement(Inv + "paymentType",
-                new XElement(Typ + "paymentType", MapPaymentType(invoice.PaymentMethod.Value))));
+        AddPaymentType(header, invoice.PaymentMethod);
 
         if (!string.IsNullOrWhiteSpace(invoice.BankAccountNumber))
         {
@@ -129,20 +139,20 @@ public class PohodaAccountingExporter : IAccountingExporter
     {
         var header = new XElement(Inv + "invoiceHeader",
             new XElement(Inv + "invoiceType", "receivedInvoice"),
-            new XElement(Inv + "number", new XElement(Typ + "numberRequested", invoice.DocumentNumber ?? string.Empty)),
+            // The supplier's own document number goes to numberKHDPH (+ symVar); Pohoda assigns its
+            // internal number from its own series, so we must not request one via <number>.
+            new XElement(Inv + "numberKHDPH", AccountingExportCommon.Truncate(invoice.DocumentNumber, 32)),
             new XElement(Inv + "symVar", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty),
             new XElement(Inv + "date", AccountingExportCommon.FormatDate(invoice.IssueDate)),
             new XElement(Inv + "dateTax", AccountingExportCommon.FormatDate(invoice.TaxableSupplyDate ?? invoice.IssueDate)),
             new XElement(Inv + "dateDue", AccountingExportCommon.FormatDate(invoice.DueDate)));
 
         if (!string.IsNullOrWhiteSpace(invoice.Notes))
-            header.Add(new XElement(Inv + "text", invoice.Notes));
+            header.Add(new XElement(Inv + "text", AccountingExportCommon.Truncate(invoice.Notes, 240)));
 
         header.Add(BuildPartnerIdentity(invoice.Supplier));
 
-        if (invoice.PaymentMethod.HasValue)
-            header.Add(new XElement(Inv + "paymentType",
-                new XElement(Typ + "paymentType", MapPaymentType(invoice.PaymentMethod.Value))));
+        AddPaymentType(header, invoice.PaymentMethod);
 
         var currency = invoice.Currency?.Code ?? "CZK";
         var items = invoice.Items?.OrderBy(i => i.OrderIndex).ToList() ?? [];
@@ -168,7 +178,7 @@ public class PohodaAccountingExporter : IAccountingExporter
             new XElement(Typ + "company", partner.CompanyName ?? string.Empty),
             new XElement(Typ + "city", address?.City ?? string.Empty),
             new XElement(Typ + "street", address?.Street ?? string.Empty),
-            new XElement(Typ + "zip", address?.PostalCode ?? string.Empty),
+            new XElement(Typ + "zip", AccountingExportCommon.Truncate(address?.PostalCode, 15)),
             new XElement(Typ + "ico", partner.RegistrationNumber ?? string.Empty));
 
         if (!string.IsNullOrWhiteSpace(partner.TaxNumber))
@@ -183,7 +193,7 @@ public class PohodaAccountingExporter : IAccountingExporter
     {
         var bucket = AccountingExportCommon.ClassifyVatRate(vatRatePercentage);
         return new XElement(Inv + "invoiceItem",
-            new XElement(Inv + "text", description),
+            new XElement(Inv + "text", AccountingExportCommon.Truncate(description, 90)),
             new XElement(Inv + "quantity", AccountingExportCommon.FormatDecimal(quantity)),
             new XElement(Inv + "unit", unit),
             new XElement(Inv + "payVAT", "false"), // "false" = amounts below are without-VAT base (unitPrice is net)
@@ -225,22 +235,30 @@ public class PohodaAccountingExporter : IAccountingExporter
         }
         else
         {
-            // Fakvio stores no exchange rate, so rate/amount are 1 — the accountant sets the real
-            // rate in Pohoda after import (documented gap).
+            // No rate/amount on purpose: Fakvio stores no exchange rate, so Pohoda applies its own
+            // exchange-rate list for the document date (both elements are optional in the schema).
             summary.Add(new XElement(Inv + "foreignCurrency",
                 new XElement(Typ + "currency", new XElement(Typ + "ids", currency)),
-                new XElement(Typ + "rate", "1"),
-                new XElement(Typ + "amount", "1"),
                 new XElement(Typ + "priceSum", AccountingExportCommon.FormatDecimal(noneBase + lowBase + lowVat + highBase + highVat))));
         }
         return summary;
     }
 
-    private static string MapPaymentType(EPaymentMethod method) => method switch
+    /// <summary>
+    /// Adds inv:paymentType only for methods that have an equivalent in the Pohoda enumeration
+    /// (draft, cash, creditcard, ...). Unmapped methods (PayPal, other) omit the element so Pohoda
+    /// applies its own default instead of rejecting the file.
+    /// </summary>
+    private static void AddPaymentType(XElement header, EPaymentMethod? method)
     {
-        EPaymentMethod.Cash => "cash",
-        EPaymentMethod.CreditCard => "creditcard",
-        EPaymentMethod.BankTransfer => "draft", // Pohoda "draft" = platební příkaz (bank transfer)
-        _ => "other"
-    };
+        var value = method switch
+        {
+            EPaymentMethod.Cash => "cash",
+            EPaymentMethod.CreditCard => "creditcard",
+            EPaymentMethod.BankTransfer => "draft", // Pohoda "draft" = platební příkaz (bank transfer)
+            _ => null
+        };
+        if (value != null)
+            header.Add(new XElement(Inv + "paymentType", new XElement(Typ + "paymentType", value)));
+    }
 }

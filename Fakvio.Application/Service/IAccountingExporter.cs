@@ -21,9 +21,18 @@ public interface IAccountingExporter
     string ContentType { get; }
 
     /// <summary>
+    /// Whether this system can represent the issued document correctly. Documents that return
+    /// false (unsupported type, currency or VAT rate) are left out of the file and reported to the
+    /// caller — a wrong-but-well-formed import is worse than a missing document.
+    /// </summary>
+    bool CanExport(Invoice invoice);
+
+    /// <summary>Same as <see cref="CanExport(Invoice)"/> for received invoices.</summary>
+    bool CanExport(ReceivedInvoice invoice);
+
+    /// <summary>
     /// Builds a single XML document containing both issued and received invoices
-    /// (whichever lists are non-empty — callers filter by the IncludeIssued/IncludeReceived
-    /// request flags before calling this method).
+    /// (whichever lists are non-empty). Callers pass only documents accepted by CanExport.
     /// </summary>
     /// <param name="issuedInvoices">Issued invoices/credit notes/proformas to export (already date-filtered).</param>
     /// <param name="receivedInvoices">Received invoices to export (already date-filtered).</param>

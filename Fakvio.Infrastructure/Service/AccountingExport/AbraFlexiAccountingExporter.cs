@@ -9,22 +9,42 @@ namespace Fakvio.Infrastructure.Service.AccountingExport;
 
 /// <summary>
 /// Exports issued and received invoices as an ABRA Flexi "winstrom" XML import file
-/// (importable via Nástroje &gt; Import XML, or POSTed directly to the Flexi REST API —
-/// see https://podpora.flexibee.eu/ and the demo evidence at
-/// https://demo.flexibee.eu/c/demo/faktura-vydana/properties for the field catalogue).
+/// (importable via Nástroje &gt; Import XML, or POSTed to the Flexi REST API).
 /// Issued invoices become &lt;faktura-vydana&gt;, received invoices &lt;faktura-prijata&gt;.
 ///
-/// Known gaps (DEVGUIDE §4.15): mapped from the publicly documented Flexi evidence field
-/// names, not against a locally embedded/validated XSD — same caveat as the other two
-/// exporters. The "firma" (partner) block is emitted inline with just enough fields for Flexi
-/// to either match an existing adresář record by IČO or create a new one; it does not attempt
-/// to look up/reuse an existing Flexi company code.
+/// Field names, writability and select values were verified against the live Flexi evidence
+/// catalogue (https://demo.flexibee.eu/c/demo/faktura-vydana/properties, faktura-prijata and the
+/// *-polozka evidences) — Flexi publishes no XSD, so the unit tests check element names against an
+/// embedded snapshot of that catalogue instead.
+///
+/// Rules and known gaps (DEVGUIDE §4.15):
+/// - Partner data is sent as flat nazFirmy/ulice/mesto/psc/ic/dic on the document (no nested
+///   &lt;firma&gt; without a Flexi address-book code); Flexi does not create address-book records.
+/// - Sums (sumZklZakl, sumCelkem, ...) are computed by Flexi from the items and are NOT written.
+/// - Unit (mj) is a code reference ("code:KS"); only well-known units are mapped, others are omitted.
+/// - typDokl uses the codes of a default Flexi database (FAKTURA, DOBROPIS); a company that renamed
+///   them must adjust the document type after import. Credit notes carry POSITIVE amounts.
+/// - Received invoices: Flexi assigns its own internal "kod" from its number series; the supplier's
+///   number goes to cisDosle (+ varSym).
+/// - Only the 2024+ VAT rates 21 % / 12 % / 0 % are mapped; other rates are skipped.
+/// - Foreign-currency documents, proformas and advance-payment tax receipts are skipped (no exchange rate
+///   stored in Fakvio; advance document types are tenant-specific in Flexi).
 /// </summary>
 public class AbraFlexiAccountingExporter : IAccountingExporter
 {
     public EAccountingSystem System => EAccountingSystem.AbraFlexi;
     public string FileExtension => "xml";
     public string ContentType => "application/xml";
+
+    public bool CanExport(Invoice invoice) =>
+        invoice.DocumentType is EDocumentType.Invoice or EDocumentType.CreditNote
+        && AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
+        && (invoice.DocumentNumber?.Length ?? 0) is > 0 and <= 20 // faktura-vydana.kod max length
+        && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
+
+    public bool CanExport(ReceivedInvoice invoice) =>
+        AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
+        && AccountingExportCommon.AllRatesSupported((invoice.Items ?? []).Select(i => i.VatRatePercentage));
 
     public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<ReceivedInvoice> receivedInvoices, Client issuer)
     {
@@ -51,102 +71,97 @@ public class AbraFlexiAccountingExporter : IAccountingExporter
 
     private static XElement BuildIssued(Invoice invoice)
     {
-        var typDokl = invoice.DocumentType == EDocumentType.CreditNote ? "code:DOBROPIS" : "code:FAKTURA";
+        var isCreditNote = invoice.DocumentType == EDocumentType.CreditNote;
 
         var el = new XElement("faktura-vydana",
-            new XElement("kod", invoice.DocumentNumber ?? string.Empty),
-            new XElement("varSym", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty),
-            new XElement("typDokl", typDokl),
-            new XElement("datVyst", AccountingExportCommon.FormatDate(invoice.IssueDate)),
-            new XElement("datSplat", AccountingExportCommon.FormatDate(invoice.DueDate)),
-            new XElement("duzpPuv", AccountingExportCommon.FormatDate(invoice.TaxableSupplyDate ?? invoice.IssueDate)));
-
-        if (!string.IsNullOrWhiteSpace(invoice.Notes))
-            el.Add(new XElement("poznam", invoice.Notes));
-
-        AddCurrency(el, invoice.Currency?.Code);
-        el.Add(BuildFirma(invoice.Client));
+            new XElement("kod", invoice.DocumentNumber),
+            new XElement("typDokl", isCreditNote ? "code:DOBROPIS" : "code:FAKTURA"),
+            new XElement("varSym", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 30)),
+            new XElement("datVyst", AccountingExportCommon.FormatDate(invoice.IssueDate)));
+        AddDates(el, invoice.DueDate, invoice.TaxableSupplyDate ?? invoice.IssueDate);
+        AddNote(el, invoice.Notes);
+        AddPartner(el, invoice.Client);
 
         var items = invoice.InvoiceItem?.Where(i => !i.IsTextRow).OrderBy(i => i.OrderIndex).ToList() ?? [];
         el.Add(new XElement("polozkyFaktury", items.Select(i => BuildItem("faktura-vydana-polozka",
-            i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage))));
-
-        el.Add(new XElement("sumZklZakl", AccountingExportCommon.FormatDecimal(invoice.TotalBeforeVat)));
-        el.Add(new XElement("sumDphZakl", AccountingExportCommon.FormatDecimal(invoice.TotalVat)));
-        el.Add(new XElement("sumCelkem", AccountingExportCommon.FormatDecimal(invoice.TotalWithVat)));
-
+            i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage, isCreditNote))));
         return el;
     }
 
     private static XElement BuildReceived(ReceivedInvoice invoice)
     {
+        // No "kod": Flexi assigns its own internal number from the series.
         var el = new XElement("faktura-prijata",
-            new XElement("kod", invoice.DocumentNumber ?? string.Empty),
-            new XElement("varSym", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty),
             new XElement("typDokl", "code:FAKTURA"),
-            new XElement("datVyst", AccountingExportCommon.FormatDate(invoice.IssueDate)),
-            new XElement("datSplat", AccountingExportCommon.FormatDate(invoice.DueDate)),
-            new XElement("duzpPuv", AccountingExportCommon.FormatDate(invoice.TaxableSupplyDate ?? invoice.IssueDate)));
-
-        if (!string.IsNullOrWhiteSpace(invoice.Notes))
-            el.Add(new XElement("poznam", invoice.Notes));
-
-        AddCurrency(el, invoice.Currency?.Code);
-        el.Add(BuildFirma(invoice.Supplier));
+            new XElement("cisDosle", AccountingExportCommon.Truncate(invoice.DocumentNumber, 20)),
+            new XElement("varSym", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 30)),
+            new XElement("datVyst", AccountingExportCommon.FormatDate(invoice.IssueDate)));
+        AddDates(el, invoice.DueDate, invoice.TaxableSupplyDate ?? invoice.IssueDate);
+        AddNote(el, invoice.Notes);
+        AddPartner(el, invoice.Supplier);
 
         var items = invoice.Items?.OrderBy(i => i.OrderIndex).ToList() ?? [];
         el.Add(new XElement("polozkyFaktury", items.Select(i => BuildItem("faktura-prijata-polozka",
-            i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage))));
-
-        el.Add(new XElement("sumZklZakl", AccountingExportCommon.FormatDecimal(invoice.TotalBeforeVat)));
-        el.Add(new XElement("sumDphZakl", AccountingExportCommon.FormatDecimal(invoice.TotalVat)));
-        el.Add(new XElement("sumCelkem", AccountingExportCommon.FormatDecimal(invoice.TotalWithVat)));
-
+            i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage, false))));
         return el;
     }
 
-    /// <summary>Flexi's home currency is implicit; foreign documents carry <c>mena</c> as "code:EUR".</summary>
-    private static void AddCurrency(XElement el, string? code)
+    private static void AddDates(XElement el, DateTime? due, DateTime? taxable)
     {
-        if (!string.IsNullOrEmpty(code) && !code.Equals("CZK", StringComparison.OrdinalIgnoreCase))
-            el.Add(new XElement("mena", "code:" + code.ToUpperInvariant()));
+        if (due.HasValue) el.Add(new XElement("datSplat", AccountingExportCommon.FormatDate(due)));
+        if (taxable.HasValue) el.Add(new XElement("duzpPuv", AccountingExportCommon.FormatDate(taxable)));
     }
 
-    private static XElement BuildFirma(Client? partner)
+    private static void AddNote(XElement el, string? notes)
+    {
+        if (!string.IsNullOrWhiteSpace(notes))
+            el.Add(new XElement("poznam", notes));
+    }
+
+    /// <summary>Flat partner fields (nazFirmy, ulice, mesto, psc, ic, dic) — lengths per the Flexi catalogue.</summary>
+    private static void AddPartner(XElement el, Client? partner)
     {
         partner ??= new Client();
         var address = AccountingExportCommon.PrimaryAddress(partner);
 
-        var el = new XElement("firma",
-            new XElement("nazev", partner.CompanyName ?? string.Empty),
-            new XElement("ulice", address?.Street ?? string.Empty),
-            new XElement("mesto", address?.City ?? string.Empty),
-            new XElement("psc", address?.PostalCode ?? string.Empty),
-            new XElement("ic", partner.RegistrationNumber ?? string.Empty));
-
+        el.Add(new XElement("nazFirmy", AccountingExportCommon.Truncate(partner.CompanyName, 255)),
+               new XElement("ulice", AccountingExportCommon.Truncate(address?.Street, 255)),
+               new XElement("mesto", AccountingExportCommon.Truncate(address?.City, 255)),
+               new XElement("psc", AccountingExportCommon.Truncate(address?.PostalCode, 255)));
+        if (!string.IsNullOrWhiteSpace(partner.RegistrationNumber))
+            el.Add(new XElement("ic", AccountingExportCommon.Truncate(partner.RegistrationNumber, 20)));
         if (!string.IsNullOrWhiteSpace(partner.TaxNumber))
-            el.Add(new XElement("dic", partner.TaxNumber));
-
-        return el;
+            el.Add(new XElement("dic", AccountingExportCommon.Truncate(partner.TaxNumber, 20)));
     }
+
+    // Units that exist in every default Flexi database (measure-unit codes).
+    private static readonly Dictionary<string, string> KnownUnits = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ks"] = "KS", ["pcs"] = "KS", ["hod"] = "HOD", ["h"] = "HOD", ["m"] = "M", ["kg"] = "KG", ["l"] = "L", ["km"] = "KM"
+    };
 
     private static XElement BuildItem(
         string elementName, string description, decimal quantity, string unit,
-        decimal unitPrice, decimal vatRatePercentage)
+        decimal unitPrice, decimal vatRatePercentage, bool positive)
     {
-        var bucket = AccountingExportCommon.ClassifyVatRate(vatRatePercentage);
-        var typSzbDphK = bucket switch
+        var typSzbDphK = AccountingExportCommon.ClassifyVatRate(vatRatePercentage) switch
         {
-            AccountingExportCommon.VatBucket.High => "typSzbDph.zakladni",
-            AccountingExportCommon.VatBucket.Low => "typSzbDph.snizena",
-            _ => "typSzbDph.bezDph"
+            AccountingExportCommon.VatBucket.High => "typSzbDph.dphZakl",
+            AccountingExportCommon.VatBucket.Low => "typSzbDph.dphSniz",
+            _ => "typSzbDph.dphOsv"
         };
 
-        return new XElement(elementName,
-            new XElement("nazev", description),
-            new XElement("mnozstvi", AccountingExportCommon.FormatDecimal(quantity)),
-            new XElement("mj", unit),
-            new XElement("cenaMj", AccountingExportCommon.FormatDecimal(unitPrice)),
-            new XElement("typSzbDphK", typSzbDphK));
+        var el = new XElement(elementName,
+            new XElement("typPolozkyK", "typPolozky.obecny"),
+            new XElement("nazev", AccountingExportCommon.Truncate(description, 255)),
+            new XElement("mnozMj", AccountingExportCommon.FormatDecimal(positive ? Math.Abs(quantity) : quantity)));
+        if (KnownUnits.TryGetValue(unit?.Trim() ?? string.Empty, out var code))
+            el.Add(new XElement("mj", "code:" + code));
+        el.Add(
+            new XElement("cenaMj", AccountingExportCommon.FormatDecimal(positive ? Math.Abs(unitPrice) : unitPrice)),
+            new XElement("typCenyDphK", "typCeny.bezDph"),
+            new XElement("typSzbDphK", typSzbDphK),
+            new XElement("szbDph", AccountingExportCommon.FormatDecimal(vatRatePercentage)));
+        return el;
     }
 }

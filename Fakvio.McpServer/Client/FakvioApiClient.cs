@@ -237,7 +237,7 @@ public class FakvioApiClient : IFakvioApiClient
     /// Downloads the accounting export XML as raw bytes from POST /api/accounting-export/{system}
     /// ("Export do účetnictví" — Pohoda / Money S3 / ABRA Flexi).
     /// </summary>
-    public async Task<byte[]> ExportAccountingAsync(
+    public async Task<(byte[] Content, int SkippedCount)> ExportAccountingAsync(
         Fakvio.Domain.Enums.EAccountingSystem system,
         DateTime from, DateTime to, bool includeIssued, bool includeReceived,
         CancellationToken ct = default)
@@ -245,7 +245,8 @@ public class FakvioApiClient : IFakvioApiClient
         var body = new { From = from, To = to, IncludeIssued = includeIssued, IncludeReceived = includeReceived };
         var response = await _http.PostAsJsonAsync($"api/accounting-export/{system}", body, JsonOptions, ct);
         await EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadAsByteArrayAsync(ct);
+        var skipped = response.Headers.TryGetValues("X-Export-Skipped", out var v) && int.TryParse(v.FirstOrDefault(), out var n) ? n : 0;
+        return (await response.Content.ReadAsByteArrayAsync(ct), skipped);
     }
 
     // ── Client endpoints ───────────────────────────────────────────────

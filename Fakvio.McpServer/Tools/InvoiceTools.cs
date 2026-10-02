@@ -608,7 +608,9 @@ public static class InvoiceTools
         "Export issued and/or received invoices for a date range as one XML file for an accounting " +
         "system. Use this when the user asks to export invoices to Pohoda, Money S3 or ABRA Flexi, " +
         "or wants a batch/period handover to their accountant — not for a single invoice " +
-        "(use ExportInvoiceIsdoc/ExportInvoiceUbl for that).")]
+        "(use ExportInvoiceIsdoc/ExportInvoiceUbl for that). Documents the target system cannot represent " +
+        "(foreign currency for Money S3/ABRA Flexi, proformas for ABRA Flexi, advance-payment tax receipts, VAT rates other than 21/12/0 %) " +
+        "are left out; skippedDocuments in the result says how many.")]
     public static async Task<string> ExportAccounting(
         IFakvioApiClient api,
         [Description("Target accounting system: 'Pohoda', 'MoneyS3' or 'AbraFlexi'")] string system,
@@ -629,7 +631,7 @@ public static class InvoiceTools
             if (!DateTime.TryParse(dateTo, out var parsedTo))
                 return JsonSerializer.Serialize(new { error = $"Invalid dateTo format: '{dateTo}'. Use ISO 8601 (e.g., '2026-01-31')." }, JsonOptions);
 
-            var xmlBytes = await api.ExportAccountingAsync(parsedSystem, parsedFrom, parsedTo, includeIssued, includeReceived, ct);
+            var (xmlBytes, skipped) = await api.ExportAccountingAsync(parsedSystem, parsedFrom, parsedTo, includeIssued, includeReceived, ct);
             var fileName = $"{parsedSystem}_{parsedFrom:yyyyMMdd}-{parsedTo:yyyyMMdd}.xml";
 
             return JsonSerializer.Serialize(new
@@ -638,6 +640,7 @@ public static class InvoiceTools
                 fileName,
                 mimeType = "application/xml",
                 sizeBytes = xmlBytes.Length,
+                skippedDocuments = skipped,
                 base64Content = Convert.ToBase64String(xmlBytes)
             }, JsonOptions);
         }

@@ -2030,4 +2030,6 @@
   <data name="EAccountingSystem_Pohoda" xml:space="preserve"><value>POHODA</value></data>
   <data name="EAccountingSystem_MoneyS3" xml:space="preserve"><value>Money S3</value></data>
   <data name="EAccountingSystem_AbraFlexi" xml:space="preserve"><value>ABRA Flexi</value></data>
+  <data name="AccountingExport_Note" xml:space="preserve"><value>Documents the target system cannot represent correctly are left out of the file: foreign-currency documents (Money S3, ABRA Flexi), proformas (ABRA Flexi), advance-payment tax receipts and documents with a VAT rate other than 21 / 12 / 0 %. The number of skipped documents is shown after the export.</value></data>
+  <data name="AccountingExport_Skipped" xml:space="preserve"><value>Skipped documents the target system does not support: {0}.</value></data>
 </root>

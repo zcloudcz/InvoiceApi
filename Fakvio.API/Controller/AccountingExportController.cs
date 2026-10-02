@@ -36,7 +36,7 @@ public class AccountingExportController : ControllerBase
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The generated XML file as a download.</returns>
     /// <response code="200">Returns the XML file.</response>
-    /// <response code="400">Neither IncludeIssued nor IncludeReceived was set, or the tenant has no issuer company configured.</response>
+    /// <response code="400">Nothing selected, invalid/too long date range, too many ids, or the tenant has no issuer company (IČO) configured.</response>
     [HttpPost("{system}")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -54,11 +54,22 @@ public class AccountingExportController : ControllerBase
 
         try
         {
-            var (content, fileName, contentType) = await _exportService.ExportAsync(
+            var result = await _exportService.ExportAsync(
                 system, request.From, request.To, request.IncludeIssued, request.IncludeReceived,
                 request.InvoiceIds, cancellationToken);
 
-            return File(content, contentType, fileName);
+            // Documents the target system cannot represent correctly are left out of the file; tell the
+            // caller how many (and which, capped) so nobody assumes the export is complete.
+            Response.Headers["X-Export-Exported"] = result.ExportedCount.ToString();
+            Response.Headers["X-Export-Skipped"] = result.SkippedDocuments.Count.ToString();
+            if (result.SkippedDocuments.Count > 0)
+                Response.Headers["X-Export-Skipped-Documents"] = string.Join(",", result.SkippedDocuments.Take(50));
+            return File(result.Content, result.ContentType, result.FileName);
+        }
+        catch (ArgumentException ex)
+        {
+            // Inverted/too long date range or too many ids — caller input problem.
+            return BadRequest(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {

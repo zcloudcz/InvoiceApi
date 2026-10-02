@@ -13,19 +13,28 @@ namespace Fakvio.Infrastructure.Service.AccountingExport;
 internal static class AccountingExportCommon
 {
     /// <summary>
-    /// Czech VAT-rate bucket used by Pohoda (rateVAT) and, loosely, by Money S3/Flexi too.
-    /// Fakvio stores the exact percentage per line (VatRatePercentage), not a rate "slot" —
-    /// so this buckets by magnitude relative to the standard CZ rate (21 %):
-    /// &gt;= 21 % → High (základní), 0 % &lt; rate &lt; 21 % → Low (snížená), 0 % → None.
-    /// Known gap: there is no distinct "third rate" (třetí sazba) bucket because Fakvio's
-    /// VatRate table does not model one — see DEVGUIDE §4.15.
+    /// Czech VAT-rate bucket used by the exporters. The export targets the rates valid since
+    /// 1 Jan 2024: 21 % (základní), 12 % (snížená) and 0 %. Any other rate (e.g. the pre-2024 10 % /
+    /// 15 % rates, or non-CZ rates) is NOT mapped — such documents are skipped by
+    /// <see cref="AllRatesSupported"/> so the importer never receives a wrong VAT classification.
     /// </summary>
     internal enum VatBucket { None, Low, High }
 
+    internal static bool IsSupportedRate(decimal ratePercentage) => ratePercentage is 0m or 12m or 21m;
+
+    internal static bool AllRatesSupported(IEnumerable<decimal> ratePercentages) => ratePercentages.All(IsSupportedRate);
+
     internal static VatBucket ClassifyVatRate(decimal ratePercentage) =>
-        ratePercentage <= 0 ? VatBucket.None
-        : ratePercentage >= 21 ? VatBucket.High
-        : VatBucket.Low;
+        ratePercentage == 21m ? VatBucket.High
+        : ratePercentage == 12m ? VatBucket.Low
+        : VatBucket.None;
+
+    internal static bool IsHomeCurrency(string? currencyCode) =>
+        string.IsNullOrEmpty(currencyCode) || currencyCode.Equals("CZK", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Cuts a string to the importer's maximum field length (null-safe).</summary>
+    internal static string Truncate(string? value, int maxLength) =>
+        value is null ? string.Empty : value.Length <= maxLength ? value : value[..maxLength];
 
     /// <summary>Parses the Czech "number/bankCode" bank account format into its two parts.</summary>
     internal static (string AccountNumber, string BankCode) ParseBankAccount(string? bankAccount)

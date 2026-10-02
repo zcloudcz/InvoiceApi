@@ -26,11 +26,24 @@ public class AccountingExportService : IAccountingExportService
         _logger = logger;
     }
 
-    public async Task<(byte[] Content, string FileName, string ContentType)> ExportAsync(
+    /// <summary>Longest allowed export period (days) — keeps a single request bounded.</summary>
+    internal const int MaxRangeDays = 366;
+
+    /// <summary>Most explicit invoice ids accepted in one request.</summary>
+    internal const int MaxInvoiceIds = 5000;
+
+    public async Task<AccountingExportResult> ExportAsync(
         EAccountingSystem system, DateTime from, DateTime to,
         bool includeIssued, bool includeReceived,
         IReadOnlyList<long>? invoiceIds = null, CancellationToken ct = default)
     {
+        if (from.Date > to.Date)
+            throw new ArgumentException("The start date must not be after the end date.");
+        if ((to.Date - from.Date).TotalDays > MaxRangeDays)
+            throw new ArgumentException($"The export period must not exceed {MaxRangeDays} days.");
+        if (invoiceIds is { Count: > MaxInvoiceIds })
+            throw new ArgumentException($"At most {MaxInvoiceIds} invoices can be exported at once.");
+
         var exporter = _exporters.FirstOrDefault(e => e.System == system)
             ?? throw new InvalidOperationException($"No accounting exporter registered for system '{system}'.");
 
@@ -81,8 +94,18 @@ public class AccountingExportService : IAccountingExportService
             "Accounting export ({System}) {From:yyyy-MM-dd}..{To:yyyy-MM-dd}: {Issued} issued, {Received} received",
             system, fromDate, toDate, issuedInvoices.Count, receivedInvoices.Count);
 
-        var content = exporter.Export(issuedInvoices, receivedInvoices, issuer);
+        // Leave out documents the target system cannot represent correctly (see IAccountingExporter.CanExport).
+        var skipped = issuedInvoices.Where(i => !exporter.CanExport(i)).Select(i => i.DocumentNumber ?? $"#{i.Id}")
+            .Concat(receivedInvoices.Where(i => !exporter.CanExport(i)).Select(i => i.DocumentNumber ?? $"#{i.Id}"))
+            .ToList();
+        var exportable = issuedInvoices.Where(exporter.CanExport).ToList();
+        var exportableReceived = receivedInvoices.Where(exporter.CanExport).ToList();
+        if (skipped.Count > 0)
+            _logger.LogWarning("Accounting export ({System}) skipped {Count} unsupported document(s)", system, skipped.Count);
+
+        var content = exporter.Export(exportable, exportableReceived, issuer);
         var fileName = $"{system}_{fromDate:yyyyMMdd}-{toDate:yyyyMMdd}.{exporter.FileExtension}";
-        return (content, fileName, exporter.ContentType);
+        return new AccountingExportResult(content, fileName, exporter.ContentType,
+            exportable.Count + exportableReceived.Count, skipped);
     }
 }

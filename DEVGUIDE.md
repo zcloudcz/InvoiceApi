@@ -2268,20 +2268,35 @@ Jeden XML soubor se **vydanými i přijatými** doklady za období, ve formátu 
   a `ReceivedInvoices.razor` (klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (base64 XML jako
   `ExportInvoiceIsdoc`).
 - **Mapování:** číslo dokladu, VS, data (vystavení / DUZP / splatnost), partner (IČO, DIČ, adresa),
-  způsob úhrady, účet (Pohoda), položky (popis, množství, MJ, cena, sazba DPH), součty a rozpad DPH.
-  Dobropis má v Fakvio záporné položky → znaménko se přenáší beze změny (Pohoda `issuedCreditNotice`,
-  Money `DobropisVyd`, Flexi `code:DOBROPIS`). Proforma → Pohoda `issuedAdvanceInvoice`.
-  Pohoda je v kódování Windows-1250 (`CodePagesEncodingProvider`), ostatní UTF-8.
-- **Známé mezery (vědomě):**
-  - Mapováno podle veřejné dokumentace formátů (stormware.cz, Money S3 XML, podpora.flexibee.eu),
-    XSD není vložené ani validované — před hromadným použitím otestujte import jednoho dokladu.
-  - Sazba DPH se třídí podle velikosti (>= 21 % základní, 0 < r < 21 % snížená, 0 % bez DPH); Fakvio
-    nemá „třetí sazbu" Pohody. Money S3 dostane procento (`SazbaDPH`), ne pojmenovaný slot.
-  - Cizí měna: Fakvio neukládá kurz. Pohoda dostane `foreignCurrency` s kurzem/množstvím 1, Money S3
-    `Valuty/Mena`, Flexi `mena` — kurz si účetní doplní po importu.
-  - Přijaté faktury nemají příznak dobropisu → exportují se jako běžný přijatý doklad (Pohoda
-    `receivedInvoice`, Flexi `faktura-prijata` / `code:FAKTURA`).
-  - Flexi `firma` je vložená inline (match podle IČO), neřeší existující kód adresáře.
+  způsob úhrady (jen Pohoda), položky (popis, množství, MJ, cena, sazba DPH), rozpad DPH. Dobropis má ve Fakvio
+  záporné položky: **Pohoda** je dostane beze změny (`issuedCreditNotice`), **Money S3** (`Dobropis=1`) a
+  **ABRA Flexi** (`typDokl code:DOBROPIS`) chtějí kladné částky, takže se znaménko otáčí. Pohoda je v kódování
+  Windows-1250 (`CodePagesEncodingProvider`), ostatní UTF-8. Přijatá faktura: Pohoda `numberKHDPH` + `symVar`
+  (vlastní číslo přidělí Pohoda), Money `PrijatDokl`, Flexi `cisDosle` (interní `kod` přidělí Flexi).
+- **Ověření proti oficiálním definicím (testy):** Pohoda — oficiální XSD Stormware (version 2), Money S3 —
+  oficiální XSD „XML přenosy" od Seyforu; obojí je vložené v `Fakvio.Tests.Unit/Schemas/` (viz `README.md`
+  s původem) a výstup se jím validuje. ABRA Flexi XSD nepublikuje — testy kontrolují každý element proti
+  snapshotu katalogu evidencí z `demo.flexibee.eu/.../properties` (`Schemas/AbraFlexi/catalog.txt`).
+- **Co se záměrně nevyváží (`IAccountingExporter.CanExport`):** exportér nepřijme doklad, který by cílový systém
+  zobrazil špatně; doklad se do souboru nedostane a API vrací hlavičky `X-Export-Exported`, `X-Export-Skipped`
+  (+ `X-Export-Skipped-Documents`, max. 50 čísel), UI ukáže varování a MCP vrací `skippedDocuments`.
+  - **Sazby DPH:** mapují se jen sazby platné od 2024 — 21 / 12 / 0 %. Doklady s jinou sazbou (10 % a 15 %
+    před 2024, slovenské sazby…) se přeskakují; „třetí sazba" Pohody se nemapuje.
+  - **Daňový doklad k přijaté platbě (DPP):** přeskakuje se ve všech systémech.
+  - **Proforma:** Pohoda `issuedProformaInvoice`, Money `Druh=F`, Flexi se přeskakuje (typy záloh jsou ve Flexi
+    nastavení firmy).
+  - **Cizí měna:** Fakvio neukládá kurz. Pohoda dostane `foreignCurrency` **bez** `rate`/`amount` (Pohoda použije
+    svůj kurzový lístek k datu dokladu); Money S3 a Flexi cizoměnové doklady přeskakují.
+  - **Délky:** Pohoda se ořezává na limity schématu (text hlavičky 240, položky 90, PSČ 15); Money vyžaduje
+    číslo dokladu ≤ 10 znaků (jinak se přeskočí), Flexi `kod` ≤ 20; ostatní texty se ořezávají podle schématu.
+- **Známé mezery:**
+  - Flexi: `typDokl` používá kódy výchozí databáze (`FAKTURA`, `DOBROPIS`) — firma s přejmenovanými typy
+    musí typ po importu upravit; jednotka `mj` se posílá jen pro běžné kódy (KS, HOD, M, KG, L, KM), jinak se
+    vynechá; partner jde jako ploché `nazFirmy/ulice/mesto/psc/ic/dic` (adresář se nezakládá); součty
+    (`sum*`) počítá Flexi sám.
+  - Přijaté faktury nemají příznak dobropisu → exportují se jako běžný přijatý doklad.
+  - Pohoda: chybí-li vystavovateli IČO, export skončí chybou 400 (stejně jako chybějící vystavovatel).
+- **Limity požadavku:** `from <= to`, období max. 366 dní, max. 5000 `invoiceIds` → jinak 400.
 - **Testy:** `AccountingExporterTests` (unit, všechny tři exportéry), `AccountingExportEndpointTests` (integration).
 
 ---

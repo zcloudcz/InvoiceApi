@@ -1,0 +1,441 @@
+# Snapshot (2026-10-02) of the ABRA Flexi evidence catalogue from https://demo.flexibee.eu/c/demo/<evidence>/properties
+# Format: evidence<TAB>propertyName<TAB>type<TAB>maxLength  (writable properties only). select values: evidence<TAB>propertyName<TAB>=key1,key2
+faktura-vydana	kod	string	20
+faktura-vydana	cisDosle	string	40
+faktura-vydana	varSym	string	30
+faktura-vydana	cisSml	string	30
+faktura-vydana	cisObj	string	2000
+faktura-vydana	datObj	date	
+faktura-vydana	cisDodak	string	30
+faktura-vydana	doprava	string	
+faktura-vydana	datVyst	date	
+faktura-vydana	duzpPuv	date	
+faktura-vydana	duzpUcto	date	
+faktura-vydana	datSplat	date	
+faktura-vydana	datTermin	date	
+faktura-vydana	datReal	date	
+faktura-vydana	datSazbyDph	date	
+faktura-vydana	popis	string	255
+faktura-vydana	poznam	string	
+faktura-vydana	uvodTxt	string	
+faktura-vydana	zavTxt	string	
+faktura-vydana	sumOsv	numeric	
+faktura-vydana	sumZklSniz	numeric	
+faktura-vydana	sumZklSniz2	numeric	
+faktura-vydana	sumZklZakl	numeric	
+faktura-vydana	sumDphSniz	numeric	
+faktura-vydana	sumDphSniz2	numeric	
+faktura-vydana	sumDphZakl	numeric	
+faktura-vydana	sumCelkSniz	numeric	
+faktura-vydana	sumCelkSniz2	numeric	
+faktura-vydana	sumCelkZakl	numeric	
+faktura-vydana	sumCelkem	numeric	
+faktura-vydana	sumOsvMen	numeric	
+faktura-vydana	sumZklSnizMen	numeric	
+faktura-vydana	sumZklSniz2Men	numeric	
+faktura-vydana	sumZklZaklMen	numeric	
+faktura-vydana	sumDphZaklMen	numeric	
+faktura-vydana	sumDphSnizMen	numeric	
+faktura-vydana	sumDphSniz2Men	numeric	
+faktura-vydana	sumCelkSnizMen	numeric	
+faktura-vydana	sumCelkSniz2Men	numeric	
+faktura-vydana	sumCelkZaklMen	numeric	
+faktura-vydana	sumCelkemMen	numeric	
+faktura-vydana	slevaDokl	numeric	
+faktura-vydana	kurz	numeric	
+faktura-vydana	kurzMnozstvi	numeric	
+faktura-vydana	stavUzivK	select	50
+faktura-vydana	nazFirmy	string	255
+faktura-vydana	ulice	string	255
+faktura-vydana	mesto	string	255
+faktura-vydana	psc	string	255
+faktura-vydana	eanKod	string	20
+faktura-vydana	ic	string	20
+faktura-vydana	dic	string	20
+faktura-vydana	postovniShodna	logic	
+faktura-vydana	faNazev	string	255
+faktura-vydana	faUlice	string	255
+faktura-vydana	faMesto	string	255
+faktura-vydana	faPsc	string	255
+faktura-vydana	faEanKod	string	20
+faktura-vydana	buc	string	255
+faktura-vydana	iban	string	255
+faktura-vydana	bic	string	255
+faktura-vydana	specSym	string	255
+faktura-vydana	bezPolozek	logic	
+faktura-vydana	szbDphSniz	numeric	
+faktura-vydana	szbDphSniz2	numeric	
+faktura-vydana	szbDphZakl	numeric	
+faktura-vydana	uzpTuzemsko	logic	
+faktura-vydana	datUcto	date	
+faktura-vydana	vyloucitSaldo	logic	
+faktura-vydana	zaokrJakSumK	select	50
+faktura-vydana	zaokrNaSumK	select	50
+faktura-vydana	zaokrJakDphK	select	50
+faktura-vydana	zaokrNaDphK	select	50
+faktura-vydana	metodaZaokrDoklK	select	50
+faktura-vydana	vytvaretKorPol	logic	
+faktura-vydana	stitky	string	
+faktura-vydana	typDokl	relation	
+faktura-vydana	mena	relation	
+faktura-vydana	konSym	relation	
+faktura-vydana	firma	relation	20
+faktura-vydana	stat	relation	3
+faktura-vydana	faStat	relation	3
+faktura-vydana	region	relation	
+faktura-vydana	faRegion	relation	
+faktura-vydana	mistUrc	relation	
+faktura-vydana	banSpojDod	relation	
+faktura-vydana	bankovniUcet	relation	
+faktura-vydana	typDoklSkl	relation	
+faktura-vydana	typUcOp	relation	
+faktura-vydana	primUcet	relation	6
+faktura-vydana	protiUcet	relation	6
+faktura-vydana	dphZaklUcet	relation	6
+faktura-vydana	dphSnizUcet	relation	6
+faktura-vydana	dphSniz2Ucet	relation	6
+faktura-vydana	smerKod	relation	20
+faktura-vydana	statDph	relation	3
+faktura-vydana	clenDph	relation	
+faktura-vydana	stredisko	relation	20
+faktura-vydana	cinnost	relation	
+faktura-vydana	zakazka	relation	30
+faktura-vydana	statOdesl	relation	3
+faktura-vydana	statUrc	relation	3
+faktura-vydana	statPuvod	relation	3
+faktura-vydana	dodPodm	relation	
+faktura-vydana	obchTrans	relation	
+faktura-vydana	druhDopr	relation	
+faktura-vydana	zvlPoh	relation	
+faktura-vydana	krajUrc	relation	
+faktura-vydana	zodpOsoba	relation	254
+faktura-vydana	kontaktOsoba	relation	
+faktura-vydana	kontaktJmeno	string	255
+faktura-vydana	kontaktEmail	string	255
+faktura-vydana	kontaktTel	string	255
+faktura-vydana	rada	relation	
+faktura-vydana	smlouva	relation	20
+faktura-vydana	formaDopravy	relation	
+faktura-vydana	source	string	50
+faktura-vydana	ekokomK	select	
+faktura-vydana	balikPocet	integer	
+faktura-vydana	branchId	string	255
+faktura-vydana	balikZacislovan	logic	
+faktura-vydana	balikVytvXml	logic	
+faktura-vydana	clenKonVykDph	relation	
+faktura-vydana	datUp1	date	
+faktura-vydana	datUp2	date	
+faktura-vydana	datSmir	date	
+faktura-vydana	datPenale	date	
+faktura-vydana	formaUhradyCis	relation	
+faktura-vydana	stavUhrK	select	
+faktura-vydana	juhSumPp	numeric	
+faktura-vydana	juhSumPpMen	numeric	
+faktura-vydana	sumPrepl	numeric	
+faktura-vydana	sumPreplMen	numeric	
+faktura-vydana	zaokrouhlitPoOdpoctu	logic	
+faktura-vydana	hromFakt	logic	
+faktura-vydana	zdrojProSkl	logic	
+faktura-vydana	stavMailK	select	50
+faktura-vydana	dobropisovano	logic	
+faktura-vydana	sumCelkemBezZaloh	numeric	
+faktura-vydana	sumCelkemBezZalohMen	numeric	
+faktura-vydana	odpocAuto	logic	
+faktura-prijata	kod	string	20
+faktura-prijata	cisDosle	string	40
+faktura-prijata	varSym	string	30
+faktura-prijata	cisSml	string	30
+faktura-prijata	cisObj	string	2000
+faktura-prijata	datObj	date	
+faktura-prijata	cisDodak	string	30
+faktura-prijata	doprava	string	
+faktura-prijata	datVyst	date	
+faktura-prijata	duzpPuv	date	
+faktura-prijata	duzpUcto	date	
+faktura-prijata	datSplat	date	
+faktura-prijata	datTermin	date	
+faktura-prijata	datReal	date	
+faktura-prijata	datSazbyDph	date	
+faktura-prijata	popis	string	255
+faktura-prijata	poznam	string	
+faktura-prijata	sumOsv	numeric	
+faktura-prijata	sumZklSniz	numeric	
+faktura-prijata	sumZklSniz2	numeric	
+faktura-prijata	sumZklZakl	numeric	
+faktura-prijata	sumDphSniz	numeric	
+faktura-prijata	sumDphSniz2	numeric	
+faktura-prijata	sumDphZakl	numeric	
+faktura-prijata	sumCelkSniz	numeric	
+faktura-prijata	sumCelkSniz2	numeric	
+faktura-prijata	sumCelkZakl	numeric	
+faktura-prijata	sumCelkem	numeric	
+faktura-prijata	sumOsvMen	numeric	
+faktura-prijata	sumZklSnizMen	numeric	
+faktura-prijata	sumZklSniz2Men	numeric	
+faktura-prijata	sumZklZaklMen	numeric	
+faktura-prijata	sumDphZaklMen	numeric	
+faktura-prijata	sumDphSnizMen	numeric	
+faktura-prijata	sumDphSniz2Men	numeric	
+faktura-prijata	sumCelkSnizMen	numeric	
+faktura-prijata	sumCelkSniz2Men	numeric	
+faktura-prijata	sumCelkZaklMen	numeric	
+faktura-prijata	sumCelkemMen	numeric	
+faktura-prijata	slevaDokl	numeric	
+faktura-prijata	kurz	numeric	
+faktura-prijata	kurzMnozstvi	numeric	
+faktura-prijata	stavUzivK	select	50
+faktura-prijata	nazFirmy	string	255
+faktura-prijata	ulice	string	255
+faktura-prijata	mesto	string	255
+faktura-prijata	psc	string	255
+faktura-prijata	eanKod	string	20
+faktura-prijata	ic	string	20
+faktura-prijata	dic	string	20
+faktura-prijata	buc	string	255
+faktura-prijata	iban	string	255
+faktura-prijata	bic	string	255
+faktura-prijata	specSym	string	255
+faktura-prijata	bezPolozek	logic	
+faktura-prijata	szbDphSniz	numeric	
+faktura-prijata	szbDphSniz2	numeric	
+faktura-prijata	szbDphZakl	numeric	
+faktura-prijata	uzpTuzemsko	logic	
+faktura-prijata	datUcto	date	
+faktura-prijata	vyloucitSaldo	logic	
+faktura-prijata	stitky	string	
+faktura-prijata	typDokl	relation	
+faktura-prijata	mena	relation	
+faktura-prijata	konSym	relation	
+faktura-prijata	firma	relation	20
+faktura-prijata	stat	relation	3
+faktura-prijata	region	relation	
+faktura-prijata	banSpojDod	relation	
+faktura-prijata	bankovniUcet	relation	
+faktura-prijata	typDoklSkl	relation	
+faktura-prijata	typUcOp	relation	
+faktura-prijata	primUcet	relation	6
+faktura-prijata	protiUcet	relation	6
+faktura-prijata	dphZaklUcet	relation	6
+faktura-prijata	dphSnizUcet	relation	6
+faktura-prijata	dphSniz2Ucet	relation	6
+faktura-prijata	smerKod	relation	20
+faktura-prijata	statDph	relation	3
+faktura-prijata	clenDph	relation	
+faktura-prijata	stredisko	relation	20
+faktura-prijata	cinnost	relation	
+faktura-prijata	zakazka	relation	30
+faktura-prijata	statOdesl	relation	3
+faktura-prijata	statUrc	relation	3
+faktura-prijata	statPuvod	relation	3
+faktura-prijata	dodPodm	relation	
+faktura-prijata	obchTrans	relation	
+faktura-prijata	druhDopr	relation	
+faktura-prijata	zvlPoh	relation	
+faktura-prijata	krajUrc	relation	
+faktura-prijata	zodpOsoba	relation	254
+faktura-prijata	kontaktOsoba	relation	
+faktura-prijata	kontaktJmeno	string	255
+faktura-prijata	kontaktEmail	string	255
+faktura-prijata	kontaktTel	string	255
+faktura-prijata	rada	relation	
+faktura-prijata	smlouva	relation	20
+faktura-prijata	formaDopravy	relation	
+faktura-prijata	source	string	50
+faktura-prijata	ekokomK	select	
+faktura-prijata	dodatNa	relation	
+faktura-prijata	clenKonVykDph	relation	
+faktura-prijata	datUp1	date	
+faktura-prijata	datUp2	date	
+faktura-prijata	datSmir	date	
+faktura-prijata	datPenale	date	
+faktura-prijata	formaUhradyCis	relation	
+faktura-prijata	stavUhrK	select	
+faktura-prijata	juhSumPp	numeric	
+faktura-prijata	juhSumPpMen	numeric	
+faktura-prijata	sumPrepl	numeric	
+faktura-prijata	sumPreplMen	numeric	
+faktura-prijata	hromFakt	logic	
+faktura-prijata	zdrojProSkl	logic	
+faktura-prijata	zakazPlatba	logic	
+faktura-prijata	dobropisovano	logic	
+faktura-prijata	sumCelkemBezZaloh	numeric	
+faktura-prijata	sumCelkemBezZalohMen	numeric	
+faktura-prijata	osobUpravaDph	logic	
+faktura-prijata	osobUpravaDphDodavatel	logic	
+faktura-vydana-polozka	kod	string	64
+faktura-vydana-polozka	eanKod	string	20
+faktura-vydana-polozka	nazev	string	255
+faktura-vydana-polozka	nazevA	string	255
+faktura-vydana-polozka	nazevB	string	255
+faktura-vydana-polozka	nazevC	string	255
+faktura-vydana-polozka	cisRad	integer	
+faktura-vydana-polozka	typPolozkyK	select	50
+faktura-vydana-polozka	typPolozkyK	=typPolozky.obecny,typPolozky.katalog,typPolozky.ucetni,typPolozky.text
+faktura-vydana-polozka	baleniId	integer	
+faktura-vydana-polozka	mnozBaleni	numeric	
+faktura-vydana-polozka	mnozMj	numeric	
+faktura-vydana-polozka	typCenyDphK	select	50
+faktura-vydana-polozka	typCenyDphK	=typCeny.bezDph,typCeny.sDph
+faktura-vydana-polozka	typSzbDphK	select	50
+faktura-vydana-polozka	typSzbDphK	=typSzbDph.dphOsv,typSzbDph.dphSniz,typSzbDph.dphSniz2,typSzbDph.dphZakl
+faktura-vydana-polozka	szbDph	numeric	
+faktura-vydana-polozka	cenaMj	numeric	
+faktura-vydana-polozka	slevaPol	numeric	
+faktura-vydana-polozka	uplSlevaDokl	logic	
+faktura-vydana-polozka	sumZkl	numeric	
+faktura-vydana-polozka	sumDph	numeric	
+faktura-vydana-polozka	sumCelkem	numeric	
+faktura-vydana-polozka	sumZklMen	numeric	
+faktura-vydana-polozka	sumDphMen	numeric	
+faktura-vydana-polozka	sumCelkemMen	numeric	
+faktura-vydana-polozka	objem	numeric	
+faktura-vydana-polozka	cenJednotka	numeric	
+faktura-vydana-polozka	typVypCenyK	select	50
+faktura-vydana-polozka	typVypCenyK	=typVypCeny.marze,typVypCeny.prirazka,typVypCeny.rabat,typVypCeny.sleva,typVypCeny.neuveden
+faktura-vydana-polozka	cenaMjNakup	numeric	
+faktura-vydana-polozka	cenaMjProdej	numeric	
+faktura-vydana-polozka	cenaMjCenikTuz	numeric	
+faktura-vydana-polozka	procZakl	numeric	
+faktura-vydana-polozka	slevaMnoz	numeric	
+faktura-vydana-polozka	zaokrJakK	select	50
+faktura-vydana-polozka	zaokrJakK	=zaokrJak.nahoru,zaokrJak.dolu,zaokrJak.matem
+faktura-vydana-polozka	zaokrNaK	select	50
+faktura-vydana-polozka	zaokrNaK	=zaokrNa.zadne,zaokrNa.tisiciny,zaokrNa.setiny,zaokrNa.5setiny,zaokrNa.desetiny,zaokrNa.5desetiny,zaokrNa.jednotky,zaokrNa.5jednotky,zaokrNa.desitky,zaokrNa.stovky,zaokrNa.tisice
+faktura-vydana-polozka	sarze	string	100
+faktura-vydana-polozka	expirace	date	
+faktura-vydana-polozka	datTrvan	date	
+faktura-vydana-polozka	datVyroby	date	
+faktura-vydana-polozka	stavUzivK	select	50
+faktura-vydana-polozka	stavUzivK	=stavUziv.bezPrikazu,stavUziv.obsaPrikaz,stavUziv.castPrikaz,stavUziv.celPrikaz,stavUziv.nactenoEl,stavUziv.nactenoElPosledni,stavUziv.genKasa,stavUziv.zauctovano,stavUziv.zaucZmena
+faktura-vydana-polozka	poznam	string	
+faktura-vydana-polozka	kopZklMdUcet	logic	
+faktura-vydana-polozka	kopZklDalUcet	logic	
+faktura-vydana-polozka	kopDphMdUcet	logic	
+faktura-vydana-polozka	kopDphDalUcet	logic	
+faktura-vydana-polozka	kopTypUcOp	logic	
+faktura-vydana-polozka	kopZakazku	logic	
+faktura-vydana-polozka	kopStred	logic	
+faktura-vydana-polozka	kopCinnost	logic	
+faktura-vydana-polozka	kopKlice	logic	
+faktura-vydana-polozka	kopClenDph	logic	
+faktura-vydana-polozka	kopDatUcto	logic	
+faktura-vydana-polozka	datUcto	date	
+faktura-vydana-polozka	sklad	relation	
+faktura-vydana-polozka	stredisko	relation	20
+faktura-vydana-polozka	cinnost	relation	
+faktura-vydana-polozka	typUcOp	relation	
+faktura-vydana-polozka	zklMdUcet	relation	6
+faktura-vydana-polozka	zklDalUcet	relation	6
+faktura-vydana-polozka	dphMdUcet	relation	6
+faktura-vydana-polozka	dphDalUcet	relation	6
+faktura-vydana-polozka	zakazka	relation	30
+faktura-vydana-polozka	dodavatel	relation	
+faktura-vydana-polozka	clenDph	relation	
+faktura-vydana-polozka	dphPren	relation	
+faktura-vydana-polozka	cenik	relation	64
+faktura-vydana-polozka	cenHlad	relation	
+faktura-vydana-polozka	mj	relation	
+faktura-vydana-polozka	mjObjem	relation	
+faktura-vydana-polozka	sazbaDphPuv	relation	
+faktura-vydana-polozka	skupPlneni	relation	
+faktura-vydana-polozka	stitky	string	
+faktura-vydana-polozka	source	string	50
+faktura-vydana-polozka	ekokomK	select	
+faktura-vydana-polozka	ekokomK	=ekokom.zpoplatneneObaly,ekokom.predplaceneObaly,ekokom.nezaplaceneObaly,ekokom.exportovaneObaly,ekokom.vyrazeneObaly
+faktura-vydana-polozka	kopEkokom	logic	
+faktura-vydana-polozka	clenKonVykDph	relation	
+faktura-vydana-polozka	kopClenKonVykDph	logic	
+faktura-vydana-polozka	ciselnyKodZbozi	string	255
+faktura-vydana-polozka	druhZbozi	string	255
+faktura-vydana-polozka	poplatekParentPolFak	relation	
+faktura-vydana-polozka	zdrojProSkl	logic	
+faktura-vydana-polozka	zaloha	logic	
+faktura-vydana-polozka	sumVedlNaklIntrMen	numeric	
+faktura-prijata-polozka	kod	string	64
+faktura-prijata-polozka	eanKod	string	20
+faktura-prijata-polozka	nazev	string	255
+faktura-prijata-polozka	nazevA	string	255
+faktura-prijata-polozka	nazevB	string	255
+faktura-prijata-polozka	nazevC	string	255
+faktura-prijata-polozka	cisRad	integer	
+faktura-prijata-polozka	typPolozkyK	select	50
+faktura-prijata-polozka	typPolozkyK	=typPolozky.obecny,typPolozky.katalog,typPolozky.ucetni,typPolozky.text
+faktura-prijata-polozka	baleniId	integer	
+faktura-prijata-polozka	mnozBaleni	numeric	
+faktura-prijata-polozka	mnozMj	numeric	
+faktura-prijata-polozka	typCenyDphK	select	50
+faktura-prijata-polozka	typCenyDphK	=typCeny.bezDph,typCeny.sDph
+faktura-prijata-polozka	typSzbDphK	select	50
+faktura-prijata-polozka	typSzbDphK	=typSzbDph.dphOsv,typSzbDph.dphSniz,typSzbDph.dphSniz2,typSzbDph.dphZakl
+faktura-prijata-polozka	szbDph	numeric	
+faktura-prijata-polozka	cenaMj	numeric	
+faktura-prijata-polozka	slevaPol	numeric	
+faktura-prijata-polozka	uplSlevaDokl	logic	
+faktura-prijata-polozka	sumZkl	numeric	
+faktura-prijata-polozka	sumDph	numeric	
+faktura-prijata-polozka	sumCelkem	numeric	
+faktura-prijata-polozka	sumZklMen	numeric	
+faktura-prijata-polozka	sumDphMen	numeric	
+faktura-prijata-polozka	sumCelkemMen	numeric	
+faktura-prijata-polozka	objem	numeric	
+faktura-prijata-polozka	cenJednotka	numeric	
+faktura-prijata-polozka	typVypCenyK	select	50
+faktura-prijata-polozka	typVypCenyK	=typVypCeny.marze,typVypCeny.prirazka,typVypCeny.rabat,typVypCeny.sleva,typVypCeny.neuveden
+faktura-prijata-polozka	cenaMjNakup	numeric	
+faktura-prijata-polozka	cenaMjProdej	numeric	
+faktura-prijata-polozka	cenaMjCenikTuz	numeric	
+faktura-prijata-polozka	procZakl	numeric	
+faktura-prijata-polozka	slevaMnoz	numeric	
+faktura-prijata-polozka	zaokrJakK	select	50
+faktura-prijata-polozka	zaokrJakK	=zaokrJak.nahoru,zaokrJak.dolu,zaokrJak.matem
+faktura-prijata-polozka	zaokrNaK	select	50
+faktura-prijata-polozka	zaokrNaK	=zaokrNa.zadne,zaokrNa.tisiciny,zaokrNa.setiny,zaokrNa.5setiny,zaokrNa.desetiny,zaokrNa.5desetiny,zaokrNa.jednotky,zaokrNa.5jednotky,zaokrNa.desitky,zaokrNa.stovky,zaokrNa.tisice
+faktura-prijata-polozka	sarze	string	100
+faktura-prijata-polozka	expirace	date	
+faktura-prijata-polozka	datTrvan	date	
+faktura-prijata-polozka	datVyroby	date	
+faktura-prijata-polozka	stavUzivK	select	50
+faktura-prijata-polozka	stavUzivK	=stavUziv.bezPrikazu,stavUziv.obsaPrikaz,stavUziv.castPrikaz,stavUziv.celPrikaz,stavUziv.nactenoEl,stavUziv.nactenoElPosledni,stavUziv.genKasa,stavUziv.zauctovano,stavUziv.zaucZmena
+faktura-prijata-polozka	poznam	string	
+faktura-prijata-polozka	kopZklMdUcet	logic	
+faktura-prijata-polozka	kopZklDalUcet	logic	
+faktura-prijata-polozka	kopDphMdUcet	logic	
+faktura-prijata-polozka	kopDphDalUcet	logic	
+faktura-prijata-polozka	kopTypUcOp	logic	
+faktura-prijata-polozka	kopZakazku	logic	
+faktura-prijata-polozka	kopStred	logic	
+faktura-prijata-polozka	kopCinnost	logic	
+faktura-prijata-polozka	kopKlice	logic	
+faktura-prijata-polozka	kopClenDph	logic	
+faktura-prijata-polozka	kopDatUcto	logic	
+faktura-prijata-polozka	datUcto	date	
+faktura-prijata-polozka	sklad	relation	
+faktura-prijata-polozka	stredisko	relation	20
+faktura-prijata-polozka	cinnost	relation	
+faktura-prijata-polozka	typUcOp	relation	
+faktura-prijata-polozka	zklMdUcet	relation	6
+faktura-prijata-polozka	zklDalUcet	relation	6
+faktura-prijata-polozka	dphMdUcet	relation	6
+faktura-prijata-polozka	dphDalUcet	relation	6
+faktura-prijata-polozka	zakazka	relation	30
+faktura-prijata-polozka	dodavatel	relation	
+faktura-prijata-polozka	clenDph	relation	
+faktura-prijata-polozka	dphPren	relation	
+faktura-prijata-polozka	cenik	relation	64
+faktura-prijata-polozka	mj	relation	
+faktura-prijata-polozka	mjObjem	relation	
+faktura-prijata-polozka	sazbaDphPuv	relation	
+faktura-prijata-polozka	skupPlneni	relation	
+faktura-prijata-polozka	stitky	string	
+faktura-prijata-polozka	source	string	50
+faktura-prijata-polozka	ekokomK	select	
+faktura-prijata-polozka	ekokomK	=ekokom.zpoplatneneObaly,ekokom.predplaceneObaly,ekokom.nezaplaceneObaly,ekokom.exportovaneObaly,ekokom.vyrazeneObaly
+faktura-prijata-polozka	kopEkokom	logic	
+faktura-prijata-polozka	clenKonVykDph	relation	
+faktura-prijata-polozka	kopClenKonVykDph	logic	
+faktura-prijata-polozka	ciselnyKodZbozi	string	255
+faktura-prijata-polozka	druhZbozi	string	255
+faktura-prijata-polozka	poplatekParentPolFak	relation	
+faktura-prijata-polozka	zdrojProSkl	logic	
+faktura-prijata-polozka	zaloha	logic	
+faktura-prijata-polozka	sumVedlNaklIntrMen	numeric	

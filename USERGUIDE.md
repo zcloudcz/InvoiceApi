@@ -318,8 +318,18 @@ Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakuj
 - **Money S3:** Soubor → Import dat → XML (MoneyData) → vyberte stažený soubor.
 - **ABRA Flexi:** Nástroje → Import → XML (winstrom), nebo soubor odešlete na REST API.
 
-**Co vědět:** u cizí měny Fakvio neexportuje kurz — doplňte ho v účetním programu po importu. Doporučujeme
-nejdřív naimportovat jeden doklad na zkoušku. Dobropisy se přenášejí se záporným znaménkem.
+**Co vědět:**
+
+- Export počítá se sazbami DPH platnými od roku 2024 (**21 / 12 / 0 %**). Starší doklady s jinou sazbou
+  (např. 10 % nebo 15 %) a doklady s jinou sazbou DPH se do souboru nezahrnou.
+- Do souboru se také nezahrnují doklady, které cílový systém nedokáže správně přijmout: daňové doklady
+  k přijaté platbě (všechny systémy), doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi)
+  a u Money S3 doklady s číslem delším než 10 znaků. Po exportu uvidíte, kolik dokladů bylo vynecháno.
+- U cizí měny v POHODĚ Fakvio kurz neexportuje — POHODA použije svůj kurzový lístek k datu dokladu.
+- Dobropisy se do Money S3 a ABRA Flexi přenášejí s kladnými částkami (jako dobropis), do POHODY se záporným znaménkem.
+- ABRA Flexi: v cílové firmě musí existovat typy dokladů `FAKTURA` a `DOBROPIS` (výchozí databáze je má).
+  Číslo přijaté faktury dodavatele se uloží do pole „číslo dodavatele", interní číslo přidělí Flexi.
+- Doporučujeme nejdřív naimportovat jeden doklad na zkoušku. Před exportem musí mít vaše firma vyplněné IČO.
 
 ### 2.9 Odeslání emailem
 

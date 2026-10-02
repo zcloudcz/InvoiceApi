@@ -2030,4 +2030,6 @@
   <data name="EAccountingSystem_Pohoda" xml:space="preserve"><value>POHODA</value></data>
   <data name="EAccountingSystem_MoneyS3" xml:space="preserve"><value>Money S3</value></data>
   <data name="EAccountingSystem_AbraFlexi" xml:space="preserve"><value>ABRA Flexi</value></data>
+  <data name="AccountingExport_Note" xml:space="preserve"><value>Do souboru se nezahrnují doklady, které cílový systém nedokáže správně přijmout: doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi), daňové doklady k přijaté platbě a doklady se sazbou DPH jinou než 21 / 12 / 0 %. Počet vynechaných dokladů se zobrazí po exportu.</value></data>
+  <data name="AccountingExport_Skipped" xml:space="preserve"><value>Vynecháno dokladů, které cílový systém nepodporuje: {0}.</value></data>
 </root>

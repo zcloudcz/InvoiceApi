@@ -351,11 +351,11 @@ public abstract class ApiClientBase
     }
 
     /// <summary>
-    /// Performs POST request with body and returns raw byte array (e.g., an XML/ZIP download
-    /// produced from filter criteria, like the accounting export). Throws ApiException on
+    /// Performs POST request with body and returns the raw bytes plus the response headers (e.g., an XML/ZIP
+    /// download produced from filter criteria; the accounting export reports skipped documents in a header). Throws ApiException on
     /// non-success status codes.
     /// </summary>
-    protected async Task<byte[]?> PostForBytesAsync<TRequest>(string endpoint, TRequest data)
+    protected async Task<(byte[] Content, System.Net.Http.Headers.HttpResponseHeaders Headers)?> PostForBytesAsync<TRequest>(string endpoint, TRequest data)
     {
         try
         {
@@ -365,7 +365,7 @@ public abstract class ApiClientBase
 
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadAsByteArrayAsync();
+                return (await response.Content.ReadAsByteArrayAsync(), response.Headers);
             }
 
             await HandleErrorResponseAsync(response, "POST (bytes)", endpoint);

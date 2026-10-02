@@ -9,20 +9,39 @@ namespace Fakvio.Infrastructure.Service.AccountingExport;
 
 /// <summary>
 /// Exports issued and received invoices as a Money S3 "MoneyData" XML import file
-/// (Money.cz / Seyfor — Soubor &gt; Import &gt; XML). Issued invoices go under
-/// &lt;SeznamFaktVyd&gt;, received invoices under &lt;SeznamFaktPrij&gt;.
+/// (Money S3 &gt; XML přenosy &gt; Import). Issued invoices go under &lt;SeznamFaktVyd&gt;,
+/// received invoices under &lt;SeznamFaktPrij&gt;.
 ///
-/// Known gaps (DEVGUIDE §4.15): mapped from the publicly documented "Money S3 – XML formát"
-/// element names, not against a locally validated XSD — same caveat as the Pohoda exporter.
-/// SazbaDPH is emitted as the plain percentage (e.g. "21") rather than Money's named rate slot,
-/// which importers typically accept but should be verified against the target database's
-/// VAT rate table before bulk use.
+/// Mapped against the official Money S3 schemas published by Seyfor (money.cz, "XML přenosy",
+/// schemas.zip — __Faktura.xsd / __Firma.xsd / __Comtypes.xsd) and validated against them in the
+/// unit tests. Element order follows the XSD sequence.
+///
+/// Rules and known gaps (DEVGUIDE §4.15):
+/// - Only the 2024+ VAT rates 21 % (SazbaDPH2, Zaklad22/DPH22), 12 % (SazbaDPH1, Zaklad5/DPH5) and 0 %
+///   are mapped; other rates are skipped (<see cref="CanExport(Invoice)"/>).
+/// - Credit notes are exported with Dobropis = 1 and POSITIVE amounts (Fakvio stores them negative).
+/// - Proforma → Druh = F. Advance-payment tax receipts (DPP) are skipped.
+/// - Foreign-currency documents are skipped: Money requires the exchange rate for the home-currency
+///   summary and Fakvio does not store it — fabricating one would produce wrong totals.
+/// - Document number must fit Money's 10-character Doklad field, otherwise the document is skipped.
+///   Received invoices get their Money number from Money's own series; the supplier's number goes to PrijatDokl.
+/// - Celkem is required by the schema and written as the sum of the summary; Money recalculates it. Proplatit is not written.
 /// </summary>
 public class MoneyS3AccountingExporter : IAccountingExporter
 {
     public EAccountingSystem System => EAccountingSystem.MoneyS3;
     public string FileExtension => "xml";
     public string ContentType => "application/xml";
+
+    public bool CanExport(Invoice invoice) =>
+        invoice.DocumentType != EDocumentType.TaxReceiptForAdvance
+        && AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
+        && (invoice.DocumentNumber?.Length ?? 0) is > 0 and <= 10
+        && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
+
+    public bool CanExport(ReceivedInvoice invoice) =>
+        AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
+        && AccountingExportCommon.AllRatesSupported((invoice.Items ?? []).Select(i => i.VatRatePercentage));
 
     public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<ReceivedInvoice> receivedInvoices, Client issuer)
     {
@@ -50,92 +69,127 @@ public class MoneyS3AccountingExporter : IAccountingExporter
 
     private static XElement BuildIssued(Invoice invoice)
     {
-        var el = new XElement("FaktVyd",
-            new XElement("Doklad", invoice.DocumentNumber ?? string.Empty),
-            new XElement("VarSymbol", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty),
-            new XElement("TypDokladu", invoice.DocumentType == EDocumentType.CreditNote ? "DobropisVyd" : "FakturaVyd"),
-            new XElement("Vystaveno", AccountingExportCommon.FormatDate(invoice.IssueDate)),
-            new XElement("DatUcPr", AccountingExportCommon.FormatDate(invoice.IssueDate)),
-            new XElement("DatSplat", AccountingExportCommon.FormatDate(invoice.DueDate)),
-            new XElement("DatZdPlnSouhrn", AccountingExportCommon.FormatDate(invoice.TaxableSupplyDate ?? invoice.IssueDate)));
-
-        if (!string.IsNullOrWhiteSpace(invoice.Notes))
-            el.Add(new XElement("Popis", invoice.Notes));
-
-        el.Add(BuildAdresa(invoice.Client));
-
+        var isCreditNote = invoice.DocumentType == EDocumentType.CreditNote;
         var items = invoice.InvoiceItem?.Where(i => !i.IsTextRow).OrderBy(i => i.OrderIndex).ToList() ?? [];
-        var currencyCode = invoice.Currency?.Code ?? "CZK";
-        el.Add(new XElement("SeznamPolozek", items.Select(i => BuildPolozka(
-            i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage, currencyCode))));
 
-        el.Add(new XElement("ZaklCelkem", AccountingExportCommon.FormatDecimal(invoice.TotalBeforeVat)));
-        el.Add(new XElement("DphCelkem", AccountingExportCommon.FormatDecimal(invoice.TotalVat)));
-        el.Add(new XElement("Celkem", AccountingExportCommon.FormatDecimal(invoice.TotalWithVat)));
-
+        var el = new XElement("FaktVyd", new XElement("Doklad", invoice.DocumentNumber));
+        AddDates(el, invoice.IssueDate, invoice.TaxableSupplyDate, invoice.DueDate);
+        el.Add(new XElement("VarSymbol", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty));
+        AddKindAndTotals(el, invoice.DocumentType == EDocumentType.Proforma ? "F" : "N", isCreditNote,
+            items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), invoice.Notes);
+        el.Add(BuildPartner(invoice.Client));
+        el.Add(BuildItems(items.Select(i => (i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage)), isCreditNote));
         return el;
     }
 
     private static XElement BuildReceived(ReceivedInvoice invoice)
     {
-        var el = new XElement("FaktPrij",
-            new XElement("Doklad", invoice.DocumentNumber ?? string.Empty),
-            new XElement("VarSymbol", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty),
-            new XElement("Vystaveno", AccountingExportCommon.FormatDate(invoice.IssueDate)),
-            new XElement("DatUcPr", AccountingExportCommon.FormatDate(invoice.ReceivedDate ?? invoice.IssueDate)),
-            new XElement("DatSplat", AccountingExportCommon.FormatDate(invoice.DueDate)),
-            new XElement("DatZdPlnSouhrn", AccountingExportCommon.FormatDate(invoice.TaxableSupplyDate ?? invoice.IssueDate)));
-
-        if (!string.IsNullOrWhiteSpace(invoice.Notes))
-            el.Add(new XElement("Popis", invoice.Notes));
-
-        el.Add(BuildAdresa(invoice.Supplier));
-
         var items = invoice.Items?.OrderBy(i => i.OrderIndex).ToList() ?? [];
-        var currencyCode = invoice.Currency?.Code ?? "CZK";
-        el.Add(new XElement("SeznamPolozek", items.Select(i => BuildPolozka(
-            i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage, currencyCode))));
 
-        el.Add(new XElement("ZaklCelkem", AccountingExportCommon.FormatDecimal(invoice.TotalBeforeVat)));
-        el.Add(new XElement("DphCelkem", AccountingExportCommon.FormatDecimal(invoice.TotalVat)));
-        el.Add(new XElement("Celkem", AccountingExportCommon.FormatDecimal(invoice.TotalWithVat)));
-
+        var el = new XElement("FaktPrij");
+        AddDates(el, invoice.IssueDate, invoice.TaxableSupplyDate, invoice.DueDate);
+        el.Add(new XElement("VarSymbol", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 20)));
+        el.Add(new XElement("PrijatDokl", AccountingExportCommon.Truncate(invoice.DocumentNumber, 50)));
+        // Fakvio has no credit-note flag on received invoices, so they are exported as normal documents.
+        AddKindAndTotals(el, "N", isCreditNote: false,
+            items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), invoice.Notes);
+        el.Add(BuildPartner(invoice.Supplier));
+        el.Add(BuildItems(items.Select(i => (i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage)), false));
         return el;
     }
 
-    private static XElement BuildAdresa(Client? partner)
+    /// <summary>Vystaveno, DatUcPr, PlnenoDPH, Splatno in schema order.</summary>
+    private static void AddDates(XElement el, DateTime? issued, DateTime? taxable, DateTime? due)
+    {
+        el.Add(new XElement("Vystaveno", AccountingExportCommon.FormatDate(issued)));
+        el.Add(new XElement("DatUcPr", AccountingExportCommon.FormatDate(issued)));
+        el.Add(new XElement("PlnenoDPH", AccountingExportCommon.FormatDate(taxable ?? issued)));
+        if (due.HasValue)
+            el.Add(new XElement("Splatno", AccountingExportCommon.FormatDate(due)));
+    }
+
+    /// <summary>Druh, Dobropis, SazbaDPH1/2, SouhrnDPH and the memo Poznamka — all before the partner block.</summary>
+    private static void AddKindAndTotals(
+        XElement el, string druh, bool isCreditNote,
+        IEnumerable<(decimal Rate, decimal Base, decimal Vat)> items, string? notes)
+    {
+        decimal zaklad0 = 0, zaklad5 = 0, zaklad22 = 0, dph5 = 0, dph22 = 0;
+        foreach (var (rate, @base, vat) in items)
+        {
+            // Credit notes: Money wants positive amounts together with Dobropis = 1.
+            var b = isCreditNote ? Math.Abs(@base) : @base;
+            var v = isCreditNote ? Math.Abs(vat) : vat;
+            switch (AccountingExportCommon.ClassifyVatRate(rate))
+            {
+                case AccountingExportCommon.VatBucket.High: zaklad22 += b; dph22 += v; break;
+                case AccountingExportCommon.VatBucket.Low: zaklad5 += b; dph5 += v; break;
+                default: zaklad0 += b; break;
+            }
+        }
+
+        el.Add(new XElement("Druh", druh));
+        el.Add(new XElement("Dobropis", isCreditNote ? "1" : "0"));
+        el.Add(new XElement("SazbaDPH1", "12"));
+        el.Add(new XElement("SazbaDPH2", "21"));
+        el.Add(new XElement("SouhrnDPH",
+            new XElement("Zaklad0", AccountingExportCommon.FormatDecimal(zaklad0)),
+            new XElement("Zaklad5", AccountingExportCommon.FormatDecimal(zaklad5)),
+            new XElement("Zaklad22", AccountingExportCommon.FormatDecimal(zaklad22)),
+            new XElement("DPH5", AccountingExportCommon.FormatDecimal(dph5)),
+            new XElement("DPH22", AccountingExportCommon.FormatDecimal(dph22))));
+        // Required by the schema; Money recalculates it on import.
+        el.Add(new XElement("Celkem", AccountingExportCommon.FormatDecimal(zaklad0 + zaklad5 + zaklad22 + dph5 + dph22)));
+        if (!string.IsNullOrWhiteSpace(notes))
+            el.Add(new XElement("Poznamka", notes));
+    }
+
+    private static XElement BuildPartner(Client? partner)
     {
         partner ??= new Client();
         var address = AccountingExportCommon.PrimaryAddress(partner);
 
-        var el = new XElement("Adresa",
-            new XElement("Firma", partner.CompanyName ?? string.Empty),
-            new XElement("Ulice", address?.Street ?? string.Empty),
-            new XElement("Misto", address?.City ?? string.Empty),
-            new XElement("PSC", address?.PostalCode ?? string.Empty),
-            new XElement("ICO", partner.RegistrationNumber ?? string.Empty));
+        var el = new XElement("DodOdb",
+            new XElement("ObchNazev", partner.CompanyName ?? string.Empty),
+            new XElement("ObchAdresa",
+                new XElement("Ulice", AccountingExportCommon.Truncate(address?.Street, 50)),
+                new XElement("Misto", AccountingExportCommon.Truncate(address?.City, 40)),
+                new XElement("PSC", AccountingExportCommon.Truncate(address?.PostalCode, 10)),
+                new XElement("KodStatu", AccountingExportCommon.CountryIso2(address))));
 
+        if (!string.IsNullOrWhiteSpace(partner.RegistrationNumber))
+            el.Add(new XElement("ICO", AccountingExportCommon.Truncate(partner.RegistrationNumber, 10)));
         if (!string.IsNullOrWhiteSpace(partner.TaxNumber))
-            el.Add(new XElement("DIC", partner.TaxNumber));
-
+            el.Add(new XElement("DIC", AccountingExportCommon.Truncate(partner.TaxNumber, 20)));
         return el;
     }
 
-    private static XElement BuildPolozka(
-        string description, decimal quantity, string unit, decimal unitPrice,
-        decimal vatRatePercentage, string currencyCode)
+    /// <summary>
+    /// Items are priced without VAT (CenaTyp 0). Credit-note lines are exported with positive
+    /// quantity and price because the Dobropis flag already carries the "negative" meaning.
+    /// </summary>
+    private static XElement BuildItems(
+        IEnumerable<(string Description, decimal Quantity, string Unit, decimal UnitPrice, decimal Rate)> items, bool positive)
     {
-        var el = new XElement("Polozka",
-            new XElement("Popis", description),
-            new XElement("PocetMJ", AccountingExportCommon.FormatDecimal(quantity)),
-            new XElement("MJ", unit),
-            new XElement("Cena", AccountingExportCommon.FormatDecimal(unitPrice)),
-            new XElement("SazbaDPH", AccountingExportCommon.FormatDecimal(vatRatePercentage)));
-
-        // Only emit <Valuty> for non-CZK documents — Money S3 treats its absence as "home currency".
-        if (!currencyCode.Equals("CZK", StringComparison.OrdinalIgnoreCase))
-            el.Add(new XElement("Valuty", new XElement("Mena", currencyCode)));
-
-        return el;
+        var list = new XElement("SeznamPolozek");
+        var index = 1;
+        foreach (var (description, quantity, unit, unitPrice, rate) in items)
+        {
+            var q = positive ? Math.Abs(quantity) : quantity;
+            var p = positive ? Math.Abs(unitPrice) : unitPrice;
+            var polozka = new XElement("Polozka", new XElement("Popis", AccountingExportCommon.Truncate(description, 50)));
+            // popisType is limited to 50 characters; the full text goes to the memo field.
+            if (description.Length > 50)
+                polozka.Add(new XElement("Poznamka", description));
+            polozka.Add(
+                new XElement("PocetMJ", AccountingExportCommon.FormatDecimal(q)),
+                new XElement("SazbaDPH", AccountingExportCommon.FormatDecimal(rate)),
+                new XElement("Cena", AccountingExportCommon.FormatDecimal(p)),
+                new XElement("CenaTyp", "0"),
+                new XElement("Poradi", index++),
+                // Protizapis is required by the schema (0 = not an advance deduction).
+                new XElement("NesklPolozka", new XElement("MJ", unit), new XElement("Protizapis", "0")));
+            list.Add(polozka);
+        }
+        return list;
     }
 }

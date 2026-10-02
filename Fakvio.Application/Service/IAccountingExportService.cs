@@ -23,9 +23,10 @@ public interface IAccountingExportService
     /// received invoices are still filtered by date range.
     /// </param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>The generated XML bytes, a suggested file name and the content type to serve it with.</returns>
-    /// <exception cref="InvalidOperationException">When the tenant has no issuer company configured.</exception>
-    Task<(byte[] Content, string FileName, string ContentType)> ExportAsync(
+    /// <returns>The generated XML, a suggested file name, content type and the list of documents left out.</returns>
+    /// <exception cref="InvalidOperationException">When the tenant has no issuer company (or IČO) configured.</exception>
+    /// <exception cref="ArgumentException">When the date range is inverted/too long or too many invoice ids are given.</exception>
+    Task<AccountingExportResult> ExportAsync(
         EAccountingSystem system,
         DateTime from,
         DateTime to,

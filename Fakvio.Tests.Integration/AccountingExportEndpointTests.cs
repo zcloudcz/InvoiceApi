@@ -130,6 +130,39 @@ public class AccountingExportEndpointTests : IClassFixture<FakvioFactory>
     }
 
     [Fact]
+    public async Task Export_InvertedOrTooLongRange_Returns400()
+    {
+        var client = await LoginAsync();
+
+        var inverted = await client.PostAsJsonAsync("/api/accounting-export/Pohoda", new AccountingExportRequestDto
+        {
+            From = new DateTime(2026, 3, 31), To = new DateTime(2026, 3, 1)
+        });
+        var tooLong = await client.PostAsJsonAsync("/api/accounting-export/Pohoda", new AccountingExportRequestDto
+        {
+            From = new DateTime(2024, 1, 1), To = new DateTime(2026, 3, 1)
+        });
+
+        inverted.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        tooLong.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Export_ReportsExportedAndSkippedCountsInHeaders()
+    {
+        var client = await LoginAsync();
+
+        var response = await client.PostAsJsonAsync("/api/accounting-export/MoneyS3", new AccountingExportRequestDto
+        {
+            From = new DateTime(2026, 3, 1), To = new DateTime(2026, 3, 31)
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Headers.GetValues("X-Export-Exported").Single().ShouldBe("1");
+        response.Headers.GetValues("X-Export-Skipped").Single().ShouldBe("0");
+    }
+
+    [Fact]
     public async Task Export_OutsideDateRange_ReturnsFileWithoutInvoice()
     {
         var client = await LoginAsync();
