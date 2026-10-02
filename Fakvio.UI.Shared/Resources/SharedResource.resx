@@ -842,6 +842,9 @@
   <data name="QR_NotAvailable" xml:space="preserve">
     <value>QR kód není k dispozici</value>
   </data>
+  <data name="QR_SepaTitle" xml:space="preserve">
+    <value>QR platba SEPA</value>
+  </data>
   <data name="Nav_MyCompany" xml:space="preserve">
     <value>Moje společnost</value>
   </data>
@@ -2027,6 +2030,18 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Aktuální stránka {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Stránka {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Rozbalit nebo sbalit {0}</value></data>
+  <data name="Vies_Verify" xml:space="preserve">
+    <value>Ověřit ve VIES</value>
+  </data>
+  <data name="Vies_Valid" xml:space="preserve">
+    <value>DIČ je platné ve VIES.</value>
+  </data>
+  <data name="Vies_Invalid" xml:space="preserve">
+    <value>DIČ není ve VIES platné.</value>
+  </data>
+  <data name="Vies_Unavailable" xml:space="preserve">
+    <value>Ověření ve VIES se nezdařilo (služba je nedostupná). Zkuste to později.</value>
+  </data>
   <data name="Nav_OssReport" xml:space="preserve"><value>Hlášení OSS</value></data>
   <data name="OssReport_Title" xml:space="preserve"><value>Hlášení OSS (EU One-Stop-Shop)</value></data>
   <data name="OssReport_Info" xml:space="preserve"><value>Čtvrtletní přehled prodeje spotřebitelům v jiných státech EU v režimu OSS: základ a DPH podle cílové země a sazby v EUR. Faktury v jiné měně se přepočítají kurzem ECB k poslednímu dni čtvrtletí. Podklad pro podání na portálu Finanční správy; neslouží jako DPHDP3/KH.</value></data>

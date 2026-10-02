@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
@@ -56,17 +57,10 @@ public class QrPaymentService : IQrPaymentService
     {
         var invoice = await LoadInvoiceWithDetailsAsync(invoiceId, cancellationToken);
 
-        // If IBAN is available, generate a simple SPD (QR Platba) with payment data only
+        // If IBAN is available, generate a payment-only payload: EPC (SEPA) for EUR, SPD otherwise.
         if (!string.IsNullOrWhiteSpace(invoice.IBAN))
         {
-            return SpdIntegrator.BuildSimpleSpdString(
-                invoice.IBAN,
-                invoice.SWIFT,
-                invoice.TotalWithVat,
-                invoice.Currency?.Code,
-                invoice.DueDate,
-                invoice.VariableSymbol,
-                invoice.DocumentNumber);
+            return BuildIbanPaymentQrContent(invoice);
         }
 
         // No IBAN — fall back to standalone SIND (QR Faktura only)
@@ -82,21 +76,17 @@ public class QrPaymentService : IQrPaymentService
     {
         var invoice = await LoadInvoiceWithDetailsAsync(invoiceId, cancellationToken);
 
-        // Strategy 1: IBAN available → local SPD generation (fastest, no external dependency)
+        // Strategy 1: IBAN available → local generation, no external dependency.
+        // EUR invoices use the SEPA EPC QR format; everything else keeps the Czech SPD (QR Platba).
         if (!string.IsNullOrWhiteSpace(invoice.IBAN))
         {
-            var spdContent = SpdIntegrator.BuildSimpleSpdString(
-                invoice.IBAN,
-                invoice.SWIFT,
-                invoice.TotalWithVat,
-                invoice.Currency?.Code,
-                invoice.DueDate,
-                invoice.VariableSymbol,
-                invoice.DocumentNumber);
+            var isEur = UsesEpc(invoice);
+            var qrContent = BuildIbanPaymentQrContent(invoice);
 
-            _logger.LogInformation("Generating QR Platba for invoice {InvoiceId} via local SPD (IBAN available)",
-                invoiceId);
-            return GenerateQrPng(spdContent, pixelsPerModule);
+            _logger.LogInformation(
+                "Generating {Format} for invoice {InvoiceId} via local generation (IBAN available)",
+                isEur ? "SEPA EPC QR" : "QR Platba", invoiceId);
+            return GenerateQrPng(qrContent, pixelsPerModule);
         }
 
         // Strategy 2: Czech bank account available → paylibo.com API
@@ -194,6 +184,43 @@ public class QrPaymentService : IQrPaymentService
         }
 
         return (prefix, accountNumber, bankCode);
+    }
+
+    /// <summary>
+    /// Builds the payment QR payload for an invoice that has an IBAN.
+    /// EUR invoices use the pan-European SEPA EPC QR format (EPC069-12); every other
+    /// currency keeps using the Czech QR Platba (SPD) format — unchanged behaviour.
+    /// Internal (not private) so unit tests can verify the routing rule directly.
+    /// </summary>
+    /// <summary>
+    /// THE decision whether an invoice gets the SEPA EPC QR: EUR + IBAN + an amount EPC can carry.
+    /// Zero/negative totals (credit notes, fully advance-covered final invoices) stay on SPD.
+    /// The PDF label and the UI title use the same <see cref="EpcQrPolicy"/> rule.
+    /// </summary>
+    public static bool UsesEpc(Invoice invoice) =>
+        EpcQrPolicy.UsesEpc(invoice.Currency?.Code, invoice.IBAN, invoice.TotalWithVat);
+
+    internal static string BuildIbanPaymentQrContent(Invoice invoice)
+    {
+        if (UsesEpc(invoice))
+        {
+            return EpcQrBuilder.Build(
+                invoice.Issuer?.CompanyName ?? string.Empty,
+                invoice.IBAN!,
+                invoice.SWIFT,
+                invoice.TotalWithVat,
+                invoice.DocumentNumber,
+                invoice.VariableSymbol);
+        }
+
+        return SpdIntegrator.BuildSimpleSpdString(
+            invoice.IBAN!,
+            invoice.SWIFT,
+            invoice.TotalWithVat,
+            invoice.Currency?.Code,
+            invoice.DueDate,
+            invoice.VariableSymbol,
+            invoice.DocumentNumber);
     }
 
     /// <summary>

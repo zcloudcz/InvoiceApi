@@ -196,6 +196,34 @@ public static class ClientTools
     }
 
     /// <summary>
+    /// Verifies an EU VAT identification number (DIČ) against VIES.
+    /// Works for any EU member state, unlike LookupAres which is Czech-only (IČO).
+    /// </summary>
+    [McpServerTool(Title = "Verify VAT ID in VIES", ReadOnly = true, Idempotent = true, OpenWorld = true), Description(
+        "Verify an EU VAT identification number (DIČ) against VIES (EU VAT registry). " +
+        "Returns whether the number is currently registered, plus name/address when the " +
+        "member state releases them. Use for any EU country — LookupAres is Czech IČO only.")]
+    public static async Task<string> VerifyVatVies(
+        IFakvioApiClient api,
+        [Description("EU VAT ID including the 2-letter country prefix, e.g. 'CZ12345678'")] string vatId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await api.VerifyVatViesAsync(vatId, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Gets the authenticated user's own company (issuer).
     /// This is the company that appears as the sender on invoices.
     /// </summary>

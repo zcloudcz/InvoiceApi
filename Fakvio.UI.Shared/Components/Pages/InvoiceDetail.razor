@@ -717,7 +717,11 @@ else
                         <MudCardHeader>
                             <CardHeaderContent>
                                 <MudText Typo="Typo.h6">
-                                    @(string.IsNullOrWhiteSpace(_invoice.IBAN) ? "QR Faktura" : "QR Platba+F")
+                                    @(string.IsNullOrWhiteSpace(_invoice.IBAN)
+                                        ? "QR Faktura"
+                                        : EpcQrPolicy.UsesEpc(_invoice.CurrencyCode, _invoice.IBAN, _invoice.TotalWithVat)
+                                            ? @L["QR_SepaTitle"].Value
+                                            : "QR Platba+F")
                                 </MudText>
                             </CardHeaderContent>
                         </MudCardHeader>

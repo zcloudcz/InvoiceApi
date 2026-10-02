@@ -465,7 +465,7 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 4. `app.UseTenantContext()` (řádek 180) — z `CompanyId` claimu resolvuje schema name a nastaví na scoped `TenantDbContext`.
 
 **TenantContextMiddleware** (`Fakvio.API/Middleware/TenantContextMiddleware.cs`):
-- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/api-key`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`, `/api/oss-vat-rate`. **Skip** tenant kontroly.
+- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/api-key`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`, `/api/oss-vat-rate`, `/api/vies`. **Skip** tenant kontroly.
 - Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků). Patří sem **jen dual-context číselníky** (`/api/currency`, `/api/vatrate`, `/api/contenttemplate`, `/api/numbersequence/formats`), jejichž service umí sáhnout do Master i Tenant DB.
 - **Tenant-only číselník do žádného z těch dvou seznamů nepatří.** Např. `/api/reversechargecode` (issue #46) čte přes `ReverseChargeCodeService` výhradně `TenantDbContext`, takže potřebuje normální tenant resolution — data jsou sice statutární (MFČR), ale fyzicky leží v tenant schématu. Bez `X-Company-Id` proto SysAdmin tyto řádky nevidí; až #49 přidá SysAdmin CRUD, bude nutné vědomě rozhodnout, zda service překlopit na dual-context.
 - Řádek 126: `await factory.ResolveSchemaAsync(companyId)` — jediný zdroj pravdy.
@@ -1200,6 +1200,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | Tool | Třída | Entita | Operace | Klíčové parametry |
 |------|-------|--------|---------|--------------------|
 | `ares_lookup` | `AresLookupTool` | ARES (Czech registry) | Read (external API) | `registration_number` (IČO) |
+| `verify_vat_vies` | `VerifyVatViesTool` | VIES (EU VAT registry) | Read (external API) | `vat_id` (DIČ vč. prefixu země) |
 | `create_client` | `CreateClientTool` | Client | Create | `registration_number` (IČO) — data z ARES |
 | `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
 | `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
@@ -1551,8 +1552,8 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 52 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 77 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 53 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+a **MCP server** (`[McpServerTool]`, 78 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1566,8 +1567,9 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 
 | MCP tool | Operace | Chat ekvivalent | Stav | Doplní |
 |----------|---------|-----------------|------|--------|
-| **Klienti** (`ClientTools`, 6) |
+| **Klienti** (`ClientTools`, 7) |
 | `LookupAres` | Read (ARES) | `ares_lookup` | ✅ | |
+| `VerifyVatVies` | Read (VIES) | `verify_vat_vies` | ✅ | |
 | `CreateClient` | Create | `create_client` | ✅ | |
 | `ListClients` | Read | `list_clients` | ✅ | |
 | `GetClient` | Read | `get_client` | ✅ | |
@@ -1660,7 +1662,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 77 MCP toolů, 52 chat toolů. Chat pokrývá 45 MCP toolů, žádný už jen částečně;
+**Součty:** 78 MCP toolů, 53 chat toolů. Chat pokrývá 46 MCP toolů, žádný už jen částečně;
 13 chat toolů nemá MCP protějšek. Zbývá 32 mezer: EPO export DPH (1 — `ExportVatEpo`, zatím bez tasku), úprava bankovního účtu faktury (1 — `SetInvoiceBankAccount`), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (2 — `ListCurrencies`, `ListReverseChargeCodes`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export do účetnictví (1 — `ExportAccounting`, §4.15), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
@@ -1748,7 +1750,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **77 tools** (bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 16 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **78 tools** (bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 16 invoice + 7 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -3633,3 +3635,8 @@ The API-key reveal prevents another creation until the current secret is acknowl
 `ReadinessIssueText` maps missing field identifiers to localized names, and `ReadinessFixLink` checks whether a server-supplied editor route is permitted before offering navigation. `FakvioMudLocalizer`, registered through shared UI services, supplies MudBlazor grid labels in the active language. Keep CZ/EN resources synchronized and preserve accessible names for icon-only controls.
 
 Regression coverage includes `ClientContactEditorTests`, `DocumentUxRegressionTests`, `AccountUxRecoveryTests`, shared localization/readiness tests and membership API/MCP tests. PostgreSQL concurrency tests remain necessary for invitation/revocation ordering. Targeted suites have run during implementation; final combined validation and deployment are separate gates, and this branch is not deployed.
+
+### QR platba SEPA (EPC) a ověření DIČ ve VIES
+
+- **EPC QR:** `EpcQrBuilder` (`Fakvio.Application/QrPayment`) staví payload dle EPC069-12 (BCD/002/UTF-8/SCT, název ≤70, IBAN bez mezer, `EUR`+částka, remittance ≤140, max 331 B, ECC M). Routing v `QrPaymentService.BuildIbanPaymentQrContent`: měna EUR **a** IBAN → EPC, jinak beze změny SPD / Paylibo / SIND. Částka mimo 0,01–999 999 999,99 vyhodí výjimku (PDF QR je non-critical, `/qr` endpoint vrátí chybu).
+- **VIES:** `IViesService` / `ViesService` (typed HttpClient, timeout 10 s, `IMemoryCache` 24 h jen pro `Valid`). REST `POST ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number`; VIES vrací HTTP 200 i pro neplatné číslo, výpadek členského státu (`MS_UNAVAILABLE`, `TIMEOUT`…) se mapuje na `EViesCheckStatus.Unavailable` (nikdy ne na „neplatné DIČ"). `GR` se normalizuje na `EL`. Endpoint `GET api/vies/{vatId}` `[Authorize]`; MCP `verify_vat_vies`, chat `verify_vat_vies`.

@@ -842,6 +842,9 @@
   <data name="QR_NotAvailable" xml:space="preserve">
     <value>QR code not available</value>
   </data>
+  <data name="QR_SepaTitle" xml:space="preserve">
+    <value>SEPA QR payment</value>
+  </data>
   <data name="Nav_MyCompany" xml:space="preserve">
     <value>My Company</value>
   </data>
@@ -2027,6 +2030,18 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Toggle {0}</value></data>
+  <data name="Vies_Verify" xml:space="preserve">
+    <value>Verify in VIES</value>
+  </data>
+  <data name="Vies_Valid" xml:space="preserve">
+    <value>VAT ID is valid in VIES.</value>
+  </data>
+  <data name="Vies_Invalid" xml:space="preserve">
+    <value>VAT ID is not valid in VIES.</value>
+  </data>
+  <data name="Vies_Unavailable" xml:space="preserve">
+    <value>Could not verify in VIES (service unavailable). Try again later.</value>
+  </data>
   <data name="Nav_OssReport" xml:space="preserve"><value>OSS report</value></data>
   <data name="OssReport_Title" xml:space="preserve"><value>EU OSS report (One-Stop-Shop)</value></data>
   <data name="OssReport_Info" xml:space="preserve"><value>Quarterly summary of B2C sales to other EU states under OSS: taxable base and VAT per destination country and rate, in EUR. Invoices in other currencies are converted at the ECB rate of the last day of the quarter. A basis for the filing on the tax portal; it is not a DPHDP3/control statement.</value></data>

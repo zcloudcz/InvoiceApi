@@ -23,6 +23,7 @@ using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
+using Fakvio.Contracts.Dto.Vies;
 using Fakvio.Domain.Enums;
 
 namespace Fakvio.McpServer.Client;
@@ -337,6 +338,13 @@ public class FakvioApiClient : IFakvioApiClient
 
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<ClientDto>(JsonOptions, ct);
+    }
+
+    public async Task<ViesVerificationResult> VerifyVatViesAsync(string vatId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/vies/{Uri.EscapeDataString(vatId)}", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<ViesVerificationResult>(JsonOptions, ct))!;
     }
 
     public async Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto dto, CancellationToken ct = default)

@@ -20,6 +20,7 @@ using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
+using Fakvio.Contracts.Dto.Vies;
 using Fakvio.Domain.Enums;
 
 namespace Fakvio.McpServer.Client;
@@ -140,6 +141,9 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/client/issuer — get the authenticated user's company (issuer).</summary>
     Task<ClientDto?> GetIssuerAsync(CancellationToken ct = default);
+
+    /// <summary>GET /api/vies/{vatId} — verify an EU VAT ID against VIES.</summary>
+    Task<ViesVerificationResult> VerifyVatViesAsync(string vatId, CancellationToken ct = default);
 
     /// <summary>POST /api/client/{id}/bank-account — add a bank account; null when the client does not exist.</summary>
     Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto dto, CancellationToken ct = default);

@@ -123,6 +123,9 @@ public static class ServiceCollectionExtensions
         // Read-only on the client side; admin CRUD is task #49 (ReverseChargeCodes.razor).
         services.AddApiClient<ReverseChargeCodeApiService>();
 
+        // VIES — EU VAT ID verification button on the client form.
+        services.AddApiClient<ViesApiService>();
+
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
 

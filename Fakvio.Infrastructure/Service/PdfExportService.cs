@@ -383,7 +383,11 @@ public class PdfExportService : IPdfExportService
         // If QR code generation failed or no base64 data, remove the entire QR section.
         if (!string.IsNullOrEmpty(qrCodeBase64))
         {
-            html = html.Replace("{{QrCodeImage}}", $@"<img src=""data:image/png;base64,{qrCodeBase64}"" alt=""QR Platba"" style=""width:120px; height:120px;"" />");
+            // EUR invoices with an IBAN get the SEPA EPC QR code (see QrPaymentService) —
+            // label it accordingly instead of the generic Czech "QR Platba".
+            var isSepa = QrPaymentService.UsesEpc(invoice);
+            var altText = isSepa ? "QR platba SEPA" : "QR Platba";
+            html = html.Replace("{{QrCodeImage}}", $@"<img src=""data:image/png;base64,{qrCodeBase64}"" alt=""{altText}"" style=""width:120px; height:120px;"" />");
         }
         else
         {

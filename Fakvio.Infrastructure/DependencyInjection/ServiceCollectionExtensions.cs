@@ -76,6 +76,11 @@ public static class ServiceCollectionExtensions
         // Paylibo.com — Czech QR Platba (SPD) generation from domestic bank account format
         services.AddHttpClient<IPayliboClient, PayliboClient>();
 
+        // VIES (EU VAT number registry) — 10s timeout so a slow member-state check degrades to
+        // "could not verify" instead of parking the request.
+        services.AddHttpClient<IViesService, ViesService>(
+            client => client.Timeout = TimeSpan.FromSeconds(10));
+
         // reCAPTCHA v3 verification — validates tokens from Google's invisible captcha.
         // The gate fails closed (issue #200): without a usable SecretKey every gated request
         // is rejected, so running without reCAPTCHA needs an explicit Recaptcha:Enabled=false.
@@ -322,6 +327,7 @@ public static class ServiceCollectionExtensions
         // ChatToolExecutor discovers all tools via IEnumerable<IChatTool>.
         // To add a new tool: implement IChatTool, register here, and it's automatically available.
         services.AddScoped<IChatTool, AresLookupTool>();
+        services.AddScoped<IChatTool, VerifyVatViesTool>();
         services.AddScoped<IChatTool, CreateClientTool>();
         services.AddScoped<IChatTool, NavigateTool>();
         services.AddScoped<IChatTool, CreateInvoiceTool>();
