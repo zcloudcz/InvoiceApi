@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.02 — 2026-10-02
+
 ### Nové funkce
 
 - **#478** — Faktury v EUR s IBAN nesou SEPA QR kód (EPC) místo české QR Platby, takže je zaplatí i zahraniční bankovní aplikace (nulové a záporné částky dál používají QR Platbu). U klienta lze DIČ ověřit ve VIES tlačítkem „Ověřit ve VIES“, přes chat i MCP (verify_vat_vies). (PR #478, `0638a1f`)
