@@ -606,7 +606,7 @@ public class InvoiceImportService : IInvoiceImportService
             InvoiceItem = BuildInvoiceItems(item)
         };
 
-        return await _invoiceService.CreateInvoiceAsync(createDto, ct);
+        return await _invoiceService.CreateImportedInvoiceAsync(createDto, ct);
     }
 
     private async Task<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto> CreateReceivedInvoice(

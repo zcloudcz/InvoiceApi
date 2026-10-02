@@ -1508,7 +1508,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 50 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 70 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 71 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1530,8 +1530,9 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
-| **Vydané faktury** (`InvoiceTools`, 11) |
-| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
+| **Vydané faktury** (`InvoiceTools`, 12) |
+| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné, `bankAccountId` volitelné; chat `bank_account_id`) | `create_invoice` | ✅ | |
+| `SetInvoiceBankAccount` | **Write** (změní bankovní účet Draft/Completed faktury přes `UpdateInvoiceDto.BankAccountId`) | — | ❌ | chat nemá tool pro úpravu faktury |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
 | `GetInvoice` | Read | `get_invoice` (`id`) | ✅ | |
@@ -1562,7 +1563,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Šablony** (`TemplateTools`, 3) |
 | `ListTemplates` | Read | `list_invoice_templates` | ✅ | |
 | `GetTemplate` | Read | `get_invoice_template` | ✅ | |
-| `CreateInvoiceFromTemplate` | Create | — | ❌ | zatím bez tasku |
+| `CreateInvoiceFromTemplate` | Create (`bankAccountId` volitelné) | — | ❌ | zatím bez tasku |
 | **Readiness** (`ReadinessTools`, 1) |
 | `GetReadiness` | Read | `get_readiness` | ✅ | |
 | **Číselníky** (`CodeListTools`, 1) |
@@ -1609,8 +1610,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 70 MCP toolů, 50 chat toolů. Chat pokrývá 43 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 27 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
+**Součty:** 71 MCP toolů, 50 chat toolů. Chat pokrývá 43 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 28 mezer: úprava bankovního účtu faktury (1 — `SetInvoiceBankAccount`), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
@@ -1697,7 +1698,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **70 tools**: 11 invoice + 7 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **71 tools** (bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 12 invoice + 7 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -3338,7 +3339,7 @@ On relational storage, invitation issue/accept, membership update/revoke and leg
 
 `UserCompanyMembershipDialog` is opened from the SysAdmin Users grid. Saving one row refreshes only that row so other unsaved membership edits remain. Deactivation names the company in its confirmation. Legacy account/default fields are compatibility metadata, not authority to recreate or overwrite an existing membership.
 
-MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 69 tools; update every published count and parity row whenever discovery changes.
+MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 70 tools; update every published count and parity row whenever discovery changes.
 
 ### Document forms and server-backed lists
 

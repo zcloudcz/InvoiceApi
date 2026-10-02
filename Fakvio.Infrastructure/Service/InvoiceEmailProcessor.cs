@@ -583,7 +583,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             InvoiceItem = items,
         };
 
-        var result = await _invoiceService.CreateInvoiceAsync(dto, ct);
+        var result = await _invoiceService.CreateImportedInvoiceAsync(dto, ct);
         return result?.Id;
     }
 

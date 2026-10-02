@@ -175,6 +175,17 @@ public class FakvioApiClient : IFakvioApiClient
         return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
     }
 
+    public async Task<InvoiceDto?> UpdateInvoiceAsync(long id, UpdateInvoiceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"api/invoice/{id}", dto, JsonOptions, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct);
+    }
+
     public async Task<InvoiceDto> CompleteInvoiceAsync(long id, CancellationToken ct = default)
     {
         // POST with empty body — the API only needs the invoice ID in the URL
