@@ -198,6 +198,8 @@
   <data name="Client_RegistrationNumber" xml:space="preserve"><value>IČO</value></data>
   <data name="Client_TaxNumber" xml:space="preserve"><value>DIČ</value></data>
   <data name="Client_IsVatPayer" xml:space="preserve"><value>Plátce DPH</value></data>
+  <data name="Client_AutoIssueTaxReceiptForAdvance" xml:space="preserve"><value>Automaticky vystavit DPP při úhradě zálohy</value></data>
+  <data name="Client_AutoIssueTaxReceiptForAdvance_Help" xml:space="preserve"><value>Při přijetí platby zálohové faktury se automaticky vystaví daňový doklad k přijaté platbě (DPP). Platí jen pro plátce DPH.</value></data>
   <data name="Client_Addresses" xml:space="preserve"><value>Adresy</value></data>
   <data name="Client_Contacts" xml:space="preserve"><value>Kontakty</value></data>
   <data name="Client_BillingSettings" xml:space="preserve"><value>Fakturační nastavení</value></data>

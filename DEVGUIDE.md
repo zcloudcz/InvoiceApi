@@ -641,6 +641,20 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
 | Mark paid | `POST /api/invoice/{id}/mark-paid` | Status=Paid, PaidAt=now. Endpoint je `/mark-paid`, ne `/mark-as-paid`. |
 | Send email | `POST /api/invoice/{id}/send-email` | Viz §4.2. |
 
+**Záloha → platba → DPP → vyúčtování (Proforma):**
+- Každá cesta, která zvýší `PaidAmount` proformy (ruční `mark-paid` vč. MCP `mark_invoice_paid` a bulk, ruční/auto/potvrzené
+  párování bankovní platby v `PaymentMatchingService`), volá jedinou metodu `InvoiceService.TryAutoIssueTaxReceiptAsync`.
+  Ta (jen pro vystavovatele = plátce DPH s `Client.AutoIssueTaxReceiptForAdvance = true`, default zapnuto; přepínač v
+  *Moje firma*) vystaví a rovnou dokončí DPP přes `IssueTaxReceiptForPaidProformaAsync` — částka = nově přijatá platba
+  (DUZP = datum platby, položky rozpočtené po sazbách DPH stejně jako odpočet na vyúčtování, `SplitAmountByVatRate`).
+  Chyby jen loguje (platba se nikdy nevrací zpět). **Žádný automatický e-mail.**
+- Idempotence: DPP se vždy ořízne na `PaidAmount − Σ existujících DPP`, takže opakované zpracování téže platby nic nezdvojí.
+  Ruční `mark-paid` nově synchronizuje i `PaidAmount = TotalWithVat`.
+- `POST /api/invoice/{proformaId}/issue-tax-receipt` = ruční cesta (vypnuté auto-vystavení, MCP/chat `issue_tax_receipt`);
+  vyúčtování: `POST .../issue-final`, zbývající záloha: `GET .../remaining-advance`.
+- Storno párování platby (`UnmatchAsync`) už vystavené DPP neruší — storno daňového dokladu je samostatná funkce.
+- Sloupec `Client.AutoIssueTaxReceiptForAdvance` → migrace `AddClientAutoIssueTaxReceipt` v Master i Tenant (entita `Client` je v obou).
+
 **Variable Symbol** (CZ banking):
 - Max **10 číslic**, jen digits.
 - Auto-fill z document number: `new string(docNumber.Where(char.IsDigit).Take(10).ToArray())`.
@@ -1193,6 +1207,9 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `get_invoice` | `GetInvoiceTool` | Invoice (vydaná) | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, platební údaje |
 | `complete_invoice` | `CompleteInvoiceTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Draft |
 | `mark_invoice_paid` | `MarkInvoicePaidTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Completed |
+| `issue_final_invoice` | `IssueFinalInvoiceTool` | Proforma → Invoice | **Write** (confirm) | `id` nebo `document_number` + `deduction_amount?`; vytvoří Draft se zkopírovanými položkami a odpočtem zálohy |
+| `issue_tax_receipt` | `IssueTaxReceiptTool` | Proforma → DPP | **Write** (confirm) | `id` nebo `document_number`; jen plátce DPH, idempotentní |
+| `get_remaining_advance` | `GetRemainingAdvanceTool` | Proforma | Read | `id` nebo `document_number`; zbývající nezúčtovaná záloha |
 | `send_invoice_email` | `SendInvoiceEmailTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number` + `recipient_email` |
 | `delete_invoice` | `DeleteInvoiceTool` | Invoice (vydaná) | **Destructive** (confirm) | `id` nebo `document_number`; jen Draft (soft delete) |
 | `list_number_sequences` | `ListNumberSequencesTool` | NumberSequence | Read (list) | `document_type`, `include_inactive`; vypíše i **formáty číslování** s ID pro create |
@@ -1506,8 +1523,8 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 69 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 52 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+a **MCP server** (`[McpServerTool]`, 72 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1528,7 +1545,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
-| **Vydané faktury** (`InvoiceTools`, 11) |
+| **Vydané faktury** (`InvoiceTools`, 14) |
 | `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
@@ -1536,6 +1553,9 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `FindInvoiceByNumber` | Read | `get_invoice` (`document_number`) | ✅ | |
 | `CompleteInvoice` | **Write** | `complete_invoice` (confirm) | ✅ | |
 | `MarkInvoicePaid` | **Write** | `mark_invoice_paid` (confirm) | ✅ | |
+| `IssueFinalInvoice` | **Write** (Draft vyúčtování, `deductionAmount?`) | `issue_final_invoice` (confirm) | ✅ | |
+| `IssueTaxReceipt` | **Write** (DPP) | `issue_tax_receipt` (confirm) | ✅ | |
+| `GetRemainingAdvance` | Read | `get_remaining_advance` | ✅ | |
 | `SendInvoiceEmail` | **Write** (odešle e-mail) | `send_invoice_email` (confirm) | ✅ | |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
 | `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
@@ -1607,7 +1627,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 69 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+**Součty:** 72 MCP toolů, 52 chat toolů. Chat pokrývá 45 MCP toolů, žádný už jen částečně;
 13 chat toolů nemá MCP protějšek. Zbývá 27 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
@@ -1695,7 +1715,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **69 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **72 tools**: 14 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,

@@ -789,10 +789,19 @@ public class InvoiceService : IInvoiceService
 
         _logger.LogInformation("Marking {DocumentType} {Id} as paid", invoice.DocumentType, invoice.Id);
 
+        // Amount newly received by this action. PaidAmount isn't necessarily up to date before
+        // this call — manual mark-paid bypasses bank-payment matching — so bring it in line with
+        // the new Paid status too (needed for the proforma deduction/DPP amount calculations).
+        var newlyPaid = invoice.TotalWithVat - invoice.PaidAmount;
+        invoice.PaidAmount = invoice.TotalWithVat;
         invoice.Status = EInvoiceStatus.Paid;
         invoice.PaidAt = paidAt ?? DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Proforma becoming paid → auto-issue its DPP (tax receipt for advance payment), if
+        // the issuer is a VAT payer and hasn't disabled auto-issuance. No-op for other types.
+        await TryAutoIssueTaxReceiptAsync(invoice.Id, newlyPaid, invoice.PaidAt, cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
     }
@@ -1142,6 +1151,133 @@ public class InvoiceService : IInvoiceService
         return remaining < 0 ? 0 : remaining;
     }
 
+    // ─── Proforma → Tax Receipt for Advance Payment (DPP) ─────────────────────
+
+    /// <inheritdoc />
+    public async Task<InvoiceDto?> IssueTaxReceiptForPaidProformaAsync(
+        long proformaId,
+        DateTime? paymentDate,
+        decimal? amount,
+        CancellationToken cancellationToken = default)
+    {
+        var proforma = await _context.Invoice
+            .Include(i => i.InvoiceItem)
+            .Include(i => i.Issuer)
+            .FirstOrDefaultAsync(i => i.Id == proformaId, cancellationToken);
+
+        if (proforma == null)
+            throw new KeyNotFoundException($"Proforma with ID {proformaId} not found");
+
+        if (proforma.DocumentType != EDocumentType.Proforma)
+            throw new InvalidOperationException(
+                $"Document {proformaId} is of type {proforma.DocumentType}, not Proforma. " +
+                "Only a Proforma can have a tax receipt for advance payment issued against it.");
+
+        // An advance payment only creates a VAT obligation for VAT-paying issuers — a
+        // non-VAT-payer never issues a DPP, manually or automatically (§ 28 ZDPH applies
+        // only to VAT payers).
+        if (!proforma.Issuer.IsVatPayer)
+        {
+            _logger.LogInformation(
+                "Not issuing a tax receipt for proforma {ProformaId}: issuer {IssuerId} is not a VAT payer",
+                proformaId, proforma.IssuerId);
+            return null;
+        }
+
+        // Idempotency guard: never cover more of the advance than has actually been received.
+        // Sums every non-deleted DPP already linked to this proforma, so a retry (double bank
+        // import, re-running matching, calling this twice) clamps to zero rather than double-booking.
+        var alreadyIssued = await _context.Invoice
+            .AsNoTracking()
+            .Where(i => i.OriginalInvoiceId == proformaId
+                     && i.DocumentType == EDocumentType.TaxReceiptForAdvance
+                     && i.Status != EInvoiceStatus.Deleted)
+            .SumAsync(i => (decimal?)i.TotalWithVat, cancellationToken) ?? 0m;
+
+        var available = proforma.PaidAmount - alreadyIssued;
+        if (available < 0) available = 0;
+
+        var effectiveAmount = amount ?? available;
+        if (effectiveAmount > available)
+            effectiveAmount = available; // clamp — never double-cover the same payment
+
+        if (effectiveAmount <= 0)
+        {
+            _logger.LogInformation(
+                "Skipping tax receipt for proforma {ProformaId}: nothing new to cover " +
+                "(already issued {AlreadyIssued:F2} of paid {Paid:F2})",
+                proformaId, alreadyIssued, proforma.PaidAmount);
+            return null;
+        }
+
+        var items = BuildAdvanceReceiptItems(proforma.InvoiceItem, effectiveAmount);
+
+        var createDto = new CreateInvoiceDto
+        {
+            DocumentType = EDocumentType.TaxReceiptForAdvance,
+            ClientId = proforma.ClientId ?? throw new InvalidOperationException("Proforma has no ClientId"),
+            IssuerId = proforma.IssuerId,
+            IssueDate = paymentDate,
+            TaxableSupplyDate = paymentDate, // DUZP = date the advance was received (§ 28/5 ZDPH)
+            OriginalInvoiceId = proformaId,  // 1:N link — DPP → proforma
+            CurrencyId = proforma.CurrencyId,
+            BankAccountNumber = proforma.BankAccountNumber,
+            IBAN = proforma.IBAN,
+            SWIFT = proforma.SWIFT,
+            PaymentMethod = proforma.PaymentMethod,
+            Notes = $"Daňový doklad k přijaté platbě na zálohovou fakturu {proforma.DocumentNumber}",
+            InvoiceItem = items
+        };
+
+        var created = await CreateInvoiceAsync(createDto, cancellationToken);
+        var completed = await CompleteInvoiceAsync(created.Id, cancellationToken);
+
+        _logger.LogInformation(
+            "Tax receipt {Id} ({DocNum}) issued for proforma {ProformaId} ({ProformaDocNum}): amount {Amount:F2}",
+            completed!.Id, completed.DocumentNumber, proformaId, proforma.DocumentNumber, effectiveAmount);
+
+        return completed;
+    }
+
+    /// <summary>
+    /// Hook called by every code path that increases a Proforma's PaidAmount (manual mark-paid,
+    /// bank payment matching — both auto and manual). Auto-issues a DPP for the newly received
+    /// portion when the issuer is a VAT payer and has not disabled auto-issuance
+    /// (<see cref="Client.AutoIssueTaxReceiptForAdvance"/>).
+    ///
+    /// Deliberately swallows all errors: a failure to auto-issue the DPP must never roll back
+    /// or fail the payment itself. The user can still issue it manually from the UI (or the
+    /// issue_tax_receipt tool) if this silently fails — see the logged error.
+    /// </summary>
+    public async Task TryAutoIssueTaxReceiptAsync(
+        long proformaId, decimal paidDelta, DateTime? paymentDate, CancellationToken cancellationToken = default)
+    {
+        if (paidDelta <= 0)
+            return;
+
+        try
+        {
+            var proforma = await _context.Invoice
+                .AsNoTracking()
+                .Include(i => i.Issuer)
+                .FirstOrDefaultAsync(i => i.Id == proformaId, cancellationToken);
+
+            if (proforma == null || proforma.DocumentType != EDocumentType.Proforma)
+                return;
+
+            if (!proforma.Issuer.IsVatPayer || !proforma.Issuer.AutoIssueTaxReceiptForAdvance)
+                return;
+
+            await IssueTaxReceiptForPaidProformaAsync(proformaId, paymentDate, paidDelta, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Auto tax-receipt issuance failed for proforma {ProformaId} — the payment itself was still recorded.",
+                proformaId);
+        }
+    }
+
     // ─── Deduction Helpers ────────────────────────────────────────────────────
 
     /// <summary>
@@ -1194,6 +1330,45 @@ public class InvoiceService : IInvoiceService
         ICollection<InvoiceItem> proformaItems,
         decimal totalDeductionWithVat)
     {
+        return SplitAmountByVatRate(proformaItems, totalDeductionWithVat)
+            .Select(s => BuildVatSplitItem(
+                s.RatePercentage, s.VatRateId, s.AmountWithVat,
+                negative: true,
+                description: "Odečet přijaté zálohy / Advance payment deduction"))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Builds the line items for an auto- or manually-issued Tax Receipt for Advance Payment
+    /// (DPP). Mirrors <see cref="BuildDeductionItems"/> but with positive amounts — a DPP
+    /// records VAT on the advance actually received, split proportionally across the VAT
+    /// rates found on the proforma (§ 28 odst. 5 zákona č. 235/2004 Sb. o DPH).
+    /// </summary>
+    private static List<CreateInvoiceItemDto> BuildAdvanceReceiptItems(
+        ICollection<InvoiceItem> proformaItems,
+        decimal totalAmountWithVat)
+    {
+        return SplitAmountByVatRate(proformaItems, totalAmountWithVat)
+            .Select(s => BuildVatSplitItem(
+                s.RatePercentage, s.VatRateId, s.AmountWithVat,
+                negative: false,
+                description: "Přijatá záloha / Advance payment received"))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Splits <paramref name="totalAmountWithVat"/> into one row per VAT rate found on
+    /// <paramref name="proformaItems"/>, proportional to each rate's share of the proforma's
+    /// total (TotalWithVat-based weights), using "largest remainder" rounding so the rows
+    /// always sum exactly back to the requested total.
+    ///
+    /// Shared by <see cref="BuildDeductionItems"/> (advance deduction on a final invoice) and
+    /// <see cref="BuildAdvanceReceiptItems"/> (DPP) — only the sign and description differ.
+    /// </summary>
+    private static List<(decimal RatePercentage, long? VatRateId, decimal AmountWithVat)> SplitAmountByVatRate(
+        ICollection<InvoiceItem> proformaItems,
+        decimal totalAmountWithVat)
+    {
         // Collect the non-text, non-zero items from the proforma, grouped by VAT rate.
         // We use TotalWithVat (the actual amount the client paid) as the weight basis
         // because the paid amount (PaidAmount) is also TotalWithVat-based.
@@ -1208,42 +1383,12 @@ public class InvoiceService : IInvoiceService
             })
             .ToList();
 
-        // If there are no billable proforma items at all, fall back to a single 0% row
-        // so we still produce a deduction row (better than silently omitting it).
-        if (vatGroups.Count == 0)
-        {
-            return new List<CreateInvoiceItemDto>
-            {
-                new()
-                {
-                    Description = "Odečet přijaté zálohy / Advance payment deduction",
-                    Quantity = 1,
-                    Unit = "pcs",
-                    UnitPrice = -totalDeductionWithVat,
-                    VatRatePercentage = 0,
-                    VatRateId = null
-                }
-            };
-        }
-
-        // Total proforma TotalWithVat across all billable items — used as the denominator.
+        // No billable proforma items (or they net to zero) — fall back to a single 0% row
+        // so we still produce a row (better than silently omitting it).
         var proformaTotalWithVat = vatGroups.Sum(g => g.TotalWithVat);
-
-        if (proformaTotalWithVat == 0)
+        if (vatGroups.Count == 0 || proformaTotalWithVat == 0)
         {
-            // Proforma has items but they net to zero — edge case, single 0% row.
-            return new List<CreateInvoiceItemDto>
-            {
-                new()
-                {
-                    Description = "Odečet přijaté zálohy / Advance payment deduction",
-                    Quantity = 1,
-                    Unit = "pcs",
-                    UnitPrice = -totalDeductionWithVat,
-                    VatRatePercentage = 0,
-                    VatRateId = null
-                }
-            };
+            return new List<(decimal, long?, decimal)> { (0m, null, totalAmountWithVat) };
         }
 
         // ── Proportional split with "largest remainder" rounding ──────────────
@@ -1255,12 +1400,12 @@ public class InvoiceService : IInvoiceService
         {
             g.VatRatePercentage,
             g.VatRateId,
-            ExactShare = totalDeductionWithVat * (g.TotalWithVat / proformaTotalWithVat)
+            ExactShare = totalAmountWithVat * (g.TotalWithVat / proformaTotalWithVat)
         }).ToList();
 
         var floored = shares.Select(s => Math.Round(s.ExactShare, 2, MidpointRounding.ToZero)).ToList();
         var sumFloored = floored.Sum();
-        var residual = Math.Round(totalDeductionWithVat - sumFloored, 2);
+        var residual = Math.Round(totalAmountWithVat - sumFloored, 2);
 
         // Each residual cent is +0.01; distribute to the groups with the largest fractional part.
         var remainders = shares
@@ -1274,38 +1419,33 @@ public class InvoiceService : IInvoiceService
             floored[remainders[i].Idx] += 0.01m;
         }
 
-        // ── Build deduction CreateInvoiceItemDto rows ─────────────────────────
-        // Each row uses UnitPrice = -(base before VAT) and VatRatePercentage = rate.
-        // The standard item calculation pipeline (Quantity * UnitPrice, + VAT) then
-        // produces the correct negative TotalWithVat.
-        var result = new List<CreateInvoiceItemDto>();
+        return shares
+            .Select((s, i) => (s.VatRatePercentage, s.VatRateId, AmountWithVat: floored[i]))
+            .Where(s => s.AmountWithVat != 0) // skip zero-amount rows (can happen with rounding on tiny amounts)
+            .ToList();
+    }
 
-        for (var i = 0; i < shares.Count; i++)
+    /// <summary>
+    /// Builds a single VAT-split CreateInvoiceItemDto row: back-calculates the base (before VAT)
+    /// price from the TotalWithVat amount (TotalBeforeVat = TotalWithVat / (1 + rate/100)), then
+    /// applies the sign. The standard item calculation pipeline (Quantity * UnitPrice + VAT) then
+    /// reproduces exactly <paramref name="amountWithVat"/> as the row's TotalWithVat.
+    /// </summary>
+    private static CreateInvoiceItemDto BuildVatSplitItem(
+        decimal rate, long? vatRateId, decimal amountWithVat, bool negative, string description)
+    {
+        var divisor = 1m + rate / 100m;
+        var baseAmount = Math.Round(amountWithVat / divisor, 2, MidpointRounding.AwayFromZero);
+
+        return new CreateInvoiceItemDto
         {
-            var rate = shares[i].VatRatePercentage;
-            var deductionWithVat = floored[i];
-
-            if (deductionWithVat == 0)
-                continue; // skip zero-amount rows (can happen with rounding on tiny amounts)
-
-            // Back-calculate the base (before VAT) from the TotalWithVat deduction.
-            // TotalWithVat = TotalBeforeVat * (1 + rate/100)
-            // → TotalBeforeVat = TotalWithVat / (1 + rate/100)
-            var divisor = 1m + rate / 100m;
-            var deductionBase = Math.Round(deductionWithVat / divisor, 2, MidpointRounding.AwayFromZero);
-
-            result.Add(new CreateInvoiceItemDto
-            {
-                Description = "Odečet přijaté zálohy / Advance payment deduction",
-                Quantity = 1,
-                Unit = "pcs",
-                UnitPrice = -deductionBase,          // negative — this is a deduction
-                VatRatePercentage = rate,
-                VatRateId = shares[i].VatRateId
-            });
-        }
-
-        return result;
+            Description = description,
+            Quantity = 1,
+            Unit = "pcs",
+            UnitPrice = negative ? -baseAmount : baseAmount,
+            VatRatePercentage = rate,
+            VatRateId = vatRateId
+        };
     }
 
     // ─── Bulk Operations ─────────────────────────────────────────────────────

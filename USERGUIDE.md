@@ -359,7 +359,18 @@ Proforma (záloha) je nezávazný doklad před přijetím platby. Číslo doklad
 
 Vystavuje se po přijetí zálohy. Číslo dokladu: prefix `DPP-`.
 
-**Automatické vystavení:** systém může automaticky vystavit DPP po označení proformy jako zaplacené (závisí na nastavení).
+**Automatické vystavení:** pokud jste plátce DPH, systém DPP vystaví sám v okamžiku, kdy je proforma uhrazena — ať ji označíte jako zaplacenou ručně, nebo ji spáruje bankovní platba. U částečné úhrady vznikne DPP na přijatou část a při doplatku další DPP na zbytek; nic se nezdvojí. DPP se **neodesílá e-mailem automaticky**. Neplátci DPH DPP nevystavují.
+
+Automatické vystavení můžete vypnout v **Moje firma** (přepínač „Automaticky vystavit DPP při úhradě zálohy", zobrazuje se jen plátcům DPH). Pak vystavíte DPP ručně z detailu proformy.
+
+### Postup: záloha → platba → DPP → vyúčtování
+
+1. **Záloha:** vytvořte a vystavte proformu fakturu (typ Proforma) a pošlete ji zákazníkovi.
+2. **Platba:** po přijetí platby označte proformu jako zaplacenou (nebo ji spáruje import bankovních plateb).
+3. **DPP:** plátci DPH se automaticky vystaví daňový doklad o přijaté platbě s DPH z přijaté zálohy.
+4. **Vyúčtování:** z detailu proformy vystavte konečnou fakturu — záloha se na ní odečte po sazbách DPH. Zálohu lze rozdělit i mezi více konečných faktur.
+
+Totéž umí AI asistent / MCP (`create_invoice` s typem Proforma, `issue_tax_receipt`, `get_remaining_advance`, `issue_final_invoice`).
 
 ---
 
@@ -1146,7 +1157,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 69 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 72 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.

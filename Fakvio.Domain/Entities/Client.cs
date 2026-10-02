@@ -105,6 +105,17 @@ public class Client : BaseEntity
     public EFlatRateBand? FlatRateBand { get; set; }
 
     /// <summary>
+    /// Whether a Tax Receipt for Advance Payment (DPP, daňový doklad o přijaté platbě) is
+    /// issued automatically when a Proforma of this issuer receives a payment.
+    /// Only relevant for issuers (IsIssuer = true). Non-VAT-payer issuers never issue a DPP
+    /// regardless of this flag — an advance payment only creates a VAT obligation for VAT payers.
+    /// When false, the DPP must be issued manually from the proforma detail page (or the
+    /// issue_tax_receipt MCP/chat tool).
+    /// Default: true.
+    /// </summary>
+    public bool AutoIssueTaxReceiptForAdvance { get; set; } = true;
+
+    /// <summary>
     /// Display color for this client in grids and UI elements.
     /// CSS hex color code (e.g., "#FF5722", "#4CAF50").
     /// Null = no custom color (default row styling).

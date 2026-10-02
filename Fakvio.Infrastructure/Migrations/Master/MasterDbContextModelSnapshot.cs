@@ -423,6 +423,11 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<bool>("AutoIssueTaxReceiptForAdvance")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Color")
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)");

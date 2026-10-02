@@ -393,6 +393,9 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.FlatRateBand)
                 .HasConversion<string?>()
                 .HasMaxLength(10);
+
+            entity.Property(e => e.AutoIssueTaxReceiptForAdvance)
+                .HasDefaultValue(true);
         });
     }
 

@@ -86,6 +86,11 @@ public class UpdateClientDto
     public string? FlatRateBand { get; set; }
 
     /// <summary>
+    /// Issuer setting: auto-issue a DPP when a proforma is paid. Null = don't change.
+    /// </summary>
+    public bool? AutoIssueTaxReceiptForAdvance { get; set; }
+
+    /// <summary>
     /// Should data be refreshed from ARES?
     /// </summary>
     public bool RefreshFromAres { get; set; } = false;

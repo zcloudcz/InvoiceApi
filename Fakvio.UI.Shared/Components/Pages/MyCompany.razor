@@ -107,6 +107,13 @@ else
                                       Class="mb-3" />
                         <MudSwitch @bind-Value="_editClient.IsVatPayer" Label="@L["Client_IsVatPayer"].Value"
                                    Color="Color.Primary" />
+                        @if (_editClient.IsVatPayer)
+                        {
+                            <MudSwitch @bind-Value="_editClient.AutoIssueTaxReceiptForAdvance"
+                                       Label="@L["Client_AutoIssueTaxReceiptForAdvance"].Value"
+                                       Color="Color.Primary" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">@L["Client_AutoIssueTaxReceiptForAdvance_Help"]</MudText>
+                        }
                         @* Language preference for documents (PDFs, emails) generated for this company *@
                         <MudSelect T="string" @bind-Value="_editClient.Language" Label="@L["Client_Language"].Value" Class="mt-3">
                             <MudSelectItem Value="@("cs")">Čeština (cs)</MudSelectItem>
@@ -779,7 +786,8 @@ else
             TaxRegime = _company.TaxRegime,
             ActivityType = _company.ActivityType,
             IsMainActivity = _company.IsMainActivity,
-            FlatRateBand = _company.FlatRateBand
+            FlatRateBand = _company.FlatRateBand,
+            AutoIssueTaxReceiptForAdvance = _company.AutoIssueTaxReceiptForAdvance
         };
 
         // Populate ALL addresses (1:N) into the editable list
@@ -882,6 +890,7 @@ else
                 ActivityType = _editClient.ActivityType,
                 IsMainActivity = _editClient.IsMainActivity,
                 FlatRateBand = _editClient.FlatRateBand,
+                AutoIssueTaxReceiptForAdvance = _editClient.AutoIssueTaxReceiptForAdvance,
                 // Send ALL addresses (1:N) — backend uses replace-all strategy
                 Address = _addresses.Select(a => new UpdateAddressDto
                 {

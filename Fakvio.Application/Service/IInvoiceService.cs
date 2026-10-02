@@ -217,6 +217,37 @@ public interface IInvoiceService
     Task<List<InvoiceDto>> GetTaxReceiptsForProformaAsync(long proformaId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Issues a Tax Receipt for Advance Payment (DPP) for the given Proforma — manually, or as
+    /// the manual override when auto-issuance is disabled. Idempotent: clamps to the amount of
+    /// the advance not yet covered by an existing DPP; returns null (no-op) if nothing is left
+    /// to cover, or if the issuer is not a VAT payer (non-VAT-payers never issue a DPP).
+    /// </summary>
+    /// <param name="proformaId">Proforma ID</param>
+    /// <param name="paymentDate">Date the advance was received — used as IssueDate/DUZP. Null = today.</param>
+    /// <param name="amount">
+    /// Amount (including VAT) to cover. Null = the full remaining advance not yet covered by a DPP.
+    /// Always clamped to that remaining amount, even when explicitly given.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <exception cref="KeyNotFoundException">Proforma not found</exception>
+    /// <exception cref="InvalidOperationException">proformaId references a non-Proforma document</exception>
+    Task<InvoiceDto?> IssueTaxReceiptForPaidProformaAsync(
+        long proformaId, DateTime? paymentDate, decimal? amount, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Called by every code path that increases a Proforma's PaidAmount (manual mark-paid, bank
+    /// payment matching). Auto-issues a DPP for the newly received portion, gated by the issuer
+    /// being a VAT payer and <see cref="Fakvio.Domain.Entities.Client.AutoIssueTaxReceiptForAdvance"/>.
+    /// Never throws — logs and swallows any failure so the payment itself is never affected.
+    /// </summary>
+    /// <param name="proformaId">Proforma ID (no-op if it's not a Proforma)</param>
+    /// <param name="paidDelta">The amount newly received by this payment (no-op if &lt;= 0)</param>
+    /// <param name="paymentDate">Date of the payment — used as the DPP's IssueDate/DUZP</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task TryAutoIssueTaxReceiptAsync(
+        long proformaId, decimal paidDelta, DateTime? paymentDate, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reverts a Paid invoice back to Completed status (marks it as unpaid).
     /// Unlinks any PaymentMatch records by deleting them and recalculates the invoice.
     /// Only Paid invoices can be marked as unpaid — other statuses throw InvalidOperationException.

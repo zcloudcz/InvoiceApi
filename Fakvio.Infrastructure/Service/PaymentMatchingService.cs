@@ -8,6 +8,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service;
 
+// ponytail: InvoiceService.TryAutoIssueTaxReceiptAsync is called after every positive
+// RecalculateInvoice delta below. It is intentionally NOT called from the "unmatch" path
+// (negative delta) — voiding an already-issued DPP when a match is undone is a separate,
+// more involved feature (credit-note-like reversal of a tax document) and out of scope here.
+
 /// <summary>
 /// Default implementation of <see cref="IPaymentMatchingService"/>.
 ///
@@ -31,6 +36,7 @@ public class PaymentMatchingService : IPaymentMatchingService
 {
     private readonly TenantDbContext _context;
     private readonly INotificationService _notificationService;
+    private readonly IInvoiceService _invoiceService;
     private readonly ILogger<PaymentMatchingService> _logger;
 
     /// <summary>How many days before/after the due date we accept for account-based fallback.</summary>
@@ -39,10 +45,12 @@ public class PaymentMatchingService : IPaymentMatchingService
     public PaymentMatchingService(
         TenantDbContext context,
         INotificationService notificationService,
+        IInvoiceService invoiceService,
         ILogger<PaymentMatchingService> logger)
     {
         _context = context;
         _notificationService = notificationService;
+        _invoiceService = invoiceService;
         _logger = logger;
     }
 
@@ -127,6 +135,9 @@ public class PaymentMatchingService : IPaymentMatchingService
         RecalculateTransactionStatus(tx, alreadyAssigned + matchedAmount);
 
         await _context.SaveChangesAsync(ct);
+
+        // Proforma just received (part of) its advance — auto-issue its DPP, if enabled.
+        await _invoiceService.TryAutoIssueTaxReceiptAsync(invoice.Id, matchedAmount, tx.TransactionDate, ct);
 
         _logger.LogInformation(
             "Manual match: Tx={TxId} → Invoice={InvoiceId} Amount={Amount} User={UserId}",
@@ -660,6 +671,9 @@ public class PaymentMatchingService : IPaymentMatchingService
 
             await _context.SaveChangesAsync(ct);
 
+            // Proforma just received (part of) its advance — auto-issue its DPP, if enabled.
+            await _invoiceService.TryAutoIssueTaxReceiptAsync(invoice.Id, matched, tx.TransactionDate, ct);
+
             _logger.LogInformation(
                 "ConfirmAutoMatch: Tx={TxId} → Invoice={InvoiceId} Amount={Amount} User={UserId}",
                 tx.Id, invoice.Id, matched, userId);
@@ -752,7 +766,7 @@ public class PaymentMatchingService : IPaymentMatchingService
             switch (vsMatches.Count)
             {
                 case 1:
-                    ApplyAutoMatch(tx, vsMatches[0]);
+                    await ApplyAutoMatch(tx, vsMatches[0], ct);
                     return;
 
                 case > 1:
@@ -761,7 +775,7 @@ public class PaymentMatchingService : IPaymentMatchingService
                         (i.TotalWithVat - i.PaidAmount) == tx.Amount);
                     if (exact != null)
                     {
-                        ApplyAutoMatch(tx, exact);
+                        await ApplyAutoMatch(tx, exact, ct);
                         return;
                     }
                     tx.MatchStatus = EMatchStatus.NeedsReview;
@@ -784,7 +798,7 @@ public class PaymentMatchingService : IPaymentMatchingService
 
             if (accountMatches.Count == 1)
             {
-                ApplyAutoMatch(tx, accountMatches[0]);
+                await ApplyAutoMatch(tx, accountMatches[0], ct);
                 return;
             }
         }
@@ -871,8 +885,13 @@ public class PaymentMatchingService : IPaymentMatchingService
         tx.MatchStatus = EMatchStatus.Unmatched;
     }
 
-    /// <summary>Creates the PaymentMatch row and updates issued invoice + transaction aggregates.</summary>
-    private void ApplyAutoMatch(BankTransaction tx, Invoice invoice)
+    /// <summary>
+    /// Creates the PaymentMatch row and updates issued invoice + transaction aggregates.
+    /// Saves immediately (rather than relying on the caller's later SaveChanges) so that a
+    /// just-paid Proforma's PaidAmount is already persisted before the DPP auto-issuance hook
+    /// re-reads it to size the tax receipt.
+    /// </summary>
+    private async Task ApplyAutoMatch(BankTransaction tx, Invoice invoice, CancellationToken ct)
     {
         var remainingOnInvoice = invoice.TotalWithVat - invoice.PaidAmount;
         var matched = Math.Min(tx.Amount, remainingOnInvoice);
@@ -888,6 +907,11 @@ public class PaymentMatchingService : IPaymentMatchingService
 
         RecalculateInvoice(invoice, delta: matched, tx.TransactionDate);
         RecalculateTransactionStatus(tx, matched);
+
+        await _context.SaveChangesAsync(ct);
+
+        // Proforma just received (part of) its advance — auto-issue its DPP, if enabled.
+        await _invoiceService.TryAutoIssueTaxReceiptAsync(invoice.Id, matched, tx.TransactionDate, ct);
 
         _logger.LogInformation(
             "Auto match: Tx={TxId} VS={VS} Amount={Amount} → Invoice={InvoiceId}",
