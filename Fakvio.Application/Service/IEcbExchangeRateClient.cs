@@ -18,12 +18,12 @@ public interface IEcbExchangeRateClient
     /// <paramref name="date"/> (the ECB's own convention — e.g. ~25.30 for CZK).
     /// Returns 1 for "EUR" without calling the API.
     ///
-    /// ECB does not publish rates on weekends/EU holidays — if <paramref name="date"/> has
-    /// no observation, the most recent prior business day's rate is used (ECB's own
-    /// "last available" convention), looking back up to 10 calendar days.
+    /// ECB does not publish rates on weekends/EU holidays. Per Art. 369h(2) of the VAT directive
+    /// (§110zb ZDPH) the rate of <paramref name="date"/> is used, or — if none was published that
+    /// day — the rate of the NEXT publication day (looking up to 10 days ahead). Never an earlier day.
     /// </summary>
     /// <exception cref="EcbRateUnavailableException">
-    /// The ECB API could not be reached, or no observation was found in the lookback window.
+    /// The ECB API could not be reached, or no observation on/after the date has been published (yet).
     /// </exception>
     Task<decimal> GetUnitsPerEurAsync(string currencyCode, DateOnly date, CancellationToken ct = default);
 }

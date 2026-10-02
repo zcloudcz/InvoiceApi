@@ -789,20 +789,23 @@ Pokud jste plátce DPH a jste registrováni v režimu **OSS** (jedno správní m
 spotřebitelům v jiných státech EU účtujete **DPH cílové země** a odvádíte ho čtvrtletně jedním podáním.
 
 **Nastavení:** na `/my-company` sekce „Režim OSS" (jen plátci DPH): zapněte „Jsem registrován(a) v režimu OSS"
-a vyplňte datum registrace. (Uložení dnes projde jen správci systému, stejně jako u EPO.)
+a vyplňte datum registrace. Uložit ji může administrátor firmy.
 
-**Fakturace:** faktura se automaticky vystaví jako OSS, když je klient **bez DIČ** a jeho adresa je v **jiném
-státě EU** než ČR. V položkách pak vybíráte sazby DPH země klienta (např. 19 % pro Německo); jiná sazba se
-neuloží. PDF ukáže „DPH DE 19 %" a poznámku „Režim OSS". Klient s DIČ (firma) se fakturuje jako dosud.
+**Fakturace:** OSS se na faktuře uplatňuje **jen když to sami zvolíte**. Když jste v OSS registrováni, klient je **bez DIČ**
+a jeho adresa je v **jiném státě EU** než ČR, ve formuláři faktury se objeví zaškrtávátko „Režim OSS (DPH země odběratele)"
+(výchozí je nezaškrtnuto). Zaškrtněte ho jen u plnění, které do OSS opravdu patří — typicky **dodání zboží na dálku** a telekomunikační,
+vysílací a elektronické služby. **Běžné služby spotřebitelům (poradenství, vývoj software apod.) se zdaňují v ČR** a OSS se pro ně nepoužívá.
+Po zaškrtnutí vybíráte sazby DPH země klienta (např. 19 % pro Německo); jiná sazba se neuloží. PDF ukáže „DPH DE 19 %" a poznámku „Režim OSS". Klient s DIČ (firma) se fakturuje jako dosud.
 Dobropis převezme režim původní faktury.
 
 **Hlášení OSS:** stránka `/oss-report` (menu Fakturace → Hlášení OSS) — vyberte rok a čtvrtletí, zobrazí se základ
 a DPH za každou zemi a sazbu v EUR; tlačítko „Stáhnout CSV". Faktury v jiné měně se přepočtou kurzem ECB k poslednímu
-dni čtvrtletí; když kurz nejde stáhnout, zobrazí se chyba (zkuste to později). Výsledek použijte jako podklad
+dni čtvrtletí (nevyšel-li ten den kurz, k nejbližšímu dalšímu dni zveřejnění); když kurz nejde stáhnout, zobrazí se chyba (zkuste to později). Výsledek použijte jako podklad
 pro podání OSS na portálu Finanční správy.
 
 **Důležité:**
 - OSS faktury se **nezahrnují** do přiznání DPH (DPHDP3) ani kontrolního hlášení (DPHKH1) — nejsou českým DPH.
+- Fakvio **neověřuje, zda plnění do OSS patří** (zboží vs. služba) — odpovědnost je na vás.
 - Fakvio **nehlídá limit 10 000 EUR** ročně (pod ním lze uplatnit české DPH) — registraci do OSS si řešíte sami.
 - Přes AI (kapitola 20) lze OSS hlášení načíst nástrojem `get_oss_report`.
 

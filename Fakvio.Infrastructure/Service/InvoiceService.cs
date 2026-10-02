@@ -34,7 +34,7 @@ public class InvoiceService : IInvoiceService
     /// tenant-local invoices need not wire up the master database. DI uses the full constructor below
     /// (the one with the most resolvable parameters).
     /// </summary>
-    public InvoiceService(
+    internal InvoiceService(
         TenantDbContext context,
         INumberSequenceService numberSequenceService,
         ITenantReadinessService tenantReadinessService,
@@ -426,8 +426,8 @@ public class InvoiceService : IInvoiceService
         // check below, because OSS items intentionally have VatRateId = null (they use the
         // destination country's OssVatRate, not the tenant's own VatRate table). See §4.15.
         await _context.Entry(client).Collection(c => c.Address).LoadAsync(cancellationToken);
-        var ossCountryCode = await DetermineOssCountryCodeAsync(
-            issuer, client, createDto.DocumentType, createDto.OriginalInvoiceId, cancellationToken);
+        var ossCountryCode = await ResolveOssCountryCodeAsync(
+            issuer, client, createDto.DocumentType, createDto.OriginalInvoiceId, createDto.ApplyOss, cancellationToken);
         invoice.OssCountryCode = ossCountryCode;
 
         // Validate VAT requirements: If issuer is VAT payer, all items must have VatRateId —
@@ -664,8 +664,9 @@ public class InvoiceService : IInvoiceService
             var client = await _context.Client
                 .Include(c => c.Address)
                 .FirstOrDefaultAsync(c => c.Id == invoice.ClientId, cancellationToken);
-            var ossCountryCode = await DetermineOssCountryCodeAsync(
-                issuer, client, invoice.DocumentType, invoice.OriginalInvoiceId, cancellationToken);
+            var ossCountryCode = await ResolveOssCountryCodeAsync(
+                issuer, client, invoice.DocumentType, invoice.OriginalInvoiceId,
+                updateDto.ApplyOss ?? (invoice.OssCountryCode != null), cancellationToken);
             invoice.OssCountryCode = ossCountryCode;
 
             // Validate VAT requirements: If issuer is VAT payer, all billable items must have VatRateId
@@ -1659,13 +1660,13 @@ public class InvoiceService : IInvoiceService
     }
 
     /// <inheritdoc />
-    public async Task<string?> GetOssCountryCodeAsync(long clientId, EDocumentType documentType, CancellationToken cancellationToken = default)
+    public async Task<string?> GetOssCountryCodeAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken cancellationToken = default)
     {
         var client = await _context.Client.AsNoTracking()
             .Include(c => c.Address)
             .FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
         var issuer = await _context.Client.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.IsIssuer, cancellationToken);
+            .FirstOrDefaultAsync(c => c.Id == issuerId, cancellationToken);
         if (client == null || issuer == null) return null;
 
         // Credit notes inherit from their original invoice, which the UI does not know about here.
@@ -1675,7 +1676,24 @@ public class InvoiceService : IInvoiceService
     // ─── Private Helpers ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Determines the EU OSS destination country for this invoice/credit note, or null if
+    /// Applies the user's OSS opt-in: returns the destination country only when the user asked for OSS
+    /// (<paramref name="applyOss"/>) AND the invoice is eligible. Asking for OSS on an ineligible invoice
+    /// throws — silently issuing a CZ-VAT invoice the user believed to be OSS would be worse. Credit notes
+    /// ignore the flag and inherit from the original invoice.
+    /// </summary>
+    private async Task<string?> ResolveOssCountryCodeAsync(
+        Client issuer, Client? client, EDocumentType documentType, long? originalInvoiceId, bool applyOss, CancellationToken ct)
+    {
+        var eligible = await DetermineOssCountryCodeAsync(issuer, client, documentType, originalInvoiceId, ct);
+        if (documentType == EDocumentType.CreditNote) return eligible;
+        if (!applyOss) return null;
+        return eligible ?? throw new InvalidOperationException(
+            "OSS cannot be applied to this invoice: it requires an OSS-registered VAT-payer issuer, an Invoice/advance tax receipt " +
+            "and a consumer client (no VAT id) with an address in another EU state.");
+    }
+
+    /// <summary>
+    /// Determines the EU OSS destination country this invoice/credit note is ELIGIBLE for, or null if
     /// it is not an OSS case. See <see cref="OssDetector"/> for the detection rule and
     /// DEVGUIDE §4.15 for the full picture.
     ///

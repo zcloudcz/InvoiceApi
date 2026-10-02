@@ -126,15 +126,16 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
-    /// Previews the EU OSS destination country for a new invoice to the given client
-    /// (null/empty = ordinary invoice). The UI uses it to offer the destination country's VAT rates.
+    /// Previews the EU OSS destination country a new invoice from the given issuer to the given client is
+    /// ELIGIBLE for (null/empty = not eligible). The UI uses it to offer the OSS opt-in checkbox and the
+    /// destination country's VAT rates.
     /// </summary>
     [HttpGet("oss-country")]
     [ProducesResponseType(typeof(OssCountryDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<OssCountryDto>> GetOssCountry(
-        [FromQuery] long clientId, [FromQuery] EDocumentType documentType = EDocumentType.Invoice,
+        [FromQuery] long clientId, [FromQuery] long issuerId, [FromQuery] EDocumentType documentType = EDocumentType.Invoice,
         CancellationToken cancellationToken = default)
-        => Ok(new OssCountryDto { CountryCode = await _invoiceService.GetOssCountryCodeAsync(clientId, documentType, cancellationToken) });
+        => Ok(new OssCountryDto { CountryCode = await _invoiceService.GetOssCountryCodeAsync(clientId, issuerId, documentType, cancellationToken) });
 
     /// <summary>
     /// Gets paginated, filtered and sorted invoices/credit notes

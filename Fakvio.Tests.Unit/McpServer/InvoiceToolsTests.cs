@@ -283,14 +283,14 @@ public class InvoiceToolsTests
             .Returns(new ClientDto { Id = 2, IsVatPayer = true });
         _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
             .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
-        _api.GetOssCountryAsync(5, EDocumentType.Invoice, Arg.Any<CancellationToken>()).Returns("DE");
+        _api.GetOssCountryAsync(5, 2, EDocumentType.Invoice, Arg.Any<CancellationToken>()).Returns("DE");
 
         var items = new List<CreateInvoiceItemDto>
         {
             new() { Description = "Consulting", Quantity = 1, UnitPrice = 100, VatRatePercentage = 19 }
         };
 
-        var json = await InvoiceTools.CreateInvoice(_api, clientId: 5, items: items);
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 5, items: items, applyOss: true);
 
         JsonDocument.Parse(json).RootElement.GetProperty("ossCountryCode").GetString().ShouldBe("DE");
         await _api.DidNotReceive().GetActiveVatRatesAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>());

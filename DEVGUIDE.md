@@ -2256,19 +2256,26 @@ syntetická data.
 Plátce DPH registrovaný v režimu OSS ("zvláštní režim jednoho správního místa — režim Unie") účtuje při
 B2C prodeji do jiného státu EU **DPH cílové země** a odvádí ji čtvrtletně jedním podáním přes CZ portál.
 
-**Detekce** (`Infrastructure/Service/Oss/OssDetector.cs`, čistá funkce; volá ji `InvoiceService`
-při create i update položek — `DetermineOssCountryCodeAsync`). OSS faktura = **všechno** z:
+**Způsobilost a opt-in.** `OssDetector` (čistá funkce; volá ji `InvoiceService.DetermineOssCountryCodeAsync`) zjišťuje jen **způsobilost**
+(+ zemi). OSS se na faktuře uplatní **jen na výslovnou volbu uživatele**: `CreateInvoiceDto.ApplyOss` / `UpdateInvoiceDto.ApplyOss` (null = ponechat),
+`ResolveOssCountryCodeAsync` nastaví `OssCountryCode` jen když `ApplyOss` a faktura je způsobilá; `ApplyOss` na nezpůsobilé faktuře = chyba.
+Důvod: obecné B2C **služby** (poradenství, vývoj software — čl. 45) se zdaňují v ČR, OSS patří jen k dálkovému prodeji zboží, telekomunikačním/
+vysílacím/elektronickým službám apod. — to ví jen uživatel. UI: checkbox „Režim OSS" (výchozí nezaškrtnutý) se ukáže, když preview
+`GET api/invoice/oss-country?clientId&issuerId&documentType` vrátí způsobilost (preview bere vydavatele z faktury, ne „prvního issuera").
+Způsobilá faktura = **všechno** z:
 vydavatel má `CompanySystemSettings.OssRegistered` (Master) a `IsVatPayer`; doklad je `Invoice`
 nebo `TaxReceiptForAdvance` (proforma nic nezakládá, dobropis **dědí** `OssCountryCode` původní faktury);
 klient je spotřebitel (bez DIČ a `IsVatPayer=false`); země primární adresy klienta je jiný stát EU než CZ
 (`EuCountries`, `UblCodes.CountryToIso2`). Výsledek se uloží do `Invoice.OssCountryCode` (ISO2, nullable,
-Tenant migrace `AddInvoiceOssCountryCode`). Klient ho nikdy neposílá — počítá se na serveru.
+Tenant migrace `AddInvoiceOssCountryCode`). Klient ho nikdy neposílá přímo — počítá se na serveru z `ApplyOss` a při každém update znovu (přepnutí ApplyOss, změna adresy klienta, DUZP).
+Starý konstruktor `InvoiceService` bez Master kontextu je `internal` (jen testy, OSS vypnuté).
 
 **Sazby:** číselník `OssVatRate` (CountryCode, Rate, Category, Description, ValidFrom, ValidTo, IsActive) je
 **jen v Master DB, bez tenant kopie** (statutární data, tenant je nemá co upravovat — odchylka od dual-context
 `VatRate`, viz §11.2). Seed: standardní + hlavní snížená sazba 26 států (migrace `AddOssVatRate`, surové
-idempotentní SQL `ON CONFLICT (CountryCode, Rate, ValidFrom) DO NOTHING`, bez natvrdo zadaných Id; zdroj
-EK/TEDB k 2026-10-02, **ručně přepsáno — SysAdmin ať před prvním podáním ověří**; chybějící sazby
+idempotentní SQL `ON CONFLICT (CountryCode, Rate, ValidFrom) DO NOTHING`, bez natvrdo zadaných Id; zdroje a datum v komentáři migrace —
+TEDB nešlo stáhnout, ověřeno proti sekundárním zdrojům k 1. 1. 2026; s historií `ValidFrom/ValidTo` jen u EE, FI, RO, SK, LT, ostatní od 2021-07-01;
+**SysAdmin ať před prvním podáním ověří**; chybějící sazby
 (super-snížené, parking) se doplní přes `POST /api/oss-vat-rate`). `/api/oss-vat-rate` je v `MasterOnlyPaths`;
 čtení (`GET country/{cc}`) pro každého přihlášeného, zápis jen SysAdmin.
 `ValidateOssItemRatesAsync` při DUZP ověří, že každá položka má sazbu platnou pro cílovou zemi
@@ -2285,14 +2292,15 @@ faktury (přehled, DPHDP3, DPHKH1) — OSS není české DPH.
 **Hlášení** (`GET /api/oss-report?year&quarter`, `/csv`; `OssReportService`): součet základu a DPH per
 (země, sazba) za čtvrtletí podle DUZP, dobropisy odečítají (`-Abs`), ne-EUR doklady se přepočtou kurzem **ECB
 posledního dne čtvrtletí** (`EcbExchangeRateClient`, `IHttpClientFactory`, `IMemoryCache`, při víkendu/svátku
-poslední předchozí fixing do 10 dní). Nedostupný kurz = `EcbRateUnavailableException` → HTTP 502
-`ECB_RATE_UNAVAILABLE` (nikdy tiché 1:1). Výstup JSON + CSV; XML neexistuje (pro OSS není v repu XSD).
+**následující** den publikace do 10 dní — čl. 369h odst. 2 směrnice / §110zb ZDPH; nikdy dřívější den). Dosud nezveřejněný nebo nedostupný kurz (čtvrtletí skončilo o víkendu a další fixing ještě není) = `EcbRateUnavailableException` → HTTP 502
+`ECB_RATE_UNAVAILABLE` (nikdy tiché 1:1 ani záměna za dřívější den; chyba se necachuje). Výstup JSON + CSV; XML neexistuje (pro OSS není v repu XSD).
 UI `/oss-report` (`OssReport.razor`), MCP `get_oss_report`, chat tool zatím ne.
 
-**Nastavení:** sekce `OssSettingsSection` na `/my-company` (jen plátce DPH, role Admin/SysAdmin; ukládá přes
-stejné `PUT api/company/{id}/settings` jako EPO — s týmž omezením, že endpoint je SysAdmin-only).
+**Nastavení:** sekce `OssSettingsSection` na `/my-company` (jen plátce DPH, role Admin/SysAdmin). Čte/ukládá přes tenant-scoped
+`GET/PUT api/company-settings/oss` (`CompanySettingsController`, `[Authorize(Roles="Admin,SysAdmin")]`, firma **vždy z `ITenantResolver`**, nikdy z route;
+zapisuje jen `OssRegistered/OssRegisteredSince`, datum normalizuje na UTC). SysAdmin-only `PUT api/company/{id}/settings` pro OSS nepoužívat.
 
-**Známé limity:** nehlídá se roční limit 10 000 EUR (pod ním může mikropodnik uplatnit CZ DPH místo OSS) —
+**Známé limity:** Fakvio **neověřuje místo plnění** (zboží vs. služba, čl. 45/58 směrnice) — proto je OSS opt-in; nehlídá se roční limit 10 000 EUR (pod ním může mikropodnik uplatnit CZ DPH místo OSS) —
 registrace v OSS je dobrovolné rozhodnutí uživatele; `OssRegisteredSince` je jen informační (nehradluje detekci).
 
 ---

@@ -10,6 +10,11 @@ namespace Fakvio.Contracts.Dto.Invoice;
 public class UpdateInvoiceDto
 {
     /// <summary>
+    /// Opt-in/out of the EU OSS regime (see CreateInvoiceDto.ApplyOss). Null = keep the invoice's current regime.
+    /// </summary>
+    public bool? ApplyOss { get; set; }
+
+    /// <summary>
     /// Issue date - when the invoice was issued
     /// </summary>
     public DateTime? IssueDate { get; set; }

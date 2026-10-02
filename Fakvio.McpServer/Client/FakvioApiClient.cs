@@ -547,9 +547,9 @@ public class FakvioApiClient : IFakvioApiClient
 
     // ── EU OSS endpoints ─────────────────────────────────────────────────
 
-    public async Task<string?> GetOssCountryAsync(long clientId, EDocumentType documentType, CancellationToken ct = default)
+    public async Task<string?> GetOssCountryAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken ct = default)
     {
-        var response = await _http.GetAsync($"api/invoice/oss-country?clientId={clientId}&documentType={(int)documentType}", ct);
+        var response = await _http.GetAsync($"api/invoice/oss-country?clientId={clientId}&issuerId={issuerId}&documentType={(int)documentType}", ct);
         await EnsureSuccessAsync(response, ct);
         return (await response.Content.ReadFromJsonAsync<OssCountryDto>(JsonOptions, ct))?.CountryCode;
     }

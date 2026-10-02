@@ -217,8 +217,8 @@ public interface IFakvioApiClient
 
     // ── EU OSS endpoints ─────────────────────────────────────────────────
 
-    /// <summary>GET /api/invoice/oss-country — EU OSS destination country (ISO2) an invoice to this client would get, or null.</summary>
-    Task<string?> GetOssCountryAsync(long clientId, EDocumentType documentType, CancellationToken ct = default);
+    /// <summary>GET /api/invoice/oss-country — EU OSS destination country (ISO2) an invoice from this issuer to this client is eligible for, or null.</summary>
+    Task<string?> GetOssCountryAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken ct = default);
 
     /// <summary>GET /api/oss-report?year=...&amp;quarter=... — quarterly OSS report in EUR.</summary>
     Task<OssReportDto> GetOssReportAsync(int year, int quarter, CancellationToken ct = default);

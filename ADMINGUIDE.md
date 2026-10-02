@@ -210,12 +210,12 @@ se k sekci dostane po zvolení firmy v přepínači impersonace.
 ### OSS (One-Stop-Shop) — nastavení firmy a číselník sazeb
 
 **Firma:** sekce „Režim OSS" na `/my-company` (jen plátci DPH) — příznak registrace a datum; leží na
-`CompanySystemSettings` (master DB). Uložit ji dnes může jen SysAdmin (po zvolení firmy v impersonaci).
+`CompanySystemSettings` (master DB). Ukládá ji administrátor firmy (tenant-scoped `PUT api/company-settings/oss`), SysAdmin po impersonaci.
 Registrovaná firma vystavuje faktury spotřebitelům v jiných státech EU s DPH cílové země; tyto faktury se
 nezahrnují do DPHDP3/KH (podrobně DEVGUIDE §4.15). Limit 10 000 EUR se nehlídá.
 
 **Číselník sazeb `OssVatRate` (master DB, společný pro všechny firmy):** migrace `AddOssVatRate` nasype standardní
-a hlavní sníženou sazbu 26 států EU (zdroj EK/TEDB, stav 2026-10-02, **přepsáno ručně**). **Před prvním reálným
+a hlavní sníženou sazbu 26 států EU (zdroj EK/TEDB, stav 2026-10-02, **ověřeno proti sekundárním zdrojům, TEDB nešlo stáhnout**; historie sazeb (`ValidFrom/ValidTo`) jen u EE, FI, RO, SK, LT, ostatní od 2021-07-01). **Před prvním reálným
 podáním sazby ověřte** proti TEDB a doplňte chybějící (super-snížené, parking) — `POST /api/oss-vat-rate`
 (`CountryCode`, `Rate`, `Category`, `ValidFrom`, `ValidTo`), změna `PUT /api/oss-vat-rate/{id}`, vyřazení
 `DELETE` (soft: `IsActive=false`, historické faktury zůstanou platné). Při změně sazby státu přidejte nový řádek

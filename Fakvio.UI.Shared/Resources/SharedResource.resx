@@ -2032,9 +2032,11 @@
   <data name="OssReport_VatEur" xml:space="preserve"><value>DPH (EUR)</value></data>
   <data name="OssReport_Total" xml:space="preserve"><value>Celkem</value></data>
   <data name="OssReport_NoData" xml:space="preserve"><value>V tomto čtvrtletí nejsou žádné doklady v režimu OSS.</value></data>
-  <data name="OssReport_EcbNote" xml:space="preserve"><value>Dobropisy snižují základ i daň. Kurz: referenční kurz ECB k poslednímu dni čtvrtletí (při víkendu nebo svátku poslední předchozí).</value></data>
+  <data name="OssReport_EcbNote" xml:space="preserve"><value>Dobropisy snižují základ i daň. Kurz: referenční kurz ECB k poslednímu dni čtvrtletí, resp. k nejbližšímu dalšímu dni zveřejnění, pokud ten den kurz nevyšel (čl. 369h odst. 2 směrnice o DPH).</value></data>
   <data name="Oss_SettingsTitle" xml:space="preserve"><value>Režim OSS (jedno správní místo EU)</value></data>
   <data name="Oss_SettingsInfoText" xml:space="preserve"><value>Pokud jste v režimu OSS registrováni, faktury spotřebitelům (klient bez DIČ) v jiných státech EU se automaticky vystaví s DPH cílové země a nezahrnou se do přiznání a kontrolního hlášení DPH. Limit 10 000 EUR Fakvio nehlídá.</value></data>
   <data name="Oss_Registered" xml:space="preserve"><value>Jsem registrován(a) v režimu OSS</value></data>
   <data name="Oss_RegisteredSince" xml:space="preserve"><value>Registrace od</value></data>
+  <data name="Oss_ApplyToInvoice" xml:space="preserve"><value>Režim OSS (DPH země odběratele)</value></data>
+  <data name="Oss_ApplyHint" xml:space="preserve"><value>Zaškrtněte jen pokud plnění spadá do OSS (např. dodání zboží na dálku, telekomunikační, vysílací nebo elektronické služby). Běžné služby spotřebitelům (poradenství, vývoj software) se zdaňují v ČR. Použije se DPH země {0}.</value></data>
 </root>

@@ -133,11 +133,12 @@ public interface IInvoiceService
     Task<List<InvoiceDto>> GetCreditNotesForInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Previews the EU OSS destination country (ISO2) an invoice for <paramref name="clientId"/> would get,
-    /// or null when it is not an OSS case. Lets the UI offer the destination country's VAT rates before saving
-    /// (the server re-detects on save — this is only a hint). See DEVGUIDE §4.15.
+    /// Previews the EU OSS destination country (ISO2) an invoice from <paramref name="issuerId"/> to
+    /// <paramref name="clientId"/> is ELIGIBLE for, or null when it is not an OSS case. Eligibility only — OSS is
+    /// applied when the user opts in (ApplyOss). Lets the UI offer the opt-in and the destination rates before
+    /// saving (the server re-checks on save). See DEVGUIDE §4.15.
     /// </summary>
-    Task<string?> GetOssCountryCodeAsync(long clientId, EDocumentType documentType, CancellationToken cancellationToken = default);
+    Task<string?> GetOssCountryCodeAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken cancellationToken = default);
 
     // ─── Bulk Operations ─────────────────────────────────────────────────────
 

@@ -98,8 +98,10 @@ public class OssTests : IDisposable
     }
 
     private static CreateInvoiceDto Dto(long clientId, decimal rate, long? vatRateId = null, long currencyId = 1,
-        EDocumentType type = EDocumentType.Invoice, long? original = null, DateTime? duzp = null) => new()
+        EDocumentType type = EDocumentType.Invoice, long? original = null, DateTime? duzp = null, bool? applyOss = null) => new()
     {
+        // OSS is opt-in; by default the helper opts in for the two eligible consumer clients (10 = DE, 11 = FR).
+        ApplyOss = applyOss ?? clientId is 10 or 11,
         DocumentType = type,
         ClientId = clientId,
         IssuerId = 1,
@@ -192,6 +194,90 @@ public class OssTests : IDisposable
         ex.Message.ShouldContain("Standard VAT regime");
     }
 
+    // ── opt-in (ApplyOss) ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Create_EligibleButNotOptedIn_IsOrdinaryCzInvoice()
+    {
+        // General B2C services are taxed in CZ: an eligible client alone must NOT switch the invoice to OSS.
+        var result = await _invoices.CreateInvoiceAsync(Dto(10, 21, vatRateId: 1, applyOss: false));
+        result.OssCountryCode.ShouldBeNull();
+        result.InvoiceItem.Single().VatRatePercentage.ShouldBe(21m);
+    }
+
+    [Theory]
+    [InlineData(12L)] // CZ consumer
+    [InlineData(13L)] // US consumer
+    [InlineData(14L)] // German business
+    public async Task Create_ApplyOssOnIneligibleInvoice_IsRejected(long clientId)
+    {
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() => _invoices.CreateInvoiceAsync(Dto(clientId, 21, vatRateId: 1, applyOss: true)));
+        ex.Message.ShouldContain("OSS cannot be applied");
+    }
+
+    // ── update path: re-detection ─────────────────────────────────────────────
+
+    private static UpdateInvoiceDto Upd(decimal rate, long? vatRateId = null, bool? applyOss = null) => new()
+    {
+        ApplyOss = applyOss,
+        InvoiceItem = [new() { OrderIndex = 1, Description = "x", Quantity = 1, Unit = "ks", UnitPrice = 100, VatRatePercentage = rate, VatRateId = vatRateId }]
+    };
+
+    [Fact]
+    public async Task Update_KeepsOssByDefault_AndValidatesRates()
+    {
+        var created = await _invoices.CreateInvoiceAsync(Dto(10, 19));
+
+        var ok = await _invoices.UpdateInvoiceAsync(created.Id, Upd(7));
+        ok!.OssCountryCode.ShouldBe("DE");
+        ok.InvoiceItem.Single().VatRatePercentage.ShouldBe(7m);
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _invoices.UpdateInvoiceAsync(created.Id, Upd(21)));
+    }
+
+    [Fact]
+    public async Task Update_OptOut_SwitchesToOrdinaryCzRates()
+    {
+        var created = await _invoices.CreateInvoiceAsync(Dto(10, 19));
+
+        var result = await _invoices.UpdateInvoiceAsync(created.Id, Upd(21, vatRateId: 1, applyOss: false));
+
+        result!.OssCountryCode.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Update_OptIn_OnOrdinaryInvoice_SwitchesToOss()
+    {
+        var created = await _invoices.CreateInvoiceAsync(Dto(10, 21, vatRateId: 1, applyOss: false));
+
+        var result = await _invoices.UpdateInvoiceAsync(created.Id, Upd(19, applyOss: true));
+
+        result!.OssCountryCode.ShouldBe("DE");
+    }
+
+    [Fact]
+    public async Task Update_AfterEligibilityLost_Throws_UntilOptedOut()
+    {
+        var created = await _invoices.CreateInvoiceAsync(Dto(10, 19));
+        var settings = await _master.CompanySystemSettings.SingleAsync();
+        settings.OssRegistered = false; // registration ended meanwhile
+        await _master.SaveChangesAsync();
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _invoices.UpdateInvoiceAsync(created.Id, Upd(19)));
+        (await _invoices.UpdateInvoiceAsync(created.Id, Upd(21, vatRateId: 1, applyOss: false)))!.OssCountryCode.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Update_ClientAddressMovesToCz_Throws()
+    {
+        var created = await _invoices.CreateInvoiceAsync(Dto(10, 19));
+        var address = await _tenant.Address.SingleAsync(a => a.ClientId == 10);
+        address.Country = "CZ";
+        await _tenant.SaveChangesAsync();
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _invoices.UpdateInvoiceAsync(created.Id, Upd(19)));
+    }
+
     [Fact]
     public async Task Create_DomesticConsumer_IsOrdinaryInvoice()
     {
@@ -214,7 +300,8 @@ public class OssTests : IDisposable
         settings.OssRegistered = false;
         await _master.SaveChangesAsync();
 
-        var result = await _invoices.CreateInvoiceAsync(Dto(10, 21, vatRateId: 1));
+        await Should.ThrowAsync<InvalidOperationException>(() => _invoices.CreateInvoiceAsync(Dto(10, 21, vatRateId: 1))); // opt-in refused
+        var result = await _invoices.CreateInvoiceAsync(Dto(10, 21, vatRateId: 1, applyOss: false));
         result.OssCountryCode.ShouldBeNull();
     }
 
@@ -231,9 +318,9 @@ public class OssTests : IDisposable
     [Fact]
     public async Task GetOssCountry_PreviewMatchesDetection()
     {
-        (await _invoices.GetOssCountryCodeAsync(11, EDocumentType.Invoice)).ShouldBe("FR");
-        (await _invoices.GetOssCountryCodeAsync(12, EDocumentType.Invoice)).ShouldBeNull();
-        (await _invoices.GetOssCountryCodeAsync(13, EDocumentType.Invoice)).ShouldBeNull();
+        (await _invoices.GetOssCountryCodeAsync(11, 1, EDocumentType.Invoice)).ShouldBe("FR");
+        (await _invoices.GetOssCountryCodeAsync(12, 1, EDocumentType.Invoice)).ShouldBeNull();
+        (await _invoices.GetOssCountryCodeAsync(13, 1, EDocumentType.Invoice)).ShouldBeNull();
     }
 
     // ── PDF ──────────────────────────────────────────────────────────────────
@@ -403,9 +490,9 @@ public class EcbExchangeRateClientTests
 {
     private const string Csv =
         "KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE,OBS_STATUS\n" +
-        "EXR.D.CZK.EUR.SP00.A,D,CZK,EUR,SP00,A,2026-03-26,24.90,A\n" +
+        "EXR.D.CZK.EUR.SP00.A,D,CZK,EUR,SP00,A,2026-03-31,25.20,A\n" +
         "EXR.D.CZK.EUR.SP00.A,D,CZK,EUR,SP00,A,2026-03-30,25.10,A\n" +
-        "EXR.D.CZK.EUR.SP00.A,D,CZK,EUR,SP00,A,2026-03-27,25.00,A\n";
+        "EXR.D.CZK.EUR.SP00.A,D,CZK,EUR,SP00,A,2026-04-01,25.30,A\n";
 
     private sealed class StubHandler(Func<HttpResponseMessage> respond) : HttpMessageHandler
     {
@@ -422,15 +509,22 @@ public class EcbExchangeRateClientTests
     private static EcbExchangeRateClient Client(StubHandler h) => new(new HttpClient(h), new MemoryCache(new MemoryCacheOptions()));
 
     [Fact]
-    public void Parse_TakesLatestObservation_NotLastLine()
-        => EcbExchangeRateClient.ParseLastObservation(Csv).ShouldBe(25.10m);
+    public void Parse_TakesEarliestObservationOnOrAfterDate_NeverEarlier()
+    {
+        // Saturday 2026-03-28: the next publication day is Monday 2026-03-30 (25.10), not an earlier day.
+        EcbExchangeRateClient.ParseFirstObservationOnOrAfter(Csv, new DateOnly(2026, 3, 28)).ShouldBe(25.10m);
+        // Exact day wins over later days.
+        EcbExchangeRateClient.ParseFirstObservationOnOrAfter(Csv, new DateOnly(2026, 3, 31)).ShouldBe(25.20m);
+        // Nothing published on/after the date yet.
+        EcbExchangeRateClient.ParseFirstObservationOnOrAfter(Csv, new DateOnly(2026, 4, 2)).ShouldBeNull();
+    }
 
     [Theory]
     [InlineData("")]
     [InlineData("KEY,TIME_PERIOD,OBS_VALUE\n")]
     [InlineData("garbage")]
     public void Parse_NoData_ReturnsNull(string csv)
-        => EcbExchangeRateClient.ParseLastObservation(csv).ShouldBeNull();
+        => EcbExchangeRateClient.ParseFirstObservationOnOrAfter(csv, new DateOnly(2026, 3, 31)).ShouldBeNull();
 
     [Fact]
     public async Task Eur_IsOneWithoutHttp()
@@ -446,12 +540,34 @@ public class EcbExchangeRateClientTests
         var h = new StubHandler(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Csv) });
         var client = Client(h);
 
-        (await client.GetUnitsPerEurAsync("CZK", new DateOnly(2026, 3, 31))).ShouldBe(25.10m);
-        (await client.GetUnitsPerEurAsync("CZK", new DateOnly(2026, 3, 31))).ShouldBe(25.10m);
+        (await client.GetUnitsPerEurAsync("CZK", new DateOnly(2026, 3, 31))).ShouldBe(25.20m);
+        (await client.GetUnitsPerEurAsync("CZK", new DateOnly(2026, 3, 31))).ShouldBe(25.20m);
 
         h.Calls.ShouldBe(1);
         h.LastUrl.ShouldContain("D.CZK.EUR.SP00.A");
-        h.LastUrl.ShouldContain("startPeriod=2026-03-21&endPeriod=2026-03-31");
+        // looks FORWARD from the period end (next publication day), never back
+        h.LastUrl.ShouldContain("startPeriod=2026-03-31&endPeriod=2026-04-10");
+    }
+
+    [Fact]
+    public async Task WeekendPeriodEnd_UsesNextPublicationDay_AndNotYetPublishedIsNotCached()
+    {
+        var published = false;
+        var h = new StubHandler(() => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            // Period ends Saturday 2026-03-28. The earlier Friday row must be ignored; Monday exists only once published.
+            Content = new StringContent(published
+                ? "KEY,TIME_PERIOD,OBS_VALUE\nX,2026-03-27,24.90\nX,2026-03-30,25.10\n"
+                : "KEY,TIME_PERIOD,OBS_VALUE\nX,2026-03-27,24.90\n")
+        });
+        var client = Client(h);
+        var date = new DateOnly(2026, 3, 28);
+
+        await Should.ThrowAsync<EcbRateUnavailableException>(() => client.GetUnitsPerEurAsync("CZK", date)); // no fallback to Friday
+
+        published = true;
+        (await client.GetUnitsPerEurAsync("CZK", date)).ShouldBe(25.10m); // the miss was not cached
+        h.Calls.ShouldBe(2);
     }
 
     [Fact]

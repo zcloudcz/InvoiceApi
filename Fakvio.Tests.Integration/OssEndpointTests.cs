@@ -1,4 +1,9 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
+using Fakvio.Contracts.Dto.CompanySettings;
 using System.Net.Http.Json;
 using Fakvio.Contracts.Dto.OssReport;
 using Fakvio.Contracts.Dto.OssVatRate;
@@ -35,6 +40,10 @@ public class OssEndpointTests : IClassFixture<FakvioFactory>
             master.Client.Add(new Client { Id = CompanyId, CompanyName = "Oss Co", RegistrationNumber = "R52", IsIssuer = true, IsActive = true });
         if (!master.CompanySystemSettings.Any(s => s.CompanyId == CompanyId))
             master.CompanySystemSettings.Add(new CompanySystemSettings { CompanyId = CompanyId, SchemaName = "t52", IsProvisioned = true, IsActive = true });
+        if (!master.User.Any(u => u.Id == 5201))
+            master.User.Add(new User { Id = 5201, CompanyId = CompanyId, Email = "oss-admin@example.test", Role = EUserRole.Admin });
+        if (!master.User.Any(u => u.Id == 5202))
+            master.User.Add(new User { Id = 5202, CompanyId = CompanyId, Email = "oss-user@example.test", Role = EUserRole.User });
         master.SaveChanges();
         if (!tenant.Client.Any(c => c.IsIssuer))
         {
@@ -109,4 +118,60 @@ public class OssEndpointTests : IClassFixture<FakvioFactory>
     [Fact]
     public async Task Rates_Unauthenticated_Returns401()
         => (await _factory.CreateClient().GetAsync("/api/oss-vat-rate/country/DE")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+
+    private HttpClient Jwt(string role, long userId = 5201)
+    {
+        var claims = new List<Claim> { new(ClaimTypes.Role, role), new(ClaimTypes.NameIdentifier, userId.ToString()), new("CompanyId", CompanyId.ToString()) };
+        var token = new JwtSecurityToken("Fakvio.Tests", "Fakvio.Tests.Client", claims, expires: DateTime.UtcNow.AddMinutes(5),
+            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes("TestSecretKeyForIntegrationTestsThatMustBeAtLeast32BytesLong!")), SecurityAlgorithms.HmacSha256));
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", new JwtSecurityTokenHandler().WriteToken(token));
+        return client;
+    }
+
+    [Fact]
+    public async Task TenantAdmin_SavesOss_Returns200_AndOtherSettingsUntouched()
+    {
+        SeedTenant();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var master = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
+            var settings = master.CompanySystemSettings.Single(x => x.CompanyId == CompanyId);
+            settings.MaxUsers = 7;
+            settings.AdminNotes = "keep me";
+            master.SaveChanges();
+        }
+
+        using var admin = Jwt("Admin");
+        var put = await admin.PutAsJsonAsync("/api/company-settings/oss",
+            new OssSettingsDto { OssRegistered = true, OssRegisteredSince = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Unspecified) });
+        put.StatusCode.ShouldBe(HttpStatusCode.OK, await put.Content.ReadAsStringAsync());
+
+        var read = await admin.GetFromJsonAsync<OssSettingsDto>("/api/company-settings/oss");
+        read!.OssRegistered.ShouldBeTrue();
+        read.OssRegisteredSince!.Value.Date.ShouldBe(new DateTime(2026, 1, 1));
+
+        using var verify = _factory.Services.CreateScope();
+        var saved = verify.ServiceProvider.GetRequiredService<MasterDbContext>().CompanySystemSettings.Single(x => x.CompanyId == CompanyId);
+        saved.MaxUsers.ShouldBe(7);
+        saved.AdminNotes.ShouldBe("keep me");
+        saved.OssRegisteredSince!.Value.Kind.ShouldBe(DateTimeKind.Utc);
+
+        // switching off clears the date
+        (await admin.PutAsJsonAsync("/api/company-settings/oss", new OssSettingsDto { OssRegistered = false })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await admin.GetFromJsonAsync<OssSettingsDto>("/api/company-settings/oss"))!.OssRegisteredSince.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task OrdinaryUser_CannotSaveOss_Returns403()
+    {
+        SeedTenant();
+        using var user = Jwt("User", 5202);
+        (await user.PutAsJsonAsync("/api/company-settings/oss", new OssSettingsDto { OssRegistered = true })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task OssSettings_Unauthenticated_Returns401()
+        => (await _factory.CreateClient().PutAsJsonAsync("/api/company-settings/oss", new OssSettingsDto())).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
 }

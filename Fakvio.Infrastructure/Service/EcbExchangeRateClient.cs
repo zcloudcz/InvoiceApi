@@ -10,9 +10,9 @@ namespace Fakvio.Infrastructure.Service;
 /// </summary>
 public class EcbExchangeRateClient : IEcbExchangeRateClient
 {
-    // How many calendar days before the requested date we accept an observation from
+    // How many calendar days AFTER the requested date we look for the next published rate
     // (weekends + TARGET holidays have no fixing).
-    private const int LookbackDays = 10;
+    private const int LookaheadDays = 10;
 
     private readonly HttpClient _http;
     private readonly IMemoryCache _cache;
@@ -35,9 +35,11 @@ public class EcbExchangeRateClient : IEcbExchangeRateClient
         var key = $"ecb:{code}:{date:yyyyMMdd}";
         if (_cache.TryGetValue(key, out decimal cached)) return cached;
 
-        var from = date.AddDays(-LookbackDays);
+        // Art. 369h(2) VAT directive / §110zb ZDPH: the rate of the LAST DAY of the period, or — when the ECB
+        // published none that day — the rate of the NEXT publication day. So we look forward, never back.
+        var to = date.AddDays(LookaheadDays);
         var url = $"https://data-api.ecb.europa.eu/service/data/EXR/D.{code}.EUR.SP00.A" +
-                  $"?startPeriod={from:yyyy-MM-dd}&endPeriod={date:yyyy-MM-dd}&format=csvdata";
+                  $"?startPeriod={date:yyyy-MM-dd}&endPeriod={to:yyyy-MM-dd}&format=csvdata";
 
         string csv;
         try
@@ -57,18 +59,22 @@ public class EcbExchangeRateClient : IEcbExchangeRateClient
             throw new EcbRateUnavailableException("ECB exchange rate service timed out.", ex);
         }
 
-        var rate = ParseLastObservation(csv)
-            ?? throw new EcbRateUnavailableException($"ECB has no {code} rate for {from:yyyy-MM-dd}..{date:yyyy-MM-dd}.");
+        // No observation yet (e.g. the quarter just ended on a weekend and the next fixing is not published)
+        // is an error, never a fallback to an earlier day — and it is NOT cached, so a retry can succeed.
+        var rate = ParseFirstObservationOnOrAfter(csv, date)
+            ?? throw new EcbRateUnavailableException(
+                $"ECB has not published a {code} rate for {date:yyyy-MM-dd} or the following days yet. Try again later.");
 
-        _cache.Set(key, rate, TimeSpan.FromDays(1));
+        _cache.Set(key, rate, TimeSpan.FromDays(1)); // only an exactly found rate is cached
         return rate;
     }
 
     /// <summary>
     /// Parses the SDMX csvdata body (header row with TIME_PERIOD and OBS_VALUE columns) and returns
-    /// the OBS_VALUE of the latest TIME_PERIOD, or null when there is no data row. Public for unit tests.
+    /// the OBS_VALUE of the EARLIEST TIME_PERIOD that is on or after <paramref name="date"/>, or null when
+    /// there is none. Public for unit tests.
     /// </summary>
-    public static decimal? ParseLastObservation(string csv)
+    public static decimal? ParseFirstObservationOnOrAfter(string csv, DateOnly date)
     {
         var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (lines.Length < 2) return null;
@@ -78,6 +84,7 @@ public class EcbExchangeRateClient : IEcbExchangeRateClient
         var valueIdx = Array.IndexOf(header, "OBS_VALUE");
         if (timeIdx < 0 || valueIdx < 0) return null;
 
+        var minTime = date.ToString("yyyy-MM-dd");
         string? bestTime = null;
         decimal? best = null;
         foreach (var line in lines.Skip(1))
@@ -87,7 +94,8 @@ public class EcbExchangeRateClient : IEcbExchangeRateClient
             if (cols.Length <= Math.Max(timeIdx, valueIdx)) continue;
             if (!decimal.TryParse(cols[valueIdx], NumberStyles.Number, CultureInfo.InvariantCulture, out var v) || v <= 0) continue;
             // yyyy-MM-dd sorts lexicographically.
-            if (bestTime == null || string.CompareOrdinal(cols[timeIdx], bestTime) > 0)
+            if (string.CompareOrdinal(cols[timeIdx], minTime) < 0) continue;
+            if (bestTime == null || string.CompareOrdinal(cols[timeIdx], bestTime) < 0)
             {
                 bestTime = cols[timeIdx];
                 best = v;
