@@ -306,6 +306,21 @@ přidá i UBL XML. Když se e-faktura nedá vygenerovat (viz problémy výše), 
 vynechá — email se vždy odešle. **Pozor:** poslat e-fakturu jinak než přes Peppol síť
 (např. e-mailem) je u slovenského plátce DPH legální jen se souhlasem příjemce.
 
+### 2.8b Export do účetnictví (POHODA / Money S3 / ABRA Flexi)
+
+Na stránce **Faktury** (i **Přijaté faktury**) klikněte na „Export do účetnictví". Vyberte účetní systém,
+období a zda chcete vydané, přijaté, nebo obojí, a klikněte na „Exportovat" — stáhne se jeden XML soubor.
+Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakují.
+
+**Jak soubor načíst:**
+
+- **POHODA:** Soubor → Datová komunikace → XML import → vyberte stažený soubor a spusťte import.
+- **Money S3:** Soubor → Import dat → XML (MoneyData) → vyberte stažený soubor.
+- **ABRA Flexi:** Nástroje → Import → XML (winstrom), nebo soubor odešlete na REST API.
+
+**Co vědět:** u cizí měny Fakvio neexportuje kurz — doplňte ho v účetním programu po importu. Doporučujeme
+nejdřív naimportovat jeden doklad na zkoušku. Dobropisy se přenášejí se záporným znaménkem.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"
@@ -576,6 +591,11 @@ fakturace — import do Pohody, Money S3, Helios apod.):
 - **Hromadně:** označte faktury zaškrtávátky → v panelu hromadných akcí
   „Stáhnout ISDOC" → stáhne se jeden ZIP s `.isdoc` soubory pojmenovanými
   podle čísel dokladů.
+
+### Export do účetnictví
+
+Tlačítko „Export do účetnictví" nad seznamem přijatých faktur stáhne XML pro POHODA / Money S3 / ABRA Flexi
+(předvybrané jsou přijaté faktury). Postup importu viz [2.8b](#28b-export-do-účetnictví-pohoda--money-s3--abra-flexi).
 
 ### Přehled DPH z přijatých faktur
 
@@ -1146,7 +1166,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 69 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 70 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.

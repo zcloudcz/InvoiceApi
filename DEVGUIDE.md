@@ -1507,7 +1507,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 69 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 70 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1528,7 +1528,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
-| **Vydané faktury** (`InvoiceTools`, 11) |
+| **Vydané faktury** (`InvoiceTools`, 12) |
 | `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
@@ -1539,6 +1539,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `SendInvoiceEmail` | **Write** (odešle e-mail) | `send_invoice_email` (confirm) | ✅ | |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
 | `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
+| `ExportAccounting` | Read → download | — | ❌ | export do účetnictví (§4.15) je zatím jen MCP a UI |
 | `DeleteInvoice` | **Destructive** | `delete_invoice` (confirm, jen Draft) | ✅ | |
 | **Přijaté faktury** (`ReceivedInvoiceTools`, 7) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
@@ -1607,10 +1608,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 69 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 27 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
+**Součty:** 70 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 28 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
-(7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
+(7 — celý `RecurringTools`, zatím bez tasku), export do účetnictví (1 — `ExportAccounting`, §4.15) a e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
 zatím nepokrývají).
 
@@ -1695,7 +1696,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **69 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **70 tools**: 12 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -2247,6 +2248,41 @@ syntetická data.
   `Clients.razor`. Texty přes `SharedResource*.resx` (klíče `ClientImport_*`).
 - **Fáze 2 (zatím neimplementováno):** import historie vydaných faktur z CSV — čeká na rozhodnutí
   ownera a reálné exporty (viz Story N6, tasky N6.5/N6.6).
+
+### 4.15 Export do účetnictví (POHODA / Money S3 / ABRA Flexi)
+
+Jeden XML soubor se **vydanými i přijatými** doklady za období, ve formátu cílového účetního systému.
+
+- **Endpoint:** `POST api/accounting-export/{system}` (`AccountingExportController`), `system` =
+  `Pohoda` | `MoneyS3` | `AbraFlexi` (`EAccountingSystem`). Tělo `AccountingExportRequestDto`
+  `{from, to, includeIssued, includeReceived, invoiceIds?}`; `invoiceIds` přebíjí datum jen u vydaných.
+  Jen `[Authorize]` — tenant řeší `TenantContextMiddleware`, role User i Admin (účetní) projdou
+  (read-only export, stejně jako ISDOC/UBL). Obě volby `false` → 400.
+- **Vrstvy:** `IAccountingExportService` (`AccountingExportService`) načte doklady z `TenantDbContext`
+  (vydané bez `Draft`/`Deleted`, přijaté bez `Deleted`/`Rejected`; filtr podle `IssueDate`, `to` včetně
+  celého dne) a deleguje na `IAccountingExporter` — jedna čistá implementace na systém v
+  `Infrastructure/Service/AccountingExport/` (`PohodaAccountingExporter`, `MoneyS3AccountingExporter`,
+  `AbraFlexiAccountingExporter`, společné helpery v `AccountingExportCommon`). Nový systém = nová
+  hodnota enumu + nový exporter registrovaný v DI.
+- **UI:** `AccountingExportDialog.razor` otevřený tlačítkem „Export do účetnictví" na `Invoices.razor`
+  a `ReceivedInvoices.razor` (klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (base64 XML jako
+  `ExportInvoiceIsdoc`).
+- **Mapování:** číslo dokladu, VS, data (vystavení / DUZP / splatnost), partner (IČO, DIČ, adresa),
+  způsob úhrady, účet (Pohoda), položky (popis, množství, MJ, cena, sazba DPH), součty a rozpad DPH.
+  Dobropis má v Fakvio záporné položky → znaménko se přenáší beze změny (Pohoda `issuedCreditNotice`,
+  Money `DobropisVyd`, Flexi `code:DOBROPIS`). Proforma → Pohoda `issuedAdvanceInvoice`.
+  Pohoda je v kódování Windows-1250 (`CodePagesEncodingProvider`), ostatní UTF-8.
+- **Známé mezery (vědomě):**
+  - Mapováno podle veřejné dokumentace formátů (stormware.cz, Money S3 XML, podpora.flexibee.eu),
+    XSD není vložené ani validované — před hromadným použitím otestujte import jednoho dokladu.
+  - Sazba DPH se třídí podle velikosti (>= 21 % základní, 0 < r < 21 % snížená, 0 % bez DPH); Fakvio
+    nemá „třetí sazbu" Pohody. Money S3 dostane procento (`SazbaDPH`), ne pojmenovaný slot.
+  - Cizí měna: Fakvio neukládá kurz. Pohoda dostane `foreignCurrency` s kurzem/množstvím 1, Money S3
+    `Valuty/Mena`, Flexi `mena` — kurz si účetní doplní po importu.
+  - Přijaté faktury nemají příznak dobropisu → exportují se jako běžný přijatý doklad (Pohoda
+    `receivedInvoice`, Flexi `faktura-prijata` / `code:FAKTURA`).
+  - Flexi `firma` je vložená inline (match podle IČO), neřeší existující kód adresáře.
+- **Testy:** `AccountingExporterTests` (unit, všechny tři exportéry), `AccountingExportEndpointTests` (integration).
 
 ---
 
@@ -3336,7 +3372,7 @@ On relational storage, invitation issue/accept, membership update/revoke and leg
 
 `UserCompanyMembershipDialog` is opened from the SysAdmin Users grid. Saving one row refreshes only that row so other unsaved membership edits remain. Deactivation names the company in its confirmation. Legacy account/default fields are compatibility metadata, not authority to recreate or overwrite an existing membership.
 
-MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 69 tools; update every published count and parity row whenever discovery changes.
+MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 70 tools; update every published count and parity row whenever discovery changes.
 
 ### Document forms and server-backed lists
 

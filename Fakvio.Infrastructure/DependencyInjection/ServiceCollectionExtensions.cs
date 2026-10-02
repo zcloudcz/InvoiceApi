@@ -6,6 +6,7 @@ using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Logging;
 using Fakvio.Infrastructure.Repository;
 using Fakvio.Infrastructure.Service;
+using Fakvio.Infrastructure.Service.AccountingExport;
 using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -150,6 +151,12 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
         services.AddScopedWithLogging<IIsdocExportService, IsdocExportService>();
         services.AddScopedWithLogging<IUblExportService, UblExportService>();
+        services.AddScopedWithLogging<IAccountingExportService, AccountingExportService>();
+        // One IAccountingExporter per accounting system — AccountingExportService picks the
+        // right one by matching its System property, so all three register against the same interface.
+        services.AddScoped<IAccountingExporter, PohodaAccountingExporter>();
+        services.AddScoped<IAccountingExporter, MoneyS3AccountingExporter>();
+        services.AddScoped<IAccountingExporter, AbraFlexiAccountingExporter>();
         services.AddScopedWithLogging<IQrPaymentService, QrPaymentService>();
         services.AddScopedWithLogging<IEmailService, EmailService>();
         services.AddScopedWithLogging<IContentTemplateService, ContentTemplateService>();

@@ -1,0 +1,100 @@
+@* "Export do účetnictví" — reachable from both the Invoices and ReceivedInvoices pages
+   (DialogService.ShowAsync<AccountingExportDialog>). Lets the user pick a target accounting
+   system, a date range and which document types to include, then downloads one XML file. *@
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Services
+@inject FakvioService InvoiceService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@implements IDisposable
+
+<MudDialog>
+    <DialogContent>
+        @if (_error)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@L["AccountingExport_Error"]</MudAlert>
+        }
+        <EnumSelect TEnum="EAccountingSystem" @bind-Value="_system" Label="@L["AccountingExport_System"].Value"
+                    Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="_busy" />
+        <MudGrid Class="mt-1">
+            <MudItem xs="6">
+                <MudDatePicker Label="@L["AccountingExport_From"]" Date="_from" DateChanged="@(v => _from = v)"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="_busy" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker Label="@L["AccountingExport_To"]" Date="_to" DateChanged="@(v => _to = v)"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="_busy" />
+            </MudItem>
+        </MudGrid>
+        <MudCheckBox T="bool" @bind-Value="_includeIssued" Label="@L["AccountingExport_IncludeIssued"].Value" Disabled="_busy" />
+        <MudCheckBox T="bool" @bind-Value="_includeReceived" Label="@L["AccountingExport_IncludeReceived"].Value" Disabled="_busy" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_busy">@L["Btn_Cancel"]</MudButton>
+        <MudButton OnClick="ExportAsync" Disabled="@(_busy || (!_includeIssued && !_includeReceived) || _from is null || _to is null)"
+                   Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Download">
+            @L["AccountingExport_Export"]
+        </MudButton>
+        @if (_busy)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>Optional: pre-select which document type the dialog was opened for (Invoices page = issued only, ReceivedInvoices page = received only). Both remain editable.</summary>
+    [Parameter] public bool DefaultIncludeIssued { get; set; } = true;
+    [Parameter] public bool DefaultIncludeReceived { get; set; } = true;
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private EAccountingSystem _system = EAccountingSystem.Pohoda;
+    private DateTime? _from;
+    private DateTime? _to;
+    private bool _includeIssued;
+    private bool _includeReceived;
+    private bool _busy;
+    private bool _error;
+
+    protected override void OnInitialized()
+    {
+        _includeIssued = DefaultIncludeIssued;
+        _includeReceived = DefaultIncludeReceived;
+        // Default to the current month — the most common "export last period" use case.
+        var today = DateTime.Today;
+        _from = new DateTime(today.Year, today.Month, 1);
+        _to = today;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task ExportAsync()
+    {
+        if (_busy || _from is null || _to is null) return;
+        _busy = true;
+        _error = false;
+        try
+        {
+            var bytes = await InvoiceService.ExportAccountingAsync(_system, _from.Value, _to.Value, _includeIssued, _includeReceived);
+            if (bytes is null || bytes.Length == 0)
+            {
+                _error = true;
+                return;
+            }
+
+            var base64 = Convert.ToBase64String(bytes);
+            var fileName = $"{_system}_{_from.Value:yyyyMMdd}-{_to.Value:yyyyMMdd}.xml";
+            await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/xml");
+            Snackbar.Add(L["AccountingExport_Success"].Value, Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception) { _error = true; }
+        finally { _busy = false; }
+    }
+
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

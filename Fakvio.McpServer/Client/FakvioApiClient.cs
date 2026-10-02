@@ -233,6 +233,21 @@ public class FakvioApiClient : IFakvioApiClient
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    /// <summary>
+    /// Downloads the accounting export XML as raw bytes from POST /api/accounting-export/{system}
+    /// ("Export do účetnictví" — Pohoda / Money S3 / ABRA Flexi).
+    /// </summary>
+    public async Task<byte[]> ExportAccountingAsync(
+        Fakvio.Domain.Enums.EAccountingSystem system,
+        DateTime from, DateTime to, bool includeIssued, bool includeReceived,
+        CancellationToken ct = default)
+    {
+        var body = new { From = from, To = to, IncludeIssued = includeIssued, IncludeReceived = includeReceived };
+        var response = await _http.PostAsJsonAsync($"api/accounting-export/{system}", body, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     // ── Client endpoints ───────────────────────────────────────────────
 
     public async Task<PagedResult<ClientDto>> GetClientsPagedAsync(ClientFilterDto filter, CancellationToken ct = default)

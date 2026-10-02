@@ -16,10 +16,16 @@
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
 @inject IJSRuntime JS
+@inject IDialogService DialogService
 
 <PageTitle>@L["ReceivedInvoice_Title"]</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">@L["ReceivedInvoice_Title"]</MudText>
+
+<MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Class="mb-4"
+           StartIcon="@Icons.Material.Filled.Download" OnClick="OpenAccountingExportDialog">
+    @L["AccountingExport_Open"]
+</MudButton>
 
 @* ── Filter Bar ─────────────────────────────────────────────────────── *@
 @* IssueDate / DueDate filters live on the column headers (DateColumnFilter)
@@ -222,6 +228,17 @@
     private string? _search;
     private EReceivedInvoiceStatus? _statusFilter;
     private HashSet<ReceivedInvoiceDto> _selectedInvoices = new();
+
+    /// <summary>
+    /// Opens the "Export do účetnictví" dialog (Pohoda/MoneyS3/AbraFlexi), pre-selected to
+    /// received invoices only since we're on the ReceivedInvoices page — the user can still
+    /// tick "include issued" in the dialog if they want a combined export.
+    /// </summary>
+    private async Task OpenAccountingExportDialog()
+    {
+        var parameters = new DialogParameters { ["DefaultIncludeIssued"] = false, ["DefaultIncludeReceived"] = true };
+        await DialogService.ShowAsync<AccountingExportDialog>(L["AccountingExport_Open"].Value, parameters);
+    }
 
     /// <summary>
     /// Server-side data loading callback for MudDataGrid.

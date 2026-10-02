@@ -351,6 +351,38 @@ public abstract class ApiClientBase
     }
 
     /// <summary>
+    /// Performs POST request with body and returns raw byte array (e.g., an XML/ZIP download
+    /// produced from filter criteria, like the accounting export). Throws ApiException on
+    /// non-success status codes.
+    /// </summary>
+    protected async Task<byte[]?> PostForBytesAsync<TRequest>(string endpoint, TRequest data)
+    {
+        try
+        {
+            await AddAuthorizationHeaderAsync();
+            _logger.LogInformation("POST (bytes) {Endpoint}", endpoint);
+            var response = await _httpClient.PostAsJsonAsync(endpoint, data);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadAsByteArrayAsync();
+            }
+
+            await HandleErrorResponseAsync(response, "POST (bytes)", endpoint);
+            return null; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogClientException(ex, "POST (bytes)", endpoint);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Performs GET request and returns raw string content (e.g., rendered HTML).
     /// Throws ApiException on non-success status codes.
     /// </summary>

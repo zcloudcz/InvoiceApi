@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Fakvio.Contracts.Dto.AccountingExport;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
@@ -385,6 +386,26 @@ public class FakvioService : ApiClientBase
     {
         var idsParam = string.Join(",", invoiceIds);
         return await GetBytesAsync($"/api/invoice/bulk/ubl?ids={idsParam}");
+    }
+
+    // ─── Accounting export (Pohoda / Money S3 / ABRA Flexi) ──────────────────
+
+    /// <summary>
+    /// Downloads one XML export file containing issued and/or received invoices for a date range,
+    /// formatted for the given accounting system. Used by the AccountingExportDialog shown from
+    /// both the Invoices and ReceivedInvoices pages.
+    /// </summary>
+    public async Task<byte[]?> ExportAccountingAsync(
+        EAccountingSystem system, DateTime from, DateTime to, bool includeIssued, bool includeReceived)
+    {
+        var request = new AccountingExportRequestDto
+        {
+            From = from,
+            To = to,
+            IncludeIssued = includeIssued,
+            IncludeReceived = includeReceived
+        };
+        return await PostForBytesAsync($"/api/accounting-export/{system}", request);
     }
 
     /// <summary>
