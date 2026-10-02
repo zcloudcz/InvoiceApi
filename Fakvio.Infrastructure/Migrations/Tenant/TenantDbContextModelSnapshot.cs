@@ -592,6 +592,11 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<bool>("AutoIssueTaxReceiptForAdvance")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Color")
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)");
@@ -1429,6 +1434,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<long?>("OriginalInvoiceId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("OssCountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
                     b.Property<decimal>("PaidAmount")
                         .ValueGeneratedOnAdd()
                         .HasPrecision(18, 2)
@@ -1496,6 +1505,8 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasIndex("IssuerId");
 
                     b.HasIndex("OriginalInvoiceId");
+
+                    b.HasIndex("OssCountryCode");
 
                     b.HasIndex("Status");
 
@@ -2151,6 +2162,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<decimal>("InformationalVatAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -2167,6 +2182,9 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasColumnType("numeric(18,4)");
 
                     b.Property<long>("ReceivedInvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("ReverseChargeCodeId")
                         .HasColumnType("bigint");
 
                     b.Property<decimal>("TotalBeforeVat")
@@ -2203,9 +2221,16 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)");
 
+                    b.Property<int>("VatRegime")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.HasKey("Id");
 
                     b.HasIndex("ReceivedInvoiceId");
+
+                    b.HasIndex("ReverseChargeCodeId");
 
                     b.HasIndex("VatRateId");
 
@@ -2874,6 +2899,116 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         });
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.WebhookDelivery", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int?>("LastStatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("SubscriptionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("WebhookDelivery");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.WebhookSubscription", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Events")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SecretEncrypted")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.ToTable("WebhookSubscription");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.InvoiceTemplate", b =>
                 {
                     b.HasBaseType("Fakvio.Domain.Entities.Invoice");
@@ -3200,12 +3335,19 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Fakvio.Domain.Entities.ReverseChargeCode", "ReverseChargeCode")
+                        .WithMany()
+                        .HasForeignKey("ReverseChargeCodeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Fakvio.Domain.Entities.VatRate", "VatRate")
                         .WithMany()
                         .HasForeignKey("VatRateId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ReceivedInvoice");
+
+                    b.Navigation("ReverseChargeCode");
 
                     b.Navigation("VatRate");
                 });
@@ -3281,6 +3423,17 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.WebhookDelivery", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.WebhookSubscription", "Subscription")
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Subscription");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.InvoiceTemplate", b =>

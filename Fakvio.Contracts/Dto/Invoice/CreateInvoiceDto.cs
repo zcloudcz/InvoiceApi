@@ -9,6 +9,15 @@ namespace Fakvio.Contracts.Dto.Invoice;
 public class CreateInvoiceDto
 {
     /// <summary>
+    /// Opt-in to the EU OSS (One-Stop-Shop) regime for this invoice (DEVGUIDE §4.16). Honoured only when the
+    /// invoice is eligible (OSS-registered VAT-payer issuer, consumer client in another EU state); asking for it
+    /// on an ineligible invoice is rejected. Default false: general B2C services are taxed in CZ (Art. 45),
+    /// OSS applies to goods distance sales, telecom/broadcasting/electronic services, etc. — only the user knows.
+    /// Ignored for credit notes (they inherit the original invoice's regime).
+    /// </summary>
+    public bool ApplyOss { get; set; }
+
+    /// <summary>
     /// Type of document - Invoice or CreditNote
     /// </summary>
     [Required]
@@ -86,8 +95,18 @@ public class CreateInvoiceDto
     public string? SpecificSymbol { get; set; }
 
     /// <summary>
+    /// Optional reference to one of the issuer's bank accounts (BankAccount.Id).
+    /// When set, the server loads that account and copies its AccountNumber/IBAN/SWIFT onto the
+    /// invoice, overriding any explicit BankAccountNumber/IBAN/SWIFT also sent below. The account
+    /// must belong to the issuer (IssuerId) — otherwise the request fails with 400.
+    /// When omitted and no bank fields are given at all, the server auto-fills from the issuer's
+    /// default/currency-matching account (see InvoiceService.ApplyBankAccountDefaultsAsync).
+    /// </summary>
+    public long? BankAccountId { get; set; }
+
+    /// <summary>
     /// Bank account number
-    /// If not provided, taken from issuer or client billing settings
+    /// If not provided, taken from the issuer's default bank account (see BankAccountId)
     /// </summary>
     [StringLength(100)]
     public string? BankAccountNumber { get; set; }

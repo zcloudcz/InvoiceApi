@@ -1194,19 +1194,19 @@ These items exist in Fakturovač and are useful for parity. Order = recommended 
 based on how often Czech customers ask for them. Each line is sized as a standalone ticket.
 
 **Top priority (blockers for many B2B use-cases):**
-- [ ] **Zálohové faktury (proforma) + auto-překlop na běžnou fakturu** — new `EDocumentType.AdvanceInvoice` (záloha) + `EDocumentType.TaxReceiptForAdvance` (daňový doklad o přijaté platbě). When the proforma is paid, system creates the tax receipt automatically and on the final invoice deducts the advance. Heavy lifting: domain model, status transitions, PDF templates per type, invoice-from-proforma button.
+- [x] **Zálohové faktury (proforma) + auto-překlop na běžnou fakturu** — new `EDocumentType.AdvanceInvoice` (záloha) + `EDocumentType.TaxReceiptForAdvance` (daňový doklad o přijaté platbě). When the proforma is paid, system creates the tax receipt automatically and on the final invoice deducts the advance. Heavy lifting: domain model, status transitions, PDF templates per type, invoice-from-proforma button. — **DONE 2026-10-02 (#480: auto DPP po zaplacení, MCP issue_final_invoice/issue_tax_receipt)**
 - [ ] **ISDOC export** + ISDOC attachment in invoice e-mail — Czech e-invoicing standard (ICAI XML schema), Pohoda/Money/Helios import it natively. Add `IIsdocExportService` next to `IPdfExportService`. The e-mail send flow attaches both PDF and ISDOC.
-- [ ] **EPO XML pro DPH přiznání + kontrolní hlášení** — extend `VatReportService` with `ToEpoXmlAsync()` producing the official MFČR XML (XSD published by Finanční správa). Single-button "stáhnout pro EPO" on VAT Report page.
-- [ ] **Přenesená daňová povinnost (PDP / Reverse Charge §92a–92e ZDPH)** — new `EVatRegime` enum on `InvoiceItem` (Standard / ReverseCharge / Exempt / OutOfScope). Affects DPH calculation (zero VAT row, transferred to recipient), special note on PDF/ISDOC, reflected in EPO XML. Mandatory for stavebnictví/IT/telco.
+- [x] **EPO XML pro DPH přiznání + kontrolní hlášení** — extend `VatReportService` with `ToEpoXmlAsync()` producing the official MFČR XML (XSD published by Finanční správa). Single-button "stáhnout pro EPO" on VAT Report page. — **DONE (DP3/KH dříve; PDP řádky + DPHSHV 2026-10-02, #483)**
+- [x] **Přenesená daňová povinnost (PDP / Reverse Charge §92a–92e ZDPH)** — new `EVatRegime` enum on `InvoiceItem` (Standard / ReverseCharge / Exempt / OutOfScope). Affects DPH calculation (zero VAT row, transferred to recipient), special note on PDF/ISDOC, reflected in EPO XML. Mandatory for stavebnictví/IT/telco. — **DONE 2026-10-02 (#476 vydané, #483 přijaté + EPO)**
 - [ ] **Recurring Invoices** — already in backlog, raise priority. New entity `RecurringInvoiceSchedule` (templateId, frequency, day-of-month, nextRunAt, isActive). Azure Function timer trigger (daily) generates invoices from templates whose `nextRunAt <= today`. Send via existing email service.
 
 **Medium priority (nice parity items):**
 - [ ] **Dodací listy (delivery notes)** — separate document type, simpler than invoice (no totals/VAT, just items list). Reuse `Invoice` table with `EDocumentType.DeliveryNote`.
 - [ ] **Pokladní doklady / paragony** — simplified cash receipt format. Could be subtype of invoice or separate entity. Required field: cashier, optional VAT.
-- [ ] **Webhooks** — already in backlog; useful for e-shop integrations (notify when invoice paid). Outbound HTTP POST with HMAC signature, retry policy, dead-letter queue.
-- [ ] **Export do účetních systémů** — Pohoda XML, Money S3 XML, ABRA XML adapters. Each = separate `IAccountingExporter` implementation reading from the same Invoice DTOs.
+- [x] **Webhooks** — already in backlog; useful for e-shop integrations (notify when invoice paid). Outbound HTTP POST with HMAC signature, retry policy, dead-letter queue. — **DONE 2026-10-02 (#482)**
+- [x] **Export do účetních systémů** — Pohoda XML, Money S3 XML, ABRA XML adapters. Each = separate `IAccountingExporter` implementation reading from the same Invoice DTOs. — **DONE 2026-10-02 (#479 Pohoda/Money S3/ABRA Flexi)**
 - [ ] **ČNB kurzy auto-stahování** — daily Function that fetches the official ČNB exchange rate XML feed and updates `Currency.ExchangeRate` for non-CZK currencies. Used for foreign-currency invoices to compute CZK equivalent.
-- [ ] **EU OSS / OSS DPH** — special VAT regime for cross-border B2C sales in EU (§110b ZDPH). Affects VAT rate (recipient country's rate), reporting (separate OSS return), invoice text. Big feature, mostly relevant for e-shops.
+- [x] **EU OSS / OSS DPH** — special VAT regime for cross-border B2C sales in EU (§110b ZDPH). Affects VAT rate (recipient country's rate), reporting (separate OSS return), invoice text. Big feature, mostly relevant for e-shops. — **DONE 2026-10-02 (#484, opt-in per faktura)**
 
 **Lower priority / nice-to-have:**
 - [ ] **Klientský portál** — public link per client showing their invoices/payment history. Token-based access (no login). Useful for "send a link to your client" UX.
@@ -1254,3 +1254,26 @@ Production deployment and package publication are outside this task and have not
 - [x] Wrap authorization-code exchange and refresh transactions in EF's execution strategy; add PostgreSQL regression tests with retry enabled.
 - [x] Correct the ChatGPT user guide and integration page to use Settings → Apps instead of Plugins.
 - [ ] Merge and deploy PR #473 to production, then retry the connection in ChatGPT and confirm tool discovery.
+
+## MyInvoice/Fakturovač gap batch (2026-10-02)
+
+Implemented by parallel agents, each PR reviewed (Fable) and merged into `develop`:
+- [x] #477 MCP bankovní účet — server doplní výchozí účet (dle měny), `bankAccountId`, `set_invoice_bank_account`
+- [x] #478 SEPA EPC QR pro EUR + ověření DIČ ve VIES (UI, chat, MCP)
+- [x] #479 Export do účetnictví (POHODA, Money S3, ABRA Flexi) ověřený proti XSD
+- [x] #476 Přenesená daňová povinnost — UI editor, PDF poznámka, ISDOC, MCP
+- [x] #480 Zálohy — automatický DPP po zaplacení, MCP nástroje
+- [x] #483 EPO — PDP řádky DP3/KH, PDP u přijatých faktur, souhrnné hlášení DPHSHV
+- [x] #482 Webhooky (HMAC, outbox, SSRF ochrana)
+- [x] #484 EU OSS (opt-in, sazby EU, čtvrtletní přehled s kurzem ECB)
+- [x] #481 Modulární nástěnka + průvodce nastavením /setup
+
+Follow-ups:
+- [ ] SysAdmin: ověřit sazby `OssVatRate` proti EC TEDB před prvním OSS podáním (EE/LT 9 % sníž. sazby nejisté)
+- [ ] DPHDP3 ř. 1/2 a KH A.4/A.5 nezahrnují dobropisy (pre-existing)
+- [ ] Reminder/Recurring workery — ověřit, že scoped TenantDbContext má nastavené Schema (stejná chyba jako u webhooků)
+- [ ] MasterDbContext UTC normalizer neprovede Unspecified→Utc
+- [ ] Šablony/opakované faktury nepodporují OSS; DPP k OSS záloze se vystaví s CZ sazbou
+- [ ] Pořízení zboží/služeb z EU (ř. 3–6) není modelováno; ReverseCharge = jen tuzemské §92a
+- [ ] Zbývající položky z porovnání s MyInvoice: GPC/ABO import, hromadné vystavení, výkazy práce, auto měsíc v klonu, IP allowlist/Turnstile, per-client sazby + kurzy ČNB, granulární role
+

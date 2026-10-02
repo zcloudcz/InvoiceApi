@@ -259,6 +259,14 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<RecognizedCounterparty> RecognizedCounterparty { get; set; }
 
+    // ─── Webhooks ───────────────────────────────────────────────────────────────
+
+    /// <summary>Per-tenant outbound webhook subscriptions (DEVGUIDE §4.15 Webhooks).</summary>
+    public DbSet<WebhookSubscription> WebhookSubscription { get; set; }
+
+    /// <summary>Delivery attempts/outbox for outbound webhooks.</summary>
+    public DbSet<WebhookDelivery> WebhookDelivery { get; set; }
+
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -324,6 +332,9 @@ public class TenantDbContext : DbContext
         ConfigureRecognizedCounterparty(modelBuilder);
 
         ConfigureReverseChargeCode(modelBuilder);
+
+        ConfigureWebhookSubscription(modelBuilder);
+        ConfigureWebhookDelivery(modelBuilder);
 
         SeedData(modelBuilder);
     }
@@ -393,6 +404,9 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.FlatRateBand)
                 .HasConversion<string?>()
                 .HasMaxLength(10);
+
+            entity.Property(e => e.AutoIssueTaxReceiptForAdvance)
+                .HasDefaultValue(true);
         });
     }
 
@@ -535,6 +549,9 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.SWIFT).HasMaxLength(50);
             entity.Property(e => e.PaymentMethod).HasConversion<int?>();
             entity.Property(e => e.Notes).HasMaxLength(5000);
+            // EU OSS destination country (ISO2) — null for ordinary/non-OSS invoices. See §4.16.
+            entity.Property(e => e.OssCountryCode).HasMaxLength(2);
+            entity.HasIndex(e => e.OssCountryCode);
 
             entity.HasOne(e => e.Client).WithMany().HasForeignKey(e => e.ClientId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
             entity.HasOne(e => e.Issuer).WithMany().HasForeignKey(e => e.IssuerId).OnDelete(DeleteBehavior.Restrict).IsRequired(true);
@@ -757,12 +774,26 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
             entity.Property(e => e.VatAmount).HasPrecision(18, 2);
             entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
+            entity.Property(e => e.InformationalVatAmount).HasPrecision(18, 2);
             entity.Property(e => e.ProductCode).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(1000);
+
+            // VatRegime: same convention as InvoiceItem — integer column, NOT NULL, default 0 (Standard).
+            entity.Property(e => e.VatRegime)
+                .HasConversion<int>()
+                .HasDefaultValue(EVatRegime.Standard)
+                .IsRequired();
 
             entity.HasOne(e => e.VatRate)
                 .WithMany()
                 .HasForeignKey(e => e.VatRateId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ReverseChargeCode is a reference data lookup (číselník) — Restrict delete,
+            // same reasoning as InvoiceItem: historical received invoices must stay intact.
+            entity.HasOne(e => e.ReverseChargeCode)
+                .WithMany()
+                .HasForeignKey(e => e.ReverseChargeCodeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }
@@ -1282,6 +1313,62 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.NameCs).IsRequired().HasMaxLength(500);
             entity.Property(e => e.NameEn).HasMaxLength(500);
             entity.Property(e => e.ParagraphRef).IsRequired().HasMaxLength(10);
+        });
+    }
+
+    // ─── Webhook configuration ───────────────────────────────────────────────
+
+    /// <summary>
+    /// WebhookSubscription table configuration.
+    /// Events is a short list of event names (e.g. "invoice.paid") — stored as a single
+    /// comma-joined text column rather than a Postgres array/JSON column. Simplest mapping
+    /// that works for a handful of short, comma-free strings (event names are our own enum-like
+    /// constants, never user input) and keeps querying/debugging in plain SQL easy.
+    /// </summary>
+    private void ConfigureWebhookSubscription(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WebhookSubscription>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.IsActive);
+
+            entity.Property(e => e.Url).IsRequired().HasMaxLength(2048);
+            entity.Property(e => e.Description).HasMaxLength(200);
+            entity.Property(e => e.SecretEncrypted).IsRequired();
+
+            entity.Property(e => e.Events)
+                .HasConversion(
+                    v => string.Join(',', v),
+                    v => v.Length == 0 ? new List<string>() : v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList())
+                .Metadata.SetValueComparer(new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<List<string>>(
+                    (a, b) => a!.SequenceEqual(b!),
+                    v => v.Aggregate(0, (hash, s) => HashCode.Combine(hash, s.GetHashCode())),
+                    v => v.ToList()));
+        });
+    }
+
+    /// <summary>
+    /// WebhookDelivery table configuration — the retry outbox.
+    /// Index supports the dispatcher's hot-path query: due Pending deliveries ordered by
+    /// NextAttemptAt, plus the retention sweep (CreatedAt for Succeeded/Failed cleanup).
+    /// </summary>
+    private void ConfigureWebhookDelivery(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WebhookDelivery>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.Status, e.NextAttemptAt });
+            entity.HasIndex(e => e.SubscriptionId);
+
+            entity.Property(e => e.EventType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.PayloadJson).IsRequired();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.LastError).HasMaxLength(2000);
+
+            entity.HasOne(e => e.Subscription)
+                .WithMany()
+                .HasForeignKey(e => e.SubscriptionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

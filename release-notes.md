@@ -20,6 +20,20 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.02 — 2026-10-02
+
+### Nové funkce
+
+- **#478** — Faktury v EUR s IBAN nesou SEPA QR kód (EPC) místo české QR Platby, takže je zaplatí i zahraniční bankovní aplikace (nulové a záporné částky dál používají QR Platbu). U klienta lze DIČ ověřit ve VIES tlačítkem „Ověřit ve VIES“, přes chat i MCP (verify_vat_vies). (PR #478, `0638a1f`)
+- **#480** — Zálohové faktury: po zaplacení zálohy (ručně i spárováním z banky) plátci DPH automaticky vznikne daňový doklad k přijaté platbě — i při částečné platbě, bez duplicit, s DUZP = den platby (lze vypnout v Moje firma). MCP umí vystavit zálohu, vyúčtovací fakturu (issue_final_invoice), DPP (issue_tax_receipt) a zjistit zbývající zálohu. (PR #480, `865e813`)
+- **#483** — EPO: přiznání k DPH a kontrolní hlášení nově zahrnují přenesenou daňovou povinnost (DP3 ř. 10/11, 25, 43/44; KH A.1/B.1) včetně přijatých faktur v režimu PDP; přibylo souhrnné hlášení (DPHSHV) pro plnění do EU s náhledem a volbou zboží/služby, navazující řádky 20/21 přiznání a MCP nástroj export_vat_epo. (PR #483, `a2bee8e`)
+- **#484** — Režim EU OSS: plátce registrovaný k OSS (nastavení v Moje firma) může u faktury spotřebiteli z jiného státu EU zaškrtnout „Režim OSS“ — položky pak nesou sazbu DPH země odběratele, PDF to uvádí a faktura se nezapočítá do českého přiznání ani KH. Nový čtvrtletní přehled „OSS hlášení“ (CSV, MCP get_oss_report) přepočítává cizí měny kurzem ECB podle pravidel OSS. Sazby EU jsou v číselníku, který spravuje SysAdmin. (PR #484, `dea3ffb`)
+- **#479** — Export do účetnictví: vydané i přijaté faktury za zvolené období jdou stáhnout jako XML pro POHODA, Money S3 a ABRA Flexi (dialog „Export do účetnictví“ v seznamu faktur i přes MCP). Formáty jsou ověřené proti oficiálním schématům; doklady, které cílový systém neumí přijmout (např. cizí měna v Money/Flexi, nepodporovaná sazba), se přeskočí a export řekne kolik. (PR #479, `4fd5c4e`)
+- **#482** — Webhooky: v Nastavení → Webhooky si správce firmy zaregistruje URL, na kterou Fakvio posílá podepsané (HMAC-SHA256) události — vytvoření, odeslání, zaplacení a zrušení faktury, nová přijatá faktura a přijatá platba; s opakováním při výpadku, testovacím pingem a logem doručení. Ochrana proti SSRF (jen veřejné HTTPS adresy). (PR #482, `eb639f1`)
+- **#476** — Přenesená daňová povinnost (§92a) jde nastavit přímo v editoru položek — sloupec „Režim DPH“, „Kód PDP“ a přepínač pro celou fakturu; PDF nese povinnou poznámku „Daň odvede zákazník“ s kódy plnění, ISDOC posílá LocalReverseCharge a MCP/chat přijímají režim i kód (nový nástroj list_reverse_charge_codes). (PR #476, `aedec06`)
+- **#481** — Nástěnka je modulární: přes „Upravit nástěnku“ si každý uživatel zapne, vypne a seřadí moduly; přibyly grafy tržeb po měsících, příjmů vs. výdajů a stáří neuhrazených pohledávek (jen faktury v CZK). Nový průvodce prvním nastavením (/setup) provede správce firmou, bankovním účtem, číselnými řadami a pozváním kolegů. (PR #481, `58c2ecc`)
+- **#477** — Nová faktura (z aplikace, MCP, chatu, šablony i opakované faktury) bez zadaného účtu automaticky dostane výchozí bankovní účet firmy, přednostně v měně faktury; přes MCP lze účet zvolit (`bankAccountId`) i dodatečně změnit (`set_invoice_bank_account`). Opraveno míchání čísla účtu a IBAN ze dvou různých účtů při vytvoření ze šablony. (PR #477, `d83e2e5`)
+
 ### Změny pro vývojáře
 
 - **#472** — Ve Fakviu je návod na připojení ChatGPT krok za krokem, včetně odkazu do nastavení aplikací a adresy MCP serveru; správce najde samostatný postup pro první nastavení. (PR #473, `4a9b4f1`)

@@ -10,6 +10,11 @@ namespace Fakvio.Contracts.Dto.Invoice;
 public class UpdateInvoiceDto
 {
     /// <summary>
+    /// Opt-in/out of the EU OSS regime (see CreateInvoiceDto.ApplyOss). Null = keep the invoice's current regime.
+    /// </summary>
+    public bool? ApplyOss { get; set; }
+
+    /// <summary>
     /// Issue date - when the invoice was issued
     /// </summary>
     public DateTime? IssueDate { get; set; }
@@ -42,6 +47,14 @@ public class UpdateInvoiceDto
     /// </summary>
     [StringLength(50)]
     public string? SpecificSymbol { get; set; }
+
+    /// <summary>
+    /// Optional reference to one of the issuer's bank accounts (BankAccount.Id).
+    /// When set, the server loads that account and copies its AccountNumber/IBAN/SWIFT onto the
+    /// invoice, overriding any explicit BankAccountNumber/IBAN/SWIFT also sent below. The account
+    /// must belong to the invoice's issuer — otherwise the request fails with 400.
+    /// </summary>
+    public long? BankAccountId { get; set; }
 
     /// <summary>
     /// Bank account number

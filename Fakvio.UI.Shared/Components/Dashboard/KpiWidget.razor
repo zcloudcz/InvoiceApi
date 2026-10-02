@@ -1,0 +1,163 @@
+@using Fakvio.Contracts.Dto.Dashboard
+@using Fakvio.Contracts.Dto.Invoice
+@using Fakvio.Domain.Enums
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+@using Fakvio.Contracts.Dto.Alert
+
+<MudGrid>
+    <MudItem xs="12" sm="6" md="4">
+        <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/invoices"))">
+            <MudCardContent>
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Color="Color.Primary" Size="Size.Large" />
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">@L["Dashboard_ThisMonth"]</MudChip>
+                </div>
+                @* Count is the main number; the two totals underneath answer "how much cashflow do I expect?" *@
+                <MudText Typo="Typo.h5" GutterBottom="true">@Dashboard.InvoicesDueThisMonthCount</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@L["Dashboard_InvoicesDueThisMonth"]</MudText>
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Invoice_TotalBeforeVat"]</MudText>
+                    <MudText Typo="Typo.caption"><strong>@Dashboard.InvoicesDueThisMonthTotalWithoutVat.ToString("N2") CZK</strong></MudText>
+                </div>
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Invoice_TotalWithVat"]</MudText>
+                    <MudText Typo="Typo.caption"><strong>@Dashboard.InvoicesDueThisMonthTotalWithVat.ToString("N2") CZK</strong></MudText>
+                </div>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="4">
+        <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/clients"))">
+            <MudCardContent>
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.People" Color="Color.Success" Size="Size.Large" />
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small">@L["Label_Active"]</MudChip>
+                </div>
+                <MudText Typo="Typo.h5" GutterBottom="true">@Dashboard.TotalClients</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Clients"]</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="4">
+        <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/invoices"))">
+            <MudCardContent>
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Warning" Size="Size.Large" />
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L["Dashboard_Pending"]</MudChip>
+                </div>
+                <MudText Typo="Typo.h5" GutterBottom="true">@Dashboard.UnpaidAmount.ToString("N2") CZK</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_UnpaidAmount"]</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    @* KPI tile — count of unmatched / needs-review bank transactions.
+       Hidden when zero AND payment matching is not yet activated, so the
+       tile doesn't add noise for accounts that don't use the feature. *@
+    @if (UnmatchedPaymentsCount > 0)
+    {
+        <MudItem xs="12" sm="6" md="4">
+            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/payments"))">
+                <MudCardContent>
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Payments" Color="Color.Error" Size="Size.Large" />
+                        <MudChip T="string" Color="Color.Error" Size="Size.Small">@UnmatchedPaymentsCount</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h5" GutterBottom="true">@UnmatchedPaymentsCount</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Kpi_UnmatchedPayments"]</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    }
+
+    @* ── Alerts tile — "Upozornění" (issue #32) ───────────────────────────
+       Always visible once loaded; shows count + warning colour when > 0.
+       Hidden when count is zero (no noise for healthy tenants). *@
+    @if (AlertDashboard != null && AlertDashboard.TotalOpenCount > 0)
+    {
+        <MudItem xs="12" sm="6" md="4">
+            <MudCard Elevation="2" Class="rounded-lg cursor-pointer"
+                     @onclick="@(() => _showAlertPanel = !_showAlertPanel)"
+                     Style="border-left: 4px solid var(--mud-palette-warning);">
+                <MudCardContent>
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Large" />
+                        <MudChip T="string" Color="Color.Warning" Size="Size.Small">@AlertDashboard.TotalOpenCount</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h5" GutterBottom="true">@AlertDashboard.TotalOpenCount</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Alerts_OpenCount"]</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+@* ─── Alerts panel — "Upozornění" (issue #32) ────────────────────────────
+   Shows when the tile is clicked (toggle) OR when alerts exist.
+   Lists up to 5 recent open alerts; each row links to the entity detail. *@
+@if (_showAlertPanel && AlertDashboard != null)
+{
+    <MudCard Elevation="2" Class="mt-4 mb-2">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Class="mr-1" Size="Size.Small" />
+                    @L["Dashboard_Alerts"]
+                </MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                               OnClick="@(() => _showAlertPanel = false)"
+                               Title="@L["Btn_Close"].Value" />
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (AlertDashboard.RecentAlerts.Count == 0)
+            {
+                <MudText Color="Color.Secondary">@L["Dashboard_Alerts_Empty"]</MudText>
+            }
+            else
+            {
+                @* One row per alert: icon + message + link to entity detail *@
+                <MudList T="string" Dense="true">
+                    @foreach (var alert in AlertDashboard.RecentAlerts)
+                    {
+                        <MudListItem>
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                                <MudText Typo="Typo.body2" Class="flex-grow-1">@alert.Message</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @alert.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")
+                                </MudText>
+                                @* Navigate to the related entity detail page *@
+                                @if (alert.RelatedEntityType == "Invoice")
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => Navigation.NavigateTo($"/invoices/{alert.RelatedEntityId}"))"
+                                                   Title="@L["Btn_View"].Value" />
+                                }
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    [Parameter, EditorRequired] public DashboardDto Dashboard { get; set; } = new();
+
+    /// <summary>Count of bank transactions awaiting attention; the tile is hidden when zero.</summary>
+    [Parameter] public int UnmatchedPaymentsCount { get; set; }
+
+    /// <summary>Null while loading or when the alerts API failed — the tile is then hidden.</summary>
+    [Parameter] public AlertDashboardDto? AlertDashboard { get; set; }
+
+    // Controls whether the alerts detail panel below the tiles is expanded.
+    private bool _showAlertPanel;
+}

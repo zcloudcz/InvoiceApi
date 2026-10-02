@@ -173,19 +173,27 @@ public static class InvoiceTools
     /// the API actually needs, entirely before any write call reaches the API.
     /// </summary>
     [McpServerTool(Title = "Create invoice", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
-        "Create a new invoice or credit note (Draft status). Recommended flow: " +
+        "Create a new invoice, credit note or proforma (Draft status). Recommended flow: " +
         "find_client / list_clients to get clientId → create_invoice → complete_invoice to issue it. " +
         "For a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
-        "the matching VatRateId active on issueDate is resolved automatically.")]
+        "the matching VatRateId active on issueDate is resolved automatically. EU OSS is opt-in (applyOss=true) for an " +
+        "OSS-registered issuer invoicing a consumer (client without a VAT id) in another EU state: vatRatePercentage " +
+        "must then be a VAT rate of the client's country (rejected otherwise). " +
+        "Bank account: when bankAccountId is omitted and the payment method is (or defaults to) " +
+        "BankTransfer, the server automatically fills in one of the issuer's bank accounts " +
+        "(currency-matching default first) — you don't need to set one for a normal invoice.")]
     public static async Task<string> CreateInvoice(
         IFakvioApiClient api,
         [Description("The client (customer) ID — find it with list_clients or find_client")] long clientId,
         [Description(
             "Line items. Each needs description, quantity, unit, unitPrice and (for a VAT-paying " +
             "issuer) vatRatePercentage (e.g. 21); vatRateId is resolved automatically from the " +
-            "percentage, do not set it. Use isTextRow=true for a note-only line.")]
+            "percentage, do not set it. Use isTextRow=true for a note-only line. " +
+            "For a reverse charge item (PDP, §92a-92e ZDPH): set vatRegime to 'ReverseCharge' and " +
+            "reverseChargeCodeId to the Id of a code from list_reverse_charge_codes — required " +
+            "together, and only for ReverseCharge items.")]
         List<CreateInvoiceItemDto> items,
-        [Description("'Invoice' or 'CreditNote' (default 'Invoice')")] string documentType = "Invoice",
+        [Description("'Invoice', 'CreditNote' or 'Proforma' (default 'Invoice')")] string documentType = "Invoice",
         [Description("ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit for CZK.")] string? currency = null,
         [Description("Issuer (your company) ID. Omit to use the authenticated user's own company (get_issuer).")] long? issuerId = null,
         [Description("Issue date, ISO 8601 (e.g. '2026-01-15'). Omit for today.")] string? issueDate = null,
@@ -194,6 +202,14 @@ public static class InvoiceTools
         [Description("Payment method: BankTransfer, Cash, CreditCard, PayPal, Other. Omit for the client's default.")] string? paymentMethod = null,
         [Description("Optional notes on the invoice")] string? notes = null,
         [Description("For a credit note (documentType='CreditNote'): the ID of the invoice it corrects")] long? originalInvoiceId = null,
+        [Description(
+            "Apply the EU OSS regime (destination-country VAT). Default false. Set true only for supplies that really fall " +
+            "under OSS (goods distance sales, telecom/broadcasting/electronic services, ...) — general B2C services such as " +
+            "consulting are taxed in CZ. Requires an OSS-registered VAT-payer issuer and a consumer client in another EU state.")] bool applyOss = false,
+        [Description(
+            "Optional: one of the issuer's bank accounts (BankAccount.Id, see the bankAccount " +
+            "list in get_issuer) to use instead of the automatic default. Must belong to the issuer.")]
+        long? bankAccountId = null,
         CancellationToken ct = default)
     {
         // ── Validate the model's own input BEFORE any API call ──────────────
@@ -202,7 +218,7 @@ public static class InvoiceTools
         // and reporting it precisely here means the API is never even called with bad data.
 
         if (!Enum.TryParse<EDocumentType>(documentType, ignoreCase: true, out var parsedDocumentType))
-            return Error($"Unknown documentType '{documentType}'. Use 'Invoice' or 'CreditNote'.");
+            return Error($"Unknown documentType '{documentType}'. Use 'Invoice', 'CreditNote' or 'Proforma'.");
 
         EPaymentMethod? parsedPaymentMethod = null;
         if (!string.IsNullOrWhiteSpace(paymentMethod))
@@ -253,7 +269,14 @@ public static class InvoiceTools
             // A non-VAT-payer issuer has no VAT rates to configure at all (readiness never
             // asks for one), so items are left exactly as the model sent them (same rule as
             // InvoiceService.CreateInvoiceAsync, which only demands VatRateId for VAT payers).
-            if (issuer.IsVatPayer)
+            // EU OSS (DEVGUIDE §4.16): when the invoice falls under OSS the server auto-detects it and
+            // validates vatRatePercentage against the destination country's rates — the CZ rate table
+            // must not be consulted (a German 19 % would be "no matching rate" there).
+            var ossCountry = applyOss ? await api.GetOssCountryAsync(clientId, issuer.Id, parsedDocumentType, ct) : null;
+            if (applyOss && string.IsNullOrEmpty(ossCountry))
+                return Error("applyOss=true but this invoice is not eligible for OSS: it needs an OSS-registered VAT-payer issuer, " +
+                             "an Invoice (not proforma/credit note) and a consumer client without VAT id in another EU state.");
+            if (issuer.IsVatPayer && string.IsNullOrEmpty(ossCountry))
             {
                 var itemsNeedingRate = items.Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
                 if (itemsNeedingRate.Count > 0)
@@ -303,11 +326,104 @@ public static class InvoiceTools
                 PaymentMethod = parsedPaymentMethod,
                 Notes = notes,
                 OriginalInvoiceId = originalInvoiceId,
+                ApplyOss = applyOss,
+                BankAccountId = bankAccountId,
                 InvoiceItem = items
             };
 
             var result = await api.CreateInvoiceAsync(dto, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Issues the final invoice for a paid proforma: copies the proforma's items and appends
+    /// the automatic advance-deduction rows (done by the API, split per VAT rate).
+    /// </summary>
+    [McpServerTool(Title = "Issue final invoice from proforma", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
+        "Issue the final invoice (vyúčtování) for a PAID proforma. Copies the proforma's line items " +
+        "and deducts the received advance. Omit deductionAmount to deduct the whole remaining advance " +
+        "(see get_remaining_advance); set it to split one proforma across several final invoices. " +
+        "Creates a Draft invoice — issue it with complete_invoice.")]
+    public static async Task<string> IssueFinalInvoice(
+        IFakvioApiClient api,
+        [Description("The proforma ID")] long proformaId,
+        [Description("Advance amount incl. VAT to deduct on this invoice. Omit = whole remaining advance.")] decimal? deductionAmount = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var proforma = await api.GetInvoiceByIdAsync(proformaId, ct);
+            if (proforma is null)
+                return Error($"Proforma with ID {proformaId} not found.");
+            if (proforma.DocumentType != EDocumentType.Proforma)
+                return Error($"Document {proformaId} is a {proforma.DocumentType}, not a Proforma.");
+
+            var dto = IssueFinalInvoiceDto.FromProforma(proforma, deductionAmount);
+            var result = await api.IssueFinalInvoiceAsync(proformaId, dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Issues the DPP (tax receipt for a received advance) for a proforma.
+    /// </summary>
+    [McpServerTool(Title = "Issue tax receipt for advance payment", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Issue a tax receipt for advance payment (DPP, daňový doklad k přijaté platbě) for the received " +
+        "advance of a proforma. VAT payers only. Normally issued automatically when the proforma is paid; " +
+        "use this when automatic issuance is off. Idempotent: only the not-yet-covered part of the advance " +
+        "is covered, and an error is returned when there is nothing left to cover.")]
+    public static async Task<string> IssueTaxReceipt(
+        IFakvioApiClient api,
+        [Description("The proforma ID")] long proformaId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await api.IssueTaxReceiptAsync(proformaId, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns how much of a proforma's received advance is not yet deducted on final invoices.
+    /// </summary>
+    [McpServerTool(Title = "Get remaining advance", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Get the remaining advance of a proforma: received (paid) amount incl. VAT minus what " +
+        "final invoices already deducted. Use before issue_final_invoice.")]
+    public static async Task<string> GetRemainingAdvance(
+        IFakvioApiClient api,
+        [Description("The proforma ID")] long proformaId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var remaining = await api.GetRemainingAdvanceAsync(proformaId, ct);
+            return JsonSerializer.Serialize(new { proformaId, remainingAdvance = remaining }, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -599,6 +715,62 @@ public static class InvoiceTools
     }
 
     /// <summary>
+    /// Exports issued and/or received invoices for a date range as a single XML file formatted
+    /// for a Czech accounting system (Pohoda / Money S3 / ABRA Flexi) — "Export do účetnictví".
+    /// Unlike ExportInvoiceIsdoc/ExportInvoiceUbl this covers many invoices in one file, so it's
+    /// the right tool when the user wants a whole month/period handed to their accountant.
+    /// </summary>
+    [McpServerTool(Title = "Export accounting period", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Export issued and/or received invoices for a date range as one XML file for an accounting " +
+        "system. Use this when the user asks to export invoices to Pohoda, Money S3 or ABRA Flexi, " +
+        "or wants a batch/period handover to their accountant — not for a single invoice " +
+        "(use ExportInvoiceIsdoc/ExportInvoiceUbl for that). Documents the target system cannot represent " +
+        "(foreign currency for Money S3/ABRA Flexi, proformas for ABRA Flexi, advance-payment tax receipts, VAT rates other than 21/12/0 %) " +
+        "are left out; skippedDocuments in the result says how many.")]
+    public static async Task<string> ExportAccounting(
+        IFakvioApiClient api,
+        [Description("Target accounting system: 'Pohoda', 'MoneyS3' or 'AbraFlexi'")] string system,
+        [Description("Start date (ISO 8601, e.g., '2026-01-01')")] string dateFrom,
+        [Description("End date (ISO 8601, e.g., '2026-01-31')")] string dateTo,
+        [Description("Include issued invoices/credit notes/proformas (default true)")] bool includeIssued = true,
+        [Description("Include received (incoming) invoices (default true)")] bool includeReceived = true,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            if (!Enum.TryParse<EAccountingSystem>(system, ignoreCase: true, out var parsedSystem))
+                return JsonSerializer.Serialize(new { error = $"Unknown accounting system '{system}'. Use 'Pohoda', 'MoneyS3' or 'AbraFlexi'." }, JsonOptions);
+
+            if (!DateTime.TryParse(dateFrom, out var parsedFrom))
+                return JsonSerializer.Serialize(new { error = $"Invalid dateFrom format: '{dateFrom}'. Use ISO 8601 (e.g., '2026-01-01')." }, JsonOptions);
+
+            if (!DateTime.TryParse(dateTo, out var parsedTo))
+                return JsonSerializer.Serialize(new { error = $"Invalid dateTo format: '{dateTo}'. Use ISO 8601 (e.g., '2026-01-31')." }, JsonOptions);
+
+            var (xmlBytes, skipped) = await api.ExportAccountingAsync(parsedSystem, parsedFrom, parsedTo, includeIssued, includeReceived, ct);
+            var fileName = $"{parsedSystem}_{parsedFrom:yyyyMMdd}-{parsedTo:yyyyMMdd}.xml";
+
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                fileName,
+                mimeType = "application/xml",
+                sizeBytes = xmlBytes.Length,
+                skippedDocuments = skipped,
+                base64Content = Convert.ToBase64String(xmlBytes)
+            }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Soft-deletes a draft invoice.
     /// Only invoices in Draft status can be deleted.
     /// </summary>
@@ -614,6 +786,41 @@ public static class InvoiceTools
         {
             await api.DeleteInvoiceAsync(invoiceId, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} deleted." }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Changes the bank account shown on an existing invoice. Thin wrapper around
+    /// PUT /api/invoice/{id} (UpdateInvoiceDto.BankAccountId) — reuses the same status guard as
+    /// any other invoice update (Draft/Completed only, not Paid/Creditnoted).
+    /// </summary>
+    [McpServerTool(Title = "Set invoice bank account", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Change the bank account on an existing invoice to one of the issuer's accounts " +
+        "(see the bankAccount list in get_issuer for ids). Only works on Draft or Completed " +
+        "invoices — Paid and Creditnoted invoices cannot be changed.")]
+    public static async Task<string> SetInvoiceBankAccount(
+        IFakvioApiClient api,
+        [Description("The invoice ID to update")] long invoiceId,
+        [Description("The issuer's bank account ID to use (see get_issuer's bankAccount list)")] long bankAccountId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var dto = new UpdateInvoiceDto { BankAccountId = bankAccountId };
+            var result = await api.UpdateInvoiceAsync(invoiceId, dto, ct);
+
+            if (result is null)
+                return Error($"Invoice with ID {invoiceId} not found.");
+
+            return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

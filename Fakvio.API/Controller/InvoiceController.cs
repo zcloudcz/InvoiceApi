@@ -6,6 +6,7 @@ using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Contracts.Dto.OssReport;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
@@ -123,6 +124,18 @@ public class InvoiceController : ControllerBase
                 new { message = "Failed to retrieve invoices. Please try again or contact support." });
         }
     }
+
+    /// <summary>
+    /// Previews the EU OSS destination country a new invoice from the given issuer to the given client is
+    /// ELIGIBLE for (null/empty = not eligible). The UI uses it to offer the OSS opt-in checkbox and the
+    /// destination country's VAT rates.
+    /// </summary>
+    [HttpGet("oss-country")]
+    [ProducesResponseType(typeof(OssCountryDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<OssCountryDto>> GetOssCountry(
+        [FromQuery] long clientId, [FromQuery] long issuerId, [FromQuery] EDocumentType documentType = EDocumentType.Invoice,
+        CancellationToken cancellationToken = default)
+        => Ok(new OssCountryDto { CountryCode = await _invoiceService.GetOssCountryCodeAsync(clientId, issuerId, documentType, cancellationToken) });
 
     /// <summary>
     /// Gets paginated, filtered and sorted invoices/credit notes
@@ -820,6 +833,51 @@ public class InvoiceController : ControllerBase
             _logger.LogError(ex, "GET /api/invoice/{ProformaId}/final-invoices failed", proformaId);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = $"Failed to retrieve final invoices for proforma {proformaId}. Please try again or contact support." });
+        }
+    }
+
+    /// <summary>
+    /// Issues a Tax Receipt for Advance Payment (DPP) for the received advance of a Proforma.
+    /// Used by the issue_tax_receipt MCP/chat tool, and as the manual path when automatic DPP
+    /// issuance is switched off. Idempotent: only the part of the advance not yet covered by
+    /// an existing DPP is covered, so calling it twice never double-books.
+    /// </summary>
+    /// <param name="proformaId">Proforma invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <response code="201">DPP issued</response>
+    /// <response code="400">Not a proforma, issuer is not a VAT payer, or nothing left to cover</response>
+    /// <response code="404">Proforma not found</response>
+    [HttpPost("{proformaId:long}/issue-tax-receipt")]
+    [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<InvoiceDto>> IssueTaxReceipt(
+        long proformaId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/{ProformaId}/issue-tax-receipt", proformaId);
+
+        try
+        {
+            var receipt = await _invoiceService.IssueTaxReceiptForPaidProformaAsync(
+                proformaId, paymentDate: null, amount: null, cancellationToken);
+
+            if (receipt == null)
+                return BadRequest(new
+                {
+                    message = "No tax receipt issued: the issuer is not a VAT payer, " +
+                              "or the received advance is already fully covered by existing tax receipts."
+                });
+
+            return CreatedAtAction(nameof(GetInvoiceById), new { id = receipt.Id }, receipt);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

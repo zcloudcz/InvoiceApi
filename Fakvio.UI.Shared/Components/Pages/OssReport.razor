@@ -1,0 +1,151 @@
+@page "/oss-report"
+@attribute [Authorize]
+
+@using Fakvio.Contracts.Dto.OssReport
+@using Fakvio.UI.Shared.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Localization
+
+@inject OssApiService OssService
+@inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>@L["OssReport_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">@L["OssReport_Title"]</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@L["OssReport_Info"]</MudText>
+
+@* ── Period selection ─────────────────────────────────────────────────── *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="int" @bind-Value="_year" Label="@L["OssReport_Year"].Value">
+                @foreach (var y in _years)
+                {
+                    <MudSelectItem T="int" Value="@y">@y</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="int" @bind-Value="_quarter" Label="@L["OssReport_Quarter"].Value">
+                @for (var q = 1; q <= 4; q++)
+                {
+                    <MudSelectItem T="int" Value="@q">Q@(q)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" Class="d-flex align-end gap-2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" Disabled="_loading">
+                @L["OssReport_Generate"]
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FileDownload"
+                       OnClick="DownloadCsvAsync" Disabled="_loading">
+                @L["OssReport_DownloadCsv"]
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+}
+
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_report != null)
+{
+    <MudText Typo="Typo.subtitle1" Class="mb-2">
+        @_report.PeriodFrom.ToString("d. M. yyyy") – @_report.PeriodTo.ToString("d. M. yyyy"),
+        @string.Format(L["OssReport_DocumentCount"].Value, _report.DocumentCount)
+    </MudText>
+
+    <MudTable Items="_report.Lines" Dense="true" Hover="true" Striped="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>@L["OssReport_Country"]</MudTh>
+            <MudTh Style="text-align:right">@L["OssReport_Rate"]</MudTh>
+            <MudTh Style="text-align:right">@L["OssReport_BaseEur"]</MudTh>
+            <MudTh Style="text-align:right">@L["OssReport_VatEur"]</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.CountryCode</MudTd>
+            <MudTd Style="text-align:right">@context.VatRate.ToString("0.##")%</MudTd>
+            <MudTd Style="text-align:right">@context.BaseEur.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.VatEur.ToString("N2")</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>@L["OssReport_NoData"]</MudText>
+        </NoRecordsContent>
+        <FooterContent>
+            <MudTd><b>@L["OssReport_Total"]</b></MudTd>
+            <MudTd></MudTd>
+            <MudTd Style="text-align:right"><b>@_report.TotalBaseEur.ToString("N2")</b></MudTd>
+            <MudTd Style="text-align:right"><b>@_report.TotalVatEur.ToString("N2")</b></MudTd>
+        </FooterContent>
+    </MudTable>
+
+    <MudText Typo="Typo.caption" Color="Color.Secondary">@L["OssReport_EcbNote"]</MudText>
+}
+
+@code {
+    private OssReportDto? _report;
+    private bool _loading;
+    private string? _error;
+    private int _year;
+    private int _quarter;
+    private List<int> _years = [];
+
+    protected override void OnInitialized()
+    {
+        // Default to the last completed quarter (the one being filed now).
+        var today = DateTime.Today;
+        var currentQuarter = (today.Month - 1) / 3 + 1;
+        _year = currentQuarter == 1 ? today.Year - 1 : today.Year;
+        _quarter = currentQuarter == 1 ? 4 : currentQuarter - 1;
+        _years = Enumerable.Range(2021, today.Year - 2021 + 1).Reverse().ToList();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _report = await OssService.GetReportAsync(_year, _quarter);
+        }
+        catch (ApiException ex)
+        {
+            // Message comes from the API body (e.g. the ECB rate could not be fetched).
+            _report = null;
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task DownloadCsvAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var bytes = await OssService.GetReportCsvAsync(_year, _quarter);
+            if (bytes != null)
+                await JS.InvokeVoidAsync("downloadFile", $"OSS_{_year}_Q{_quarter}.csv", Convert.ToBase64String(bytes), "text/csv");
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

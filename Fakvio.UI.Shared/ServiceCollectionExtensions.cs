@@ -61,6 +61,7 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<CompanyMembershipApiService>();
         services.AddApiClient<FeedbackApiService>();
         services.AddApiClient<VatRateApiService>();
+        services.AddApiClient<OssApiService>();
         services.AddApiClient<ClientApiService>();
         services.AddApiClient<FakvioService>();
         services.AddApiClient<UserApiService>();
@@ -89,6 +90,7 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<FileAttachmentApiService>();
         services.AddApiClient<ReminderApiService>();
         services.AddApiClient<RecurringInvoiceApiService>();
+        services.AddApiClient<WebhookApiService>();
 
         // Personal API keys for AI clients (MCP) — page /settings/integrations.
         services.AddApiClient<ApiKeyApiService>();
@@ -120,6 +122,9 @@ public static class ServiceCollectionExtensions
         // Reverse charge codes — MFČR číselník for the PDP dropdown in invoice line-item editor.
         // Read-only on the client side; admin CRUD is task #49 (ReverseChargeCodes.razor).
         services.AddApiClient<ReverseChargeCodeApiService>();
+
+        // VIES — EU VAT ID verification button on the client form.
+        services.AddApiClient<ViesApiService>();
 
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();

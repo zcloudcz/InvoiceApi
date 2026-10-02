@@ -1,4 +1,4 @@
-using Fakvio.Contracts.Common;
+﻿using Fakvio.Contracts.Common;
 using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
@@ -7,6 +7,7 @@ using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
+using Fakvio.Infrastructure.Service.Oss;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ZMapper;
@@ -21,19 +22,43 @@ namespace Fakvio.Infrastructure.Service;
 public class InvoiceService : IInvoiceService
 {
     private readonly TenantDbContext _context;
+    private readonly MasterDbContext _masterContext;
+    private readonly ITenantResolver _tenantResolver;
     private readonly INumberSequenceService _numberSequenceService;
     private readonly ITenantReadinessService _tenantReadinessService;
+    private readonly IWebhookPublisher? _webhookPublisher; // optional so manually-constructed instances (tests) work
     private readonly ILogger<InvoiceService> _logger;
 
-    public InvoiceService(
+    /// <summary>
+    /// Constructor without the Master context / tenant resolver — EU OSS detection is then switched off
+    /// (every invoice is an ordinary CZ invoice). Kept so that code and tests that only deal with
+    /// tenant-local invoices need not wire up the master database. DI uses the full constructor below
+    /// (the one with the most resolvable parameters).
+    /// </summary>
+    internal InvoiceService(
         TenantDbContext context,
         INumberSequenceService numberSequenceService,
         ITenantReadinessService tenantReadinessService,
         ILogger<InvoiceService> logger)
+        : this(context, null!, null!, numberSequenceService, tenantReadinessService, logger)
+    {
+    }
+
+    public InvoiceService(
+        TenantDbContext context,
+        MasterDbContext masterContext,
+        ITenantResolver tenantResolver,
+        INumberSequenceService numberSequenceService,
+        ITenantReadinessService tenantReadinessService,
+        ILogger<InvoiceService> logger,
+        IWebhookPublisher? webhookPublisher = null)
     {
         _context = context;
+        _masterContext = masterContext;
+        _tenantResolver = tenantResolver;
         _numberSequenceService = numberSequenceService;
         _tenantReadinessService = tenantReadinessService;
+        _webhookPublisher = webhookPublisher;
         _logger = logger;
     }
 
@@ -307,7 +332,19 @@ public class InvoiceService : IInvoiceService
         return invoice == null ? null : MapToDto(invoice);
     }
 
-    public async Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+    public Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+        // Public entry point always applies the bank-account default fill (issue: MCP-created
+        // invoices had no bank account at all). Internal re-use of this pipeline for
+        // proforma→final and invoice-copy passes applyBankAccountDefaulting:false — those two
+        // explicitly copy the source document's bank fields (even when the source has none) and
+        // must not have the resolver silently invent one.
+        => CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: true, cancellationToken);
+
+    public Task<InvoiceDto> CreateImportedInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+        => CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
+
+    private async Task<InvoiceDto> CreateInvoiceCoreAsync(
+        CreateInvoiceDto createDto, bool applyBankAccountDefaulting, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Creating new {DocumentType}", createDto.DocumentType);
 
@@ -389,6 +426,12 @@ public class InvoiceService : IInvoiceService
             InvoiceItem = new List<InvoiceItem>()
         };
 
+        // Resolve BankAccountId (if given) or auto-fill from the issuer's accounts when nothing
+        // was supplied at all. See ApplyBankAccountDefaultsAsync for the exact rule.
+        await ApplyBankAccountDefaultsAsync(
+            invoice, createDto.IssuerId, createDto.CurrencyId, createDto.BankAccountId,
+            applyBankAccountDefaulting, cancellationToken);
+
         // Calculate due date using the client's billing settings (respects DueDateCalculationType)
         invoice.DueDate = CalculateDueDate(createDto, client);
 
@@ -400,8 +443,23 @@ public class InvoiceService : IInvoiceService
             invoice.TaxableSupplyDate = invoice.IssueDate;
         }
 
-        // Validate VAT requirements: If issuer is VAT payer, all items must have VatRateId
-        if (issuer.IsVatPayer)
+        // EU OSS (One-Stop-Shop) detection — must run BEFORE the "all items need VatRateId"
+        // check below, because OSS items intentionally have VatRateId = null (they use the
+        // destination country's OssVatRate, not the tenant's own VatRate table). See §4.16.
+        await _context.Entry(client).Collection(c => c.Address).LoadAsync(cancellationToken);
+        var ossCountryCode = await ResolveOssCountryCodeAsync(
+            issuer, client, createDto.DocumentType, createDto.OriginalInvoiceId, createDto.ApplyOss, cancellationToken);
+        invoice.OssCountryCode = ossCountryCode;
+
+        // Validate VAT requirements: If issuer is VAT payer, all items must have VatRateId —
+        // UNLESS this is an OSS invoice, which is validated against OssVatRate instead.
+        if (ossCountryCode != null)
+        {
+            await ValidateOssItemRatesAsync(ossCountryCode, createDto.InvoiceItem,
+                await GetOssRateCheckDateAsync(createDto.DocumentType, createDto.OriginalInvoiceId, invoice.TaxableSupplyDate!.Value, cancellationToken),
+                cancellationToken);
+        }
+        else if (issuer.IsVatPayer)
         {
             var itemsWithoutVatRate = createDto.InvoiceItem.Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
             if (itemsWithoutVatRate.Any())
@@ -487,6 +545,8 @@ public class InvoiceService : IInvoiceService
         invoice.TotalVat = totalVat;
         invoice.TotalWithVat = totalBeforeVat + totalVat;
 
+        await EnsureTaxReceiptWithinAdvanceAsync(invoice, cancellationToken);
+
         _context.Invoice.Add(invoice);
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -553,8 +613,98 @@ public class InvoiceService : IInvoiceService
         _logger.LogInformation("Created {DocumentType} with ID {Id}, DocumentNumber {DocumentNumber}",
             invoice.DocumentType, invoice.Id, invoice.DocumentNumber);
 
+        // "invoice.created" webhook (DEVGUIDE §4.15) — fire-and-forget from the caller's point of
+        // view: PublishInvoiceEventAsync never throws, a missing/failed webhook must not fail
+        // invoice creation.
+        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
+            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceCreated, invoice.Id, cancellationToken);
+
         // Reload with related entities
         return (await GetInvoiceByIdAsync(invoice.Id, cancellationToken))!;
+    }
+
+    /// <summary>
+    /// Resolves the invoice's BankAccountNumber/IBAN/SWIFT from the issuer's stored bank
+    /// accounts. This is the single place all invoice creation/update paths route through for
+    /// bank account resolution — fixes the gap where MCP-created invoices had no bank account
+    /// at all (not even pre-filled), because MCP callers never set the string fields directly.
+    ///
+    /// Two independent jobs, run in order:
+    ///   1. <paramref name="bankAccountId"/> given → load that <see cref="BankAccount"/>
+    ///      (must belong to <paramref name="issuerId"/>, else 400 via InvalidOperationException)
+    ///      and copy its three string fields onto the invoice, overriding whatever explicit
+    ///      strings the caller also sent. This always runs, regardless of
+    ///      <paramref name="applyDefaulting"/> — an explicit ID is never a "guess".
+    ///   2. Otherwise, when <paramref name="applyDefaulting"/> is true AND the invoice has no
+    ///      bank fields at all AND the payment method is bank transfer (or unset — most callers,
+    ///      including every MCP tool, never set a payment method), pick one of the issuer's
+    ///      accounts: IsDefault matching the invoice currency → any account matching the
+    ///      currency → IsDefault (any currency) → first account by Id.
+    ///      If the issuer has no accounts yet, fields are left null — nothing to fill from.
+    ///
+    /// <paramref name="applyDefaulting"/> is false for the proforma→final and copy-invoice paths:
+    /// those already copy the source document's bank fields verbatim (even when empty) and must
+    /// not have step 2 silently invent an account the source never had.
+    /// </summary>
+    private async Task ApplyBankAccountDefaultsAsync(
+        Invoice invoice, long issuerId, long currencyId, long? bankAccountId,
+        bool applyDefaulting, CancellationToken cancellationToken)
+    {
+        if (bankAccountId.HasValue)
+        {
+            var account = await _context.BankAccount
+                .FirstOrDefaultAsync(a => a.Id == bankAccountId.Value && a.ClientId == issuerId, cancellationToken);
+
+            if (account == null)
+                throw new InvalidOperationException(
+                    $"Bank account with ID {bankAccountId} not found for this company.");
+
+            invoice.BankAccountNumber = account.AccountNumber;
+            invoice.IBAN = account.IBAN;
+            invoice.SWIFT = account.SWIFT;
+            return;
+        }
+
+        if (!applyDefaulting)
+            return;
+
+        var hasExplicitBankData = !string.IsNullOrWhiteSpace(invoice.BankAccountNumber)
+            || !string.IsNullOrWhiteSpace(invoice.IBAN)
+            || !string.IsNullOrWhiteSpace(invoice.SWIFT);
+        if (hasExplicitBankData)
+            return;
+
+        // Only auto-fill for bank transfer. Treat "no payment method at all" as bank transfer too
+        // (the common case — most callers, especially MCP/chat, never set PaymentMethod).
+        if (invoice.PaymentMethod.HasValue && invoice.PaymentMethod != EPaymentMethod.BankTransfer)
+            return;
+
+        var issuerAccounts = await _context.BankAccount
+            .Where(a => a.ClientId == issuerId)
+            .OrderBy(a => a.Id) // deterministic rung choice
+            .ToListAsync(cancellationToken);
+
+        if (issuerAccounts.Count == 0)
+            return; // Nothing to fill from — issuer hasn't configured a bank account yet.
+
+        var currencyCode = await _context.Currency
+            .Where(c => c.Id == currencyId)
+            .Select(c => c.Code)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var chosen =
+            issuerAccounts.FirstOrDefault(a => a.IsDefault && CurrencyMatches(a, currencyCode))
+            ?? issuerAccounts.FirstOrDefault(a => CurrencyMatches(a, currencyCode))
+            ?? issuerAccounts.FirstOrDefault(a => a.IsDefault)
+            ?? issuerAccounts.First();
+
+        invoice.BankAccountNumber = chosen.AccountNumber;
+        invoice.IBAN = chosen.IBAN;
+        invoice.SWIFT = chosen.SWIFT;
+
+        static bool CurrencyMatches(BankAccount account, string? currencyCode) =>
+            !string.IsNullOrEmpty(currencyCode)
+            && string.Equals(account.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<InvoiceDto?> UpdateInvoiceAsync(long invoiceId, UpdateInvoiceDto updateDto, CancellationToken cancellationToken = default)
@@ -605,6 +755,13 @@ public class InvoiceService : IInvoiceService
         if (updateDto.SWIFT != null)
             invoice.SWIFT = updateDto.SWIFT;
 
+        // BankAccountId wins over any explicit strings above — same rule as CreateInvoiceAsync.
+        // applyDefaulting: false — an update never auto-invents a bank account that wasn't asked for.
+        if (updateDto.BankAccountId.HasValue)
+            await ApplyBankAccountDefaultsAsync(
+                invoice, invoice.IssuerId, updateDto.CurrencyId ?? invoice.CurrencyId, updateDto.BankAccountId,
+                applyDefaulting: false, cancellationToken);
+
         if (updateDto.PaymentMethod != null)
             invoice.PaymentMethod = updateDto.PaymentMethod;
 
@@ -622,10 +779,36 @@ public class InvoiceService : IInvoiceService
             if (issuer == null)
                 throw new InvalidOperationException($"Issuer with ID {invoice.IssuerId} not found");
 
+            // EU OSS detection — recomputed on every item update (TaxableSupplyDate or the
+            // OSS registration setting may have changed since the invoice was created).
+            // ClientId/DocumentType cannot change after creation (not on UpdateInvoiceDto),
+            // so only the client's address, the OSS setting, or the DUZP can move the result.
+            var client = await _context.Client
+                .Include(c => c.Address)
+                .FirstOrDefaultAsync(c => c.Id == invoice.ClientId, cancellationToken);
+            var wasOss = invoice.OssCountryCode != null;
+            var ossCountryCode = await ResolveOssCountryCodeAsync(
+                issuer, client, invoice.DocumentType, invoice.OriginalInvoiceId,
+                updateDto.ApplyOss ?? wasOss, cancellationToken);
+            invoice.OssCountryCode = ossCountryCode;
+
             // Validate VAT requirements: If issuer is VAT payer, all billable items must have VatRateId
-            // Text rows are excluded — they have no financial data.
-            if (issuer.IsVatPayer)
+            // Text rows are excluded — they have no financial data. OSS invoices are validated
+            // against OssVatRate instead (see CreateInvoiceAsync for the same split).
+            if (ossCountryCode != null)
             {
+                await ValidateOssItemRatesAsync(ossCountryCode, updateDto.InvoiceItem,
+                    await GetOssRateCheckDateAsync(invoice.DocumentType, invoice.OriginalInvoiceId,
+                        invoice.TaxableSupplyDate ?? DateTime.UtcNow, cancellationToken),
+                    cancellationToken);
+            }
+            else if (issuer.IsVatPayer)
+            {
+                // Switching an OSS invoice back to an ordinary CZ invoice: OSS items carry no VatRateId, so give
+                // them the tenant rate with the same percentage (else the default rate) instead of failing below.
+                if (wasOss)
+                    await AssignTenantVatRatesAsync(updateDto.InvoiceItem, invoice.TaxableSupplyDate ?? DateTime.UtcNow, cancellationToken);
+
                 var itemsWithoutVatRate = updateDto.InvoiceItem
                     .Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
                 if (itemsWithoutVatRate.Any())
@@ -704,11 +887,45 @@ public class InvoiceService : IInvoiceService
             invoice.TotalBeforeVat = totalBeforeVat;
             invoice.TotalVat = totalVat;
             invoice.TotalWithVat = totalBeforeVat + totalVat;
+
+            // Editing the items must not push a tax receipt over the advance it covers.
+            await EnsureTaxReceiptWithinAdvanceAsync(invoice, cancellationToken);
         }
 
         await _context.SaveChangesAsync(cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// A tax receipt for advance payment may only cover what its proforma has received and no other
+    /// existing DPP covers yet — closes manual duplicates (0.01 tolerance for rounding).
+    /// Used by create and update; the invoice itself is excluded from the "already covered" sum.
+    /// </summary>
+    private async Task EnsureTaxReceiptWithinAdvanceAsync(Invoice invoice, CancellationToken ct)
+    {
+        if (invoice.DocumentType != EDocumentType.TaxReceiptForAdvance || !invoice.OriginalInvoiceId.HasValue)
+            return;
+
+        var proformaId = invoice.OriginalInvoiceId.Value;
+        var source = await _context.Invoice.AsNoTracking()
+            .Where(i => i.Id == proformaId && i.DocumentType == EDocumentType.Proforma)
+            .Select(i => new { i.PaidAmount, i.TotalWithVat })
+            .FirstOrDefaultAsync(ct);
+        if (source == null)
+            return;
+
+        var covered = await _context.Invoice.AsNoTracking()
+            .Where(i => i.OriginalInvoiceId == proformaId
+                     && i.DocumentType == EDocumentType.TaxReceiptForAdvance
+                     && i.Status != EInvoiceStatus.Deleted
+                     && i.Id != invoice.Id)
+            .SumAsync(i => (decimal?)i.TotalWithVat, ct) ?? 0m;
+        var open = Math.Min(source.PaidAmount, source.TotalWithVat) - covered;
+        if (invoice.TotalWithVat > open + 0.01m)
+            throw new InvalidOperationException(
+                $"The tax receipt ({invoice.TotalWithVat:F2}) exceeds the received advance not yet covered " +
+                $"by a tax receipt ({Math.Max(open, 0):F2}).");
     }
 
     public async Task<InvoiceDto?> CompleteInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
@@ -789,10 +1006,24 @@ public class InvoiceService : IInvoiceService
 
         _logger.LogInformation("Marking {DocumentType} {Id} as paid", invoice.DocumentType, invoice.Id);
 
+        // Amount newly received by this action. PaidAmount isn't necessarily up to date before
+        // this call — manual mark-paid bypasses bank-payment matching — so bring it in line with
+        // the new Paid status too (needed for the proforma deduction/DPP amount calculations).
+        var newlyPaid = invoice.TotalWithVat - invoice.PaidAmount;
+        invoice.PaidAmount = invoice.TotalWithVat;
         invoice.Status = EInvoiceStatus.Paid;
         invoice.PaidAt = paidAt ?? DateTime.UtcNow;
 
+        // Outbox row is added to the same context (save: false) so it commits atomically
+        // with the status change below.
+        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
+            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoicePaid, invoice, save: false, cancellationToken);
+
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Proforma becoming paid → auto-issue its DPP (tax receipt for advance payment), if
+        // the issuer is a VAT payer and hasn't disabled auto-issuance. No-op for other types.
+        await TryAutoIssueTaxReceiptAsync(invoice.Id, newlyPaid, invoice.PaidAt, cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
     }
@@ -839,6 +1070,12 @@ public class InvoiceService : IInvoiceService
         // but clearing the number explicitly prevents any edge cases and makes it
         // obvious in the DB that the number is no longer in use.
         invoice.Status = EInvoiceStatus.Deleted;
+
+        // "invoice.cancelled" — published BEFORE the number is cleared so the payload still
+        // carries it, and with save: false so the outbox row commits atomically with the delete.
+        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
+            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceCancelled, invoice, save: false, cancellationToken);
+
         invoice.DocumentNumber = null;
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -1116,7 +1353,9 @@ public class InvoiceService : IInvoiceService
         };
 
         // Re-use the standard invoice creation pipeline (document number, VS, totals, …).
-        var finalInvoice = await CreateInvoiceAsync(createDto, cancellationToken);
+        // applyBankAccountDefaulting: false — the bank fields above were just copied verbatim
+        // from the proforma (even when empty); the resolver must not override that.
+        var finalInvoice = await CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
 
         _logger.LogInformation(
             "Final invoice {FinalId} ({DocNum}) issued from proforma {ProformaId}. " +
@@ -1140,6 +1379,221 @@ public class InvoiceService : IInvoiceService
         var alreadyDeducted = await GetAlreadyDeductedAmountAsync(proformaId, cancellationToken);
         var remaining = proforma.PaidAmount - alreadyDeducted;
         return remaining < 0 ? 0 : remaining;
+    }
+
+    // ─── Proforma → Tax Receipt for Advance Payment (DPP) ─────────────────────
+
+    /// <inheritdoc />
+    public Task<InvoiceDto?> IssueTaxReceiptForPaidProformaAsync(
+        long proformaId,
+        DateTime? paymentDate,
+        decimal? amount,
+        CancellationToken cancellationToken = default)
+        => WithProformaLockAsync(proformaId,
+            () => IssueTaxReceiptCoreAsync(proformaId, paymentDate, amount, cancellationToken),
+            cancellationToken);
+
+    /// <summary>
+    /// Serializes DPP issuance per proforma: on PostgreSQL the work runs in one transaction that
+    /// first takes <c>pg_advisory_xact_lock(proformaId)</c>, so two concurrent payments/clicks
+    /// cannot both read the same "already covered" sum and double-issue. The transaction also
+    /// rolls back a half-created DPP. Non-relational providers (unit tests) just run the work.
+    /// </summary>
+    private async Task<T> WithProformaLockAsync<T>(long proformaId, Func<Task<T>> work, CancellationToken ct)
+    {
+        if (!_context.Database.IsRelational())
+            return await work();
+
+        // The caller already owns a transaction: just take the lock, it is released at its end.
+        if (_context.Database.CurrentTransaction != null)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({proformaId})", ct);
+            return await work();
+        }
+
+        // Production enables Npgsql retries, so the whole transaction must run in the strategy.
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            // A retry re-runs this delegate: forget DPP entities a failed attempt left tracked.
+            DetachTrackedTaxReceipts(proformaId);
+            await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+            await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({proformaId})", ct);
+            var result = await work();
+            await transaction.CommitAsync(ct);
+            return result;
+        });
+    }
+
+    /// <summary>
+    /// Detaches tracked DPP invoices (and their items) of one proforma — NOT ChangeTracker.Clear(),
+    /// which would also drop the caller's unrelated tracked entities.
+    /// </summary>
+    private void DetachTrackedTaxReceipts(long proformaId)
+    {
+        var receipts = _context.ChangeTracker.Entries<Invoice>()
+            .Where(e => e.Entity.OriginalInvoiceId == proformaId
+                     && e.Entity.DocumentType == EDocumentType.TaxReceiptForAdvance)
+            .ToList();
+        foreach (var entry in _context.ChangeTracker.Entries<InvoiceItem>()
+                     .Where(e => receipts.Any(r => r.Entity == e.Entity.Invoice || r.Entity.Id == e.Entity.InvoiceId))
+                     .ToList())
+            entry.State = EntityState.Detached;
+        foreach (var entry in receipts)
+            entry.State = EntityState.Detached;
+    }
+
+    /// <summary>Smallest advance worth a tax receipt — rounding dust (e.g. 0.01 left over) is not covered.</summary>
+    private const decimal MinTaxReceiptAmount = 1m;
+
+    private async Task<InvoiceDto?> IssueTaxReceiptCoreAsync(
+        long proformaId,
+        DateTime? paymentDate,
+        decimal? amount,
+        CancellationToken cancellationToken)
+    {
+        var proforma = await _context.Invoice
+            .Include(i => i.InvoiceItem)
+            .Include(i => i.Issuer)
+            .FirstOrDefaultAsync(i => i.Id == proformaId, cancellationToken);
+
+        if (proforma == null)
+            throw new KeyNotFoundException($"Proforma with ID {proformaId} not found");
+
+        if (proforma.DocumentType != EDocumentType.Proforma)
+            throw new InvalidOperationException(
+                $"Document {proformaId} is of type {proforma.DocumentType}, not Proforma. " +
+                "Only a Proforma can have a tax receipt for advance payment issued against it.");
+
+        // An advance payment only creates a VAT obligation for VAT-paying issuers — a
+        // non-VAT-payer never issues a DPP, manually or automatically (§ 28 ZDPH applies
+        // only to VAT payers).
+        if (!proforma.Issuer.IsVatPayer)
+        {
+            _logger.LogInformation(
+                "Not issuing a tax receipt for proforma {ProformaId}: issuer {IssuerId} is not a VAT payer",
+                proformaId, proforma.IssuerId);
+            return null;
+        }
+
+        // Idempotency guard: never cover more of the advance than has actually been received.
+        // Sums every non-deleted DPP already linked to this proforma, so a retry (double bank
+        // import, re-running matching, calling this twice) clamps to zero rather than double-booking.
+        var alreadyIssued = await _context.Invoice
+            .AsNoTracking()
+            .Where(i => i.OriginalInvoiceId == proformaId
+                     && i.DocumentType == EDocumentType.TaxReceiptForAdvance
+                     && i.Status != EInvoiceStatus.Deleted)
+            .SumAsync(i => (decimal?)i.TotalWithVat, cancellationToken) ?? 0m;
+
+        // Never cover more than the proforma's total, even if PaidAmount was overpaid.
+        var available = Math.Min(proforma.PaidAmount, proforma.TotalWithVat) - alreadyIssued;
+        if (available < 0) available = 0;
+
+        var effectiveAmount = amount ?? available;
+        if (effectiveAmount > available)
+            effectiveAmount = available; // clamp — never double-cover the same payment
+
+        if (effectiveAmount < MinTaxReceiptAmount)
+        {
+            _logger.LogInformation(
+                "Skipping tax receipt for proforma {ProformaId}: nothing new to cover " +
+                "(already issued {AlreadyIssued:F2} of paid {Paid:F2})",
+                proformaId, alreadyIssued, proforma.PaidAmount);
+            return null;
+        }
+
+        var items = BuildAdvanceReceiptItems(proforma.InvoiceItem, effectiveAmount);
+
+        var createDto = new CreateInvoiceDto
+        {
+            DocumentType = EDocumentType.TaxReceiptForAdvance,
+            ClientId = proforma.ClientId ?? throw new InvalidOperationException("Proforma has no ClientId"),
+            IssuerId = proforma.IssuerId,
+            IssueDate = null,                // issued today (null = now)
+            TaxableSupplyDate = paymentDate, // DUZP = date the advance was received (§ 28/5 ZDPH)
+            OriginalInvoiceId = proformaId,  // 1:N link — DPP → proforma
+            CurrencyId = proforma.CurrencyId,
+            BankAccountNumber = proforma.BankAccountNumber,
+            IBAN = proforma.IBAN,
+            SWIFT = proforma.SWIFT,
+            PaymentMethod = proforma.PaymentMethod,
+            Notes = $"Daňový doklad k přijaté platbě na zálohovou fakturu {proforma.DocumentNumber}",
+            InvoiceItem = items
+        };
+
+        var created = await CreateInvoiceAsync(createDto, cancellationToken);
+        InvoiceDto? completed;
+        try
+        {
+            completed = await CompleteInvoiceAsync(created.Id, cancellationToken);
+        }
+        catch
+        {
+            // Do not leave a Draft DPP behind: it would count as "already covered" and block
+            // every future issuance. (On PostgreSQL the surrounding transaction rolls back too.)
+            // Inside a transaction (PostgreSQL) the rollback does it, and a delete on an aborted
+            // transaction would only fail.
+            if (_context.Database.CurrentTransaction == null)
+            {
+                try { await DeleteInvoiceAsync(created.Id, CancellationToken.None); }
+                catch (Exception cleanupEx)
+                {
+                    _logger.LogWarning(cleanupEx, "Could not remove draft tax receipt {Id}", created.Id);
+                }
+            }
+            throw;
+        }
+
+        _logger.LogInformation(
+            "Tax receipt {Id} ({DocNum}) issued for proforma {ProformaId} ({ProformaDocNum}): amount {Amount:F2}",
+            completed!.Id, completed.DocumentNumber, proformaId, proforma.DocumentNumber, effectiveAmount);
+
+        return completed;
+    }
+
+    /// <summary>
+    /// Hook called by every code path that increases a Proforma's PaidAmount (manual mark-paid,
+    /// bank payment matching — both auto and manual). Auto-issues a DPP for the newly received
+    /// portion when the issuer is a VAT payer and has not disabled auto-issuance
+    /// (<see cref="Client.AutoIssueTaxReceiptForAdvance"/>).
+    ///
+    /// Deliberately swallows all errors: a failure to auto-issue the DPP must never roll back
+    /// or fail the payment itself. The user can still issue it manually from the UI (or the
+    /// issue_tax_receipt tool) if this silently fails — see the logged error.
+    /// </summary>
+    public async Task TryAutoIssueTaxReceiptAsync(
+        long proformaId, decimal paidDelta, DateTime? paymentDate, CancellationToken cancellationToken = default)
+    {
+        if (paidDelta <= 0)
+            return;
+
+        try
+        {
+            var proforma = await _context.Invoice
+                .AsNoTracking()
+                .Include(i => i.Issuer)
+                .FirstOrDefaultAsync(i => i.Id == proformaId, cancellationToken);
+
+            if (proforma == null || proforma.DocumentType != EDocumentType.Proforma)
+                return;
+
+            if (!proforma.Issuer.IsVatPayer || !proforma.Issuer.AutoIssueTaxReceiptForAdvance)
+                return;
+
+            await IssueTaxReceiptForPaidProformaAsync(proformaId, paymentDate, paidDelta, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Auto tax-receipt issuance failed for proforma {ProformaId} — the payment itself was still recorded.",
+                proformaId);
+
+            // The failed attempt may have left half-created DPP entities in the change tracker
+            // (rolled back in the DB). Detach them so the caller's next SaveChanges — e.g. the
+            // next transaction of a bank-import batch — does not try to persist them.
+            DetachTrackedTaxReceipts(proformaId);
+        }
     }
 
     // ─── Deduction Helpers ────────────────────────────────────────────────────
@@ -1194,56 +1648,68 @@ public class InvoiceService : IInvoiceService
         ICollection<InvoiceItem> proformaItems,
         decimal totalDeductionWithVat)
     {
-        // Collect the non-text, non-zero items from the proforma, grouped by VAT rate.
+        return SplitAmountByVatRate(proformaItems, totalDeductionWithVat)
+            .Select(s => BuildVatSplitItem(s, negative: true,
+                description: "Odečet přijaté zálohy / Advance payment deduction"))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Builds the line items for an auto- or manually-issued Tax Receipt for Advance Payment
+    /// (DPP). Mirrors <see cref="BuildDeductionItems"/> but with positive amounts — a DPP
+    /// records VAT on the advance actually received, split proportionally across the VAT
+    /// rates found on the proforma (§ 28 odst. 5 zákona č. 235/2004 Sb. o DPH).
+    /// </summary>
+    private static List<CreateInvoiceItemDto> BuildAdvanceReceiptItems(
+        ICollection<InvoiceItem> proformaItems,
+        decimal totalAmountWithVat)
+    {
+        return SplitAmountByVatRate(proformaItems, totalAmountWithVat)
+            .Select(s => BuildVatSplitItem(s, negative: false,
+                description: "Přijatá záloha / Advance payment received"))
+            .ToList();
+    }
+
+    /// <summary>One VAT bucket of a split: rate + regime (+ reverse-charge code) and its share incl. VAT.</summary>
+    internal readonly record struct VatSplit(
+        decimal RatePercentage, long? VatRateId, EVatRegime Regime, long? ReverseChargeCodeId, decimal AmountWithVat);
+
+    /// <summary>
+    /// Splits <paramref name="totalAmountWithVat"/> into one row per (VAT rate, VAT regime) found on
+    /// <paramref name="proformaItems"/>, proportional to each group's share of the proforma's
+    /// total (TotalWithVat-based weights), using "largest remainder" rounding so the rows
+    /// always sum exactly back to the requested total. The regime and reverse-charge code are
+    /// carried over, so a reverse-charge proforma yields rows without VAT.
+    ///
+    /// Shared by <see cref="BuildDeductionItems"/> (advance deduction on a final invoice) and
+    /// <see cref="BuildAdvanceReceiptItems"/> (DPP) — only the sign and description differ.
+    /// </summary>
+    internal static List<VatSplit> SplitAmountByVatRate(
+        ICollection<InvoiceItem> proformaItems,
+        decimal totalAmountWithVat)
+    {
+        // Collect the non-text, non-zero items from the proforma, grouped by VAT rate + regime.
         // We use TotalWithVat (the actual amount the client paid) as the weight basis
         // because the paid amount (PaidAmount) is also TotalWithVat-based.
         var vatGroups = proformaItems
             .Where(i => !i.IsTextRow && i.TotalWithVat != 0)
-            .GroupBy(i => i.VatRatePercentage)
+            .GroupBy(i => (i.VatRatePercentage, i.VatRegime))
             .Select(g => new
             {
-                VatRatePercentage = g.Key,
+                VatRatePercentage = g.Key.VatRatePercentage,
+                Regime = g.Key.VatRegime,
                 VatRateId = g.First().VatRateId,
+                ReverseChargeCodeId = g.First().ReverseChargeCodeId,
                 TotalWithVat = g.Sum(i => i.TotalWithVat)
             })
             .ToList();
 
-        // If there are no billable proforma items at all, fall back to a single 0% row
-        // so we still produce a deduction row (better than silently omitting it).
-        if (vatGroups.Count == 0)
-        {
-            return new List<CreateInvoiceItemDto>
-            {
-                new()
-                {
-                    Description = "Odečet přijaté zálohy / Advance payment deduction",
-                    Quantity = 1,
-                    Unit = "pcs",
-                    UnitPrice = -totalDeductionWithVat,
-                    VatRatePercentage = 0,
-                    VatRateId = null
-                }
-            };
-        }
-
-        // Total proforma TotalWithVat across all billable items — used as the denominator.
+        // No billable proforma items (or they net to zero) — fall back to a single 0% row
+        // so we still produce a row (better than silently omitting it).
         var proformaTotalWithVat = vatGroups.Sum(g => g.TotalWithVat);
-
-        if (proformaTotalWithVat == 0)
+        if (vatGroups.Count == 0 || proformaTotalWithVat == 0)
         {
-            // Proforma has items but they net to zero — edge case, single 0% row.
-            return new List<CreateInvoiceItemDto>
-            {
-                new()
-                {
-                    Description = "Odečet přijaté zálohy / Advance payment deduction",
-                    Quantity = 1,
-                    Unit = "pcs",
-                    UnitPrice = -totalDeductionWithVat,
-                    VatRatePercentage = 0,
-                    VatRateId = null
-                }
-            };
+            return new List<VatSplit> { new(0m, null, EVatRegime.Standard, null, totalAmountWithVat) };
         }
 
         // ── Proportional split with "largest remainder" rounding ──────────────
@@ -1253,14 +1719,13 @@ public class InvoiceService : IInvoiceService
 
         var shares = vatGroups.Select(g => new
         {
-            g.VatRatePercentage,
-            g.VatRateId,
-            ExactShare = totalDeductionWithVat * (g.TotalWithVat / proformaTotalWithVat)
+            Group = g,
+            ExactShare = totalAmountWithVat * (g.TotalWithVat / proformaTotalWithVat)
         }).ToList();
 
         var floored = shares.Select(s => Math.Round(s.ExactShare, 2, MidpointRounding.ToZero)).ToList();
         var sumFloored = floored.Sum();
-        var residual = Math.Round(totalDeductionWithVat - sumFloored, 2);
+        var residual = Math.Round(totalAmountWithVat - sumFloored, 2);
 
         // Each residual cent is +0.01; distribute to the groups with the largest fractional part.
         var remainders = shares
@@ -1274,38 +1739,58 @@ public class InvoiceService : IInvoiceService
             floored[remainders[i].Idx] += 0.01m;
         }
 
-        // ── Build deduction CreateInvoiceItemDto rows ─────────────────────────
-        // Each row uses UnitPrice = -(base before VAT) and VatRatePercentage = rate.
-        // The standard item calculation pipeline (Quantity * UnitPrice, + VAT) then
-        // produces the correct negative TotalWithVat.
-        var result = new List<CreateInvoiceItemDto>();
+        return shares
+            .Select((s, i) => new VatSplit(
+                s.Group.VatRatePercentage, s.Group.VatRateId, s.Group.Regime, s.Group.ReverseChargeCodeId, floored[i]))
+            .Where(s => s.AmountWithVat != 0) // skip zero-amount rows (can happen with rounding on tiny amounts)
+            .ToList();
+    }
 
-        for (var i = 0; i < shares.Count; i++)
+    /// <summary>
+    /// Builds a single VAT-split CreateInvoiceItemDto row. For the Standard regime it back-calculates
+    /// the base (before VAT) so that base + round(base * rate) equals <see cref="VatSplit.AmountWithVat"/>
+    /// to the cent (plain division can be off by 0.01, e.g. 100.00 at 21% gives 82.64 + 17.35 = 99.99,
+    /// so the neighbouring cents are tried too; see below). Other regimes carry no billed VAT: base = amount.
+    /// </summary>
+    private static CreateInvoiceItemDto BuildVatSplitItem(VatSplit split, bool negative, string description)
+    {
+        decimal baseAmount;
+        if (split.Regime == EVatRegime.Standard)
         {
-            var rate = shares[i].VatRatePercentage;
-            var deductionWithVat = floored[i];
-
-            if (deductionWithVat == 0)
-                continue; // skip zero-amount rows (can happen with rounding on tiny amounts)
-
-            // Back-calculate the base (before VAT) from the TotalWithVat deduction.
-            // TotalWithVat = TotalBeforeVat * (1 + rate/100)
-            // → TotalBeforeVat = TotalWithVat / (1 + rate/100)
-            var divisor = 1m + rate / 100m;
-            var deductionBase = Math.Round(deductionWithVat / divisor, 2, MidpointRounding.AwayFromZero);
-
-            result.Add(new CreateInvoiceItemDto
+            var rate = split.RatePercentage;
+            baseAmount = Math.Round(split.AmountWithVat / (1m + rate / 100m), 2, MidpointRounding.AwayFromZero);
+            // Some amounts are not reachable with one row (100.00 at 21%: 82.64 -> 99.99, 82.65 -> 100.01).
+            // Prefer an exact hit, otherwise the closest total that does not exceed the amount
+            // (never cover more than was received; the leftover cent is below the DPP minimum).
+            var best = baseAmount;
+            var bestTotal = decimal.MinValue;
+            foreach (var candidate in new[] { baseAmount - 0.01m, baseAmount, baseAmount + 0.01m })
             {
-                Description = "Odečet přijaté zálohy / Advance payment deduction",
-                Quantity = 1,
-                Unit = "pcs",
-                UnitPrice = -deductionBase,          // negative — this is a deduction
-                VatRatePercentage = rate,
-                VatRateId = shares[i].VatRateId
-            });
+                var total = candidate + Math.Round(candidate * (rate / 100m), 2, MidpointRounding.AwayFromZero);
+                if (total <= split.AmountWithVat && total > bestTotal)
+                {
+                    best = candidate;
+                    bestTotal = total;
+                }
+            }
+            baseAmount = best;
+        }
+        else
+        {
+            baseAmount = split.AmountWithVat;
         }
 
-        return result;
+        return new CreateInvoiceItemDto
+        {
+            Description = description,
+            Quantity = 1,
+            Unit = "pcs",
+            UnitPrice = negative ? -baseAmount : baseAmount,
+            VatRatePercentage = split.RatePercentage,
+            VatRateId = split.VatRateId,
+            VatRegime = split.Regime,
+            ReverseChargeCodeId = split.ReverseChargeCodeId
+        };
     }
 
     // ─── Bulk Operations ─────────────────────────────────────────────────────
@@ -1598,7 +2083,9 @@ public class InvoiceService : IInvoiceService
         //   - ReverseCharge code validation
         //   - Item totals calculation
         //   - Status = Draft (always set by CreateInvoiceAsync)
-        var copy = await CreateInvoiceAsync(createDto, cancellationToken);
+        // applyBankAccountDefaulting: false — bank fields were just copied verbatim from the
+        // source invoice above (even when empty); the resolver must not override that.
+        var copy = await CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
 
         _logger.LogInformation(
             "Invoice copied: source #{SourceId} → new #{CopyId} ({DocNum})",
@@ -1607,7 +2094,148 @@ public class InvoiceService : IInvoiceService
         return copy;
     }
 
+    /// <inheritdoc />
+    public async Task<string?> GetOssCountryCodeAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken cancellationToken = default)
+    {
+        var client = await _context.Client.AsNoTracking()
+            .Include(c => c.Address)
+            .FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
+        var issuer = await _context.Client.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == issuerId, cancellationToken);
+        if (client == null || issuer == null) return null;
+
+        // Credit notes inherit from their original invoice, which the UI does not know about here.
+        return await DetermineOssCountryCodeAsync(issuer, client, documentType, null, cancellationToken);
+    }
+
     // ─── Private Helpers ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Date against which OSS item rates are validated: the invoice's own DUZP, except for a credit note, which
+    /// corrects the ORIGINAL supply and so uses the original's DUZP (a credit note issued after a rate change
+    /// must still be able to repeat the rate of the invoice it corrects).
+    /// </summary>
+    private async Task<DateTime> GetOssRateCheckDateAsync(EDocumentType type, long? originalInvoiceId, DateTime ownDuzp, CancellationToken ct)
+    {
+        if (type != EDocumentType.CreditNote || !originalInvoiceId.HasValue) return ownDuzp;
+        var originalDuzp = await _context.Invoice.AsNoTracking()
+            .Where(i => i.Id == originalInvoiceId.Value)
+            .Select(i => i.TaxableSupplyDate)
+            .FirstOrDefaultAsync(ct);
+        return originalDuzp ?? ownDuzp;
+    }
+
+    /// <summary>
+    /// Gives billable items without a tenant VatRateId a VatRateId: the active rate with the same percentage,
+    /// else the default active rate valid on <paramref name="date"/>. Items stay untouched when no rate exists.
+    /// </summary>
+    private async Task AssignTenantVatRatesAsync(IEnumerable<CreateInvoiceItemDto> items, DateTime date, CancellationToken ct)
+    {
+        var rates = await _context.VatRate.AsNoTracking()
+            .Where(r => r.IsActive && r.ValidFrom <= date && (r.ValidTo == null || r.ValidTo >= date))
+            .ToListAsync(ct);
+        foreach (var item in items.Where(i => !i.IsTextRow && !i.VatRateId.HasValue))
+        {
+            var match = rates.FirstOrDefault(r => r.Rate == item.VatRatePercentage) ?? rates.FirstOrDefault(r => r.IsDefault);
+            if (match != null)
+            {
+                item.VatRateId = match.Id;
+                item.VatRatePercentage = match.Rate;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies the user's OSS opt-in: returns the destination country only when the user asked for OSS
+    /// (<paramref name="applyOss"/>) AND the invoice is eligible. Asking for OSS on an ineligible invoice
+    /// throws — silently issuing a CZ-VAT invoice the user believed to be OSS would be worse. Credit notes
+    /// ignore the flag and inherit from the original invoice.
+    /// </summary>
+    private async Task<string?> ResolveOssCountryCodeAsync(
+        Client issuer, Client? client, EDocumentType documentType, long? originalInvoiceId, bool applyOss, CancellationToken ct)
+    {
+        // No opt-in and not a credit note: nothing to look up (saves the settings query on every ordinary invoice).
+        if (!applyOss && documentType != EDocumentType.CreditNote) return null;
+
+        var eligible = await DetermineOssCountryCodeAsync(issuer, client, documentType, originalInvoiceId, ct);
+        if (documentType == EDocumentType.CreditNote) return eligible;
+        return eligible ?? throw new InvalidOperationException(
+            "OSS cannot be applied to this invoice: it requires an OSS-registered VAT-payer issuer, an Invoice/advance tax receipt " +
+            "and a consumer client (no VAT id) with an address in another EU state.");
+    }
+
+    /// <summary>
+    /// Determines the EU OSS destination country this invoice/credit note is ELIGIBLE for, or null if
+    /// it is not an OSS case. See <see cref="OssDetector"/> for the detection rule and
+    /// DEVGUIDE §4.16 for the full picture.
+    ///
+    /// Credit notes do not run detection themselves — they inherit the OssCountryCode of
+    /// the invoice they correct, so a correction can never land in a different VAT regime
+    /// than the document it corrects.
+    /// </summary>
+    private async Task<string?> DetermineOssCountryCodeAsync(
+        Client issuer, Client? client, EDocumentType documentType, long? originalInvoiceId, CancellationToken ct)
+    {
+        if (documentType == EDocumentType.CreditNote)
+        {
+            if (!originalInvoiceId.HasValue) return null;
+            var original = await _context.Invoice
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == originalInvoiceId.Value, ct);
+            return original?.OssCountryCode;
+        }
+
+        // No master context / resolver (legacy constructor) = OSS not available.
+        if (_masterContext == null || _tenantResolver == null) return null;
+
+        var companyId = _tenantResolver.GetCurrentCompanyId();
+        if (companyId == null) return null;
+
+        var settings = await _masterContext.CompanySystemSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.CompanyId == companyId, ct);
+
+        return OssDetector.DetermineCountryCode(settings?.OssRegistered ?? false, issuer.IsVatPayer, client, documentType);
+    }
+
+    /// <summary>
+    /// Validates that every billable item on an OSS invoice uses a rate that is actually
+    /// active for <paramref name="ossCountryCode"/> on the taxable supply date (DUZP) — the
+    /// legally relevant date, same as VatReportService uses for CZ reporting.
+    ///
+    /// OSS items do not use a tenant VatRateId (that FK points at the tenant's CZ rate
+    /// table, which is irrelevant here) — it is cleared and only VatRatePercentage is used.
+    /// </summary>
+    private async Task ValidateOssItemRatesAsync(
+        string ossCountryCode, IEnumerable<CreateInvoiceItemDto> items, DateTime taxableSupplyDate, CancellationToken ct)
+    {
+        var checkDate = DateOnly.FromDateTime(taxableSupplyDate);
+        var allowedRates = await _masterContext.OssVatRate
+            .AsNoTracking()
+            .Where(r => r.CountryCode == ossCountryCode
+                && r.IsActive
+                && r.ValidFrom <= checkDate
+                && (r.ValidTo == null || r.ValidTo >= checkDate))
+            .Select(r => r.Rate)
+            .ToListAsync(ct);
+
+        foreach (var item in items.Where(i => !i.IsTextRow))
+        {
+            // The tenant VatRate FK is meaningless for an OSS item (it points at the CZ rate table) — drop it
+            // so a client that still sends the CZ VatRateId gets validated on the percentage only.
+            item.VatRateId = null;
+
+            // OSS charges destination VAT; reverse charge / exempt / out-of-scope items are not OSS supplies.
+            if (item.VatRegime != EVatRegime.Standard)
+                throw new InvalidOperationException(
+                    $"Invoice item '{item.Description}' on an OSS invoice ({ossCountryCode}) must use the Standard VAT regime.");
+
+            if (!allowedRates.Any(r => r == Math.Round(item.VatRatePercentage, 2)))
+                throw new InvalidOperationException(
+                    $"VAT rate {item.VatRatePercentage}% is not a valid OSS rate for {ossCountryCode} on " +
+                    $"{checkDate:yyyy-MM-dd}. Allowed rates: {string.Join(", ", allowedRates)}.");
+        }
+    }
 
     /// <summary>
     /// Validates Reverse Charge code consistency for a list of item DTOs.
@@ -1624,6 +2252,12 @@ public class InvoiceService : IInvoiceService
     {
         foreach (var item in items.Where(i => !i.IsTextRow))
         {
+            // JSON clients (MCP/API) can send an undefined numeric enum value; reject it up front
+            // instead of failing later in CalculateItemVat.
+            if (!Enum.IsDefined(item.VatRegime))
+                throw new InvalidOperationException(
+                    $"Invoice item '{item.Description}' has an invalid VatRegime value '{(int)item.VatRegime}'.");
+
             if (item.VatRegime == EVatRegime.ReverseCharge && !item.ReverseChargeCodeId.HasValue)
                 throw new InvalidOperationException(
                     $"Invoice item '{item.Description}' has VatRegime=ReverseCharge but no ReverseChargeCodeId. " +
@@ -1668,6 +2302,10 @@ public class InvoiceService : IInvoiceService
 
             case EVatRegime.ReverseCharge:
                 // PDP: buyer self-assesses VAT — supplier bills 0 VAT.
+                if (item.VatRatePercentage <= 0m)
+                    throw new InvalidOperationException(
+                        $"Invoice item '{item.Description}' uses reverse charge, so it needs the VAT rate that applies " +
+                        "in the Czech Republic (VatRatePercentage > 0).");
                 // The rate and the "would-be" VAT amount are displayed informatively on the document.
                 item.VatAmount = 0;
                 item.TotalWithVat = item.TotalBeforeVat;

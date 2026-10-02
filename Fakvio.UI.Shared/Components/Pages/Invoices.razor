@@ -25,6 +25,11 @@
 <MudText Typo="Typo.h4" GutterBottom="true">@PageHeading</MudText>
 <MudText Class="mb-4">@PageSubtitle</MudText>
 
+<MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Class="mb-4"
+           StartIcon="@Icons.Material.Filled.Download" OnClick="OpenAccountingExportDialog">
+    @L["AccountingExport_Open"]
+</MudButton>
+
 @* Bulk operations toolbar — visible only when multi-select has items checked *@
 @if (_selectedInvoices.Count > 0)
 {
@@ -1161,6 +1166,17 @@
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
         finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Opens the "Export do účetnictví" dialog (Pohoda/MoneyS3/AbraFlexi), pre-selected to
+    /// issued invoices only since we're on the Invoices page — the user can still tick
+    /// "include received" in the dialog if they want a combined export.
+    /// </summary>
+    private async Task OpenAccountingExportDialog()
+    {
+        var parameters = new DialogParameters { ["DefaultIncludeIssued"] = true, ["DefaultIncludeReceived"] = false };
+        await DialogService.ShowAsync<AccountingExportDialog>(L["AccountingExport_Open"].Value, parameters);
     }
 
     /// <summary>

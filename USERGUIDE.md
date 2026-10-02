@@ -21,6 +21,7 @@
 10. [Nastavení firmy](#10-nastavení-firmy)
 11. [DPH sazby a režimy](#11-dph-sazby-a-režimy)
 12. [Přehled DPH + EPO export](#12-přehled-dph--epo-export)
+    - [12a. Prodej spotřebitelům v EU — režim OSS](#12a-prodej-spotřebitelům-v-eu--režim-oss)
 13. [AI asistent](#13-ai-asistent)
 14. [Upomínky (Dunning)](#14-upomínky-dunning)
 15. [Párování plateb](#15-párování-plateb)
@@ -29,6 +30,7 @@
 18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
 19. [Nastavení hesla a první přihlášení](#19-nastavení-hesla-a-první-přihlášení)
 20. [Napojení vlastního AI klienta (MCP server)](#20-napojení-vlastního-ai-klienta-mcp-server)
+21. [Webhooky (automatické upozornění vaší aplikace)](#21-webhooky-automatické-upozornění-vaší-aplikace)
 
 ---
 
@@ -66,6 +68,31 @@ Pokud byl účet vytvořen, ale odeslání emailu selhalo, zůstane na stránce 
 
 Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
 
+### Úprava nástěnky
+
+Nástěnka se skládá z **widgetů** (dlaždic a grafů). Tlačítkem **Upravit nástěnku** (vpravo nad widgety)
+otevřete dialog, kde u každého widgetu přepínačem zobrazíte nebo skryjete a šipkami nahoru/dolů změníte pořadí.
+**Obnovit výchozí** vrátí původní rozložení. Rozložení se ukládá k vašemu uživatelskému účtu, takže vás
+následuje na každé zařízení. Nové widgety přidané v pozdější verzi se objeví automaticky na konci.
+
+Kromě dlaždic a stávajících grafů jsou k dispozici tři nové grafy (vždy za posledních 12 měsíců, v CZK):
+
+| Graf | Co ukazuje |
+|------|-----------|
+| **Tržby po měsících** | Součet vystavených faktur bez DPH; dobropisy se odečítají |
+| **Příjmy vs výdaje po měsících** | Vystavené faktury proti schváleným/zaplaceným přijatým fakturám (bez DPH) |
+| **Neuhrazené pohledávky podle stáří** | Nezaplacená část faktur podle dnů po splatnosti: 0-30 (včetně dosud nesplatných), 31-60, 61-90, 90+ |
+
+### Průvodce nastavením
+
+Při prvním přihlášení vás aplikace sama zavede do **Průvodce nastavením** (`/setup`), pokud firmě chybí údaje
+o vystavovateli (název, IČ, adresa, DIČ u plátců DPH) nebo bankovní účet. Průvodce má kroky
+**Firma** (s možností načíst údaje z ARES), **Banka**, **Fakturace** (splatnost a výchozí číselné řady),
+**Uživatelé** (volitelná pozvánka kolegy) a **Hotovo**. Každý krok se ukládá hned a stav kroků se počítá
+z aktuální připravenosti firmy, takže průvodce můžete kdykoli opustit a vrátit se.
+Tlačítkem **Přeskočit průvodce** ho přestanete nabízet automaticky; ručně ho spustíte tlačítkem
+**Spustit průvodce** na kartě **Dokončit nastavení**. Automatické přesměrování proběhne nejvýše jednou za relaci.
+
 ### Dokončit nastavení (checklist připravenosti)
 
 Pokud vaší firmě chybí něco, co musí být na daňovém dokladu, uvidíte nahoře na dashboardu
@@ -83,6 +110,8 @@ Položky jsou rozdělené do dvou skupin, každá má vlastní nadpis (a barvu k
 Skupina, ve které nic nechybí, se nezobrazí vůbec.
 
 Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
+
+Na kartě je i tlačítko **Spustit průvodce** (viz [Průvodce nastavením](#průvodce-nastavením)).
 
 **Odložení na později.** Tlačítko **Připomenout později** kartu sbalí na jediný řádek
 „Dokončit nastavení (počet)“. Kliknutím na něj se průvodce kdykoli znovu rozbalí — není to
@@ -306,6 +335,31 @@ přidá i UBL XML. Když se e-faktura nedá vygenerovat (viz problémy výše), 
 vynechá — email se vždy odešle. **Pozor:** poslat e-fakturu jinak než přes Peppol síť
 (např. e-mailem) je u slovenského plátce DPH legální jen se souhlasem příjemce.
 
+### 2.8b Export do účetnictví (POHODA / Money S3 / ABRA Flexi)
+
+Na stránce **Faktury** (i **Přijaté faktury**) klikněte na „Export do účetnictví". Vyberte účetní systém,
+období a zda chcete vydané, přijaté, nebo obojí, a klikněte na „Exportovat" — stáhne se jeden XML soubor.
+Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakují.
+
+**Jak soubor načíst:**
+
+- **POHODA:** Soubor → Datová komunikace → XML import → vyberte stažený soubor a spusťte import.
+- **Money S3:** Soubor → Import dat → XML (MoneyData) → vyberte stažený soubor.
+- **ABRA Flexi:** Nástroje → Import → XML (winstrom), nebo soubor odešlete na REST API.
+
+**Co vědět:**
+
+- Export počítá se sazbami DPH platnými od roku 2024 (**21 / 12 / 0 %**). Starší doklady s jinou sazbou
+  (např. 10 % nebo 15 %) a doklady s jinou sazbou DPH se do souboru nezahrnou.
+- Do souboru se také nezahrnují doklady, které cílový systém nedokáže správně přijmout: daňové doklady
+  k přijaté platbě (všechny systémy), doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi)
+  a v POHODĚ doklady s číslem delším než 20 znaků. Přijaté dobropisy export nepodporuje (Fakvio je nerozlišuje od běžných přijatých faktur). Po exportu uvidíte, kolik dokladů bylo vynecháno.
+- U cizí měny v POHODĚ Fakvio kurz neexportuje — POHODA použije svůj kurzový lístek k datu dokladu.
+- Dobropisy se do Money S3 a ABRA Flexi přenášejí s kladnými částkami (jako dobropis), do POHODY se záporným znaménkem.
+- ABRA Flexi: v cílové firmě musí existovat typy dokladů `FAKTURA` a `DOBROPIS` (výchozí databáze je má).
+  Číslo přijaté faktury dodavatele se uloží do pole „číslo dodavatele", interní číslo přidělí Flexi.
+- Doporučujeme nejdřív naimportovat jeden doklad na zkoušku. Před exportem musí mít vaše firma vyplněné IČO.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"
@@ -359,7 +413,18 @@ Proforma (záloha) je nezávazný doklad před přijetím platby. Číslo doklad
 
 Vystavuje se po přijetí zálohy. Číslo dokladu: prefix `DPP-`.
 
-**Automatické vystavení:** systém může automaticky vystavit DPP po označení proformy jako zaplacené (závisí na nastavení).
+**Automatické vystavení:** pokud jste plátce DPH, systém DPP vystaví sám v okamžiku, kdy je proforma uhrazena — ať ji označíte jako zaplacenou ručně, nebo ji spáruje bankovní platba. U částečné úhrady vznikne DPP na přijatou část a při doplatku další DPP na zbytek; nic se nezdvojí. DPP se **neodesílá e-mailem automaticky**. Zrušení spárování platby ani vrácení proformy na nezaplacenou už vystavený DPP neruší — daňový doklad pak opravte ručně (dobropisem). Neplátci DPH DPP nevystavují.
+
+Automatické vystavení můžete vypnout v **Moje firma** (přepínač „Automaticky vystavit DPP při úhradě zálohy", zobrazuje se jen plátcům DPH). Pak vystavíte DPP ručně z detailu proformy.
+
+### Postup: záloha → platba → DPP → vyúčtování
+
+1. **Záloha:** vytvořte a vystavte proformu fakturu (typ Proforma) a pošlete ji zákazníkovi.
+2. **Platba:** po přijetí platby označte proformu jako zaplacenou (nebo ji spáruje import bankovních plateb).
+3. **DPP:** plátci DPH se automaticky vystaví daňový doklad o přijaté platbě s DPH z přijaté zálohy.
+4. **Vyúčtování:** z detailu proformy vystavte konečnou fakturu — záloha se na ní odečte po sazbách DPH. Zálohu lze rozdělit i mezi více konečných faktur.
+
+Totéž umí AI asistent / MCP (`create_invoice` s typem Proforma, `issue_tax_receipt`, `get_remaining_advance`, `issue_final_invoice`).
 
 ---
 
@@ -577,6 +642,11 @@ fakturace — import do Pohody, Money S3, Helios apod.):
   „Stáhnout ISDOC" → stáhne se jeden ZIP s `.isdoc` soubory pojmenovanými
   podle čísel dokladů.
 
+### Export do účetnictví
+
+Tlačítko „Export do účetnictví" nad seznamem přijatých faktur stáhne XML pro POHODA / Money S3 / ABRA Flexi
+(předvybrané jsou přijaté faktury). Postup importu viz [2.8b](#28b-export-do-účetnictví-pohoda--money-s3--abra-flexi).
+
 ### Přehled DPH z přijatých faktur
 
 Data z přijatých faktur se projevují v přehledu DPH (sekce Vstupní DPH) na stránce `/vat-report`.
@@ -656,10 +726,13 @@ Správa informací o vaší firmě (vydavatele faktur).
 **Bankovní účty:**
 - Přidávání přes dialog „Bankovní účet"
 - Formát: číslo účtu, kód banky, IBAN, BIC/SWIFT
-- QR kód platba — systém generuje QR kód pro faktury automaticky
+- QR kód platba — systém generuje QR kód pro faktury automaticky; faktury v EUR s IBAN dostanou evropský **QR platba SEPA** (EPC QR), který načte jakákoli SEPA bankovní aplikace
+- Ověření DIČ ve VIES — ve formuláři klienta tlačítko **Ověřit ve VIES** zkontroluje, zda je DIČ registrováno v EU (výpadek služby se zobrazí jako „nelze ověřit“, ne jako neplatné DIČ)
 
 Základní informace, primární adresu i bankovní účet jde nastavit i přes AI (kapitola 20) —
 `update_my_company` a `add_bank_account`.
+
+Nová faktura (včetně té vytvořené přes AI nebo z opakování) dostane bankovní účet automaticky: nejdřív výchozí účet v měně faktury, potom jakýkoli účet v této měně, jinak výchozí účet. V editoru faktury ho můžete změnit; po změně měny se účet přepne jen pokud jste žádný ručně nevybrali.
 
 **Email pro příjem faktur:**
 - Aktivace unikátní emailové adresy pro automatický příjem faktur — viz [§18](#18-příjem-faktur-emailem)
@@ -673,6 +746,7 @@ Základní informace, primární adresu i bankovní účet jde nastavit i přes 
 - Kontaktní telefon, kontaktní e-mail a jméno oprávněné osoby jsou volitelné (uložený kontaktní
   e-mail zatím nejde vymazat, jen přepsat jiným)
 - Sekce má vlastní tlačítko „Uložit" — ukládá se nezávisle na tlačítku „Upravit" nahoře
+- **Režim OSS (jen plátci DPH):** přepínač „Jsem registrován(a) v režimu OSS" a datum registrace — viz [§12a](#12a-prodej-spotřebitelům-v-eu--režim-oss)
 - **Známé omezení:** uložení dnes projde jen správci systému. U role Admin skončí chybou —
   než bude opraveno, požádejte o vyplnění správce systému.
 
@@ -716,8 +790,10 @@ Každá položka faktury má DPH regime:
 | **OutOfScope** (Mimo scope) | Plnění, které není předmětem DPH |
 
 **Přenesená daňová povinnost (PDP / Reverse Charge):**
-- Nastavte regime = ReverseCharge
-- Vyberte příslušný kód §92b/c/d/e z číselníku MFČR (pole „Kód přenesené DPH")
+- V editoru položek (platí pro fakturu, dobropis i zálohovou fakturu; jen pro plátce DPH) nastavte ve sloupci „Režim DPH" hodnotu Přenesená daňová povinnost
+- Ve sloupci „Kód PDP" vyberte příslušný kód předmětu plnění z číselníku MFČR (§92a–92e)
+- Chcete-li převést celou fakturu najednou, zapněte přepínač „Přenesená daňová povinnost" nad tabulkou položek a vyberte jeden kód; zapíše se do všech položek (přepínač se sám vypne, pokud pak u některé položky režim změníte)
+- Součty ukazují DPH 0 a u položky text „daň odvede zákazník"; PDF obsahuje povinnou poznámku dle §92a a použité kódy, ISDOC blok LocalReverseCharge
 - Faktura se správně zobrazí v kontrolním hlášení (DPHKH1)
 
 ### Neplátce DPH
@@ -756,12 +832,26 @@ upravit a uložit — DPH se vynuluje. U vystavené faktury vystavte dobropis a 
 
 **Dostupné pouze pro plátce DPH.**
 
-Sekce „EPO Export" umožňuje stáhnout dva soubory pro portál EPO MFČR:
+Sekce „EPO Export" umožňuje stáhnout soubory pro portál EPO MFČR:
 
 | Soubor | Typ | Obsah |
 |--------|-----|-------|
 | DPHDP3 | XML | Daňové přiznání k DPH |
 | DPHKH1 | XML | Kontrolní hlášení DPH |
+| DPHSHV | XML | Souhrnné hlášení (plnění do jiných států EU) |
+
+**Přenesená daňová povinnost (PDP):** u položky vydané i přijaté faktury nastavte „Režim DPH" na
+„Přenesená daňová povinnost" a vyberte kód předmětu plnění. Vydané plnění se vykáže v řádku 25 přiznání
+a v oddílu A.1 kontrolního hlášení; přijaté plnění si doúčtujete sami (řádky 10/11 a nárok na odpočet
+43/44, oddíl B.1) – dodavatel na faktuře DPH neúčtuje. Podporována je jen tuzemská PDP (§ 92a); pořízení zboží
+či služeb z EU zatím v modelu není – přijatá položka s PDP od dodavatele bez českého DIČ vyvolá chybu.
+
+**Souhrnné hlášení:** zahrnuje vydané faktury odběratelům z EU (jiný stát než ČR) s DIČ. Tlačítkem
+„Náhled souhrnného hlášení" zobrazíte řádky za stát a DIČ; plnění se standardně vykazují jako služby
+(kód 3), zaškrtnutím „Zboží" u odběratele je vykážete jako dodání zboží (kód 0). Zahrnuta jsou jen plnění,
+u nichž daň odvádí odběratel (osvobozeno / mimo předmět daně), včetně dobropisů (záporně). Souhrnné hlášení
+se zároveň promítne do řádků 20 a 21 přiznání. Zboží (kód 0) lze vykázat jen v měsíčním hlášení. Třístranný
+obchod, přemístění obchodního majetku a zálohové doklady (DPP) zatím nejsou podporovány.
 
 **Postup:**
 1. Vyberte rok a typ období (Měsíční / Čtvrtletní)
@@ -778,6 +868,35 @@ místo staženého souboru se zobrazí upozornění se seznamem chybějících p
   přenese na `/my-company` do sekce „Nastavení EPO" (viz [§10](#10-nastavení-firmy)).
 - **Nemáte roli Admin** — sekce nastavení je pro vás skrytá, takže upozornění místo odkazu
   napíše, že pole musí doplnit administrátor firmy.
+
+---
+
+## 12a. Prodej spotřebitelům v EU — režim OSS
+
+Pokud jste plátce DPH a jste registrováni v režimu **OSS** (jedno správní místo), při prodeji
+spotřebitelům v jiných státech EU účtujete **DPH cílové země** a odvádíte ho čtvrtletně jedním podáním.
+
+**Nastavení:** na `/my-company` sekce „Režim OSS" (jen plátci DPH): zapněte „Jsem registrován(a) v režimu OSS"
+a vyplňte datum registrace. Uložit ji může administrátor firmy.
+
+**Fakturace:** OSS se na faktuře uplatňuje **jen když to sami zvolíte**. Když jste v OSS registrováni, klient je **bez DIČ**
+a jeho adresa je v **jiném státě EU** než ČR, ve formuláři faktury se objeví zaškrtávátko „Režim OSS (DPH země odběratele)"
+(výchozí je nezaškrtnuto). Zaškrtněte ho jen u plnění, které do OSS opravdu patří — typicky **dodání zboží na dálku** a telekomunikační,
+vysílací a elektronické služby. **Běžné služby spotřebitelům (poradenství, vývoj software apod.) se zdaňují v ČR** a OSS se pro ně nepoužívá.
+Po zaškrtnutí vybíráte sazby DPH země klienta (např. 19 % pro Německo); jiná sazba se neuloží. PDF ukáže „DPH DE 19 %" a poznámku „Režim OSS". Klient s DIČ (firma) se fakturuje jako dosud.
+Dobropis převezme režim původní faktury.
+
+**Hlášení OSS:** stránka `/oss-report` (menu Fakturace → Hlášení OSS) — vyberte rok a čtvrtletí, zobrazí se základ
+a DPH za každou zemi a sazbu v EUR; tlačítko „Stáhnout CSV". Faktury v jiné měně se přepočtou kurzem ECB k poslednímu
+dni čtvrtletí (nevyšel-li ten den kurz, k nejbližšímu dalšímu dni zveřejnění); když kurz nejde stáhnout, zobrazí se chyba (zkuste to později). Výsledek použijte jako podklad
+pro podání OSS na portálu Finanční správy.
+
+**Důležité:**
+- OSS faktury se **nezahrnují** do přiznání DPH (DPHDP3) ani kontrolního hlášení (DPHKH1) — nejsou českým DPH.
+- OSS se **nepřenáší** do šablon faktur, opakovaných faktur ani kopií — takové faktury vzniknou jako běžné; OSS fakturu vystavte ručně.
+- Fakvio **neověřuje, zda plnění do OSS patří** (zboží vs. služba) — odpovědnost je na vás.
+- Fakvio **nehlídá limit 10 000 EUR** ročně (pod ním lze uplatnit české DPH) — registraci do OSS si řešíte sami.
+- Přes AI (kapitola 20) lze OSS hlášení načíst nástrojem `get_oss_report`.
 
 ---
 
@@ -1146,7 +1265,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 69 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 78 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1376,6 +1495,119 @@ nové připojení (staré tím zmizí ze seznamu, žádné duplicity).
 **všechny** vaše připojené aplikace najednou (API klíče zůstávají beze změny — jsou to jiný,
 samostatně spravovaný typ přístupu). Po takové změně je tedy potřeba se v claude.ai/ChatGPT
 znovu přihlásit.
+
+## 21. Webhooky (automatické upozornění vaší aplikace)
+
+**Stránka:** `Nastavení → Webhooky` (`/settings/webhooks`). Vidí ji a spravuje role **Účetní** (v API Admin) a systémový správce.
+
+Webhook je adresa (URL) vaší aplikace — například e-shopu, účetního systému nebo vlastního skriptu. Když ve Fakviu nastane
+vybraná událost, Fakvio na tuto adresu automaticky pošle krátkou zprávu (HTTP požadavek) s údaji o dokladu. Vaše aplikace tak
+nemusí Fakvio pravidelně „vyptávat", zda se něco změnilo.
+
+### Dostupné události
+
+| Událost | Kdy se pošle |
+|---------|--------------|
+| Faktura vytvořena (`invoice.created`) | po vytvoření faktury (včetně dobropisu a faktury z šablony) |
+| Faktura odeslána e-mailem (`invoice.sent`) | po úspěšném odeslání faktury e-mailem klientovi |
+| Faktura zaplacena (`invoice.paid`) | po označení faktury jako uhrazené nebo po spárování platby, která fakturu uhradila celou |
+| Faktura stornována/smazána (`invoice.cancelled`) | po smazání faktury |
+| Přijatá faktura vytvořena (`received_invoice.created`) | po zadání nebo importu přijaté faktury |
+| Platba přijata (`payment.received`) | po spárování příchozí platby s vydanou fakturou (i částečné) |
+
+### Založení webhooku
+
+1. Klikněte **Nový webhook**.
+2. Zadejte **URL endpointu** — musí začínat `https://`. Adresy směřující do interní sítě nebo na „localhost" jsou z bezpečnostních
+   důvodů blokovány.
+3. Zaškrtněte události, které chcete dostávat, a uložte.
+4. Zobrazí se **podpisový klíč**. **Je vidět jen jednou** — zkopírujte si ho a bezpečně uložte (ve vaší aplikaci ho použijete k ověření,
+   že zpráva opravdu přišla z Fakvia). Pokud ho ztratíte nebo unikne, použijte ikonu klíče **Vygenerovat nový klíč**; starý okamžitě přestane platit.
+
+Další akce v řádku: **Otestovat** (pošle zkušební událost `ping` a hned ukáže výsledek), **Doručení** (historie odeslaných zpráv),
+smazání. Kliknutím na řádek upravíte URL, popis, události nebo webhook pozastavíte (přepínač Aktivní).
+
+### Doručení a opakování
+
+Vaše adresa musí do 10 sekund odpovědět stavem 2xx (např. 200). Jinak Fakvio zprávu zkusí poslat znovu, po 1 minutě, 5 minutách,
+30 minutách, 2, 6, 12 a 24 hodinách. Po 8. neúspěšném pokusu je doručení označeno **Selhalo**. V okně **Doručení** vidíte stav, počet
+pokusů, HTTP kód a chybu; tlačítkem **Odeslat znovu** lze doručení poslat znovu ručně. Historie se uchovává 30 dní.
+
+Zprávy se mohou kvůli opakování doručit i vícekrát — používejte hlavičku `Fakvio-Webhook-Id` (je pro stejnou událost stále stejná)
+a duplicity ignorujte.
+
+### Co zpráva obsahuje
+
+HTTP `POST` s tělem JSON:
+
+```json
+{
+  "id": "6f1c2f1e-3c0d-4a77-9a55-0d2f1c3b9a10",
+  "type": "invoice.paid",
+  "createdAt": "2026-10-02T08:15:30+00:00",
+  "companyId": 42,
+  "data": {
+    "id": 1234, "number": "2026001", "type": "Invoice", "status": "Paid",
+    "clientName": "Klient s.r.o.", "clientIco": "12345678",
+    "total": 12100.00, "currency": "CZK", "dueDate": "2026-10-15T00:00:00", "paidAt": "2026-10-02T00:00:00"
+  }
+}
+```
+
+Pro `payment.received` je `data` ve tvaru `{ "invoice": {…}, "amount": 12100.00, "matchedAt": "…" }`.
+
+Hlavičky:
+
+| Hlavička | Význam |
+|----------|--------|
+| `Fakvio-Webhook-Id` | jedinečné ID události (shodné při opakování) |
+| `Fakvio-Webhook-Timestamp` | čas odeslání, Unix sekundy |
+| `Fakvio-Webhook-Signature` | `v1=` + hex HMAC-SHA256 podpis |
+
+### Ověření podpisu (důležité)
+
+Podpis se počítá z textu `{timestamp}.{tělo}` (časová značka, tečka, přesné nezměněné tělo požadavku) klíčem, který jste dostali při
+založení webhooku. Vždy ověřte podpis **nad surovým tělem** (před parsováním JSON) a odmítněte zprávy se starým časem (např. starší než 5 minut),
+aby je nešlo znovu přehrát.
+
+**C# (ASP.NET Core)**
+
+```csharp
+using System.Security.Cryptography;
+using System.Text;
+
+static bool IsValid(string secret, string timestamp, string body, string signatureHeader)
+{
+    if (!long.TryParse(timestamp, out var ts) ||
+        Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ts) > 300)
+        return false; // stará zpráva
+
+    using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+    var expected = "v1=" + Convert.ToHexString(
+        hmac.ComputeHash(Encoding.UTF8.GetBytes($"{timestamp}.{body}"))).ToLowerInvariant();
+
+    return CryptographicOperations.FixedTimeEquals(
+        Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(signatureHeader));
+}
+```
+
+**JavaScript (Node.js)**
+
+```js
+const crypto = require("crypto");
+
+function isValid(secret, timestamp, rawBody, signatureHeader) {
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false; // stará zpráva
+  const expected =
+    "v1=" + crypto.createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+  const a = Buffer.from(expected), b = Buffer.from(signatureHeader);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+```
+
+> Klíč se do kódu nevkládá natvrdo — načtěte ho z proměnné prostředí nebo trezoru.
+
+---
 
 ## Zpětná vazba: chyby, nápady a postřehy
 
