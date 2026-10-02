@@ -109,6 +109,12 @@ public class PaymentMatchingService : IPaymentMatchingService
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new InvalidOperationException($"Invoice {invoiceId} not found.");
 
+        // Never allocate more than the invoice still lacks (same rule as ConfirmAutoMatchAsync).
+        var remainingOnInvoice = invoice.TotalWithVat - invoice.PaidAmount;
+        if (remainingOnInvoice <= 0)
+            throw new InvalidOperationException($"Invoice {invoiceId} has no remaining amount to match.");
+        matchedAmount = Math.Min(matchedAmount, remainingOnInvoice);
+
         // Cannot over-assign the transaction (prevents double-counting).
         var alreadyAssigned = tx.PaymentMatch.Sum(m => m.MatchedAmount);
         var txRemaining = tx.Amount - alreadyAssigned;

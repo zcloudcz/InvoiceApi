@@ -54,7 +54,10 @@ public class ProformaAutoTaxReceiptEndpointTests : IClassFixture<FakvioFactory>
             tenantDb.Client.Add(new Client
             {
                 Id = CompanyId, CompanyName = "DPP Test Company", RegistrationNumber = "DP000001",
-                IsIssuer = true, IsActive = true, IsVatPayer = true
+                TaxNumber = "CZ12345678", IsIssuer = true, IsActive = true, IsVatPayer = true,
+                // Completing the DPP goes through the readiness gate: address + bank account needed.
+                Address = { new Address { AddressType = EAddressType.Primary, IsPrimary = true, Street = "Hlavni 1", City = "Praha", PostalCode = "11000", Country = "CZ" } },
+                BankAccount = { new BankAccount { AccountNumber = "1234567890/0100" } }
             });
         if (!tenantDb.Client.Any(c => c.Id == CustomerId))
             tenantDb.Client.Add(new Client
@@ -123,6 +126,7 @@ public class ProformaAutoTaxReceiptEndpointTests : IClassFixture<FakvioFactory>
         receipts.Count.ShouldBe(1);
         receipts[0].TotalWithVat.ShouldBe(1210m);
         receipts[0].DocumentType.ShouldBe(EDocumentType.TaxReceiptForAdvance);
+        receipts[0].Status.ShouldBe(EInvoiceStatus.Completed);
 
         // The manual endpoint finds nothing left to cover → 400, still exactly one receipt.
         var again = await client.PostAsync($"/api/invoice/{proformaId}/issue-tax-receipt", null);

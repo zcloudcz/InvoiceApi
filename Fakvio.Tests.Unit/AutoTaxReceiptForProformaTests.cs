@@ -21,6 +21,7 @@ public class AutoTaxReceiptForProformaTests : IDisposable
 {
     private readonly TenantDbContext _context;
     private readonly InvoiceService _service;
+    private readonly ITenantReadinessService _readiness = Substitute.For<ITenantReadinessService>();
     private int _seq = 100;
 
     public AutoTaxReceiptForProformaTests()
@@ -37,7 +38,7 @@ public class AutoTaxReceiptForProformaTests : IDisposable
             .Returns(_ => (_seq++).ToString());
 
         _service = new InvoiceService(
-            _context, numbers, Substitute.For<ITenantReadinessService>(),
+            _context, numbers, _readiness,
             Substitute.For<ILogger<InvoiceService>>());
 
         _context.Client.Add(new Client { Id = 10, CompanyName = "Customer", RegistrationNumber = "C1", IsActive = true });
@@ -54,7 +55,7 @@ public class AutoTaxReceiptForProformaTests : IDisposable
     }
 
     /// <summary>Completed (unpaid) proforma for 1210 CZK incl. 21% VAT.</summary>
-    private Invoice AddProforma()
+    private Invoice AddProforma(decimal total = 1210m, EVatRegime regime = EVatRegime.Standard)
     {
         var proforma = new Invoice
         {
@@ -63,14 +64,15 @@ public class AutoTaxReceiptForProformaTests : IDisposable
             DocumentNumber = $"PF-{_seq++}",
             IssueDate = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
             ClientId = 10, IssuerId = 11, CurrencyId = 10,
-            TotalBeforeVat = 1000m, TotalVat = 210m, TotalWithVat = 1210m,
+            TotalBeforeVat = total, TotalVat = 0m, TotalWithVat = total,
             InvoiceItem =
             [
                 new InvoiceItem
                 {
                     OrderIndex = 1, Description = "Consulting", Quantity = 1, Unit = "pcs",
-                    UnitPrice = 1000m, VatRateId = 10, VatRatePercentage = 21,
-                    TotalBeforeVat = 1000m, VatAmount = 210m, TotalWithVat = 1210m
+                    UnitPrice = total, VatRateId = 10, VatRatePercentage = 21, VatRegime = regime,
+                    ReverseChargeCodeId = regime == EVatRegime.ReverseCharge ? 1 : null,
+                    TotalBeforeVat = total, VatAmount = 0m, TotalWithVat = total
                 }
             ]
         };
@@ -226,6 +228,126 @@ public class AutoTaxReceiptForProformaTests : IDisposable
         var receipts = await Receipts(proforma.Id);
         receipts.Count.ShouldBe(1);
         receipts[0].TotalWithVat.ShouldBe(500m);
-        receipts[0].IssueDate.ShouldBe(tx.TransactionDate);
+        receipts[0].TaxableSupplyDate.ShouldBe(tx.TransactionDate);
+    }
+
+    // ── review fixes ────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("100.00")]
+    [InlineData("1.00")]
+    [InlineData("33.33")]
+    [InlineData("1210.00")]
+    [InlineData("999.99")]
+    public async Task Receipt_ForAnyAmount_NeverExceedsPaid_AndLeavesNoStrayDpp(string amount)
+    {
+        var total = decimal.Parse(amount, System.Globalization.CultureInfo.InvariantCulture);
+        var proforma = AddProforma(total);
+
+        await _service.MarkAsPaidAsync(proforma.Id);
+
+        var receipts = await Receipts(proforma.Id);
+        receipts.Count.ShouldBe(1);
+        // 100.00 at 21% is not reachable with one row (82.64 -> 99.99, 82.65 -> 100.01): we take
+        // the lower neighbour, and the leftover cent must NOT turn into a second 0.01 DPP later.
+        receipts[0].TotalWithVat.ShouldBeLessThanOrEqualTo(total);
+        receipts[0].TotalWithVat.ShouldBeGreaterThanOrEqualTo(total - 0.01m);
+        (await _service.IssueTaxReceiptForPaidProformaAsync(proforma.Id, null, null)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task IssueTaxReceipt_DustBelowOneCrown_IsNotCovered()
+    {
+        var proforma = AddProforma(100m);
+        proforma.PaidAmount = 100m;
+        _context.SaveChanges();
+        await _service.IssueTaxReceiptForPaidProformaAsync(proforma.Id, null, null);
+        proforma.PaidAmount = 100.01m; // only 0.01 more than covered
+        _context.SaveChanges();
+
+        (await _service.IssueTaxReceiptForPaidProformaAsync(proforma.Id, null, null)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task IssueTaxReceipt_WhenCompletionFails_LeavesNoDraftAndCanBeRetried()
+    {
+        var proforma = AddProforma();
+        proforma.PaidAmount = 1210m;
+        _context.SaveChanges();
+        _readiness.EnsureReadyAsync(Arg.Any<long?>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new InvalidOperationException("not ready"));
+
+        await _service.TryAutoIssueTaxReceiptAsync(proforma.Id, 1210m, null);
+
+        (await Receipts(proforma.Id)).ShouldAllBe(r => r.Status == EInvoiceStatus.Deleted);
+
+        _readiness.EnsureReadyAsync(Arg.Any<long?>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var retry = await _service.IssueTaxReceiptForPaidProformaAsync(proforma.Id, null, null);
+        retry.ShouldNotBeNull();
+        retry!.TotalWithVat.ShouldBe(1210m);
+    }
+
+    [Fact]
+    public async Task MarkPaid_ThenManualMatch_DoesNotIssueSecondReceipt()
+    {
+        var proforma = AddProforma();
+        await _service.MarkAsPaidAsync(proforma.Id);
+        var tx = new BankTransaction
+        {
+            Amount = 1210m, TransactionDate = DateTime.UtcNow, MatchStatus = EMatchStatus.Unmatched
+        };
+        _context.BankTransaction.Add(tx);
+        _context.SaveChanges();
+        var matcher = new PaymentMatchingService(
+            _context, Substitute.For<INotificationService>(), _service,
+            Substitute.For<ILogger<PaymentMatchingService>>());
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => matcher.ManualMatchAsync(tx.Id, proforma.Id, 1210m, null, null));
+
+        (await Receipts(proforma.Id)).Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ReverseChargeProforma_ReceiptHasNoVat()
+    {
+        var proforma = AddProforma(1000m, EVatRegime.ReverseCharge);
+
+        await _service.MarkAsPaidAsync(proforma.Id);
+
+        var receipt = (await Receipts(proforma.Id)).Single();
+        receipt.TotalVat.ShouldBe(0m);
+        receipt.TotalWithVat.ShouldBe(1000m);
+        var items = await _context.InvoiceItem.AsNoTracking().Where(i => i.InvoiceId == receipt.Id).ToListAsync();
+        items.ShouldAllBe(i => i.VatRegime == EVatRegime.ReverseCharge && i.ReverseChargeCodeId == 1);
+    }
+
+    [Fact]
+    public async Task CreateTaxReceipt_ExceedingUncoveredAdvance_IsRejected()
+    {
+        var proforma = AddProforma();
+        await _service.MarkAsPaidAsync(proforma.Id); // auto DPP covers everything
+
+        var dto = new CreateInvoiceDto
+        {
+            DocumentType = EDocumentType.TaxReceiptForAdvance, ClientId = 10, IssuerId = 11, CurrencyId = 10,
+            OriginalInvoiceId = proforma.Id,
+            InvoiceItem = [new CreateInvoiceItemDto { Description = "dup", Quantity = 1, UnitPrice = 1000m, VatRateId = 10 }]
+        };
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateInvoiceAsync(dto));
+    }
+
+    [Fact]
+    public async Task Receipt_IsIssuedToday_WithPaymentDateAsDuzp()
+    {
+        var proforma = AddProforma();
+        var paidOn = new DateTime(2026, 3, 5, 0, 0, 0, DateTimeKind.Utc);
+
+        await _service.MarkAsPaidAsync(proforma.Id, paidOn);
+
+        var receipt = (await Receipts(proforma.Id)).Single();
+        receipt.TaxableSupplyDate.ShouldBe(paidOn);
+        receipt.IssueDate!.Value.Date.ShouldBe(DateTime.UtcNow.Date);
     }
 }

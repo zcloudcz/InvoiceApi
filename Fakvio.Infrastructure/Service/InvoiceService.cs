@@ -505,6 +505,30 @@ public class InvoiceService : IInvoiceService
         invoice.TotalVat = totalVat;
         invoice.TotalWithVat = totalBeforeVat + totalVat;
 
+        // A tax receipt for advance payment may only cover what the proforma has received and
+        // no existing DPP covers yet — closes manual duplicates (0.01 tolerance for rounding).
+        if (createDto.DocumentType == EDocumentType.TaxReceiptForAdvance && createDto.OriginalInvoiceId.HasValue)
+        {
+            var proformaId = createDto.OriginalInvoiceId.Value;
+            var source = await _context.Invoice.AsNoTracking()
+                .Where(i => i.Id == proformaId && i.DocumentType == EDocumentType.Proforma)
+                .Select(i => new { i.PaidAmount, i.TotalWithVat })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (source != null)
+            {
+                var covered = await _context.Invoice.AsNoTracking()
+                    .Where(i => i.OriginalInvoiceId == proformaId
+                             && i.DocumentType == EDocumentType.TaxReceiptForAdvance
+                             && i.Status != EInvoiceStatus.Deleted)
+                    .SumAsync(i => (decimal?)i.TotalWithVat, cancellationToken) ?? 0m;
+                var open = Math.Min(source.PaidAmount, source.TotalWithVat) - covered;
+                if (invoice.TotalWithVat > open + 0.01m)
+                    throw new InvalidOperationException(
+                        $"The tax receipt ({invoice.TotalWithVat:F2}) exceeds the received advance not yet covered " +
+                        $"by a tax receipt ({Math.Max(open, 0):F2}).");
+            }
+        }
+
         _context.Invoice.Add(invoice);
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -1265,11 +1289,53 @@ public class InvoiceService : IInvoiceService
     // ─── Proforma → Tax Receipt for Advance Payment (DPP) ─────────────────────
 
     /// <inheritdoc />
-    public async Task<InvoiceDto?> IssueTaxReceiptForPaidProformaAsync(
+    public Task<InvoiceDto?> IssueTaxReceiptForPaidProformaAsync(
         long proformaId,
         DateTime? paymentDate,
         decimal? amount,
         CancellationToken cancellationToken = default)
+        => WithProformaLockAsync(proformaId,
+            () => IssueTaxReceiptCoreAsync(proformaId, paymentDate, amount, cancellationToken),
+            cancellationToken);
+
+    /// <summary>
+    /// Serializes DPP issuance per proforma: on PostgreSQL the work runs in one transaction that
+    /// first takes <c>pg_advisory_xact_lock(proformaId)</c>, so two concurrent payments/clicks
+    /// cannot both read the same "already covered" sum and double-issue. The transaction also
+    /// rolls back a half-created DPP. Non-relational providers (unit tests) just run the work.
+    /// </summary>
+    private async Task<T> WithProformaLockAsync<T>(long proformaId, Func<Task<T>> work, CancellationToken ct)
+    {
+        if (!_context.Database.IsRelational())
+            return await work();
+
+        // The caller already owns a transaction: just take the lock, it is released at its end.
+        if (_context.Database.CurrentTransaction != null)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({proformaId})", ct);
+            return await work();
+        }
+
+        // Production enables Npgsql retries, so the whole transaction must run in the strategy.
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+            await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({proformaId})", ct);
+            var result = await work();
+            await transaction.CommitAsync(ct);
+            return result;
+        });
+    }
+
+    /// <summary>Smallest advance worth a tax receipt — rounding dust (e.g. 0.01 left over) is not covered.</summary>
+    private const decimal MinTaxReceiptAmount = 1m;
+
+    private async Task<InvoiceDto?> IssueTaxReceiptCoreAsync(
+        long proformaId,
+        DateTime? paymentDate,
+        decimal? amount,
+        CancellationToken cancellationToken)
     {
         var proforma = await _context.Invoice
             .Include(i => i.InvoiceItem)
@@ -1305,14 +1371,15 @@ public class InvoiceService : IInvoiceService
                      && i.Status != EInvoiceStatus.Deleted)
             .SumAsync(i => (decimal?)i.TotalWithVat, cancellationToken) ?? 0m;
 
-        var available = proforma.PaidAmount - alreadyIssued;
+        // Never cover more than the proforma's total, even if PaidAmount was overpaid.
+        var available = Math.Min(proforma.PaidAmount, proforma.TotalWithVat) - alreadyIssued;
         if (available < 0) available = 0;
 
         var effectiveAmount = amount ?? available;
         if (effectiveAmount > available)
             effectiveAmount = available; // clamp — never double-cover the same payment
 
-        if (effectiveAmount <= 0)
+        if (effectiveAmount < MinTaxReceiptAmount)
         {
             _logger.LogInformation(
                 "Skipping tax receipt for proforma {ProformaId}: nothing new to cover " +
@@ -1328,7 +1395,7 @@ public class InvoiceService : IInvoiceService
             DocumentType = EDocumentType.TaxReceiptForAdvance,
             ClientId = proforma.ClientId ?? throw new InvalidOperationException("Proforma has no ClientId"),
             IssuerId = proforma.IssuerId,
-            IssueDate = paymentDate,
+            IssueDate = null,                // issued today (null = now)
             TaxableSupplyDate = paymentDate, // DUZP = date the advance was received (§ 28/5 ZDPH)
             OriginalInvoiceId = proformaId,  // 1:N link — DPP → proforma
             CurrencyId = proforma.CurrencyId,
@@ -1341,7 +1408,22 @@ public class InvoiceService : IInvoiceService
         };
 
         var created = await CreateInvoiceAsync(createDto, cancellationToken);
-        var completed = await CompleteInvoiceAsync(created.Id, cancellationToken);
+        InvoiceDto? completed;
+        try
+        {
+            completed = await CompleteInvoiceAsync(created.Id, cancellationToken);
+        }
+        catch
+        {
+            // Do not leave a Draft DPP behind: it would count as "already covered" and block
+            // every future issuance. (On PostgreSQL the surrounding transaction rolls back too.)
+            try { await DeleteInvoiceAsync(created.Id, CancellationToken.None); }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogWarning(cleanupEx, "Could not remove draft tax receipt {Id}", created.Id);
+            }
+            throw;
+        }
 
         _logger.LogInformation(
             "Tax receipt {Id} ({DocNum}) issued for proforma {ProformaId} ({ProformaDocNum}): amount {Amount:F2}",
@@ -1386,6 +1468,20 @@ public class InvoiceService : IInvoiceService
             _logger.LogError(ex,
                 "Auto tax-receipt issuance failed for proforma {ProformaId} — the payment itself was still recorded.",
                 proformaId);
+
+            // The failed attempt may have left half-created DPP entities in the change tracker
+            // (rolled back in the DB). Detach them so the caller's next SaveChanges — e.g. the
+            // next transaction of a bank-import batch — does not try to persist them.
+            var orphanReceipts = _context.ChangeTracker.Entries<Invoice>()
+                .Where(e => e.Entity.OriginalInvoiceId == proformaId
+                         && e.Entity.DocumentType == EDocumentType.TaxReceiptForAdvance)
+                .ToList();
+            foreach (var entry in _context.ChangeTracker.Entries<InvoiceItem>()
+                         .Where(e => orphanReceipts.Any(r => r.Entity == e.Entity.Invoice || r.Entity.Id == e.Entity.InvoiceId))
+                         .ToList())
+                entry.State = EntityState.Detached;
+            foreach (var entry in orphanReceipts)
+                entry.State = EntityState.Detached;
         }
     }
 
@@ -1442,9 +1538,7 @@ public class InvoiceService : IInvoiceService
         decimal totalDeductionWithVat)
     {
         return SplitAmountByVatRate(proformaItems, totalDeductionWithVat)
-            .Select(s => BuildVatSplitItem(
-                s.RatePercentage, s.VatRateId, s.AmountWithVat,
-                negative: true,
+            .Select(s => BuildVatSplitItem(s, negative: true,
                 description: "Odečet přijaté zálohy / Advance payment deduction"))
             .ToList();
     }
@@ -1460,36 +1554,41 @@ public class InvoiceService : IInvoiceService
         decimal totalAmountWithVat)
     {
         return SplitAmountByVatRate(proformaItems, totalAmountWithVat)
-            .Select(s => BuildVatSplitItem(
-                s.RatePercentage, s.VatRateId, s.AmountWithVat,
-                negative: false,
+            .Select(s => BuildVatSplitItem(s, negative: false,
                 description: "Přijatá záloha / Advance payment received"))
             .ToList();
     }
 
+    /// <summary>One VAT bucket of a split: rate + regime (+ reverse-charge code) and its share incl. VAT.</summary>
+    internal readonly record struct VatSplit(
+        decimal RatePercentage, long? VatRateId, EVatRegime Regime, long? ReverseChargeCodeId, decimal AmountWithVat);
+
     /// <summary>
-    /// Splits <paramref name="totalAmountWithVat"/> into one row per VAT rate found on
-    /// <paramref name="proformaItems"/>, proportional to each rate's share of the proforma's
+    /// Splits <paramref name="totalAmountWithVat"/> into one row per (VAT rate, VAT regime) found on
+    /// <paramref name="proformaItems"/>, proportional to each group's share of the proforma's
     /// total (TotalWithVat-based weights), using "largest remainder" rounding so the rows
-    /// always sum exactly back to the requested total.
+    /// always sum exactly back to the requested total. The regime and reverse-charge code are
+    /// carried over, so a reverse-charge proforma yields rows without VAT.
     ///
     /// Shared by <see cref="BuildDeductionItems"/> (advance deduction on a final invoice) and
     /// <see cref="BuildAdvanceReceiptItems"/> (DPP) — only the sign and description differ.
     /// </summary>
-    private static List<(decimal RatePercentage, long? VatRateId, decimal AmountWithVat)> SplitAmountByVatRate(
+    internal static List<VatSplit> SplitAmountByVatRate(
         ICollection<InvoiceItem> proformaItems,
         decimal totalAmountWithVat)
     {
-        // Collect the non-text, non-zero items from the proforma, grouped by VAT rate.
+        // Collect the non-text, non-zero items from the proforma, grouped by VAT rate + regime.
         // We use TotalWithVat (the actual amount the client paid) as the weight basis
         // because the paid amount (PaidAmount) is also TotalWithVat-based.
         var vatGroups = proformaItems
             .Where(i => !i.IsTextRow && i.TotalWithVat != 0)
-            .GroupBy(i => i.VatRatePercentage)
+            .GroupBy(i => (i.VatRatePercentage, i.VatRegime))
             .Select(g => new
             {
-                VatRatePercentage = g.Key,
+                VatRatePercentage = g.Key.VatRatePercentage,
+                Regime = g.Key.VatRegime,
                 VatRateId = g.First().VatRateId,
+                ReverseChargeCodeId = g.First().ReverseChargeCodeId,
                 TotalWithVat = g.Sum(i => i.TotalWithVat)
             })
             .ToList();
@@ -1499,7 +1598,7 @@ public class InvoiceService : IInvoiceService
         var proformaTotalWithVat = vatGroups.Sum(g => g.TotalWithVat);
         if (vatGroups.Count == 0 || proformaTotalWithVat == 0)
         {
-            return new List<(decimal, long?, decimal)> { (0m, null, totalAmountWithVat) };
+            return new List<VatSplit> { new(0m, null, EVatRegime.Standard, null, totalAmountWithVat) };
         }
 
         // ── Proportional split with "largest remainder" rounding ──────────────
@@ -1509,8 +1608,7 @@ public class InvoiceService : IInvoiceService
 
         var shares = vatGroups.Select(g => new
         {
-            g.VatRatePercentage,
-            g.VatRateId,
+            Group = g,
             ExactShare = totalAmountWithVat * (g.TotalWithVat / proformaTotalWithVat)
         }).ToList();
 
@@ -1531,22 +1629,45 @@ public class InvoiceService : IInvoiceService
         }
 
         return shares
-            .Select((s, i) => (s.VatRatePercentage, s.VatRateId, AmountWithVat: floored[i]))
+            .Select((s, i) => new VatSplit(
+                s.Group.VatRatePercentage, s.Group.VatRateId, s.Group.Regime, s.Group.ReverseChargeCodeId, floored[i]))
             .Where(s => s.AmountWithVat != 0) // skip zero-amount rows (can happen with rounding on tiny amounts)
             .ToList();
     }
 
     /// <summary>
-    /// Builds a single VAT-split CreateInvoiceItemDto row: back-calculates the base (before VAT)
-    /// price from the TotalWithVat amount (TotalBeforeVat = TotalWithVat / (1 + rate/100)), then
-    /// applies the sign. The standard item calculation pipeline (Quantity * UnitPrice + VAT) then
-    /// reproduces exactly <paramref name="amountWithVat"/> as the row's TotalWithVat.
+    /// Builds a single VAT-split CreateInvoiceItemDto row. For the Standard regime it back-calculates
+    /// the base (before VAT) so that base + round(base * rate) equals <see cref="VatSplit.AmountWithVat"/>
+    /// to the cent (plain division can be off by 0.01, e.g. 100.00 at 21% gives 82.64 + 17.35 = 99.99,
+    /// so the neighbouring cents are tried too; see below). Other regimes carry no billed VAT: base = amount.
     /// </summary>
-    private static CreateInvoiceItemDto BuildVatSplitItem(
-        decimal rate, long? vatRateId, decimal amountWithVat, bool negative, string description)
+    private static CreateInvoiceItemDto BuildVatSplitItem(VatSplit split, bool negative, string description)
     {
-        var divisor = 1m + rate / 100m;
-        var baseAmount = Math.Round(amountWithVat / divisor, 2, MidpointRounding.AwayFromZero);
+        decimal baseAmount;
+        if (split.Regime == EVatRegime.Standard)
+        {
+            var rate = split.RatePercentage;
+            baseAmount = Math.Round(split.AmountWithVat / (1m + rate / 100m), 2, MidpointRounding.AwayFromZero);
+            // Some amounts are not reachable with one row (100.00 at 21%: 82.64 -> 99.99, 82.65 -> 100.01).
+            // Prefer an exact hit, otherwise the closest total that does not exceed the amount
+            // (never cover more than was received; the leftover cent is below the DPP minimum).
+            var best = baseAmount;
+            var bestTotal = decimal.MinValue;
+            foreach (var candidate in new[] { baseAmount - 0.01m, baseAmount, baseAmount + 0.01m })
+            {
+                var total = candidate + Math.Round(candidate * (rate / 100m), 2, MidpointRounding.AwayFromZero);
+                if (total <= split.AmountWithVat && total > bestTotal)
+                {
+                    best = candidate;
+                    bestTotal = total;
+                }
+            }
+            baseAmount = best;
+        }
+        else
+        {
+            baseAmount = split.AmountWithVat;
+        }
 
         return new CreateInvoiceItemDto
         {
@@ -1554,8 +1675,10 @@ public class InvoiceService : IInvoiceService
             Quantity = 1,
             Unit = "pcs",
             UnitPrice = negative ? -baseAmount : baseAmount,
-            VatRatePercentage = rate,
-            VatRateId = vatRateId
+            VatRatePercentage = split.RatePercentage,
+            VatRateId = split.VatRateId,
+            VatRegime = split.Regime,
+            ReverseChargeCodeId = split.ReverseChargeCodeId
         };
     }
 

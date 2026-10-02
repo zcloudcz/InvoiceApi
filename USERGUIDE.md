@@ -359,7 +359,7 @@ Proforma (záloha) je nezávazný doklad před přijetím platby. Číslo doklad
 
 Vystavuje se po přijetí zálohy. Číslo dokladu: prefix `DPP-`.
 
-**Automatické vystavení:** pokud jste plátce DPH, systém DPP vystaví sám v okamžiku, kdy je proforma uhrazena — ať ji označíte jako zaplacenou ručně, nebo ji spáruje bankovní platba. U částečné úhrady vznikne DPP na přijatou část a při doplatku další DPP na zbytek; nic se nezdvojí. DPP se **neodesílá e-mailem automaticky**. Neplátci DPH DPP nevystavují.
+**Automatické vystavení:** pokud jste plátce DPH, systém DPP vystaví sám v okamžiku, kdy je proforma uhrazena — ať ji označíte jako zaplacenou ručně, nebo ji spáruje bankovní platba. U částečné úhrady vznikne DPP na přijatou část a při doplatku další DPP na zbytek; nic se nezdvojí. DPP se **neodesílá e-mailem automaticky**. Zrušení spárování platby ani vrácení proformy na nezaplacenou už vystavený DPP neruší — daňový doklad pak opravte ručně (dobropisem). Neplátci DPH DPP nevystavují.
 
 Automatické vystavení můžete vypnout v **Moje firma** (přepínač „Automaticky vystavit DPP při úhradě zálohy", zobrazuje se jen plátcům DPH). Pak vystavíte DPP ručně z detailu proformy.
 

@@ -275,13 +275,19 @@ public class ImapPollService : IImapPollService
         {
             // Payment email → existing InboundEmailProcessor path
             var parser = tenantScope.ServiceProvider.GetRequiredService<IBankEmailParser>();
+            // The matcher auto-issues a DPP through IInvoiceService, which resolves the DI-scoped
+            // TenantDbContext. Give that ONE scoped context the tenant schema (same reason as in the
+            // invoice-mail branch above) and let matcher + processor share it, so IInvoiceService and
+            // PaymentMatchingService always read/write the same context and schema.
+            var scopedTenantCtx = tenantScope.ServiceProvider.GetRequiredService<TenantDbContext>();
+            scopedTenantCtx.Schema = tenantCtx.Schema;
             var matcher = new PaymentMatchingService(
-                tenantCtx,
+                scopedTenantCtx,
                 tenantScope.ServiceProvider.GetRequiredService<INotificationService>(),
                 tenantScope.ServiceProvider.GetRequiredService<IInvoiceService>(),
                 tenantScope.ServiceProvider.GetRequiredService<ILogger<PaymentMatchingService>>());
             var processor = new InboundEmailProcessor(
-                tenantCtx,
+                scopedTenantCtx,
                 parser,
                 matcher,
                 tenantScope.ServiceProvider.GetRequiredService<ILogger<InboundEmailProcessor>>());
