@@ -694,6 +694,9 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
                 .HasConversion<string?>()
                 .HasMaxLength(10);
 
+            entity.Property(e => e.AutoIssueTaxReceiptForAdvance)
+                .HasDefaultValue(true);
+
             // Currency FK for schema compatibility
             entity.HasOne(e => e.PreferredCurrency)
                 .WithMany()

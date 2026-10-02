@@ -33,7 +33,7 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
             .Options;
         _context = new TenantDbContext(options);
         _sut = new PaymentMatchingService(
-            _context, Substitute.For<INotificationService>(), Substitute.For<ILogger<PaymentMatchingService>>());
+            _context, Substitute.For<INotificationService>(), Substitute.For<IInvoiceService>(), Substitute.For<ILogger<PaymentMatchingService>>());
 
         Seed();
     }

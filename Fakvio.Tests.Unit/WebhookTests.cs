@@ -389,7 +389,7 @@ public class WebhookTests : IDisposable
         AddSubscription(_context, WebhookEventCatalog.InvoicePaid);
         var publisher = Publisher(_context);
         var payments = new PaymentMatchingService(_context, Substitute.For<INotificationService>(),
-            Substitute.For<ILogger<PaymentMatchingService>>(), publisher);
+            Substitute.For<IInvoiceService>(), Substitute.For<ILogger<PaymentMatchingService>>(), publisher);
 
         var bank = new BankAccount { ClientId = (await _context.Client.FirstAsync(c => c.IsIssuer)).Id, AccountNumber = "1/0100", CurrencyCode = "CZK", IsDefault = true };
         _context.BankAccount.Add(bank);

@@ -43,13 +43,18 @@ kompatibilní — žádné volání ze 2.0.0 se neláme.
 `update_recurring_schedule`, `pause_recurring_schedule`, `resume_recurring_schedule`,
 `delete_recurring_schedule`. Zpětně kompatibilní, žádné volání ze 2.1.0 se neláme.
 
+**Zálohy (proforma):** `create_invoice` přijímá `documentType: "Proforma"`. Po zaplacení proformy (`mark_invoice_paid`
+nebo bankovní platba) se u plátců DPH automaticky vystaví DPP; `issue_tax_receipt(proformaId)` je ruční/idempotentní cesta,
+`get_remaining_advance(proformaId)` vrátí nezúčtovanou zálohu a `issue_final_invoice(proformaId, deductionAmount?)`
+vytvoří Draft vyúčtování se zkopírovanými položkami a odpočtem zálohy (dokončí se `complete_invoice`).
+
 **2.3.0** doplňuje 1 nástroj — `export_invoice_ubl` (`Tools/InvoiceTools.cs`, ADR 0002 N7) —
 export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace 2027, ViDA
 2030). Vrací base64 XML stejně jako `export_invoice_isdoc`; při nepřipravené faktuře (Draft,
 proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
 žádné volání ze 2.2.0 se neláme.
 
-**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 72 nástrojů. Přibyl `set_invoice_bank_account`, volitelný `bankAccountId` u `create_invoice` a `create_invoice_from_template` a `isDefault` u `add_bank_account`. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
+**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 77 nástrojů. Přibyl `set_invoice_bank_account`, volitelný `bankAccountId` u `create_invoice` a `create_invoice_from_template` a `isDefault` u `add_bank_account`. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
 
 **2.6.0 (dosud nevydaná, přenesená daňová povinnost)** přidává nástroj `list_reverse_charge_codes` (číselník kódů PDP, §92a–92e ZDPH) a volitelná pole `vatRegime` + `reverseChargeCodeId` (pole `id` z toho číselníku) u položek `create_invoice`. S tím je dostupných 74 nástrojů. Zpětně kompatibilní.
 
@@ -274,11 +279,11 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (74)
+## Dostupné nástroje (77)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 13 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, DeleteInvoice, SetInvoiceBankAccount |
+| `Tools/InvoiceTools.cs` | 16 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, DeleteInvoice, SetInvoiceBankAccount, IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 8 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices, ExportVatEpo, GetOssReport (kvartální hlášení EU OSS v EUR) |

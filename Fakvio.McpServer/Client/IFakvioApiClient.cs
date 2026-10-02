@@ -83,6 +83,15 @@ public interface IFakvioApiClient
     /// <summary>POST /api/invoice/{id}/mark-paid — mark a completed invoice as paid.</summary>
     Task<InvoiceDto> MarkInvoiceAsPaidAsync(long id, CancellationToken ct = default);
 
+    /// <summary>POST /api/invoice/{proformaId}/issue-final — final invoice deducting the received advance.</summary>
+    Task<InvoiceDto> IssueFinalInvoiceAsync(long proformaId, IssueFinalInvoiceDto dto, CancellationToken ct = default);
+
+    /// <summary>POST /api/invoice/{proformaId}/issue-tax-receipt — DPP for the received advance.</summary>
+    Task<InvoiceDto> IssueTaxReceiptAsync(long proformaId, CancellationToken ct = default);
+
+    /// <summary>GET /api/invoice/{proformaId}/remaining-advance — advance not yet deducted on final invoices.</summary>
+    Task<decimal> GetRemainingAdvanceAsync(long proformaId, CancellationToken ct = default);
+
     /// <summary>DELETE /api/invoice/{id} — soft-delete a draft invoice.</summary>
     Task DeleteInvoiceAsync(long id, CancellationToken ct = default);
 

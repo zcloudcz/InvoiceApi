@@ -173,7 +173,7 @@ public static class InvoiceTools
     /// the API actually needs, entirely before any write call reaches the API.
     /// </summary>
     [McpServerTool(Title = "Create invoice", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
-        "Create a new invoice or credit note (Draft status). Recommended flow: " +
+        "Create a new invoice, credit note or proforma (Draft status). Recommended flow: " +
         "find_client / list_clients to get clientId → create_invoice → complete_invoice to issue it. " +
         "For a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
         "the matching VatRateId active on issueDate is resolved automatically. EU OSS is opt-in (applyOss=true) for an " +
@@ -193,7 +193,7 @@ public static class InvoiceTools
             "reverseChargeCodeId to the Id of a code from list_reverse_charge_codes — required " +
             "together, and only for ReverseCharge items.")]
         List<CreateInvoiceItemDto> items,
-        [Description("'Invoice' or 'CreditNote' (default 'Invoice')")] string documentType = "Invoice",
+        [Description("'Invoice', 'CreditNote' or 'Proforma' (default 'Invoice')")] string documentType = "Invoice",
         [Description("ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit for CZK.")] string? currency = null,
         [Description("Issuer (your company) ID. Omit to use the authenticated user's own company (get_issuer).")] long? issuerId = null,
         [Description("Issue date, ISO 8601 (e.g. '2026-01-15'). Omit for today.")] string? issueDate = null,
@@ -218,7 +218,7 @@ public static class InvoiceTools
         // and reporting it precisely here means the API is never even called with bad data.
 
         if (!Enum.TryParse<EDocumentType>(documentType, ignoreCase: true, out var parsedDocumentType))
-            return Error($"Unknown documentType '{documentType}'. Use 'Invoice' or 'CreditNote'.");
+            return Error($"Unknown documentType '{documentType}'. Use 'Invoice', 'CreditNote' or 'Proforma'.");
 
         EPaymentMethod? parsedPaymentMethod = null;
         if (!string.IsNullOrWhiteSpace(paymentMethod))
@@ -333,6 +333,97 @@ public static class InvoiceTools
 
             var result = await api.CreateInvoiceAsync(dto, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Issues the final invoice for a paid proforma: copies the proforma's items and appends
+    /// the automatic advance-deduction rows (done by the API, split per VAT rate).
+    /// </summary>
+    [McpServerTool(Title = "Issue final invoice from proforma", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
+        "Issue the final invoice (vyúčtování) for a PAID proforma. Copies the proforma's line items " +
+        "and deducts the received advance. Omit deductionAmount to deduct the whole remaining advance " +
+        "(see get_remaining_advance); set it to split one proforma across several final invoices. " +
+        "Creates a Draft invoice — issue it with complete_invoice.")]
+    public static async Task<string> IssueFinalInvoice(
+        IFakvioApiClient api,
+        [Description("The proforma ID")] long proformaId,
+        [Description("Advance amount incl. VAT to deduct on this invoice. Omit = whole remaining advance.")] decimal? deductionAmount = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var proforma = await api.GetInvoiceByIdAsync(proformaId, ct);
+            if (proforma is null)
+                return Error($"Proforma with ID {proformaId} not found.");
+            if (proforma.DocumentType != EDocumentType.Proforma)
+                return Error($"Document {proformaId} is a {proforma.DocumentType}, not a Proforma.");
+
+            var dto = IssueFinalInvoiceDto.FromProforma(proforma, deductionAmount);
+            var result = await api.IssueFinalInvoiceAsync(proformaId, dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Issues the DPP (tax receipt for a received advance) for a proforma.
+    /// </summary>
+    [McpServerTool(Title = "Issue tax receipt for advance payment", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Issue a tax receipt for advance payment (DPP, daňový doklad k přijaté platbě) for the received " +
+        "advance of a proforma. VAT payers only. Normally issued automatically when the proforma is paid; " +
+        "use this when automatic issuance is off. Idempotent: only the not-yet-covered part of the advance " +
+        "is covered, and an error is returned when there is nothing left to cover.")]
+    public static async Task<string> IssueTaxReceipt(
+        IFakvioApiClient api,
+        [Description("The proforma ID")] long proformaId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await api.IssueTaxReceiptAsync(proformaId, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns how much of a proforma's received advance is not yet deducted on final invoices.
+    /// </summary>
+    [McpServerTool(Title = "Get remaining advance", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Get the remaining advance of a proforma: received (paid) amount incl. VAT minus what " +
+        "final invoices already deducted. Use before issue_final_invoice.")]
+    public static async Task<string> GetRemainingAdvance(
+        IFakvioApiClient api,
+        [Description("The proforma ID")] long proformaId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var remaining = await api.GetRemainingAdvanceAsync(proformaId, ct);
+            return JsonSerializer.Serialize(new { proformaId, remainingAdvance = remaining }, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

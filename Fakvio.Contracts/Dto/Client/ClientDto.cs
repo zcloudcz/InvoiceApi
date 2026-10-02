@@ -112,6 +112,12 @@ public class ClientDto
     public string? FlatRateBand { get; set; }
 
     /// <summary>
+    /// Issuer setting: auto-issue a tax receipt for advance payment (DPP) when a proforma is paid.
+    /// Applies to VAT-payer issuers only.
+    /// </summary>
+    public bool AutoIssueTaxReceiptForAdvance { get; set; } = true;
+
+    /// <summary>
     /// When was this record created
     /// </summary>
     public DateTime CreatedAt { get; set; }

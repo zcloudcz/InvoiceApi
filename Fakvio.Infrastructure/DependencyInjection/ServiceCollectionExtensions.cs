@@ -383,6 +383,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, SendInvoiceEmailTool>();
         services.AddScoped<IChatTool, DeleteInvoiceTool>();
 
+        // Advance (proforma) workflow — remaining advance, DPP, final invoice.
+        services.AddScoped<IChatTool, GetRemainingAdvanceTool>();
+        services.AddScoped<IChatTool, IssueTaxReceiptTool>();
+        services.AddScoped<IChatTool, IssueFinalInvoiceTool>();
+
         // Numbering and VAT settings — read the číselné řady and sazby DPH, and change them
         // conversationally. Both writes of each pair are confirmable (IConfirmableChatTool).
         services.AddScoped<IChatTool, ListNumberSequencesTool>();

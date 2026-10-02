@@ -202,6 +202,27 @@ public class FakvioApiClient : IFakvioApiClient
         return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
     }
 
+    public async Task<InvoiceDto> IssueFinalInvoiceAsync(long proformaId, IssueFinalInvoiceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"api/invoice/{proformaId}/issue-final", dto, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<InvoiceDto> IssueTaxReceiptAsync(long proformaId, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"api/invoice/{proformaId}/issue-tax-receipt", null, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<decimal> GetRemainingAdvanceAsync(long proformaId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/invoice/{proformaId}/remaining-advance", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<decimal>(JsonOptions, ct);
+    }
+
     public async Task DeleteInvoiceAsync(long id, CancellationToken ct = default)
     {
         var response = await _http.DeleteAsync($"api/invoice/{id}", ct);

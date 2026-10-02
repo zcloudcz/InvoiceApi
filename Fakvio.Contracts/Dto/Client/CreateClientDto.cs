@@ -93,6 +93,11 @@ public class CreateClientDto
     public string? FlatRateBand { get; set; }
 
     /// <summary>
+    /// Issuer setting: auto-issue a DPP when a proforma is paid (VAT payers only). Default true.
+    /// </summary>
+    public bool AutoIssueTaxReceiptForAdvance { get; set; } = true;
+
+    /// <summary>
     /// Should this client be fetched from ARES automatically?
     /// If true, system will try to fetch data from ARES by registration number
     /// </summary>
