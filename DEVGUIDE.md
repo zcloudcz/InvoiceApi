@@ -1996,7 +1996,10 @@ Source = items of issued, non-draft, non-deleted **invoices and credit notes** (
 own DUZP, counted in `pln_pocet`) where the customer pays the tax (regime Exempt / OutOfScope, VAT 0 — Standard items with CZ VAT
 and ReverseCharge items are excluded). The client must be an EU customer other than CZ: `TaxNumber` with an EU prefix
 (`VatReportService.TryGetEuVatId`; GR is mapped to `EL`), or, when the VAT number has no letter prefix, the client's address
-country. Totals are summed per item and rounded up. **Limitations:** proformas and advance tax receipts (DPP) are not included.
+country. Totals are summed per item and rounded up. **Limitations:** proformas and advance tax receipts (DPP) are not included;
+the `Exempt` regime cannot distinguish §51 exemptions (e.g. exports), so such items to an EU VAT-id client may land in the SHV / row 21;
+DPHDP3 rows 1/2 and KH A.4/A.5 still exclude credit notes (pre-existing, tracked separately); reverse charge is domestic §92a only
+(a received RC item from a non-CZ supplier fails with an actionable error — EU acquisitions are not modelled yet).
 Supply code `k_pln_eu` defaults to **3** (services); the request parameter `goods=DE123456789` (repeatable, country + VAT id)
 switches a customer to **0** (goods) — it is a request parameter only, nothing is stored (UI: "Goods" checkbox in the
 preview table on `/vat-report`). Codes 1 (transfer) and 2 (triangulation) are not supported. A **quarterly** statement with any goods row is rejected (400

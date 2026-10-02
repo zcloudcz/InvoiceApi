@@ -664,4 +664,13 @@ public class ReceivedInvoiceServiceTests : IDisposable
 
         await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateAsync(dto));
     }
+
+    [Fact]
+    public async Task CreateAsync_UndefinedVatRegimeValue_Throws()
+    {
+        var dto = CreateValidDto();
+        dto.Items[0].VatRegime = (EVatRegime)99;
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateAsync(dto));
+    }
 }

@@ -260,6 +260,7 @@ public class VatReportService : IVatReportService
             .AsNoTracking()
             .Include(r => r.Currency)
             .Include(r => r.Items)
+            .Include(r => r.Supplier) // needed for the CZ DIČ check on reverse charge
             .Where(r => r.TaxableSupplyDate >= fromUtc
                 && r.TaxableSupplyDate <= toUtc
                 && r.Status != EReceivedInvoiceStatus.Received
@@ -350,6 +351,8 @@ public class VatReportService : IVatReportService
 
                 if (item.VatRegime == EVatRegime.ReverseCharge)
                 {
+                    // Reverse charge here means domestic §92a ZDPH only; EU acquisitions are not modelled yet.
+                    RequireCzDic(rec.Supplier?.TaxNumber, rec.DocumentNumber ?? string.Empty, "DP3 ř.10/11", "supplier");
                     // Self-assessed tax lives in InformationalVatAmount (VatAmount is 0 — the
                     // supplier did not bill it, see ReceivedInvoiceService.CalculateItemVat).
                     var selfAssessedVatCzk = await _currencyService.ConvertToCzkAsync(

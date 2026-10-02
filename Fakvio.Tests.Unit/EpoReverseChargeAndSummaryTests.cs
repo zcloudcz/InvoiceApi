@@ -424,4 +424,16 @@ public class EpoReverseChargeAndSummaryTests : IDisposable
         await Should.ThrowAsync<InvalidOperationException>(
             () => _service.ExportEpoSummaryStatementAsync(2026, 3, EVatPeriodType.Monthly));
     }
+
+    [Fact]
+    public async Task Dphdp3_ReceivedReverseCharge_FromNonCzSupplier_ThrowsWithDocumentNumber()
+    {
+        Received("REC-DE", 1_000m, EVatRegime.ReverseCharge);
+        _context.Client.Find(CzCustomerId)!.TaxNumber = "DE123456789";
+        _context.SaveChanges();
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
+            _service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly));
+        ex.Message.ShouldContain("REC-DE");
+    }
 }

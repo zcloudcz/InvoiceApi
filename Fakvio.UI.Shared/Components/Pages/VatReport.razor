@@ -344,9 +344,12 @@
     private bool _issuerLoaded;
 
     // ── EPO export state ──────────────────────────────────────────────────────
-    private int _epoYear;
+    // Changing year/period/type invalidates the loaded summary-statement preview.
+    private int _year;
+    private int _epoYear { get => _year; set { _year = value; _shvRows = null; } }
     private EVatPeriodType _epoPeriodType = EVatPeriodType.Monthly;
-    private int _epoPeriod;
+    private int _period;
+    private int _epoPeriod { get => _period; set { _period = value; _shvRows = null; } }
 
     // Year choices: 3 years back through current year + 1 ahead (safe for pre-filing).
     private List<int> _epoYears = [];
@@ -553,6 +556,7 @@
     private void OnPeriodTypeChanged(EVatPeriodType newType)
     {
         _epoPeriodType = newType;
+        _shvRows = null;
 
         _epoPeriod = newType == EVatPeriodType.Quarterly
             // Convert current month to its quarter (month 8 → Q3, month 13+ clamped to Q4).

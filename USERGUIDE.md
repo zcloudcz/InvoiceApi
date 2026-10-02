@@ -799,7 +799,8 @@ Sekce „EPO Export" umožňuje stáhnout soubory pro portál EPO MFČR:
 **Přenesená daňová povinnost (PDP):** u položky vydané i přijaté faktury nastavte „Režim DPH" na
 „Přenesená daňová povinnost" a vyberte kód předmětu plnění. Vydané plnění se vykáže v řádku 25 přiznání
 a v oddílu A.1 kontrolního hlášení; přijaté plnění si doúčtujete sami (řádky 10/11 a nárok na odpočet
-43/44, oddíl B.1) – dodavatel na faktuře DPH neúčtuje.
+43/44, oddíl B.1) – dodavatel na faktuře DPH neúčtuje. Podporována je jen tuzemská PDP (§ 92a); pořízení zboží
+či služeb z EU zatím v modelu není – přijatá položka s PDP od dodavatele bez českého DIČ vyvolá chybu.
 
 **Souhrnné hlášení:** zahrnuje vydané faktury odběratelům z EU (jiný stát než ČR) s DIČ. Tlačítkem
 „Náhled souhrnného hlášení" zobrazíte řádky za stát a DIČ; plnění se standardně vykazují jako služby
