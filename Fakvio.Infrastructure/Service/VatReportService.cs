@@ -86,19 +86,38 @@ public class VatReportService : IVatReportService
                     || item.Invoice.DocumentType == EDocumentType.CreditNote) // credit notes reduce the tax (§42 ZDPH)
                 && item.Invoice.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             // Per (document, rate) first: a credit note's sign is forced on its NET per rate, not per row.
-            .GroupBy(item => new { item.InvoiceId, item.Invoice!.DocumentType, item.VatRatePercentage })
+            .GroupBy(item => new
+            {
+                item.InvoiceId, item.Invoice!.DocumentType, item.VatRatePercentage,
+                CurrencyCode = item.Invoice.Currency.Code, item.Invoice.ExchangeRate, item.Invoice.TaxableSupplyDate
+            })
             .Select(g => new
             {
                 g.Key.DocumentType,
                 g.Key.VatRatePercentage,
+                g.Key.CurrencyCode,
+                g.Key.ExchangeRate,
+                g.Key.TaxableSupplyDate,
                 BaseAmount = g.Sum(i => i.TotalBeforeVat),
                 VatAmount = g.Sum(i => i.VatAmount),
                 ItemCount = g.Count()
             })
             .ToListAsync(ct);
 
+        // Convert every (document, rate) group to CZK BEFORE merging documents: stored document rate first, ČNB rate at
+        // the DUZP only for historic documents without one; no rate at all = ExchangeRateUnavailableException (DEVGUIDE §4.17).
+        var outputConverted = new List<(EDocumentType DocumentType, decimal VatRatePercentage, decimal BaseAmount, decimal VatAmount, int ItemCount)>();
+        foreach (var x in outputDocRates)
+        {
+            var duzp = DateOnly.FromDateTime(x.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+            outputConverted.Add((x.DocumentType, x.VatRatePercentage,
+                await _currencyService.ConvertToCzkAsync(x.BaseAmount, x.CurrencyCode, duzp, ct, storedRate: x.ExchangeRate),
+                await _currencyService.ConvertToCzkAsync(x.VatAmount, x.CurrencyCode, duzp, ct, storedRate: x.ExchangeRate),
+                x.ItemCount));
+        }
+
         // Sign per document and rate (credit notes always negative), then merge documents per rate.
-        var outputItems = outputDocRates
+        var outputItems = outputConverted
             .GroupBy(x => x.VatRatePercentage)
             .Select(g => new
             {
@@ -122,7 +141,7 @@ public class VatReportService : IVatReportService
             .CountAsync(ct);
 
         // Total revenue (before VAT) from issued invoices
-        var totalRevenue = await _context.Invoice
+        var revenueDocs = await _context.Invoice
             .AsNoTracking()
             .Where(i => !(i is InvoiceTemplate)
                 && i.TaxableSupplyDate >= fromUtc
@@ -131,9 +150,15 @@ public class VatReportService : IVatReportService
                 && i.Status != EInvoiceStatus.Deleted
                 && (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                 && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
-            .SumAsync(i => i.DocumentType == EDocumentType.CreditNote
-                ? -Math.Abs((decimal?)i.TotalBeforeVat ?? 0)
-                : (decimal?)i.TotalBeforeVat ?? 0, ct);
+            .Select(i => new { i.DocumentType, i.TotalBeforeVat, CurrencyCode = i.Currency.Code, i.ExchangeRate, i.TaxableSupplyDate })
+            .ToListAsync(ct);
+        var totalRevenue = 0m;
+        foreach (var d in revenueDocs)
+        {
+            var czk = await _currencyService.ConvertToCzkAsync(d.TotalBeforeVat, d.CurrencyCode,
+                DateOnly.FromDateTime(d.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow)), ct, storedRate: d.ExchangeRate);
+            totalRevenue += d.DocumentType == EDocumentType.CreditNote ? -Math.Abs(czk) : czk;
+        }
 
         // ── Input VAT (from received invoices) ──────────────────────────────
         // Only count Approved or Paid received invoices (not Received/Rejected/Deleted).
@@ -146,15 +171,43 @@ public class VatReportService : IVatReportService
                 && item.ReceivedInvoice.Status != EReceivedInvoiceStatus.Received
                 && item.ReceivedInvoice.Status != EReceivedInvoiceStatus.Rejected
                 && item.ReceivedInvoice.Status != EReceivedInvoiceStatus.Deleted)
-            .GroupBy(item => item.VatRatePercentage)
+            .GroupBy(item => new
+            {
+                item.ReceivedInvoiceId, item.VatRatePercentage,
+                CurrencyCode = item.ReceivedInvoice!.Currency.Code, item.ReceivedInvoice.ExchangeRate, item.ReceivedInvoice.TaxableSupplyDate
+            })
             .Select(g => new
             {
-                VatRatePercentage = g.Key,
+                g.Key.VatRatePercentage,
+                g.Key.CurrencyCode,
+                g.Key.ExchangeRate,
+                g.Key.TaxableSupplyDate,
                 BaseAmount = g.Sum(i => i.TotalBeforeVat),
                 VatAmount = g.Sum(i => i.VatAmount),
                 ItemCount = g.Count()
             })
             .ToListAsync(ct);
+
+        // Same conversion rule as the output side, then merge per VAT rate.
+        var inputConverted = new List<(decimal VatRatePercentage, decimal BaseAmount, decimal VatAmount, int ItemCount)>();
+        foreach (var x in inputItems)
+        {
+            var duzp = DateOnly.FromDateTime(x.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+            inputConverted.Add((x.VatRatePercentage,
+                await _currencyService.ConvertToCzkAsync(x.BaseAmount, x.CurrencyCode, duzp, ct, storedRate: x.ExchangeRate),
+                await _currencyService.ConvertToCzkAsync(x.VatAmount, x.CurrencyCode, duzp, ct, storedRate: x.ExchangeRate),
+                x.ItemCount));
+        }
+        var inputMerged = inputConverted
+            .GroupBy(x => x.VatRatePercentage)
+            .Select(g => new
+            {
+                VatRatePercentage = g.Key,
+                BaseAmount = g.Sum(x => x.BaseAmount),
+                VatAmount = g.Sum(x => x.VatAmount),
+                ItemCount = g.Sum(x => x.ItemCount)
+            })
+            .ToList();
 
         // Count of received invoices in this period
         var receivedCount = await _context.ReceivedInvoice
@@ -167,18 +220,23 @@ public class VatReportService : IVatReportService
             .CountAsync(ct);
 
         // Total expenses (before VAT) from received invoices
-        var totalExpenses = await _context.ReceivedInvoice
+        var expenseDocs = await _context.ReceivedInvoice
             .AsNoTracking()
             .Where(r => r.TaxableSupplyDate >= fromUtc
                 && r.TaxableSupplyDate <= toUtc
                 && r.Status != EReceivedInvoiceStatus.Received
                 && r.Status != EReceivedInvoiceStatus.Rejected
                 && r.Status != EReceivedInvoiceStatus.Deleted)
-            .SumAsync(r => (decimal?)r.TotalBeforeVat ?? 0, ct);
+            .Select(r => new { r.TotalBeforeVat, CurrencyCode = r.Currency.Code, r.ExchangeRate, r.TaxableSupplyDate })
+            .ToListAsync(ct);
+        var totalExpenses = 0m;
+        foreach (var d in expenseDocs)
+            totalExpenses += await _currencyService.ConvertToCzkAsync(d.TotalBeforeVat, d.CurrencyCode,
+                DateOnly.FromDateTime(d.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow)), ct, storedRate: d.ExchangeRate);
 
         // ── Build report ─────────────────────────────────────────────────────
         var totalOutputVat = outputItems.Sum(x => x.VatAmount);
-        var totalInputVat = inputItems.Sum(x => x.VatAmount);
+        var totalInputVat = inputMerged.Sum(x => x.VatAmount);
 
         var report = new VatReportDto
         {
@@ -193,7 +251,7 @@ public class VatReportService : IVatReportService
                 ItemCount = x.ItemCount
             }).OrderByDescending(x => x.VatRatePercentage).ToList(),
 
-            InputVat = inputItems.Select(x => new VatReportLineDto
+            InputVat = inputMerged.Select(x => new VatReportLineDto
             {
                 VatRatePercentage = x.VatRatePercentage,
                 VatRateLabel = $"DPH {x.VatRatePercentage}%",

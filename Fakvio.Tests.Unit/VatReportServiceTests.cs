@@ -408,4 +408,59 @@ public class VatReportServiceTests : IDisposable
         await Should.ThrowAsync<Fakvio.Application.Exceptions.ExchangeRateUnavailableException>(
             () => Shv(ServiceWithRealConversion(rates)));
     }
+
+    // ── overview (GetReportAsync) mixes CZK and foreign documents ──
+
+    private static readonly DateTime March = new(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public async Task GetReportAsync_EurAndCzkInvoices_AreReportedInCzk()
+    {
+        SeedIssuedInvoice(March, EInvoiceStatus.Completed, 1000, 21); // CZK: 1000 / 210
+        SeedIssuedInvoice(March, EInvoiceStatus.Completed, 100, 21);  // becomes EUR @25: 2500 / 525
+        _context.Currency.Add(new Currency { Id = 2, Code = "EUR", Name = "Euro", Symbol = "EUR", DecimalPlaces = 2, SortOrder = 2, IsActive = true });
+        _context.SaveChanges();
+        var eur = _context.Invoice.OrderByDescending(i => i.Id).First();
+        eur.CurrencyId = 2; eur.ExchangeRate = 25m;
+        _context.SaveChanges();
+        var rates = Substitute.For<Fakvio.Application.Service.IExchangeRateService>();
+
+        var report = await ServiceWithRealConversion(rates).GetReportAsync(March.Date, March.Date.AddDays(1));
+
+        report.TotalRevenue.ShouldBe(3500m);
+        report.TotalOutputVat.ShouldBe(735m);
+        report.OutputVat.Single().BaseAmount.ShouldBe(3500m);
+    }
+
+    [Fact]
+    public async Task GetReportAsync_EurReceivedInvoice_IsConvertedOnInputSideAndExpenses()
+    {
+        SeedReceivedInvoice(March, EReceivedInvoiceStatus.Approved, 100, 21);
+        _context.Currency.Add(new Currency { Id = 2, Code = "EUR", Name = "Euro", Symbol = "EUR", DecimalPlaces = 2, SortOrder = 2, IsActive = true });
+        _context.SaveChanges();
+        var rec = _context.ReceivedInvoice.First();
+        rec.CurrencyId = 2; // no stored rate: historic document -> ČNB rate at DUZP
+        _context.SaveChanges();
+        var rates = Substitute.For<Fakvio.Application.Service.IExchangeRateService>();
+        rates.GetRateAsync("EUR", new DateOnly(2026, 3, 10), Arg.Any<CancellationToken>())
+            .Returns(new Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto { CurrencyCode = "EUR", Amount = 1, Rate = 24m, RatePerUnit = 24m });
+
+        var report = await ServiceWithRealConversion(rates).GetReportAsync(March.Date, March.Date.AddDays(1));
+
+        report.TotalExpenses.ShouldBe(2400m);
+        report.TotalInputVat.ShouldBe(504m);
+    }
+
+    [Fact]
+    public async Task GetReportAsync_ForeignInvoiceWithoutAnyRate_Throws()
+    {
+        SeedIssuedInvoice(March, EInvoiceStatus.Completed, 100, 21);
+        _context.Currency.Add(new Currency { Id = 2, Code = "EUR", Name = "Euro", Symbol = "EUR", DecimalPlaces = 2, SortOrder = 2, IsActive = true });
+        _context.SaveChanges();
+        _context.Invoice.OrderByDescending(i => i.Id).First().CurrencyId = 2;
+        _context.SaveChanges();
+
+        await Should.ThrowAsync<Fakvio.Application.Exceptions.ExchangeRateUnavailableException>(() =>
+            ServiceWithRealConversion(Substitute.For<Fakvio.Application.Service.IExchangeRateService>()).GetReportAsync(March.Date, March.Date.AddDays(1)));
+    }
 }
