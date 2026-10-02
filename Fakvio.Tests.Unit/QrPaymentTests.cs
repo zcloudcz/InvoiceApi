@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
@@ -194,6 +195,71 @@ public class QrPaymentTests : IDisposable
             }
         };
         _context.Invoice.Add(invoice3);
+        _context.SaveChanges();
+
+        // Invoice #154: IBAN fails the checksum but the Czech account is valid — the service
+        // must ignore the bad IBAN and fall through to the account, not embed garbage in a QR.
+        var invoiceInvalidIban = new Invoice
+        {
+            Id = 20,
+            DocumentType = EDocumentType.Invoice,
+            Status = EInvoiceStatus.Completed,
+            DocumentNumber = "INV2026020",
+            IssueDate = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = new DateTime(2026, 4, 15, 0, 0, 0, DateTimeKind.Utc),
+            IssuerId = 1,
+            ClientId = 2,
+            CurrencyId = 1,
+            VariableSymbol = "2026020",
+            IBAN = "CZ0000000000000000000000", // wrong check digits — fails ISO 7064
+            BankAccountNumber = "1342333010/3030", // same valid account as invoice 10
+            TotalBeforeVat = 1000m,
+            TotalVat = 210m,
+            TotalWithVat = 1210m,
+            InvoiceItem = new List<InvoiceItem>
+            {
+                new InvoiceItem
+                {
+                    Id = 20, InvoiceId = 20, OrderIndex = 1,
+                    Description = "Invalid IBAN test service", Quantity = 1, Unit = "pcs",
+                    UnitPrice = 1000m, VatRateId = 1, VatRatePercentage = 21m,
+                    TotalBeforeVat = 1000m, VatAmount = 210m, TotalWithVat = 1210m
+                }
+            }
+        };
+        _context.Invoice.Add(invoiceInvalidIban);
+        _context.SaveChanges();
+
+        // Invoice #154: both IBAN and account fail their checksum — no usable connection at all.
+        var invoiceBothInvalid = new Invoice
+        {
+            Id = 21,
+            DocumentType = EDocumentType.Invoice,
+            Status = EInvoiceStatus.Completed,
+            DocumentNumber = "INV2026021",
+            IssueDate = new DateTime(2026, 4, 2, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = new DateTime(2026, 4, 16, 0, 0, 0, DateTimeKind.Utc),
+            IssuerId = 1,
+            ClientId = 2,
+            CurrencyId = 1,
+            VariableSymbol = "2026021",
+            IBAN = "CZ0000000000000000000000", // fails checksum
+            BankAccountNumber = "1234567890/3030", // fails modulo-11
+            TotalBeforeVat = 1000m,
+            TotalVat = 210m,
+            TotalWithVat = 1210m,
+            InvoiceItem = new List<InvoiceItem>
+            {
+                new InvoiceItem
+                {
+                    Id = 21, InvoiceId = 21, OrderIndex = 1,
+                    Description = "Both invalid test service", Quantity = 1, Unit = "pcs",
+                    UnitPrice = 1000m, VatRateId = 1, VatRatePercentage = 21m,
+                    TotalBeforeVat = 1000m, VatAmount = 210m, TotalWithVat = 1210m
+                }
+            }
+        };
+        _context.Invoice.Add(invoiceBothInvalid);
         _context.SaveChanges();
     }
 
@@ -677,22 +743,87 @@ public class QrPaymentTests : IDisposable
                 o.vs == "2026010"));
     }
 
+    /// <summary>
+    /// Regression test for issue #154 — updated behaviour. Before the fix, a failed paylibo call
+    /// fell back to a SIND-only "QR Faktura": a QR code that LOOKS like a payment code but
+    /// carries no payment instructions. Now no QR is generated at all when there is nothing left
+    /// to fall back to.
+    /// </summary>
     [Fact]
-    public async Task GenerateQrCodeImageAsync_PayliboFails_FallsBackToSind()
+    public async Task GenerateQrCodeImageAsync_PayliboFails_ThrowsInsteadOfDecorativeQr()
     {
-        // When paylibo API returns empty (failure), service should fall back to SIND QR Faktura.
+        // When paylibo API returns empty (failure), and there is no other usable bank
+        // connection, the service must not silently produce a non-payable QR code.
         _payliboClient.CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>())
             .Returns(Array.Empty<byte>());
 
         var logger = Substitute.For<ILogger<QrPaymentService>>();
         var service = new QrPaymentService(_context, _payliboClient, logger);
 
-        var result = await service.GenerateQrCodeImageAsync(10, pixelsPerModule: 5);
+        var act = () => service.GenerateQrCodeImageAsync(10, pixelsPerModule: 5);
 
-        // Should fall back to local QR generation (SIND) — returns valid PNG
-        result.ShouldNotBeNull();
-        result.Length.ShouldBeGreaterThan(0);
-        result[0].ShouldBe((byte)0x89); // PNG signature
+        var ex = await Should.ThrowAsync<NoUsableBankConnectionException>(act);
+        ex.InvoiceId.ShouldBe(10);
+    }
+
+    // ─── No usable bank connection (issue #154) ────────────────────────────
+
+    /// <summary>
+    /// The exact symptom reported in issue #154: an issuer with no bank account at all used to
+    /// still get a printable QR code on the invoice ("vypadá platebně, není"). Now none is
+    /// generated — the caller decides what the user sees (PdfExportService omits it,
+    /// InvoiceController answers 400).
+    /// </summary>
+    [Fact]
+    public async Task GenerateQrCodeImageAsync_NoBankDataAtAll_ThrowsNoUsableBankConnectionException()
+    {
+        var logger = Substitute.For<ILogger<QrPaymentService>>();
+        var service = new QrPaymentService(_context, _payliboClient, logger);
+
+        // Invoice 2 has neither IBAN nor BankAccountNumber.
+        var act = () => service.GenerateQrCodeImageAsync(2);
+
+        var ex = await Should.ThrowAsync<NoUsableBankConnectionException>(act);
+        ex.InvoiceId.ShouldBe(2);
+    }
+
+    /// <summary>
+    /// A stored IBAN that fails its checksum must not reach SpdIntegrator — the service falls
+    /// through to the (valid) Czech account instead of embedding garbage in a QR code.
+    /// </summary>
+    [Fact]
+    public async Task GenerateQrCodeImageAsync_InvalidIban_FallsThroughToValidCzechAccount()
+    {
+        var fakePngBytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        _payliboClient.CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>())
+            .Returns(fakePngBytes);
+
+        var logger = Substitute.For<ILogger<QrPaymentService>>();
+        var service = new QrPaymentService(_context, _payliboClient, logger);
+
+        // Invoice 20 has an invalid IBAN and a valid Czech account.
+        var result = await service.GenerateQrCodeImageAsync(20, pixelsPerModule: 5);
+
+        result.ShouldBe(fakePngBytes);
+        await _payliboClient.Received(1).CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>());
+    }
+
+    /// <summary>
+    /// When both the IBAN and the account number fail their checksum, there is nothing usable —
+    /// same outcome as no bank data at all.
+    /// </summary>
+    [Fact]
+    public async Task GenerateQrCodeImageAsync_InvalidIbanAndInvalidAccount_ThrowsNoUsableBankConnectionException()
+    {
+        var logger = Substitute.For<ILogger<QrPaymentService>>();
+        var service = new QrPaymentService(_context, _payliboClient, logger);
+
+        // Invoice 21 has an invalid IBAN and an invalid Czech account.
+        var act = () => service.GenerateQrCodeImageAsync(21);
+
+        await Should.ThrowAsync<NoUsableBankConnectionException>(act);
+        // paylibo must not even be tried for a checksum-invalid account.
+        await _payliboClient.DidNotReceive().CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>());
     }
 
     [Fact]
