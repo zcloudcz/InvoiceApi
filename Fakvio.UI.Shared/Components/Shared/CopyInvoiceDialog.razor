@@ -1,0 +1,25 @@
+@*
+    Small confirmation dialog shown before copying an invoice.
+    Lets the user decide whether billing periods named in the texts ("Hosting 3/2026")
+    move forward to the new month. Returns the checkbox value (bool) on confirm.
+*@
+@inject IStringLocalizer<SharedResource> L
+
+<MudDialog>
+    <DialogContent>
+        <MudCheckBox T="bool" @bind-Value="_shiftPeriods" Label="@L["Invoice_CopyShiftPeriods"].Value" />
+        <MudText Typo="Typo.caption">@L["Invoice_CopyShiftPeriodsHint"]</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => MudDialog.Close(DialogResult.Ok(_shiftPeriods)))">@L["Invoice_Copy"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    // Default on: copying "Hosting 3/2026" in April almost always means "Hosting 4/2026".
+    private bool _shiftPeriods = true;
+}

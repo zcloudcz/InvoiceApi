@@ -285,6 +285,7 @@ Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukl
 
 - Ikonka kopírování v řádku gridu → vytvoří nový Draft se stejnými daty
 - Nová faktura dostane nové číslo dokladu (z číselné řady)
+- Před kopírováním se zobrazí dialog s volbou **„Posunout období v textech“** (výchozí: zapnuto). Měsíce v popisech položek a poznámce (`3/2026`, `03/2026`, `2026-03`, `březen 2026`, `za března`, `March 2026`, `Q1/2026`, `1Q 2026`) se posunou o rozdíl měsíců mezi datem vystavení původní a nové faktury; rok se přepíše při přechodu přes prosinec. Čtvrtletí se posouvají jen o celá čtvrtletí. Čísla faktur, IBAN, úplná data (`15. března 2026`) a zlomky se nemění. API: `POST /api/invoice/{id}/copy?shiftPeriods=false` posun vypne.
 - Po zkopírování se zobrazí toast se číslem nové faktury + grid se obnoví
 - Kopírování není dostupné pro Dobropisy ani Smazané faktury
 
@@ -545,6 +546,8 @@ automatické generování faktur z této šablony:
 **Kdy se faktura vygeneruje:** jednou za app hodinovou kontrolu (`RecurringInvoiceWorker`), jakmile
 nastane naplánovaný termín. Faktura se **rovnou vystaví** (ne koncept) — číslo dokladu se přidělí
 ihned, takže po smazání vygenerované faktury nezůstane v číselné řadě díra.
+
+**Období v textech:** měsíce/čtvrtletí zapsaná v textu položek a poznámky šablony (např. „Hosting 3/2026“) se u každé vygenerované faktury posunou automaticky — text v šabloně musí odpovídat období **první vygenerované faktury**; n-tá faktura se posune o (n-1) intervalů plánu. Volba **„Posouvat období v textech“** je u nových plánů zapnutá; u plánů vytvořených dříve je vypnutá, a po zapnutí se aktuální text šablony bere jako období příští faktury. Týdenní plány text neposouvají. Zástupné značky typu `{month}` šablony nepodporují.
 
 **Co když aplikace byla dočasně nedostupná:** zmeškaná perioda se dožene v příštím běhu, ale vždy
 jen jedna faktura za cyklus — datum vystavení odpovídá původně plánovanému datu, ne datu, kdy se
@@ -860,6 +863,12 @@ u nichž daň odvádí odběratel (osvobozeno / mimo předmět daně), včetně 
 se zároveň promítne do řádků 20 a 21 přiznání. Zboží (kód 0) lze vykázat jen v měsíčním hlášení. Třístranný
 obchod, přemístění obchodního majetku a zálohové doklady (DPP) zatím nejsou podporovány.
 
+**Dobropisy (opravné daňové doklady):** vystavené dobropisy se do přiznání (řádky 1/2), přehledu DPH i kontrolního
+hlášení promítají záporně v období svého DUZP. V kontrolním hlášení jsou uvedeny pod vlastním číslem dokladu; do oddílu A.4
+patří, pokud je absolutní hodnota dobropisu (včetně DPH) alespoň 10 000 Kč a odběratel má české DIČ, jinak do A.5 –
+rozhoduje hodnota samotné opravy, ne původní doklad (viz Časté dotazy Finanční správy ke kontrolnímu hlášení). Přijaté dobropisy Fakvio
+nerozlišuje od běžných přijatých faktur.
+
 **Postup:**
 1. Vyberte rok a typ období (Měsíční / Čtvrtletní)
 2. Vyberte konkrétní měsíc nebo čtvrtletí
@@ -979,6 +988,14 @@ Grid zobrazuje bankovní transakce:
 | Spárovaná faktura / protistrana | Číslo faktury, nebo štítek rozpoznané protistrany |
 
 **Filtrace:** stav párování, směr platby (příchozí / odchozí), textové hledání
+
+### Import bankovního výpisu (GPC/ABO)
+
+Na stránce Platby nahrajte výpis ve formátu GPC/ABO (`.gpc`, `.abo`, `.txt`, max. 5 MB), který stáhnete z internetového bankovnictví
+(KB, ČSOB, Fio, Raiffeisenbank, MONETA a další). Číslo účtu z výpisu musí být uvedeno v nastavení firmy, jinak se výpis nenaimportuje.
+Fakvio vytvoří nové platby, přeskočí ty, které už v systému jsou (výpis můžete nahrát opakovaně), a příchozí platby automaticky spáruje
+s fakturami podle variabilního symbolu a částky. Po nahrání uvidíte souhrn: počet výpisů, nových plateb, duplicit, spárovaných a
+nespárovaných plateb a případná upozornění (např. storno položky se neimportují).
 
 ### Ruční párování
 
@@ -1272,7 +1289,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 79 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 81 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1410,7 +1427,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 
 | Oblast | Příklady |
 |--------|---------|
-| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
 | Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES, zjistit vystavitele |
 | Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
@@ -1421,7 +1438,9 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Opakované faktury | Vypsat a zobrazit plány (i pro konkrétní šablonu), založit nový plán, upravit frekvenci/datum/limity, pozastavit a obnovit, smazat |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
-„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
+„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“, „Změň splatnost konceptu FAK-2026-002 na 30. 6.“
+
+**Úprava faktury.** AI upraví jen **koncept**; změní jen to, co jste zadali (při změně položek nahradí všechny řádky celým novým seznamem). Už **vystavenou** fakturu sama nezmění: nejdřív se vás zeptá, zda ji smí vrátit na koncept — vystavený doklad se tím stane konceptem, po úpravě ho musíte znovu vystavit a pokud už byl odeslán emailem, poslat klientovi znovu. Zaplacenou nebo dobropisovanou fakturu upravit nejde; opravíte ji dobropisem a novou fakturou.
 
 ---
 

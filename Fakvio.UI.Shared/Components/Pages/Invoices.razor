@@ -725,15 +725,20 @@
     }
 
     /// <summary>
-    /// Copies the specified invoice as a new Draft document.
+    /// Copies the specified invoice as a new Draft document (after the user confirms the period-shift option).
     /// On success shows a toast with the new document number and refreshes the grid.
     /// On failure shows an error toast — no grid refresh is needed.
     /// </summary>
     private async Task CopyInvoice(long id)
     {
+        // Ask whether billing periods in the texts should move to the new month (default on).
+        var dialog = await DialogService.ShowAsync<CopyInvoiceDialog>(L["Invoice_Copy"].Value);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
         try
         {
-            var copy = await InvoiceService.CopyAsync(id);
+            var copy = await InvoiceService.CopyAsync(id, result.Data is true);
             if (copy != null)
             {
                 Snackbar.Add(string.Format(L["Invoice_CopySuccess"].Value, copy.DocumentNumber), Severity.Success);

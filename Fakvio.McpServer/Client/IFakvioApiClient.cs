@@ -74,9 +74,12 @@ public interface IFakvioApiClient
 
     /// <summary>
     /// PUT /api/invoice/{id} — update an existing invoice (Draft or Completed only). Used by
-    /// set_invoice_bank_account to change the bank account via UpdateInvoiceDto.BankAccountId.
+    /// update_invoice and set_invoice_bank_account; null DTO fields mean "keep current".
     /// </summary>
     Task<InvoiceDto?> UpdateInvoiceAsync(long id, UpdateInvoiceDto dto, CancellationToken ct = default);
+
+    /// <summary>POST /api/invoice/{id}/revert-to-draft — switch a Completed invoice back to Draft (null when not found).</summary>
+    Task<InvoiceDto?> RevertInvoiceToDraftAsync(long id, CancellationToken ct = default);
 
     /// <summary>POST /api/invoice/{id}/complete — issue a draft invoice (generates doc number).</summary>
     Task<InvoiceDto> CompleteInvoiceAsync(long id, CancellationToken ct = default);

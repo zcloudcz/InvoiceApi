@@ -41,7 +41,7 @@ kompatibilní — žádné volání ze 2.0.0 se neláme.
 **2.2.0** doplňuje 7 nástrojů nad opakovanými fakturami (`Tools/RecurringTools.cs`, DEVGUIDE
 §4.13) — `list_recurring_schedules`, `get_recurring_schedule`, `create_recurring_schedule`,
 `update_recurring_schedule`, `pause_recurring_schedule`, `resume_recurring_schedule`,
-`delete_recurring_schedule`. Zpětně kompatibilní, žádné volání ze 2.1.0 se neláme.
+`delete_recurring_schedule`. Zpětně kompatibilní, žádné volání ze 2.1.0 se neláme. `create_/update_recurring_schedule` mají volitelné `shiftPeriodsInText` (posun období v textech šablony).
 
 **Zálohy (proforma):** `create_invoice` přijímá `documentType: "Proforma"`. Po zaplacení proformy (`mark_invoice_paid`
 nebo bankovní platba) se u plátců DPH automaticky vystaví DPP; `issue_tax_receipt(proformaId)` je ruční/idempotentní cesta,
@@ -54,7 +54,7 @@ export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace
 proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
 žádné volání ze 2.2.0 se neláme.
 
-**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 79 nástrojů. Přibyl `get_exchange_rate` (kurz ČNB k datu, Kč za jednotku i za množství, které ČNB kotuje). Přibyl `set_invoice_bank_account`, volitelný `bankAccountId` u `create_invoice` a `create_invoice_from_template` a `isDefault` u `add_bank_account`. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
+**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 81 nástrojů. Přibyl `get_exchange_rate` (kurz ČNB k datu, Kč za jednotku i za množství, které ČNB kotuje). Přibyl `update_invoice` (částečná úprava konceptu faktury; `items` nahradí všechny řádky; u vystavené faktury nic nezmění a vrátí `requires_revert_to_draft` — AI se musí zeptat uživatele a pak zavolat nový `revert_invoice_to_draft`, který vystavenou fakturu vrátí na koncept), `set_invoice_bank_account`, volitelný `bankAccountId` u `create_invoice` a `create_invoice_from_template` a `isDefault` u `add_bank_account`. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
 
 **2.6.0 (dosud nevydaná, přenesená daňová povinnost)** přidává nástroj `list_reverse_charge_codes` (číselník kódů PDP, §92a–92e ZDPH) a volitelná pole `vatRegime` + `reverseChargeCodeId` (pole `id` z toho číselníku) u položek `create_invoice`. S tím je dostupných 74 nástrojů. Zpětně kompatibilní.
 
@@ -279,11 +279,11 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (79)
+## Dostupné nástroje (81)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 16 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, DeleteInvoice, SetInvoiceBankAccount, IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
+| `Tools/InvoiceTools.cs` | 18 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, DeleteInvoice, SetInvoiceBankAccount, UpdateInvoice (partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`), RevertInvoiceToDraft (only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
 | `Tools/ClientTools.cs` | 7 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, VerifyVatVies, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 8 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices, ExportVatEpo, GetOssReport (kvartální hlášení EU OSS v EUR) |
@@ -343,7 +343,7 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   `"CreditNote"`) a camelCase fungují díky `McpToolJsonOptions.Default`, které
   `McpServerRegistration` předává do `WithToolsFromAssembly()` — bez něj by SDK čekalo
   PascalCase a číselné enumy. Hlídá `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter`.
-- **Bankovní účet na faktuře.** Když `create_invoice` / `create_invoice_from_template` nedostane `bankAccountId` ani bankovní údaje a platba je převodem (nebo nezadaná), server sám doplní účet vystavitele: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první. Seznam účtů s `id` vrací `get_issuer`; `set_invoice_bank_account(invoiceId, bankAccountId)` účet změní na konceptu/vystavené faktuře; `add_bank_account` umí `isDefault`.
+- **Bankovní účet na faktuře.** Když `create_invoice` / `create_invoice_from_template` nedostane `bankAccountId` ani bankovní údaje a platba je převodem (nebo nezadaná), server sám doplní účet vystavitele: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první. Seznam účtů s `id` vrací `get_issuer`; `set_invoice_bank_account(invoiceId, bankAccountId)` účet změní na konceptu/vystavené faktuře (obecnější úprava: `update_invoice`); `add_bank_account` umí `isDefault`.
 - **`CreateInvoice` (N2.4) překládá modelem srozumitelný vstup na interní ID** — bez volání API:
   `currency` (ISO kód, výchozí `CZK`) se přeloží přes `list_currencies` na `currencyId`; `issuerId`
   vynechaný znamená vlastní firmu (`get_issuer`); položce bez `vatRateId` doplní ID podle

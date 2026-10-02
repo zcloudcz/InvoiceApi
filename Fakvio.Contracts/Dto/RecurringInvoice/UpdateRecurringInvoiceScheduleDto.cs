@@ -53,6 +53,9 @@ public class UpdateRecurringInvoiceScheduleDto
     /// <summary>New auto-send flag, if changed. Null = keep current.</summary>
     public bool? AutoSend { get; set; }
 
+    /// <summary>Switch period shifting in texts on/off. Null = keep current. Switching ON makes the current template text the period of the NEXT generated invoice.</summary>
+    public bool? ShiftPeriodsInText { get; set; }
+
     /// <summary>Explicit reschedule of the next run. Null = keep current NextRunAt.</summary>
     public DateTimeOffset? NextRunAt { get; set; }
 }
