@@ -15,6 +15,7 @@ using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
@@ -142,6 +143,11 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/vatrate/active?date= — VAT rates valid at the given date (null = today).</summary>
     Task<List<VatRateDto>> GetActiveVatRatesAsync(DateTime? date = null, CancellationToken ct = default);
+
+    // ── Reverse charge code endpoints (§92a-92e ZDPH, PDP) ────────────────
+
+    /// <summary>GET /api/reversechargecode — active reverse charge codes, sorted by Code.</summary>
+    Task<List<ReverseChargeCodeDto>> GetActiveReverseChargeCodesAsync(CancellationToken ct = default);
 
     // ── Number sequence endpoints ───────────────────────────────────────
 

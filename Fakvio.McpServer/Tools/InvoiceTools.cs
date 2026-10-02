@@ -186,7 +186,10 @@ public static class InvoiceTools
         [Description(
             "Line items. Each needs description, quantity, unit, unitPrice and (for a VAT-paying " +
             "issuer) vatRatePercentage (e.g. 21); vatRateId is resolved automatically from the " +
-            "percentage, do not set it. Use isTextRow=true for a note-only line.")]
+            "percentage, do not set it. Use isTextRow=true for a note-only line. " +
+            "For a reverse charge item (PDP, §92a-92e ZDPH): set vatRegime to 'ReverseCharge' and " +
+            "reverseChargeCodeId to the Id of a code from list_reverse_charge_codes — required " +
+            "together, and only for ReverseCharge items.")]
         List<CreateInvoiceItemDto> items,
         [Description("'Invoice', 'CreditNote' or 'Proforma' (default 'Invoice')")] string documentType = "Invoice",
         [Description("ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit for CZK.")] string? currency = null,

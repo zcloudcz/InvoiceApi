@@ -22,6 +22,9 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Nové funkce
 
+- **#482** — Webhooky: v Nastavení → Webhooky si správce firmy zaregistruje URL, na kterou Fakvio posílá podepsané (HMAC-SHA256) události — vytvoření, odeslání, zaplacení a zrušení faktury, nová přijatá faktura a přijatá platba; s opakováním při výpadku, testovacím pingem a logem doručení. Ochrana proti SSRF (jen veřejné HTTPS adresy). (PR #482, `eb639f1`)
+- **#476** — Přenesená daňová povinnost (§92a) jde nastavit přímo v editoru položek — sloupec „Režim DPH“, „Kód PDP“ a přepínač pro celou fakturu; PDF nese povinnou poznámku „Daň odvede zákazník“ s kódy plnění, ISDOC posílá LocalReverseCharge a MCP/chat přijímají režim i kód (nový nástroj list_reverse_charge_codes). (PR #476, `aedec06`)
+- **#481** — Nástěnka je modulární: přes „Upravit nástěnku“ si každý uživatel zapne, vypne a seřadí moduly; přibyly grafy tržeb po měsících, příjmů vs. výdajů a stáří neuhrazených pohledávek (jen faktury v CZK). Nový průvodce prvním nastavením (/setup) provede správce firmou, bankovním účtem, číselnými řadami a pozváním kolegů. (PR #481, `58c2ecc`)
 - **#477** — Nová faktura (z aplikace, MCP, chatu, šablony i opakované faktury) bez zadaného účtu automaticky dostane výchozí bankovní účet firmy, přednostně v měně faktury; přes MCP lze účet zvolit (`bankAccountId`) i dodatečně změnit (`set_invoice_bank_account`). Opraveno míchání čísla účtu a IBAN ze dvou různých účtů při vytvoření ze šablony. (PR #477, `d83e2e5`)
 
 ### Změny pro vývojáře

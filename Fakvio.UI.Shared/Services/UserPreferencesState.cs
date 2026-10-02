@@ -62,11 +62,18 @@ public class UserPreferencesState
     }
 
     /// <summary>
+    /// True once the dashboard has made its once-per-session decision about redirecting to the
+    /// setup wizard, so returning to the dashboard later does not bounce the user again.
+    /// </summary>
+    public bool SetupWizardRedirectHandled { get; set; }
+
+    /// <summary>
     /// Clears the cache (e.g. on logout) so the next user loads their own values.
     /// </summary>
     public void Reset()
     {
         _preferences = null;
         _loadTask = null;
+        SetupWizardRedirectHandled = false;
     }
 }

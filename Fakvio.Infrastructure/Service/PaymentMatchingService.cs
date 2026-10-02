@@ -38,6 +38,10 @@ public class PaymentMatchingService : IPaymentMatchingService
     private readonly INotificationService _notificationService;
     private readonly IInvoiceService _invoiceService;
     private readonly ILogger<PaymentMatchingService> _logger;
+    private readonly IWebhookPublisher? _webhookPublisher;
+
+    /// <summary>Payments applied during auto-matching, published as webhooks after the SaveChanges commits them.</summary>
+    private readonly List<(Invoice Invoice, decimal Amount, DateTime At, bool BecamePaid)> _pendingPaymentEvents = new();
 
     /// <summary>How many days before/after the due date we accept for account-based fallback.</summary>
     private const int AccountMatchWindowDays = 7;
@@ -46,12 +50,27 @@ public class PaymentMatchingService : IPaymentMatchingService
         TenantDbContext context,
         INotificationService notificationService,
         IInvoiceService invoiceService,
-        ILogger<PaymentMatchingService> logger)
+        ILogger<PaymentMatchingService> logger,
+        IWebhookPublisher? webhookPublisher = null)
     {
         _context = context;
         _notificationService = notificationService;
         _invoiceService = invoiceService;
         _logger = logger;
+        _webhookPublisher = webhookPublisher;
+    }
+
+    /// <summary>
+    /// Adds "payment.received" (and "invoice.paid" when the payment completed the invoice) to the
+    /// outbox WITHOUT saving — call right before the business SaveChanges so the events commit
+    /// atomically with the match. Never throws (see IWebhookPublisher).
+    /// </summary>
+    private async Task PublishPaymentAsync(Invoice invoice, decimal amount, DateTime at, bool becamePaid, CancellationToken ct)
+    {
+        if (_webhookPublisher == null) return;
+        await _webhookPublisher.PublishPaymentReceivedAsync(invoice, amount, at, save: false, ct);
+        if (becamePaid)
+            await _webhookPublisher.PublishInvoiceEventAsync(Contracts.Dto.Webhook.WebhookEventCatalog.InvoicePaid, invoice, save: false, ct);
     }
 
     /// <inheritdoc />
@@ -85,7 +104,17 @@ public class PaymentMatchingService : IPaymentMatchingService
             await MatchOutgoingAsync(tx, ct);
         }
 
+        await FlushPendingPaymentEventsAsync(ct);
+
         await _context.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Adds the queued payment webhooks to the outbox (no save) — they commit with the next SaveChanges.</summary>
+    private async Task FlushPendingPaymentEventsAsync(CancellationToken ct)
+    {
+        foreach (var e in _pendingPaymentEvents)
+            await PublishPaymentAsync(e.Invoice, e.Amount, e.At, e.BecamePaid, ct);
+        _pendingPaymentEvents.Clear();
     }
 
     /// <inheritdoc />
@@ -137,9 +166,11 @@ public class PaymentMatchingService : IPaymentMatchingService
         // Invoice match wins over registry categorization — drop any recognition.
         tx.RecognizedCounterpartyId = null;
 
+        var wasPaid = invoice.Status == EInvoiceStatus.Paid;
         RecalculateInvoice(invoice, delta: matchedAmount, tx.TransactionDate);
         RecalculateTransactionStatus(tx, alreadyAssigned + matchedAmount);
 
+        await PublishPaymentAsync(invoice, matchedAmount, match.MatchedAt, !wasPaid && invoice.Status == EInvoiceStatus.Paid, ct);
         await _context.SaveChangesAsync(ct);
 
         // Proforma just received (part of) its advance — auto-issue its DPP, if enabled.
@@ -672,9 +703,11 @@ public class PaymentMatchingService : IPaymentMatchingService
             // Invoice match wins over registry categorization — drop any recognition.
             tx.RecognizedCounterpartyId = null;
 
+            var wasPaid = invoice.Status == EInvoiceStatus.Paid;
             RecalculateInvoice(invoice, delta: matched, tx.TransactionDate);
             RecalculateTransactionStatus(tx, alreadyAssigned + matched);
 
+            await PublishPaymentAsync(invoice, matched, match.MatchedAt, !wasPaid && invoice.Status == EInvoiceStatus.Paid, ct);
             await _context.SaveChangesAsync(ct);
 
             // Proforma just received (part of) its advance — auto-issue its DPP, if enabled.
@@ -911,9 +944,14 @@ public class PaymentMatchingService : IPaymentMatchingService
             MatchedAt = DateTime.UtcNow,
         });
 
+        var wasPaid = invoice.Status == EInvoiceStatus.Paid;
         RecalculateInvoice(invoice, delta: matched, tx.TransactionDate);
         RecalculateTransactionStatus(tx, matched);
+        _pendingPaymentEvents.Add((invoice, matched, DateTime.UtcNow, !wasPaid && invoice.Status == EInvoiceStatus.Paid));
 
+        // Outbox rows for the payment go in the SAME save as the match (before the DPP issuance,
+        // which runs in its own transaction afterwards).
+        await FlushPendingPaymentEventsAsync(ct);
         await _context.SaveChangesAsync(ct);
 
         // Proforma just received (part of) its advance — auto-issue its DPP, if enabled.

@@ -1,0 +1,31 @@
+@*
+    Reusable dropdown for the reverse charge code (kód předmětu plnění, §92a-92e ZDPH).
+    The caller supplies the already loaded code list (see ReverseChargeCodeApiService.GetAllActiveAsync),
+    so several selects on one page share a single API call.
+
+    Usage:
+      <ReverseChargeCodeSelect Codes="_codes" @bind-Value="item.ReverseChargeCodeId" Required="true" />
+*@
+@using Fakvio.Contracts.Dto.ReverseChargeCode
+@inject IStringLocalizer<SharedResource> L
+
+<MudSelect T="long?" Value="Value" ValueChanged="ValueChanged"
+           Label="@(Label ?? L["InvoiceItem_ReverseChargeCode"].Value)"
+           Variant="Variant" Margin="Margin" Dense="Dense" Required="Required" Style="@Style">
+    @foreach (var rc in Codes)
+    {
+        <MudSelectItem T="long?" Value="@((long?)rc.Id)">@rc.Code - @rc.NameCs</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public List<ReverseChargeCodeDto> Codes { get; set; } = new();
+    [Parameter] public long? Value { get; set; }
+    [Parameter] public EventCallback<long?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public Variant Variant { get; set; } = Variant.Text;
+    [Parameter] public Margin Margin { get; set; } = Margin.Dense;
+    [Parameter] public bool Dense { get; set; } = true;
+    [Parameter] public bool Required { get; set; }
+}

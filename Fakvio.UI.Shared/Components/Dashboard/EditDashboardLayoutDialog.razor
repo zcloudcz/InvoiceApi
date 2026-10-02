@@ -1,0 +1,71 @@
+@*
+    "Upravit nástěnku" — lets the user show/hide dashboard widgets and reorder them.
+    Works on a copy; nothing is persisted until Save (the caller, Home.razor, saves the result).
+*@
+@using Fakvio.Contracts.Dto.Dashboard
+@using Fakvio.UI.Shared.Models
+@inject IStringLocalizer<SharedResource> L
+
+<MudDialog>
+    <DialogContent>
+        <MudList T="string" Dense="true">
+            @for (var i = 0; i < _items.Count; i++)
+            {
+                var index = i; // captured per iteration for the lambdas below
+                var item = _items[index];
+                <MudListItem T="string">
+                    <div class="d-flex align-center">
+                        <MudSwitch T="bool" Value="item.Visible" ValueChanged="@(v => item.Visible = v)"
+                                   Color="Color.Primary" Class="flex-grow-1"
+                                   Label="@L[TitleKey(item.Id)].Value" />
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small"
+                                       Disabled="@(index == 0)" OnClick="@(() => Move(index, -1))"
+                                       aria-label="@L["Dashboard_MoveUp"].Value" />
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small"
+                                       Disabled="@(index == _items.Count - 1)" OnClick="@(() => Move(index, 1))"
+                                       aria-label="@L["Dashboard_MoveDown"].Value" />
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Reset">@L["Dashboard_ResetLayout"]</MudButton>
+        <MudButton OnClick="Cancel">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">@L["Btn_Save"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>Current (already merged) layout; the dialog edits a copy.</summary>
+    [Parameter] public List<DashboardWidgetLayoutItemDto> Layout { get; set; } = new();
+
+    private List<DashboardWidgetLayoutItemDto> _items = new();
+
+    protected override void OnInitialized() => _items = Copy(Layout);
+
+    private static List<DashboardWidgetLayoutItemDto> Copy(IEnumerable<DashboardWidgetLayoutItemDto> source) =>
+        source.Select(i => new DashboardWidgetLayoutItemDto { Id = i.Id, Visible = i.Visible, Order = i.Order }).ToList();
+
+    private static string TitleKey(string id) => DashboardWidgetRegistry.All.First(w => w.Id == id).TitleKey;
+
+    private void Move(int index, int delta)
+    {
+        var target = index + delta;
+        (_items[index], _items[target]) = (_items[target], _items[index]);
+    }
+
+    private void Reset() => _items = DashboardLayoutMerger.Merge(DashboardWidgetRegistry.All, null);
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Save()
+    {
+        // Renumber so Order always mirrors the list position the user sees.
+        for (var i = 0; i < _items.Count; i++)
+            _items[i].Order = i;
+        MudDialog.Close(DialogResult.Ok(_items));
+    }
+}

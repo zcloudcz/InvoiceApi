@@ -285,7 +285,9 @@ public class ImapPollService : IImapPollService
                 scopedTenantCtx,
                 tenantScope.ServiceProvider.GetRequiredService<INotificationService>(),
                 tenantScope.ServiceProvider.GetRequiredService<IInvoiceService>(),
-                tenantScope.ServiceProvider.GetRequiredService<ILogger<PaymentMatchingService>>());
+                tenantScope.ServiceProvider.GetRequiredService<ILogger<PaymentMatchingService>>(),
+                // Publisher shares the same schema-bound scoped context as matcher + IInvoiceService.
+                new WebhookPublisher(scopedTenantCtx, tenantScope.ServiceProvider.GetRequiredService<ILogger<WebhookPublisher>>()));
             var processor = new InboundEmailProcessor(
                 scopedTenantCtx,
                 parser,

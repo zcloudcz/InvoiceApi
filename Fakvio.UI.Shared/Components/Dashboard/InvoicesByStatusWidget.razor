@@ -1,0 +1,31 @@
+@using Fakvio.Contracts.Dto.Dashboard
+@using Fakvio.Domain.Enums
+@inject IStringLocalizer<SharedResource> L
+
+@if (Dashboard.InvoiceCountByStatus.Count > 0)
+{
+    <MudCard Elevation="2" Class="rounded-lg">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">@L["Dashboard_InvoicesByStatus"]</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent Style="min-height: 300px;">
+            <MudChart ChartType="ChartType.Donut"
+                      InputData="@(Dashboard.InvoiceCountByStatus.Values.Select(v => (double)v).ToArray())"
+                      InputLabels="@Labels()"
+                      Width="300px" Height="300px"
+                      ChartOptions="@DashboardCharts.Options" />
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    [Parameter, EditorRequired] public DashboardDto Dashboard { get; set; } = new();
+
+    // Same localized status names as the rest of the UI; the key is the enum name from the API.
+    private string[] Labels() => Dashboard.InvoiceCountByStatus.Select(kvp =>
+        Enum.TryParse<EInvoiceStatus>(kvp.Key, out var status)
+            ? $"{InvoiceStatusDisplay.Text(L, status)} ({kvp.Value})"
+            : $"{kvp.Key} ({kvp.Value})").ToArray();
+}
