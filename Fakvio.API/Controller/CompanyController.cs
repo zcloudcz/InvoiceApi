@@ -789,8 +789,7 @@ public class CompanyController : ControllerBase
 
             // Update only mutable fields (infrastructure config).
             // Note: SchemaName is immutable after provisioning — managed by provisioning service.
-            settings.MaxUsers = dto.MaxUsers;
-            settings.AdminNotes = dto.AdminNotes;
+            // MaxUsers / AdminNotes are not on this DTO — see UpdateAdminSettings (issue #184).
 
             // Update SMTP settings — each field is individually nullable (partial update).
             // SmtpHost: set to empty/null to clear and fall back to system SMTP.
@@ -839,6 +838,53 @@ public class CompanyController : ControllerBase
             _logger.LogError(ex, "Error updating settings for company {CompanyId}", id);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = "An error occurred while updating company settings." });
+        }
+    }
+
+    /// <summary>
+    /// Updates the SysAdmin-only MaxUsers / AdminNotes pair (the /company-settings dialog).
+    /// Replace semantics, unlike <see cref="UpdateSettings"/>: both fields are written exactly
+    /// as sent, so <c>MaxUsers = null</c> lifts the limit. A patch rule ("null = keep") could
+    /// not express that for an <c>int?</c> (issue #184).
+    /// </summary>
+    /// <param name="id">Company ID</param>
+    /// <param name="dto">New MaxUsers / AdminNotes values — always the complete pair</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Updated settings</returns>
+    /// <response code="200">Settings updated successfully</response>
+    /// <response code="404">Settings not found</response>
+    [HttpPut("{id}/settings/admin")]
+    [ProducesResponseType(typeof(CompanySystemSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CompanySystemSettingsDto>> UpdateAdminSettings(
+        long id, [FromBody] UpdateCompanyAdminSettingsDto dto, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var settings = await _masterContext.CompanySystemSettings
+                .Include(s => s.Company)
+                .FirstOrDefaultAsync(s => s.CompanyId == id, cancellationToken);
+
+            if (settings == null)
+                return NotFound(new { message = $"No CompanySystemSettings found for company {id}." });
+
+            settings.MaxUsers = dto.MaxUsers;
+            settings.AdminNotes = dto.AdminNotes;
+            settings.UpdatedAt = DateTime.UtcNow;
+
+            await _masterContext.SaveChangesAsync(cancellationToken);
+
+            // MaxUsers is a licensing limit — log the new value so a change is traceable.
+            _logger.LogInformation("Updated admin settings for company {CompanyId}: MaxUsers={MaxUsers}",
+                id, dto.MaxUsers);
+
+            return Ok(MapSettingsToDto(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating admin settings for company {CompanyId}", id);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "An error occurred while updating company admin settings." });
         }
     }
 

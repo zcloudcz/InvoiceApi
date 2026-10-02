@@ -1968,6 +1968,13 @@ Pozor na `""` vs. `null` v `UpdateCompanySystemSettingsDto`: pole s `[EmailAddre
 vrátí 400 ještě před vstupem do endpointu. Nevyplněné volitelné e-mailové pole se proto posílá
 jako `null` (= ponechat stávající), u ostatních textových polí zůstává `""` (= vymazat). Viz #186.
 
+`MaxUsers` a `AdminNotes` na `UpdateCompanySystemSettingsDto` **nejsou** — patří SysAdminovi
+a mají vlastní `UpdateCompanyAdminSettingsDto` na `PUT /api/company/{id}/settings/admin`
+(dialog na `/company-settings`). Ten endpoint má **replace** sémantiku: obě pole se zapíší
+přesně tak, jak přišla — `MaxUsers = null` = bez limitu, `AdminNotes` `null` i `""` = bez
+poznámky. Patch pravidlo „`null` = ponechat" by u `int?` znemožnilo limit zrušit, a sdílený
+DTO zase dřív způsoboval, že každé uložení z `/my-company` limit i poznámky vynulovalo (#184).
+
 **Roční update XSD:**
 Viz `Fakvio.Infrastructure/Resources/Epo/EPO-README.md` — stažení z `adisspr.mfcr.cz`, pojmenování, verifikace.
 
