@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.User;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
@@ -58,6 +60,13 @@ public class UserPreferencesService : IUserPreferencesService
         }
 
         entity.DefaultGridPageSize = dto.DefaultGridPageSize;
+        // Layout is client-supplied: drop null/blank ids and cap the size so it cannot bloat the row.
+        var layout = dto.DashboardLayout?
+            .Where(i => i is not null && !string.IsNullOrWhiteSpace(i.Id) && i.Id.Length <= 64)
+            .Take(MaxLayoutItems)
+            .ToList();
+        entity.DashboardLayoutJson = layout is null ? null : JsonSerializer.Serialize(layout);
+        entity.SetupWizardDismissedAt = dto.SetupWizardDismissedAt;
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("User {UserId} preferences updated (grid page size {PageSize})",
@@ -66,8 +75,28 @@ public class UserPreferencesService : IUserPreferencesService
         return MapToDto(entity);
     }
 
+    private const int MaxLayoutItems = 50;
+
     private static UserPreferencesDto MapToDto(UserPreferences entity) => new()
     {
-        DefaultGridPageSize = entity.DefaultGridPageSize
+        DefaultGridPageSize = entity.DefaultGridPageSize,
+        DashboardLayout = string.IsNullOrWhiteSpace(entity.DashboardLayoutJson)
+            ? null
+            // A corrupt/old-shape JSON value must not take the dashboard down — same
+            // "decoration, never crash the host page" reasoning as ReadinessApiService.
+            : TryDeserializeLayout(entity.DashboardLayoutJson),
+        SetupWizardDismissedAt = entity.SetupWizardDismissedAt
     };
+
+    private static List<DashboardWidgetLayoutItemDto>? TryDeserializeLayout(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<DashboardWidgetLayoutItemDto>>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

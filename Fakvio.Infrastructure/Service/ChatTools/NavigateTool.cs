@@ -116,6 +116,7 @@ public class NavigateTool : IChatTool
         // Company and user settings
         new("dashboard", "/", "dashboard"),
         new("my_company", "/my-company", "my company page"),
+        new("setup_wizard", "/setup", "guided setup wizard (company, bank, invoicing)"),
         new("number_sequences", "/number-sequences", "number sequence settings"),
         new("feedback", "/feedback", "my feedback reports"),
         new("preferences", "/preferences", "user preferences"),

@@ -86,8 +86,18 @@ public class CreateInvoiceDto
     public string? SpecificSymbol { get; set; }
 
     /// <summary>
+    /// Optional reference to one of the issuer's bank accounts (BankAccount.Id).
+    /// When set, the server loads that account and copies its AccountNumber/IBAN/SWIFT onto the
+    /// invoice, overriding any explicit BankAccountNumber/IBAN/SWIFT also sent below. The account
+    /// must belong to the issuer (IssuerId) — otherwise the request fails with 400.
+    /// When omitted and no bank fields are given at all, the server auto-fills from the issuer's
+    /// default/currency-matching account (see InvoiceService.ApplyBankAccountDefaultsAsync).
+    /// </summary>
+    public long? BankAccountId { get; set; }
+
+    /// <summary>
     /// Bank account number
-    /// If not provided, taken from issuer or client billing settings
+    /// If not provided, taken from the issuer's default bank account (see BankAccountId)
     /// </summary>
     [StringLength(100)]
     public string? BankAccountNumber { get; set; }
