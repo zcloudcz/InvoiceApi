@@ -973,6 +973,14 @@ Grid zobrazuje bankovní transakce:
 
 **Filtrace:** stav párování, směr platby (příchozí / odchozí), textové hledání
 
+### Import bankovního výpisu (GPC/ABO)
+
+Na stránce Platby nahrajte výpis ve formátu GPC/ABO (`.gpc`, `.abo`, `.txt`, max. 5 MB), který stáhnete z internetového bankovnictví
+(KB, ČSOB, Fio, Raiffeisenbank, MONETA a další). Číslo účtu z výpisu musí být uvedeno v nastavení firmy, jinak se výpis nenaimportuje.
+Fakvio vytvoří nové platby, přeskočí ty, které už v systému jsou (výpis můžete nahrát opakovaně), a příchozí platby automaticky spáruje
+s fakturami podle variabilního symbolu a částky. Po nahrání uvidíte souhrn: počet výpisů, nových plateb, duplicit, spárovaných a
+nespárovaných plateb a případná upozornění (např. storno položky se neimportují).
+
 ### Ruční párování
 
 Kliknutím na řádek s platbou se otevře detail → tlačítko „Spárovat s fakturou" → výběr faktury ze seznamu.

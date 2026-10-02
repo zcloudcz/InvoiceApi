@@ -829,6 +829,19 @@ plateb bez faktury (sociální/zdravotní pojištění, DPH…). Migrace `Add_Re
 - **UI**: `RecognizedCounterpartyEditor.razor` (sekce na MyCompany, samostatný persist),
   `AssignRecognizedDialog.razor` (picker na /payments), chip + akce na Payments/PaymentDetail.
 
+### 4.5.0 Import bankovního výpisu GPC/ABO
+
+- `GpcParser` (Application, čistá funkce): UTF-8 (strict) jinak Windows-1250; záznamy `074` (hlavička: účet, č. výpisu, datum) a `075`
+  (položka: protiúčet+kód banky, č. dokladu, částka v haléřích, kód 1/2 debet/kredit, 4/5 storno, VS/KS/SS, valuta, název).
+  `076/078/079` se ignorují. Vadné řádky se přeskočí a vrátí v `Errors`.
+- `BankStatementImportService` (tenant DI scope, běží v HTTP requestu, `TenantDbContext` už má schema): cílový účet = issuer `BankAccount`
+  podle čísla účtu z `074` (prefix+číslo; kód banky v `074` není), nebo explicitní `bankAccountId`. Dedupe přes `DeduplicationHash`
+  (účet|valuta|částka|směr|VS|KS|SS|protiúčet|č. dokladu|pořadí shodné řádky) — opakovaný import nic nevytvoří. Storno položky se
+  přeskočí s varováním. `IPaymentMatchingService.MatchAsync` se volá jen pro příchozí platby (stejná cesta jako IMAP, vč. auto-DPP a webhooků).
+- API: `POST api/bank-statement/import` (multipart `file` + volitelně `bankAccountId`, max 5 MB, `.gpc/.abo/.txt`) →
+  `{statements, imported, duplicates, matched, unmatched, errors[]}`. UI: karta „Import výpisu" na `/payments`.
+- MCP/chat tool zatím není (parita §4.7 beze změny).
+
 ### 4.5.1 PaymentMatch lookup — proforma ↔ DPP cross-link (#31)
 
 `IPaymentMatchingService.GetPaymentsForInvoiceAsync(long invoiceId)` vrací unified seznam plateb pro danou fakturu:

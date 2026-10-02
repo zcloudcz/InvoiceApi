@@ -2170,4 +2170,8 @@
   <data name="EpoSummaryGoods" xml:space="preserve"><value>Zboží (jinak služba)</value></data>
   <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Stáhnout EPO – souhrnné hlášení</value></data>
   <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Zboží (kód 0) lze v souhrnném hlášení vykázat jen za měsíc (§ 102 odst. 6 ZDPH). Přepněte na měsíční období nebo odškrtněte zboží.</value></data>
+  <data name="Payments_Import_Title" xml:space="preserve"><value>Import výpisu (GPC/ABO)</value></data>
+  <data name="Payments_Import_Button" xml:space="preserve"><value>Nahrát výpis</value></data>
+  <data name="Payments_Import_Hint" xml:space="preserve"><value>Soubor .gpc / .abo / .txt z internetového bankovnictví (max. 5 MB). Opakovaný import téhož výpisu nevytvoří duplicity. Účet z výpisu musí být uvedený v nastavení firmy.</value></data>
+  <data name="Payments_Import_Summary" xml:space="preserve"><value>Výpisů: {0}, nově naimportováno: {1}, duplicit: {2}, spárováno: {3}, nespárováno: {4}.</value></data>
 </root>

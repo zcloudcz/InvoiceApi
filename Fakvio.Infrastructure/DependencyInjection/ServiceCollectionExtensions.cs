@@ -281,6 +281,7 @@ public static class ServiceCollectionExtensions
         // AI-backed email parser + matching core.
         services.AddScopedWithLogging<IBankEmailParser, AiBankEmailParser>();
         services.AddScopedWithLogging<IPaymentMatchingService, PaymentMatchingService>();
+        services.AddScopedWithLogging<IBankStatementImportService, BankStatementImportService>();
         services.AddScopedWithLogging<IBankTransactionQueryService, BankTransactionQueryService>();
 
         // Registry of known counterparty accounts (insurance, tax office, …) for
