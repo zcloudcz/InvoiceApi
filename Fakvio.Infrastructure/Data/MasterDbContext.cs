@@ -217,7 +217,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
-    /// <summary>Every DateTime is written as UTC (Npgsql 10 requirement) — see <see cref="PostgresDateTime.UtcOnWrite"/>.</summary>
+    /// <summary>Every DateTime is written as UTC (Unspecified is pinned as UTC, not shifted by the host time zone) — see <see cref="PostgresDateTime.UtcOnWrite"/>.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder) =>
         PostgresDateTime.UtcOnWrite(configurationBuilder);
 

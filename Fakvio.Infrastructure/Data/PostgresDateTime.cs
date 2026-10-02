@@ -37,8 +37,11 @@ public static class PostgresDateTime
 
     /// <summary>
     /// Registers a write-side converter for every DateTime / DateTime? property of a context
-    /// (call from <c>ConfigureConventions</c>). Npgsql 10 rejects non-UTC values for
-    /// "timestamp with time zone", and Blazor date pickers send <c>Unspecified</c>. A SaveChanges
+    /// (call from <c>ConfigureConventions</c>). Both hosts enable
+    /// <c>Npgsql.EnableLegacyTimestampBehavior</c>, under which <c>Unspecified</c> (Blazor date pickers)
+    /// is treated as Local and shifted by the host time zone. The converter pins <c>Unspecified</c> as UTC
+    /// as-is and converts <c>Local</c> with <c>ToUniversalTime()</c> (no effect on UTC App Service,
+    /// removes the shift on dev machines/tests in Prague). A SaveChanges
     /// hook cannot fix that (EF compares DateTime ignoring Kind, so assigning the same instant
     /// with a different Kind is a no-op) — a converter runs on every parameter, always.
     /// The converter is not part of the migration model, so it creates no migration.

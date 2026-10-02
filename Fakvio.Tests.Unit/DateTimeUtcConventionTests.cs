@@ -7,9 +7,9 @@ namespace Fakvio.Tests.Unit;
 /// <summary>
 /// Regression: the old SaveChanges hook only did <c>property.CurrentValue = SpecifyKind(dt, Utc)</c>,
 /// but EF compares DateTime ignoring Kind, so it saw "no change" and kept the Unspecified value.
-/// Npgsql 10 then throws for "timestamp with time zone". The fix is a model-wide value converter,
+/// Under legacy timestamp behavior Unspecified is then shifted by the host time zone. The fix is a model-wide value converter,
 /// so every DateTime / DateTime? property in both contexts must carry one that stamps UTC on write.
-/// (InMemory ignores converters, so we inspect the Npgsql model — no connection is opened.)
+/// (We inspect the Npgsql model directly — no connection is opened.)
 /// </summary>
 public class DateTimeUtcConventionTests
 {
@@ -43,7 +43,12 @@ public class DateTimeUtcConventionTests
         {
             var converter = p.GetValueConverter();
             converter.ShouldNotBeNull($"{p.DeclaringType.DisplayName()}.{p.Name}");
-            ((DateTime)converter!.ConvertToProvider(Unspecified)!).Kind.ShouldBe(DateTimeKind.Utc);
+            var fromUnspecified = (DateTime)converter!.ConvertToProvider(Unspecified)!;
+            fromUnspecified.Kind.ShouldBe(DateTimeKind.Utc);
+            fromUnspecified.ShouldBe(Unspecified); // pinned as-is, not shifted
+
+            var local = DateTime.Now;
+            ((DateTime)converter.ConvertToProvider(local)!).ShouldBe(local.ToUniversalTime());
         }
     }
 }

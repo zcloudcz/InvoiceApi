@@ -3450,10 +3450,10 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 ## 12. Známé gotchas (rychlý lookup)
 
 ### `DateTime` do PostgreSQL = vždy UTC (`PostgresDateTime.UtcOnWrite`)
-- Npgsql 10 odmítne ne-UTC `DateTime` pro `timestamp with time zone`; Blazor date pickery posílají `Unspecified`.
+- Oba hosty zapínají `Npgsql.EnableLegacyTimestampBehavior`, pod kterým se `Unspecified` (Blazor date pickery) bere jako Local a posune o TZ hostitele (na App Service v UTC bez efektu, na pražských dev strojích/testech posun).
   `MasterDbContext` i `TenantDbContext` proto v `ConfigureConventions` registrují value converter na **všechny** `DateTime`/`DateTime?` (zápis → UTC, `Unspecified` jen přeznačit, `Local` převést).
 - Dřívější SaveChanges hook `NormalizeDateTimesToUtc` nefungoval: EF porovnává `DateTime` bez `Kind`, přiřazení stejné hodnoty s jiným `Kind` nevidí jako změnu. Nevracej ho; converter není součástí migračního modelu (žádná migrace).
-- Test: `DateTimeUtcConventionTests` (kontroluje model, InMemory converter neaplikuje).
+- Test: `DateTimeUtcConventionTests` (kontroluje converter v modelu; `Unspecified` se nechá jak je, `Local` → `ToUniversalTime()`).
 
 ### Neplátce DPH (`Client.IsVatPayer = false` na issueru)
 - Server nevěří klientovi: `InvoiceService` i `InvoiceTemplateService` (create + update) volají pro
