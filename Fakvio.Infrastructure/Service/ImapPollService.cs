@@ -196,7 +196,6 @@ public class ImapPollService : IImapPollService
         CancellationToken ct)
     {
         var master = outerScope.ServiceProvider.GetRequiredService<MasterDbContext>();
-        var tenantFactory = outerScope.ServiceProvider.GetRequiredService<ITenantDbContextFactory>();
 
         // Load InboundDomain from settings for the optional domain-part check.
         var settings = await master.PaymentMatchingSystemSettings.AsNoTracking().FirstOrDefaultAsync(ct);
@@ -218,9 +217,11 @@ public class ImapPollService : IImapPollService
         var index = resolution.MasterIndexEntry;
 
         // Resolve the tenant's schema and create a tenant-scoped DbContext.
-        using var tenantScope = outerScope.ServiceProvider.CreateScope();
         var companyId = await ResolveCompanyIdFromSchemaAsync(master, index.TenantSchema, ct);
-        var tenantCtx = (TenantDbContext)await tenantFactory.CreateContextForCompanyAsync(companyId, ct);
+        using var tenantScope = await outerScope.ServiceProvider
+            .GetRequiredService<IServiceScopeFactory>().CreateTenantScopeAsync(companyId, ct);
+        // Schema is already set on the scope's TenantDbContext (see TenantScope).
+        var scopedTenantCtx = tenantScope.ServiceProvider.GetRequiredService<TenantDbContext>();
 
         var toAddress = message.To.Mailboxes.FirstOrDefault()?.Address
             ?? $"{resolution.MatchedAlias}@{inboundDomain ?? "fakvio.cz"}";
@@ -233,14 +234,6 @@ public class ImapPollService : IImapPollService
         // Route to the correct processor based on alias type
         if (index.MailboxType == Domain.Enums.EMailboxType.Invoice && index.TenantInvoiceMailboxId.HasValue)
         {
-            // Set schema on the DI-scoped TenantDbContext so ALL services resolved from
-            // tenantScope (IReceivedInvoiceService, IClientService, etc.) use the correct
-            // tenant schema. Without this, only the explicitly-created tenantCtx has schema
-            // set, but DI-resolved services get their own TenantDbContext with Schema=null
-            // → queries hit "public" schema → "relation does not exist".
-            var scopedTenantCtx = tenantScope.ServiceProvider.GetRequiredService<TenantDbContext>();
-            scopedTenantCtx.Schema = tenantCtx.Schema;
-
             var invoiceProcessor = new InvoiceEmailProcessor(
                 scopedTenantCtx,
                 tenantScope.ServiceProvider.GetRequiredService<IIsdocImportParser>(),
@@ -276,11 +269,7 @@ public class ImapPollService : IImapPollService
             // Payment email → existing InboundEmailProcessor path
             var parser = tenantScope.ServiceProvider.GetRequiredService<IBankEmailParser>();
             // The matcher auto-issues a DPP through IInvoiceService, which resolves the DI-scoped
-            // TenantDbContext. Give that ONE scoped context the tenant schema (same reason as in the
-            // invoice-mail branch above) and let matcher + processor share it, so IInvoiceService and
-            // PaymentMatchingService always read/write the same context and schema.
-            var scopedTenantCtx = tenantScope.ServiceProvider.GetRequiredService<TenantDbContext>();
-            scopedTenantCtx.Schema = tenantCtx.Schema;
+            // TenantDbContext; matcher + processor share that same schema-bound context.
             var matcher = new PaymentMatchingService(
                 scopedTenantCtx,
                 tenantScope.ServiceProvider.GetRequiredService<INotificationService>(),

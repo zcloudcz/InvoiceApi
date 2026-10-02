@@ -238,9 +238,7 @@ public class WebhookTests : IDisposable
         services.AddLogging();
         var masterDb = Guid.NewGuid().ToString();
         services.AddDbContext<MasterDbContext>(o => o.UseInMemoryDatabase(masterDb));
-        services.AddDbContext<TenantDbContext>(o => o.UseInMemoryDatabase(Guid.NewGuid().ToString()));
-        // Factory returns a NEW context (like the real one) and does not touch the scoped one.
-        services.AddScoped<ITenantDbContextFactory>(_ => Substitute.For<ITenantDbContextFactory>());
+        services.AddTenantScopeStubs();
         services.AddScoped<IWebhookDispatchService>(sp =>
         {
             var d = Substitute.For<IWebhookDispatchService>();

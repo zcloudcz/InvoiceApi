@@ -65,6 +65,10 @@ public interface ITenantDbContextFactory
     /// Creates a TenantDbContext for a specific company by ID.
     /// Used by SysAdmin tools, provisioning service, and background jobs.
     ///
+    /// WARNING: returns a NEW context and does NOT set Schema on the DI-scoped TenantDbContext.
+    /// Background code that resolves services from a scope must use
+    /// IServiceScopeFactory.CreateTenantScopeAsync (Fakvio.Infrastructure.Service.TenantScope) instead.
+    ///
     /// Throws if:
     /// - CompanySystemSettings not found for the given companyId
     /// - Company is not provisioned

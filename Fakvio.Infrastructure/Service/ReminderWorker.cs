@@ -145,13 +145,9 @@ public class ReminderWorker : BackgroundService
         {
             try
             {
-                // 2. Create a scoped DI container for this tenant.
-                using var scope = _scopeFactory.CreateScope();
-
-                // 3. CreateContextForCompanyAsync sets Schema on the scoped TenantDbContext
-                //    so all subsequent queries within this scope use the tenant's schema.
-                var factory = scope.ServiceProvider.GetRequiredService<ITenantDbContextFactory>();
-                await factory.CreateContextForCompanyAsync(companyId, ct);
+                // 2+3. Scoped DI container for this tenant; its TenantDbContext has Schema set
+                //      so all subsequent queries within this scope use the tenant's schema.
+                using var scope = await _scopeFactory.CreateTenantScopeAsync(companyId, ct);
 
                 // 4. Resolve IReminderService within the tenant scope and process overdue invoices.
                 var reminderService = scope.ServiceProvider.GetRequiredService<IReminderService>();

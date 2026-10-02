@@ -30,7 +30,7 @@ public class RecurringInvoiceWorkerTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDbContext<MasterDbContext>(o => o.UseInMemoryDatabase(dbName));
-        services.AddScoped<ITenantDbContextFactory>(_ => Substitute.For<ITenantDbContextFactory>());
+        services.AddTenantScopeStubs();
         services.AddSingleton(recurringInvoiceService);
         using var provider = services.BuildServiceProvider();
 
