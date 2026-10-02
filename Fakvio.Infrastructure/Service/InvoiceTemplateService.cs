@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Helpers;
 using Fakvio.Application.Common.Extensions;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Invoice;
@@ -511,20 +512,20 @@ public class InvoiceTemplateService : IInvoiceTemplateService
             SWIFT = template.SWIFT,
             PaymentMethod = template.PaymentMethod,
             CurrencyId = template.CurrencyId,
-            Notes = createDto.Notes ?? template.Notes,
+            Notes = BillingPeriodShifter.Shift(createDto.Notes ?? template.Notes, createDto.ShiftMonths),
             // Pass template's custom number sequence to invoice creation
             NumberSequenceId = template.NumberSequenceId,
             InvoiceItem = template.InvoiceItem.Select(item => new CreateInvoiceItemDto
             {
                 OrderIndex = item.OrderIndex,
-                Description = item.Description,
+                Description = BillingPeriodShifter.Shift(item.Description, createDto.ShiftMonths) ?? item.Description,
                 Quantity = item.Quantity,
                 Unit = item.Unit,
                 UnitPrice = item.UnitPrice,
                 VatRateId = item.VatRateId,
                 VatRatePercentage = item.VatRatePercentage,
                 ProductCode = item.ProductCode,
-                Notes = item.Notes
+                Notes = BillingPeriodShifter.Shift(item.Notes, createDto.ShiftMonths)
             }).ToList()
         };
 

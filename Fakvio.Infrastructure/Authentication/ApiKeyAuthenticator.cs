@@ -201,7 +201,7 @@ public class ApiKeyAuthenticator : IApiKeyAuthenticator
     /// hours (two, in CEST).
     ///
     /// Unspecified is treated as UTC rather than converted, matching
-    /// <c>MasterDbContext.NormalizeDateTimesToUtc</c>, which stamps every stored DateTime
+    /// <c>PostgresDateTime.UtcOnWrite</c>, which stamps every stored DateTime
     /// as UTC without shifting it. Converting here instead would undo that on providers
     /// that round-trip the kind verbatim (EF InMemory).
     /// </summary>

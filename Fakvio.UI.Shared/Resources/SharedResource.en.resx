@@ -473,6 +473,8 @@
   <data name="Invoice_Copy" xml:space="preserve"><value>Copy invoice</value></data>
   <data name="Invoice_CopySuccess" xml:space="preserve"><value>Invoice copied as #{0}</value></data>
   <data name="Invoice_CopyError" xml:space="preserve"><value>Failed to copy invoice</value></data>
+  <data name="Invoice_CopyShiftPeriods" xml:space="preserve"><value>Shift periods in texts</value></data>
+  <data name="Invoice_CopyShiftPeriodsHint" xml:space="preserve"><value>Months and years in item descriptions and notes (e.g. "3/2026", "March 2026") move forward by the month difference from the original invoice.</value></data>
   <data name="FileName_Invoice" xml:space="preserve"><value>Invoice</value></data>
   <data name="FileName_CreditNote" xml:space="preserve"><value>CreditNote</value></data>
   <data name="FileName_Invoices" xml:space="preserve"><value>Invoices</value></data>
@@ -1826,6 +1828,8 @@
   <data name="Recurring_MaxOccurrences" xml:space="preserve"><value>Number of occurrences</value></data>
   <data name="Recurring_AutoSend" xml:space="preserve"><value>Complete and e-mail automatically</value></data>
   <data name="Recurring_AutoSendHelp" xml:space="preserve"><value>The invoice is always issued; this switch also e-mails it to the client.</value></data>
+  <data name="Recurring_ShiftPeriods" xml:space="preserve"><value>Shift periods in texts</value></data>
+  <data name="Recurring_ShiftPeriodsHelp" xml:space="preserve"><value>Months and quarters in the template text (e.g. "3/2026") advance with every invoice. The template text must name the period of the first generated invoice.</value></data>
   <data name="Recurring_NextRun" xml:space="preserve"><value>Next run</value></data>
   <data name="Recurring_LastRun" xml:space="preserve"><value>Last run</value></data>
   <data name="Recurring_OccurrenceCount" xml:space="preserve"><value>Occurrences</value></data>
@@ -2170,4 +2174,8 @@
   <data name="EpoSummaryGoods" xml:space="preserve"><value>Goods (else service)</value></data>
   <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Download EPO – summary statement</value></data>
   <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Goods (code 0) can only be reported in a monthly summary statement (§102(6) VAT Act). Switch to monthly periods or untick goods.</value></data>
+  <data name="Payments_Import_Title" xml:space="preserve"><value>Statement import (GPC/ABO)</value></data>
+  <data name="Payments_Import_Button" xml:space="preserve"><value>Upload statement</value></data>
+  <data name="Payments_Import_Hint" xml:space="preserve"><value>A .gpc / .abo / .txt file from internet banking (max 5 MB). Re-importing the same statement creates no duplicates. The statement account must be listed in company settings.</value></data>
+  <data name="Payments_Import_Summary" xml:space="preserve"><value>Statements: {0}, newly imported: {1}, duplicates: {2}, matched: {3}, unmatched: {4}.</value></data>
 </root>

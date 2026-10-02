@@ -180,7 +180,9 @@ public class EpoControlStatementExportTests : IDisposable
         decimal vatPct,
         long clientId = CustomerCzId,
         long currencyId = CzkCurrencyId,
-        string? documentNumber = null)
+        string? documentNumber = null,
+        EDocumentType docType = EDocumentType.Invoice,
+        long? originalInvoiceId = null)
     {
         // Back-calculate base from total-incl-vat and vatPct:
         //   totalWithVat = base * (1 + vatPct/100)  →  base = totalWithVat / (1 + vatPct/100)
@@ -190,7 +192,8 @@ public class EpoControlStatementExportTests : IDisposable
 
         var invoice = new Invoice
         {
-            DocumentType = EDocumentType.Invoice,
+            DocumentType = docType,
+            OriginalInvoiceId = originalInvoiceId,
             Status = status,
             DocumentNumber = documentNumber ?? $"INV-{Guid.NewGuid():N}",
             IssueDate = duzp,
@@ -352,6 +355,67 @@ public class EpoControlStatementExportTests : IDisposable
 
         var (_, errors) = ParseAndValidate(bytes);
         errors.ShouldBeEmpty("Full DPHKH1 with A4/A5/B2/B3 must be XSD-valid.");
+    }
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_CreditNoteBelowLimit_GoesToA5_RegardlessOfOriginal()
+    {
+        // Original (Feb) 12 100 incl. VAT was A.4, but the correction itself (2 420) is below 10 000 →
+        // A.5, negative (FS FAQ on the control statement, part X, q. 1 and 4).
+        SeedIssuedInvoice(new DateTime(2026, 2, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 12100m, 21m, documentNumber: "INV-ORIG");
+        var originalId = _context.Invoice.Single(i => i.DocumentNumber == "INV-ORIG").Id;
+        SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 2420m, 21m,
+            documentNumber: "CN-1", docType: EDocumentType.CreditNote, originalInvoiceId: originalId);
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        doc.Descendants("VetaA4").ShouldBeEmpty();
+        var a5 = doc.Descendants("VetaA5").Single();
+        a5.Attribute("zakl_dane1")!.Value.ShouldBe("-2000.00");
+        a5.Attribute("dan1")!.Value.ShouldBe("-420.00");
+    }
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_CreditNoteAtOrAboveLimit_GoesToA4NegativeUnderOwnNumber()
+    {
+        // |correction| = 12 100 >= 10 000 with CZ DIČ → A.4 with its own number, stored positive but reported negative.
+        SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 12100m, 21m,
+            documentNumber: "CN-2", docType: EDocumentType.CreditNote);
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var a4 = doc.Descendants("VetaA4").Single();
+        a4.Attribute("c_evid_dd")!.Value.ShouldBe("CN-2");
+        a4.Attribute("zakl_dane1")!.Value.ShouldBe("-10000.00");
+        a4.Attribute("dan1")!.Value.ShouldBe("-2100.00");
+        doc.Descendants("VetaA5").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_CreditNoteWithMixedSignRows_UsesNegativeNet()
+    {
+        // Rows -1000 and +600 at 21 % → net -400 base / -84 VAT in A.5 (|total| 484 < 10 000).
+        SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, -1210m, 21m,
+            documentNumber: "CN-MIX", docType: EDocumentType.CreditNote);
+        var cn = _context.Invoice.Include(i => i.InvoiceItem).Single();
+        cn.InvoiceItem.Add(new InvoiceItem
+        {
+            OrderIndex = 2, Description = "Positive row", Quantity = 1, UnitPrice = 600m,
+            VatRatePercentage = 21m, TotalBeforeVat = 600m, VatAmount = 126m, TotalWithVat = 726m
+        });
+        _context.SaveChanges();
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var a5 = doc.Descendants("VetaA5").Single();
+        a5.Attribute("zakl_dane1")!.Value.ShouldBe("-400.00"); // -1000 + 600
+        a5.Attribute("dan1")!.Value.ShouldBe("-84.00");        // -210 + 126
     }
 
     [Fact]

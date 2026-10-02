@@ -20,6 +20,16 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.02.2 — 2026-10-02
+
+### Nové funkce
+
+- **#493** — MCP i chat umí upravit existující fakturu (update_invoice — data, symboly, platba, účet, poznámka, položky). Koncept se upraví hned; u vystavené faktury nástroj nejdřív požádá o výslovný souhlas s vrácením do konceptu (revert_invoice_to_draft); zaplacenou fakturu měnit nelze (navrhne dobropis). (PR #493, `dfbeccd`)
+- **#491** — Kopie faktury umí posunout období v textech („Hosting 3/2026“ → „Hosting 4/2026“, „březen 2026“ → „duben 2026“, čtvrtletí, přelom roku) — volba v dialogu kopie. U opakovaných faktur se posun zapíná přepínačem „Posouvat období v textech“ (nové plány zapnuto, stávající beze změny). (PR #491, `6cd8ffc`)
+- **#492** — Import bankovních výpisů ve formátu GPC/ABO (KB, ČSOB, Fio, Raiffeisen, MONETA…) na stránce Platby: platby se založí bez duplicit (i vůči platbám už načteným z bankovních e-mailů) a hned se spárují s vydanými i přijatými fakturami. (PR #492, `6e1dbfb`)
+- **#488** — Přiznání k DPH (ř. 1/2/25), přehled DPH a kontrolní hlášení (A.1, A.4/A.5) nově započítávají dobropisy záporně v období jejich DUZP — dřív se ignorovaly a DPH vycházela vyšší. O zařazení do A.4/A.5 rozhoduje absolutní hodnota opravy (dle FAQ Finanční správy). (PR #488, `1f0121f`)
+- **#489** — Ukládání časů do databáze sjednoceno na UTC jedním převodníkem pro obě databáze (dosavadní normalizace u hodnot bez časové zóny nedělala nic); v produkci beze změny, na vývojových strojích zmizí posun o časové pásmo. (PR #489, `d34d664`)
+
 ## 2026.10.02 — 2026-10-02
 
 ### Nové funkce
