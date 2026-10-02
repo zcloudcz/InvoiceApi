@@ -1,0 +1,340 @@
+@*
+    Webhooks.razor — outbound webhook subscriptions (DEVGUIDE §4.14). Admin/SysAdmin only.
+
+    The signing secret exists in plaintext ONLY in the create/rotate response (the server keeps
+    it encrypted and never returns it again), so — like the API key on Integrations.razor —
+    it is shown in a one-time reveal panel that drops it from memory when dismissed.
+*@
+@page "/settings/webhooks"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,SysAdmin")]
+@using Fakvio.Contracts.Dto.Webhook
+@inject WebhookApiService WebhookApi
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime JS
+@inject IUiErrorHandler ErrorHandler
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Webhook_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["Webhook_Title"]</MudText>
+<MudText Class="mb-4">@L["Webhook_Subtitle"]</MudText>
+
+@if (_revealedSecret is not null)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4">
+        <MudText Typo="Typo.subtitle1">@L["Webhook_SecretTitle"]</MudText>
+        <MudText Typo="Typo.body2" Class="mb-3">@L["Webhook_SecretWarning"]</MudText>
+        <MudPaper Class="pa-2 mb-3 d-flex align-center gap-2" Outlined="true">
+            <MudText Typo="Typo.body1" Style="font-family: monospace; word-break: break-all;">@_revealedSecret</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                           Title="@L["Webhook_CopySecret"].Value"
+                           OnClick="CopySecretAsync" />
+        </MudPaper>
+        <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Check"
+                   OnClick="@(() => _revealedSecret = null)">
+            @L["Webhook_SecretSaved"]
+        </MudButton>
+    </MudAlert>
+}
+
+<FakvioGrid T="WebhookSubscriptionDto" GridKey="webhooks" Items="@_items" Loading="@_loading"
+            RowClick="@(args => OpenEditDialog(args.Item))">
+    <ToolBarContent>
+        <ResponsiveButton Label="@L["Webhook_New"].Value" Size="Size.Small"
+                          StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog" />
+    </ToolBarContent>
+    <Columns>
+        <PropertyColumn Property="x => x.Url" Title="@L["Webhook_Url"].Value" />
+        <PropertyColumn Property="x => x.Description" Title="@L["Label_Description"].Value" />
+        <TemplateColumn T="WebhookSubscriptionDto" Title="@L["Webhook_Events"].Value" Sortable="false" Filterable="false">
+            <CellTemplate>
+                @foreach (var e in context.Item.Events)
+                {
+                    <MudChip T="string" Size="Size.Small">@EventLabel(e)</MudChip>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <PropertyColumn Property="x => x.IsActive" Title="@L["Label_Status"].Value" Filterable="false">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                    @(context.Item.IsActive ? L["Label_Active"] : L["Label_Inactive"])
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <TemplateColumn T="WebhookSubscriptionDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false"
+                        CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.NetworkCheck" Size="Size.Small" Color="Color.Info"
+                               OnClick="@(() => TestAsync(context.Item))" Title="@L["Webhook_Test"].Value" />
+                <MudIconButton Icon="@Icons.Material.Filled.History" Size="Size.Small"
+                               OnClick="@(() => OpenDeliveriesAsync(context.Item))" Title="@L["Webhook_Deliveries"].Value" />
+                <MudIconButton Icon="@Icons.Material.Filled.VpnKey" Size="Size.Small" Color="Color.Warning"
+                               OnClick="@(() => RotateAsync(context.Item))" Title="@L["Webhook_RotateSecret"].Value" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => DeleteAsync(context.Item))" Title="@L["Btn_Delete"].Value" />
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["Webhook_NoSubscriptions"]</MudAlert>
+    </NoRecordsContent>
+</FakvioGrid>
+
+@* ========== Create / edit dialog ========== *@
+<MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingId is null ? L["Webhook_New"] : L["Webhook_Edit"])</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_url" Label="@L["Webhook_Url"].Value" Required="true" MaxLength="2048"
+                      HelperText="@L["Webhook_UrlHelper"].Value" Class="mb-3" />
+        <MudTextField @bind-Value="_description" Label="@L["Label_Description"].Value" MaxLength="200" Class="mb-3" />
+        <MudText Typo="Typo.subtitle2">@L["Webhook_Events"]</MudText>
+        @foreach (var e in WebhookEventCatalog.All)
+        {
+            var name = e; // capture per iteration for the lambda below
+            <MudCheckBox T="bool" Value="@_events.Contains(name)" Label="@EventLabel(name)" Dense="true"
+                         ValueChanged="@(on => ToggleEvent(name, on))" />
+        }
+        @if (_editingId is not null)
+        {
+            <MudSwitch T="bool" @bind-Value="_isActive" Label="@L["Label_Active"].Value" Color="Color.Primary" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(_saving || string.IsNullOrWhiteSpace(_url) || _events.Count == 0)">
+            @L["Btn_Save"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ========== Deliveries log dialog ========== *@
+<MudDialog @bind-Visible="_showDeliveries" Options="_wideDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["Webhook_Deliveries"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <FakvioGrid T="WebhookDeliveryDto" GridKey="webhook-deliveries" Items="@_deliveries">
+            <Columns>
+                <PropertyColumn Property="x => x.CreatedAt" Title="@L["Webhook_Col_Created"].Value" Format="g" />
+                <PropertyColumn Property="x => x.EventType" Title="@L["Webhook_Col_Event"].Value" />
+                <PropertyColumn Property="x => x.Status" Title="@L["Label_Status"].Value">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Item.Status)">
+                            @L[$"Webhook_Status_{context.Item.Status}"]
+                        </MudChip>
+                    </CellTemplate>
+                </PropertyColumn>
+                <PropertyColumn Property="x => x.Attempts" Title="@L["Webhook_Col_Attempts"].Value" Filterable="false" />
+                <PropertyColumn Property="x => x.LastStatusCode" Title="@L["Webhook_Col_HttpStatus"].Value" Filterable="false" />
+                <PropertyColumn Property="x => x.NextAttemptAt" Title="@L["Webhook_Col_NextAttempt"].Value" Format="g" Filterable="false" />
+                <PropertyColumn Property="x => x.LastError" Title="@L["Webhook_Col_Error"].Value" />
+                <TemplateColumn T="WebhookDeliveryDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Replay" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="@(() => RedeliverAsync(context.Item))" Title="@L["Webhook_Redeliver"].Value" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+            <NoRecordsContent>
+                <MudAlert Severity="Severity.Info">@L["Webhook_NoDeliveries"]</MudAlert>
+            </NoRecordsContent>
+        </FakvioGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showDeliveries = false)">@L["Btn_Close"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<WebhookSubscriptionDto> _items = [];
+    private bool _loading;
+    private bool _saving;
+
+    // Create/edit dialog state
+    private bool _showDialog;
+    private long? _editingId;
+    private string _url = string.Empty;
+    private string? _description;
+    private bool _isActive = true;
+    private readonly HashSet<string> _events = new();
+
+    // One-time secret reveal (memory only)
+    private string? _revealedSecret;
+
+    // Deliveries dialog state
+    private bool _showDeliveries;
+    private long _deliveriesSubscriptionId;
+    private List<WebhookDeliveryDto> _deliveries = [];
+
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true };
+    private readonly DialogOptions _wideDialogOptions = new() { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseOnEscapeKey = true };
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try { _items = await WebhookApi.GetAllAsync(); }
+        catch (Exception ex) { ErrorHandler.Handle(ex, "Webhooks.Load"); }
+        finally { _loading = false; }
+    }
+
+    /// <summary>"invoice.paid" maps to resource key Webhook_Event_invoice_paid.</summary>
+    private string EventLabel(string eventName) => L[$"Webhook_Event_{eventName.Replace('.', '_')}"].Value;
+
+    private static Color StatusColor(string status) => status switch
+    {
+        "Succeeded" => Color.Success,
+        "Failed" => Color.Error,
+        _ => Color.Warning,
+    };
+
+    private void ToggleEvent(string name, bool on)
+    {
+        if (on) _events.Add(name); else _events.Remove(name);
+    }
+
+    private void OpenCreateDialog()
+    {
+        _editingId = null;
+        _url = string.Empty;
+        _description = null;
+        _isActive = true;
+        _events.Clear();
+        foreach (var e in WebhookEventCatalog.All) _events.Add(e); // Sensible default: everything on.
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(WebhookSubscriptionDto item)
+    {
+        _editingId = item.Id;
+        _url = item.Url;
+        _description = item.Description;
+        _isActive = item.IsActive;
+        _events.Clear();
+        foreach (var e in item.Events) _events.Add(e);
+        _showDialog = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving) return;
+        _saving = true;
+        try
+        {
+            var events = _events.ToList();
+            if (_editingId is null)
+            {
+                var created = await WebhookApi.CreateAsync(new CreateWebhookSubscriptionDto
+                {
+                    Url = _url.Trim(), Description = _description, Events = events,
+                });
+                _revealedSecret = created?.Secret;
+            }
+            else
+            {
+                await WebhookApi.UpdateAsync(_editingId.Value, new UpdateWebhookSubscriptionDto
+                {
+                    Url = _url.Trim(), Description = _description, Events = events, IsActive = _isActive,
+                });
+            }
+
+            _showDialog = false;
+            Snackbar.Add(L["Webhook_Saved"].Value, Severity.Success);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorHandler.Handle(ex, "Webhooks.Save");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteAsync(WebhookSubscriptionDto item)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Webhook_DeleteConfirmTitle"].Value,
+            string.Format(L["Webhook_DeleteConfirmText"].Value, item.Description ?? item.Url),
+            yesText: L["Btn_Delete"].Value, cancelText: L["Btn_Cancel"].Value);
+        if (confirmed != true) return;
+
+        try
+        {
+            await WebhookApi.DeleteAsync(item.Id);
+            Snackbar.Add(L["Webhook_Deleted"].Value, Severity.Success);
+            await ReloadAsync();
+        }
+        catch (Exception ex) { ErrorHandler.Handle(ex, "Webhooks.Delete"); }
+    }
+
+    private async Task RotateAsync(WebhookSubscriptionDto item)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Webhook_RotateConfirmTitle"].Value, L["Webhook_RotateConfirmText"].Value,
+            yesText: L["Webhook_RotateSecret"].Value, cancelText: L["Btn_Cancel"].Value);
+        if (confirmed != true) return;
+
+        try
+        {
+            var result = await WebhookApi.RotateSecretAsync(item.Id);
+            _revealedSecret = result?.Secret;
+        }
+        catch (Exception ex) { ErrorHandler.Handle(ex, "Webhooks.Rotate"); }
+    }
+
+    private async Task TestAsync(WebhookSubscriptionDto item)
+    {
+        try
+        {
+            var result = await WebhookApi.TestAsync(item.Id);
+            if (result?.Success == true)
+                Snackbar.Add(string.Format(L["Webhook_TestOk"].Value, result.StatusCode), Severity.Success);
+            else
+                Snackbar.Add(string.Format(L["Webhook_TestFailed"].Value,
+                    result?.Error ?? (result?.StatusCode is int code ? $"HTTP {code}" : "?")), Severity.Error);
+        }
+        catch (Exception ex) { ErrorHandler.Handle(ex, "Webhooks.Test"); }
+    }
+
+    private async Task OpenDeliveriesAsync(WebhookSubscriptionDto item)
+    {
+        _deliveriesSubscriptionId = item.Id;
+        try
+        {
+            _deliveries = await WebhookApi.GetDeliveriesAsync(item.Id);
+            _showDeliveries = true;
+        }
+        catch (Exception ex) { ErrorHandler.Handle(ex, "Webhooks.Deliveries"); }
+    }
+
+    private async Task RedeliverAsync(WebhookDeliveryDto delivery)
+    {
+        try
+        {
+            await WebhookApi.RedeliverAsync(delivery.Id);
+            Snackbar.Add(L["Webhook_Redelivered"].Value, Severity.Success);
+            _deliveries = await WebhookApi.GetDeliveriesAsync(_deliveriesSubscriptionId);
+        }
+        catch (Exception ex) { ErrorHandler.Handle(ex, "Webhooks.Redeliver"); }
+    }
+
+    private async Task CopySecretAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _revealedSecret);
+            Snackbar.Add(L["Integration_Copied"].Value, Severity.Success);
+        }
+        catch
+        {
+            // Clipboard API unavailable (non-secure context) — the secret is on screen anyway.
+        }
+    }
+}

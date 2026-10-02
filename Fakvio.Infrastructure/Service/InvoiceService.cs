@@ -1,4 +1,4 @@
-using Fakvio.Contracts.Common;
+﻿using Fakvio.Contracts.Common;
 using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
@@ -23,17 +23,20 @@ public class InvoiceService : IInvoiceService
     private readonly TenantDbContext _context;
     private readonly INumberSequenceService _numberSequenceService;
     private readonly ITenantReadinessService _tenantReadinessService;
+    private readonly IWebhookPublisher? _webhookPublisher; // optional so manually-constructed instances (tests) work
     private readonly ILogger<InvoiceService> _logger;
 
     public InvoiceService(
         TenantDbContext context,
         INumberSequenceService numberSequenceService,
         ITenantReadinessService tenantReadinessService,
-        ILogger<InvoiceService> logger)
+        ILogger<InvoiceService> logger,
+        IWebhookPublisher? webhookPublisher = null)
     {
         _context = context;
         _numberSequenceService = numberSequenceService;
         _tenantReadinessService = tenantReadinessService;
+        _webhookPublisher = webhookPublisher;
         _logger = logger;
     }
 
@@ -553,6 +556,12 @@ public class InvoiceService : IInvoiceService
         _logger.LogInformation("Created {DocumentType} with ID {Id}, DocumentNumber {DocumentNumber}",
             invoice.DocumentType, invoice.Id, invoice.DocumentNumber);
 
+        // "invoice.created" webhook (DEVGUIDE §4.x) — fire-and-forget from the caller's point of
+        // view: PublishInvoiceEventAsync never throws, a missing/failed webhook must not fail
+        // invoice creation.
+        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
+            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceCreated, invoice.Id, cancellationToken);
+
         // Reload with related entities
         return (await GetInvoiceByIdAsync(invoice.Id, cancellationToken))!;
     }
@@ -794,6 +803,9 @@ public class InvoiceService : IInvoiceService
 
         await _context.SaveChangesAsync(cancellationToken);
 
+        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
+            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoicePaid, invoice.Id, cancellationToken);
+
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
     }
 
@@ -841,6 +853,12 @@ public class InvoiceService : IInvoiceService
         invoice.Status = EInvoiceStatus.Deleted;
         invoice.DocumentNumber = null;
         await _context.SaveChangesAsync(cancellationToken);
+
+        // "invoice.cancelled" — fired after the soft delete, so Number is already cleared in the
+        // payload (ponytail: minor — the event id/type/clientName/total still identify the
+        // invoice; add a captured-before-clear Number if a subscriber ever needs it).
+        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
+            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceCancelled, invoice.Id, cancellationToken);
 
         return true;
     }

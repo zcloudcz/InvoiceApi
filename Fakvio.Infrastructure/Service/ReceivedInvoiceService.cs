@@ -20,11 +20,13 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 {
     private readonly TenantDbContext _context;
     private readonly ILogger<ReceivedInvoiceService> _logger;
+    private readonly IWebhookPublisher? _webhookPublisher;
 
-    public ReceivedInvoiceService(TenantDbContext context, ILogger<ReceivedInvoiceService> logger)
+    public ReceivedInvoiceService(TenantDbContext context, ILogger<ReceivedInvoiceService> logger, IWebhookPublisher? webhookPublisher = null)
     {
         _context = context;
         _logger = logger;
+        _webhookPublisher = webhookPublisher;
     }
 
     /// <summary>
@@ -292,6 +294,11 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 
         _logger.LogInformation("Created received invoice ID {Id} from supplier {SupplierId}, total {Total}",
             entity.Id, entity.SupplierId, entity.TotalWithVat);
+
+        // "received_invoice.created" webhook — never throws (see IWebhookPublisher).
+        if (_webhookPublisher != null)
+            await _webhookPublisher.PublishReceivedInvoiceEventAsync(
+                Contracts.Dto.Webhook.WebhookEventCatalog.ReceivedInvoiceCreated, entity.Id, ct);
 
         // Reload with includes to return full DTO
         return (await GetByIdAsync(entity.Id, ct))!;

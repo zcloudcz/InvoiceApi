@@ -278,7 +278,8 @@ public class ImapPollService : IImapPollService
             var matcher = new PaymentMatchingService(
                 tenantCtx,
                 tenantScope.ServiceProvider.GetRequiredService<INotificationService>(),
-                tenantScope.ServiceProvider.GetRequiredService<ILogger<PaymentMatchingService>>());
+                tenantScope.ServiceProvider.GetRequiredService<ILogger<PaymentMatchingService>>(),
+                tenantScope.ServiceProvider.GetService<IWebhookPublisher>());
             var processor = new InboundEmailProcessor(
                 tenantCtx,
                 parser,
