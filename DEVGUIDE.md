@@ -2288,13 +2288,15 @@ Jeden XML soubor se **vydanými i přijatými** doklady za období, ve formátu 
   - **Cizí měna:** Fakvio neukládá kurz. Pohoda dostane `foreignCurrency` **bez** `rate`/`amount` (Pohoda použije
     svůj kurzový lístek k datu dokladu); Money S3 a Flexi cizoměnové doklady přeskakují.
   - **Délky:** Pohoda se ořezává na limity schématu (text hlavičky 240, položky 90, PSČ 15); Money vyžaduje
-    číslo dokladu ≤ 10 znaků (jinak se přeskočí), Flexi `kod` ≤ 20; ostatní texty se ořezávají podle schématu.
+    plné číslo jde vždy do `EvCisDokl`, `Doklad` (max. 10 znaků) se zapíše jen když se vejde, jinak číslo přidělí Money; Pohoda `numberRequested` max. 20 znaků (delší číslo → přeskočeno), Flexi `kod` ≤ 20; ostatní texty se ořezávají podle schématu.
 - **Známé mezery:**
   - Flexi: `typDokl` používá kódy výchozí databáze (`FAKTURA`, `DOBROPIS`) — firma s přejmenovanými typy
     musí typ po importu upravit; jednotka `mj` se posílá jen pro běžné kódy (KS, HOD, M, KG, L, KM), jinak se
     vynechá; partner jde jako ploché `nazFirmy/ulice/mesto/psc/ic/dic` (adresář se nezakládá); součty
     (`sum*`) počítá Flexi sám.
-  - Přijaté faktury nemají příznak dobropisu → exportují se jako běžný přijatý doklad.
+  - Přijaté faktury nemají příznak dobropisu → exportují se jako běžný přijatý doklad (přijatý dobropis proto systémy neumí rozlišit).
+  - Znaménko dobropisu: Fakvio dobropis ukládá jako záporné položky (součty jsou záporné); exportéry s tím počítají — Pohoda
+    znaménko přenáší, Money S3 a Flexi ho převádějí na kladné částky.
   - Pohoda: chybí-li vystavovateli IČO, export skončí chybou 400 (stejně jako chybějící vystavovatel).
 - **Limity požadavku:** `from <= to`, období max. 366 dní, max. 5000 `invoiceIds` → jinak 400.
 - **Testy:** `AccountingExporterTests` (unit, všechny tři exportéry), `AccountingExportEndpointTests` (integration).

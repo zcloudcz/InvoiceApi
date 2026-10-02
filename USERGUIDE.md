@@ -324,7 +324,7 @@ Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakuj
   (např. 10 % nebo 15 %) a doklady s jinou sazbou DPH se do souboru nezahrnou.
 - Do souboru se také nezahrnují doklady, které cílový systém nedokáže správně přijmout: daňové doklady
   k přijaté platbě (všechny systémy), doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi)
-  a u Money S3 doklady s číslem delším než 10 znaků. Po exportu uvidíte, kolik dokladů bylo vynecháno.
+  a v POHODĚ doklady s číslem delším než 20 znaků. Přijaté dobropisy export nepodporuje (Fakvio je nerozlišuje od běžných přijatých faktur). Po exportu uvidíte, kolik dokladů bylo vynecháno.
 - U cizí měny v POHODĚ Fakvio kurz neexportuje — POHODA použije svůj kurzový lístek k datu dokladu.
 - Dobropisy se do Money S3 a ABRA Flexi přenášejí s kladnými částkami (jako dobropis), do POHODY se záporným znaménkem.
 - ABRA Flexi: v cílové firmě musí existovat typy dokladů `FAKTURA` a `DOBROPIS` (výchozí databáze je má).

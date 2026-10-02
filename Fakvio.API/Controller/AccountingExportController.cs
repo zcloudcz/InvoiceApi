@@ -59,11 +59,11 @@ public class AccountingExportController : ControllerBase
                 request.InvoiceIds, cancellationToken);
 
             // Documents the target system cannot represent correctly are left out of the file; tell the
-            // caller how many (and which, capped) so nobody assumes the export is complete.
+            // caller how many so nobody assumes the export is complete.
             Response.Headers["X-Export-Exported"] = result.ExportedCount.ToString();
             Response.Headers["X-Export-Skipped"] = result.SkippedDocuments.Count.ToString();
-            if (result.SkippedDocuments.Count > 0)
-                Response.Headers["X-Export-Skipped-Documents"] = string.Join(",", result.SkippedDocuments.Take(50));
+            // Document numbers are deliberately NOT sent as a header: they may contain non-ASCII
+            // characters, which Kestrel rejects in header values. The count is enough for the UI.
             return File(result.Content, result.ContentType, result.FileName);
         }
         catch (ArgumentException ex)

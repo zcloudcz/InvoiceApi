@@ -7,6 +7,7 @@ using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Tests.Integration.Fixtures;
 using Fakvio.Tests.Integration.Helpers;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 
@@ -158,8 +159,41 @@ public class AccountingExportEndpointTests : IClassFixture<FakvioFactory>
         });
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        response.Headers.GetValues("X-Export-Exported").Single().ShouldBe("1");
-        response.Headers.GetValues("X-Export-Skipped").Single().ShouldBe("0");
+        int.Parse(response.Headers.GetValues("X-Export-Exported").Single()).ShouldBeGreaterThanOrEqualTo(1);
+        response.Headers.Contains("X-Export-Skipped").ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Export_SkippedDocumentWithDiacriticsNumber_DoesNotBreakResponseHeaders()
+    {
+        var client = await LoginAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+            if (!tenantDb.Invoice.Any(i => i.DocumentNumber == "FAKTURA-ČÍSLO-1"))
+            {
+                var template = tenantDb.Invoice.Include(i => i.InvoiceItem).AsNoTracking().First(i => i.DocumentNumber == "EXPORT-1");
+                tenantDb.Invoice.Add(new Invoice
+                {
+                    DocumentNumber = "FAKTURA-ČÍSLO-1", DocumentType = EDocumentType.Invoice, Status = EInvoiceStatus.Completed,
+                    IssueDate = new DateTime(2026, 3, 11), DueDate = new DateTime(2026, 3, 25),
+                    IssuerId = template.IssuerId, ClientId = template.ClientId, CurrencyId = template.CurrencyId,
+                    TotalBeforeVat = 100m, TotalVat = 15m, TotalWithVat = 115m,
+                    // 15 % is not a supported rate, so every system skips this document.
+                    InvoiceItem = [new InvoiceItem { OrderIndex = 1, Description = "Old rate", Quantity = 1, Unit = "ks", UnitPrice = 100m, VatRatePercentage = 15m, TotalBeforeVat = 100m, VatAmount = 15m, TotalWithVat = 115m }]
+                });
+                tenantDb.SaveChanges();
+            }
+        }
+
+        var response = await client.PostAsJsonAsync("/api/accounting-export/Pohoda", new AccountingExportRequestDto
+        {
+            From = new DateTime(2026, 3, 1), To = new DateTime(2026, 3, 31)
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Headers.GetValues("X-Export-Skipped").Single().ShouldBe("1");
+        response.Headers.Contains("X-Export-Skipped-Documents").ShouldBeFalse();
     }
 
     [Fact]

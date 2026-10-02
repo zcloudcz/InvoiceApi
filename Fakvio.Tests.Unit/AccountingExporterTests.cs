@@ -327,6 +327,7 @@ public class AccountingExporterTests
         var proforma = Issued("PF1", ("A", 21m, 100m)); proforma.DocumentType = EDocumentType.Proforma;
         var eur = Issued("INV2", ("A", 21m, 100m)); eur.Currency = new Currency { Code = "EUR" };
         var longNumber = Issued("INVOICE-2026-0001", ("A", 21m, 100m));
+        var tooLongForPohoda = Issued(new string('N', 21), ("A", 21m, 100m));
         var ok = Issued("INV3", ("A", 21m, 100m));
 
         foreach (var e in new IAccountingExporter[] { pohoda, money, flexi })
@@ -342,7 +343,8 @@ public class AccountingExporterTests
         money.CanExport(eur).ShouldBeFalse();
         flexi.CanExport(eur).ShouldBeFalse();
         pohoda.CanExport(longNumber).ShouldBeTrue();
-        money.CanExport(longNumber).ShouldBeFalse();
+        pohoda.CanExport(tooLongForPohoda).ShouldBeFalse(); // numberRequested is string20
+        money.CanExport(longNumber).ShouldBeTrue(); // number goes to EvCisDokl, Doklad is omitted
         flexi.CanExport(longNumber).ShouldBeTrue(); // 17 chars <= 20
         money.CanExport(Received("R1", "EUR", ("A", 21m, 1m))).ShouldBeFalse();
         pohoda.CanExport(Received("R1", "EUR", ("A", 21m, 1m))).ShouldBeTrue();
@@ -357,6 +359,49 @@ public class AccountingExporterTests
         var xml = cp1250.GetString(new PohodaAccountingExporter().Export([inv], [], Issuer())).Replace(">cash<", ">other<");
 
         Validate(cp1250.GetBytes(xml), PohodaSchemas.Value).ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public void Pohoda_LongVariableSymbolUnitIcoDic_AreCutToSchemaLimits_AndValidate()
+    {
+        var inv = Issued("X1", ("A", 21m, 10m));
+        inv.VariableSymbol = new string('1', 40);
+        inv.InvoiceItem.First().Unit = "very-long-unit-name";
+        inv.Client.RegistrationNumber = new string('9', 30);
+        inv.Client.TaxNumber = "CZ" + new string('9', 30);
+
+        var bytes = new PohodaAccountingExporter().Export([inv], [], Issuer());
+
+        var doc = Parse(bytes);
+        doc.Descendants(Inv + "symVar").Single().Value.Length.ShouldBe(20);
+        doc.Descendants(Inv + "unit").Single().Value.Length.ShouldBe(10);
+        doc.Descendants(Typ + "ico").Single().Value.Length.ShouldBe(15);
+        doc.Descendants(Typ + "dic").Single().Value.Length.ShouldBe(18);
+        string.Join(Environment.NewLine, Validate(bytes, PohodaSchemas.Value)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void MoneyS3_NumberLongerThan10_GoesToEvCisDoklOnly_AndValidates()
+    {
+        var inv = Issued("INV-2026-001", ("A", 21m, 100m)); // 12 chars
+        inv.VariableSymbol = new string('1', 40);
+
+        var bytes = new MoneyS3AccountingExporter().Export([inv], [], Issuer());
+
+        var el = Parse(bytes).Descendants("FaktVyd").Single();
+        el.Element("Doklad").ShouldBeNull();
+        el.Element("EvCisDokl")!.Value.ShouldBe("INV-2026-001");
+        el.Element("VarSymbol")!.Value.Length.ShouldBe(20);
+        string.Join(Environment.NewLine, Validate(bytes, MoneySchemas.Value)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void MoneyS3_ShortNumber_WritesBothDokladAndEvCisDokl()
+    {
+        var el = Parse(new MoneyS3AccountingExporter().Export([Issued("INV1", ("A", 21m, 100m))], [], Issuer())).Descendants("FaktVyd").Single();
+
+        el.Element("Doklad")!.Value.ShouldBe("INV1");
+        el.Element("EvCisDokl")!.Value.ShouldBe("INV1");
     }
 
     [Fact]

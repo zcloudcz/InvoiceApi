@@ -23,8 +23,8 @@ namespace Fakvio.Infrastructure.Service.AccountingExport;
 /// - Proforma → Druh = F. Advance-payment tax receipts (DPP) are skipped.
 /// - Foreign-currency documents are skipped: Money requires the exchange rate for the home-currency
 ///   summary and Fakvio does not store it — fabricating one would produce wrong totals.
-/// - Document number must fit Money's 10-character Doklad field, otherwise the document is skipped.
-///   Received invoices get their Money number from Money's own series; the supplier's number goes to PrijatDokl.
+/// - The full document number goes to EvCisDokl; Doklad (max 10 characters) is written only when it fits,
+///   otherwise Money assigns its own number. Received invoices get their Money number from Money's own series; the supplier's number goes to PrijatDokl.
 /// - Celkem is required by the schema and written as the sum of the summary; Money recalculates it. Proplatit is not written.
 /// </summary>
 public class MoneyS3AccountingExporter : IAccountingExporter
@@ -36,7 +36,6 @@ public class MoneyS3AccountingExporter : IAccountingExporter
     public bool CanExport(Invoice invoice) =>
         invoice.DocumentType != EDocumentType.TaxReceiptForAdvance
         && AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
-        && (invoice.DocumentNumber?.Length ?? 0) is > 0 and <= 10
         && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
 
     public bool CanExport(ReceivedInvoice invoice) =>
@@ -72,9 +71,15 @@ public class MoneyS3AccountingExporter : IAccountingExporter
         var isCreditNote = invoice.DocumentType == EDocumentType.CreditNote;
         var items = invoice.InvoiceItem?.Where(i => !i.IsTextRow).OrderBy(i => i.OrderIndex).ToList() ?? [];
 
-        var el = new XElement("FaktVyd", new XElement("Doklad", invoice.DocumentNumber));
+        // EvCisDokl (max 50) always carries the full number. Doklad is limited to 10 characters, so a longer
+        // number is omitted there and Money assigns its own from the series.
+        var number = invoice.DocumentNumber ?? string.Empty;
+        var el = new XElement("FaktVyd");
+        if (number.Length is > 0 and <= 10)
+            el.Add(new XElement("Doklad", number));
+        el.Add(new XElement("EvCisDokl", AccountingExportCommon.Truncate(number, 50)));
         AddDates(el, invoice.IssueDate, invoice.TaxableSupplyDate, invoice.DueDate);
-        el.Add(new XElement("VarSymbol", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty));
+        el.Add(new XElement("VarSymbol", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 20)));
         AddKindAndTotals(el, invoice.DocumentType == EDocumentType.Proforma ? "F" : "N", isCreditNote,
             items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), invoice.Notes);
         el.Add(BuildPartner(invoice.Client));

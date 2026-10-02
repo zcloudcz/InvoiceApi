@@ -37,6 +37,7 @@ public class PohodaAccountingExporter : IAccountingExporter
     // (Pohoda creates them from the advance invoice) — skipped rather than exported as a normal invoice.
     public bool CanExport(Invoice invoice) =>
         invoice.DocumentType != EDocumentType.TaxReceiptForAdvance
+        && (invoice.DocumentNumber?.Length ?? 0) <= 20 // inv:numberRequested is string20 in the XSD
         && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
 
     public bool CanExport(ReceivedInvoice invoice) =>
@@ -56,7 +57,7 @@ public class PohodaAccountingExporter : IAccountingExporter
         var dataPack = new XElement(Dat + "dataPack",
             new XAttribute("version", "2.0"),
             new XAttribute("id", "Fakvio" + DateTime.UtcNow.Ticks),
-            new XAttribute("ico", issuer.RegistrationNumber),
+            new XAttribute("ico", AccountingExportCommon.Truncate(issuer.RegistrationNumber, 15)),
             new XAttribute("application", "Fakvio"),
             new XAttribute("note", "Export z Fakvio"));
 
@@ -97,7 +98,7 @@ public class PohodaAccountingExporter : IAccountingExporter
         var header = new XElement(Inv + "invoiceHeader",
             new XElement(Inv + "invoiceType", invoiceType),
             new XElement(Inv + "number", new XElement(Typ + "numberRequested", invoice.DocumentNumber ?? string.Empty)),
-            new XElement(Inv + "symVar", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty),
+            new XElement(Inv + "symVar", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 20)),
             new XElement(Inv + "date", AccountingExportCommon.FormatDate(invoice.IssueDate)),
             new XElement(Inv + "dateTax", AccountingExportCommon.FormatDate(invoice.TaxableSupplyDate ?? invoice.IssueDate)),
             new XElement(Inv + "dateDue", AccountingExportCommon.FormatDate(invoice.DueDate)));
@@ -142,7 +143,7 @@ public class PohodaAccountingExporter : IAccountingExporter
             // The supplier's own document number goes to numberKHDPH (+ symVar); Pohoda assigns its
             // internal number from its own series, so we must not request one via <number>.
             new XElement(Inv + "numberKHDPH", AccountingExportCommon.Truncate(invoice.DocumentNumber, 32)),
-            new XElement(Inv + "symVar", invoice.VariableSymbol ?? invoice.DocumentNumber ?? string.Empty),
+            new XElement(Inv + "symVar", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 20)),
             new XElement(Inv + "date", AccountingExportCommon.FormatDate(invoice.IssueDate)),
             new XElement(Inv + "dateTax", AccountingExportCommon.FormatDate(invoice.TaxableSupplyDate ?? invoice.IssueDate)),
             new XElement(Inv + "dateDue", AccountingExportCommon.FormatDate(invoice.DueDate)));
@@ -179,10 +180,10 @@ public class PohodaAccountingExporter : IAccountingExporter
             new XElement(Typ + "city", address?.City ?? string.Empty),
             new XElement(Typ + "street", address?.Street ?? string.Empty),
             new XElement(Typ + "zip", AccountingExportCommon.Truncate(address?.PostalCode, 15)),
-            new XElement(Typ + "ico", partner.RegistrationNumber ?? string.Empty));
+            new XElement(Typ + "ico", AccountingExportCommon.Truncate(partner.RegistrationNumber, 15)));
 
         if (!string.IsNullOrWhiteSpace(partner.TaxNumber))
-            addr.Add(new XElement(Typ + "dic", partner.TaxNumber));
+            addr.Add(new XElement(Typ + "dic", AccountingExportCommon.Truncate(partner.TaxNumber, 18)));
 
         return new XElement(Inv + "partnerIdentity", addr);
     }
@@ -195,7 +196,7 @@ public class PohodaAccountingExporter : IAccountingExporter
         return new XElement(Inv + "invoiceItem",
             new XElement(Inv + "text", AccountingExportCommon.Truncate(description, 90)),
             new XElement(Inv + "quantity", AccountingExportCommon.FormatDecimal(quantity)),
-            new XElement(Inv + "unit", unit),
+            new XElement(Inv + "unit", AccountingExportCommon.Truncate(unit, 10)),
             new XElement(Inv + "payVAT", "false"), // "false" = amounts below are without-VAT base (unitPrice is net)
             new XElement(Inv + "rateVAT", bucket switch { AccountingExportCommon.VatBucket.High => "high", AccountingExportCommon.VatBucket.Low => "low", _ => "none" }),
             // Home-currency (CZK) documents fill homeCurrency; any other currency fills foreignCurrency.
