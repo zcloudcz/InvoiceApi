@@ -61,6 +61,7 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<CompanyMembershipApiService>();
         services.AddApiClient<FeedbackApiService>();
         services.AddApiClient<VatRateApiService>();
+        services.AddApiClient<OssApiService>();
         services.AddApiClient<ClientApiService>();
         services.AddApiClient<FakvioService>();
         services.AddApiClient<UserApiService>();
@@ -89,6 +90,7 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<FileAttachmentApiService>();
         services.AddApiClient<ReminderApiService>();
         services.AddApiClient<RecurringInvoiceApiService>();
+        services.AddApiClient<WebhookApiService>();
 
         // Personal API keys for AI clients (MCP) — page /settings/integrations.
         services.AddApiClient<ApiKeyApiService>();

@@ -366,6 +366,7 @@ public class ClientService : IClientService
             ActivityType = Enum.TryParse<Domain.Enums.EActivityType>(createDto.ActivityType, out var activity) ? activity : null,
             IsMainActivity = createDto.IsMainActivity,
             FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(createDto.FlatRateBand, out var band) ? band : null,
+            AutoIssueTaxReceiptForAdvance = createDto.AutoIssueTaxReceiptForAdvance,
             Color = createDto.Color,
             Language = NormalizeLanguage(createDto.Language) ?? DefaultLanguage,
             PeppolId = string.IsNullOrWhiteSpace(createDto.PeppolId) ? null : createDto.PeppolId
@@ -510,6 +511,9 @@ public class ClientService : IClientService
 
         if (updateDto.IsMainActivity.HasValue)
             client.IsMainActivity = updateDto.IsMainActivity.Value;
+
+        if (updateDto.AutoIssueTaxReceiptForAdvance.HasValue)
+            client.AutoIssueTaxReceiptForAdvance = updateDto.AutoIssueTaxReceiptForAdvance.Value;
 
         if (updateDto.FlatRateBand != null)
             client.FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(updateDto.FlatRateBand, out var band) ? band : null;

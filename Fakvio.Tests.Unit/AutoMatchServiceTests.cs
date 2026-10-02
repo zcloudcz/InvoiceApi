@@ -38,7 +38,7 @@ public class FindAutoMatchForInvoice_Tests : IDisposable
             .Options;
 
         _context = new TenantDbContext(options);
-        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<ILogger<PaymentMatchingService>>());
+        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<IInvoiceService>(), Substitute.For<ILogger<PaymentMatchingService>>());
 
         SeedReference();
     }
@@ -208,7 +208,7 @@ public class FindAutoMatchForReceivedInvoice_Tests : IDisposable
             .Options;
 
         _context = new TenantDbContext(options);
-        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<ILogger<PaymentMatchingService>>());
+        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<IInvoiceService>(), Substitute.For<ILogger<PaymentMatchingService>>());
 
         SeedReference();
     }
@@ -369,7 +369,7 @@ public class ConfirmAutoMatch_Invoice_Tests : IDisposable
             .Options;
 
         _context = new TenantDbContext(options);
-        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<ILogger<PaymentMatchingService>>());
+        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<IInvoiceService>(), Substitute.For<ILogger<PaymentMatchingService>>());
 
         SeedReference();
     }
@@ -480,7 +480,7 @@ public class ConfirmAutoMatch_ReceivedInvoice_Tests : IDisposable
             .Options;
 
         _context = new TenantDbContext(options);
-        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<ILogger<PaymentMatchingService>>());
+        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<IInvoiceService>(), Substitute.For<ILogger<PaymentMatchingService>>());
 
         SeedReference();
     }
@@ -568,7 +568,7 @@ public class GetPaymentsForReceivedInvoice_Tests : IDisposable
             .Options;
 
         _context = new TenantDbContext(options);
-        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<ILogger<PaymentMatchingService>>());
+        _service = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<IInvoiceService>(), Substitute.For<ILogger<PaymentMatchingService>>());
 
         SeedReference();
     }

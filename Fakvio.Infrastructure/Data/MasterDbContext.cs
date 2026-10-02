@@ -115,6 +115,13 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<VatRate> VatRate { get; set; }
 
     /// <summary>
+    /// EU OSS (One-Stop-Shop) VAT rate code table — statutory reference data for the 26
+    /// EU member states other than CZ. Master DB ONLY, no tenant copy (see DEVGUIDE §4.16
+    /// and Domain.Entities.OssVatRate doc comment) — every tenant reads the same rows.
+    /// </summary>
+    public DbSet<OssVatRate> OssVatRate { get; set; }
+
+    /// <summary>
     /// Currencies — master copy used as source for provisioning new tenants.
     /// </summary>
     public DbSet<Currency> Currency { get; set; }
@@ -271,6 +278,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         ConfigureBillingSettings(modelBuilder);
         ConfigureCompanySystemSettings(modelBuilder);
         ConfigureVatRate(modelBuilder);
+        ConfigureOssVatRate(modelBuilder);
         ConfigureCurrency(modelBuilder);
         ConfigureNumberSequenceFormat(modelBuilder);
         ConfigureContentTemplate(modelBuilder);
@@ -319,6 +327,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.Property(e => e.DefaultGridPageSize).HasDefaultValue(10);
+            entity.Property(e => e.DashboardLayoutJson).HasColumnType("text");
         });
     }
 
@@ -685,6 +694,9 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
                 .HasConversion<string?>()
                 .HasMaxLength(10);
 
+            entity.Property(e => e.AutoIssueTaxReceiptForAdvance)
+                .HasDefaultValue(true);
+
             // Currency FK for schema compatibility
             entity.HasOne(e => e.PreferredCurrency)
                 .WithMany()
@@ -866,6 +878,33 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
             entity.Property(e => e.Rate)
                 .HasPrecision(5, 2);
+        });
+    }
+
+    /// <summary>
+    /// OssVatRate table configuration (EU OSS code table — see Domain.Entities.OssVatRate).
+    /// </summary>
+    private void ConfigureOssVatRate(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OssVatRate>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // One row per (country, rate, validity window) — lookups always filter by country + date.
+            entity.HasIndex(e => e.CountryCode);
+            entity.HasIndex(e => new { e.CountryCode, e.IsActive });
+            // Natural key — lets the seed SQL be idempotent (ON CONFLICT) without hardcoding ids.
+            entity.HasIndex(e => new { e.CountryCode, e.Rate, e.ValidFrom }).IsUnique();
+
+            entity.Property(e => e.CountryCode)
+                .IsRequired()
+                .HasMaxLength(2);
+
+            entity.Property(e => e.Rate)
+                .HasPrecision(5, 2);
+
+            entity.Property(e => e.Description)
+                .HasMaxLength(200);
         });
     }
 
@@ -1126,6 +1165,10 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
             new VatRate { Id = 2, Name = "DPH 12% - snížená sazba", Rate = 12.00m, ValidFrom = new DateTime(2015, 1, 1, 0, 0, 0, DateTimeKind.Utc), IsReduced = true, IsDefault = true, IsActive = true, CreatedAt = seedDate },
             new VatRate { Id = 3, Name = "DPH 0% - osvobozeno od daně", Rate = 0.00m, ValidFrom = new DateTime(2013, 1, 1, 0, 0, 0, DateTimeKind.Utc), IsReduced = false, IsDefault = false, IsActive = true, CreatedAt = seedDate }
         );
+
+        // NOTE: OssVatRate rows are NOT seeded with HasData — they are inserted by raw idempotent SQL
+        // in the AddOssVatRate migration (INSERT ... ON CONFLICT DO NOTHING), see DEVGUIDE §12
+        // "Non-idempotent seed migrace". SysAdmin maintains them afterwards.
 
         // Seed currencies
         modelBuilder.Entity<Currency>().HasData(

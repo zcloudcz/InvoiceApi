@@ -38,6 +38,7 @@ public class CreateInvoiceTool : IChatTool
     private readonly IClientService _clientService;
     private readonly ICurrencyService _currencyService;
     private readonly IVatRateService _vatRateService;
+    private readonly IReverseChargeCodeService _reverseChargeCodeService;
     private readonly ILogger<CreateInvoiceTool> _logger;
 
     public CreateInvoiceTool(
@@ -45,12 +46,14 @@ public class CreateInvoiceTool : IChatTool
         IClientService clientService,
         ICurrencyService currencyService,
         IVatRateService vatRateService,
+        IReverseChargeCodeService reverseChargeCodeService,
         ILogger<CreateInvoiceTool> logger)
     {
         _invoiceService = invoiceService;
         _clientService = clientService;
         _currencyService = currencyService;
         _vatRateService = vatRateService;
+        _reverseChargeCodeService = reverseChargeCodeService;
         _logger = logger;
     }
 
@@ -81,7 +84,11 @@ public class CreateInvoiceTool : IChatTool
             Name = "items",
             Type = ChatToolParameterType.ObjectArray,
             Description = "Invoice line items. Each item has \"description\" (string, required), " +
-                          "\"quantity\" (number, default 1) and \"unit_price\" (number, required). " +
+                          "\"quantity\" (number, default 1), \"unit_price\" (number, required), " +
+                          "optional \"vat_regime\" (one of \"Standard\" (default), \"ReverseCharge\", " +
+                          "\"Exempt\", \"OutOfScope\") and optional \"reverse_charge_code\" (MFCR code " +
+                          "string, e.g. \"4\" for construction work — required when vat_regime is " +
+                          "\"ReverseCharge\", §92a-92e ZDPH). " +
                           "Example: [{\"description\": \"Web development\", \"quantity\": 10, \"unit_price\": 1500}]",
             IsRequired = true
         },
@@ -199,7 +206,7 @@ public class CreateInvoiceTool : IChatTool
 
         // ── Step 6: Parse items ──────────────────────────────────────────
 
-        var parsedItems = ParseItems(itemsJson, defaultVatRate?.Id, defaultVatRate?.Rate ?? 0m);
+        var parsedItems = await ParseItemsAsync(itemsJson, defaultVatRate?.Id, defaultVatRate?.Rate ?? 0m, ct);
         if (parsedItems.Error != null)
             return parsedItems.Error;
 
@@ -334,9 +341,12 @@ public class CreateInvoiceTool : IChatTool
     /// - Missing description → error
     /// - Missing unit_price → error
     /// - "total_price" instead of "unit_price" → treated as total price for 1 unit
+    /// - "vat_regime": "ReverseCharge" + "reverse_charge_code": "4" → PDP item (§92a-92e ZDPH);
+    ///   the code string is resolved to a ReverseChargeCodeId via IReverseChargeCodeService,
+    ///   same validation InvoiceService.ValidateReverseChargeCodes enforces server-side.
     /// </summary>
-    private static ItemParseResult ParseItems(
-        string itemsJson, long? defaultVatRateId, decimal defaultVatPercentage)
+    private async Task<ItemParseResult> ParseItemsAsync(
+        string itemsJson, long? defaultVatRateId, decimal defaultVatPercentage, CancellationToken ct)
     {
         try
         {
@@ -403,6 +413,58 @@ public class CreateInvoiceTool : IChatTool
                 // Get optional unit — default to "ks" (pieces in Czech).
                 var unit = GetJsonString(element, "unit") ?? "ks";
 
+                // Optional reverse charge regime (§92a-92e ZDPH). Unrecognized "vat_regime" values
+                // are rejected rather than silently falling back to Standard — the AI would otherwise
+                // never learn it typed the regime name wrong.
+                var vatRegime = EVatRegime.Standard;
+                var vatRegimeRaw = GetJsonString(element, "vat_regime");
+                if (!string.IsNullOrWhiteSpace(vatRegimeRaw) &&
+                    (!Enum.TryParse(vatRegimeRaw, ignoreCase: true, out vatRegime) || !Enum.IsDefined(vatRegime)))
+                {
+                    return new ItemParseResult
+                    {
+                        Error = ChatToolResult.Failure(
+                            $"Item #{orderIndex} ('{description}') has invalid 'vat_regime' " +
+                            $"'{vatRegimeRaw}'. Use one of: Standard, ReverseCharge, Exempt, OutOfScope.")
+                    };
+                }
+
+                long? reverseChargeCodeId = null;
+                var reverseChargeCodeRaw = GetJsonString(element, "reverse_charge_code");
+                if (vatRegime == EVatRegime.ReverseCharge)
+                {
+                    if (string.IsNullOrWhiteSpace(reverseChargeCodeRaw))
+                    {
+                        return new ItemParseResult
+                        {
+                            Error = ChatToolResult.Failure(
+                                $"Item #{orderIndex} ('{description}') has vat_regime=ReverseCharge but no " +
+                                "'reverse_charge_code'. A reverse charge code (kód předmětu plnění) is required.")
+                        };
+                    }
+
+                    var reverseChargeCode = await _reverseChargeCodeService.GetByCodeAsync(reverseChargeCodeRaw, ct);
+                    if (reverseChargeCode == null)
+                    {
+                        return new ItemParseResult
+                        {
+                            Error = ChatToolResult.Failure(
+                                $"Item #{orderIndex} ('{description}'): reverse charge code " +
+                                $"'{reverseChargeCodeRaw}' was not found. Use list_reverse_charge_codes to see valid codes.")
+                        };
+                    }
+                    reverseChargeCodeId = reverseChargeCode.Id;
+                }
+                else if (!string.IsNullOrWhiteSpace(reverseChargeCodeRaw))
+                {
+                    return new ItemParseResult
+                    {
+                        Error = ChatToolResult.Failure(
+                            $"Item #{orderIndex} ('{description}') has 'reverse_charge_code' set but " +
+                            $"vat_regime={vatRegime}. The code is only valid for vat_regime=ReverseCharge.")
+                    };
+                }
+
                 items.Add(new CreateInvoiceItemDto
                 {
                     OrderIndex = orderIndex,
@@ -411,7 +473,9 @@ public class CreateInvoiceTool : IChatTool
                     Unit = unit,
                     UnitPrice = unitPrice.Value,
                     VatRateId = defaultVatRateId,
-                    VatRatePercentage = defaultVatPercentage
+                    VatRatePercentage = defaultVatPercentage,
+                    VatRegime = vatRegime,
+                    ReverseChargeCodeId = reverseChargeCodeId
                 });
 
                 orderIndex++;

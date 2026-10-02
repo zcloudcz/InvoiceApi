@@ -105,6 +105,36 @@ public class McpSdkInvocationTests
     }
 
     /// <summary>
+    /// Reverse charge params on a received invoice item (<c>vatRegime</c> as a string enum,
+    /// <c>reverseChargeCodeId</c>) must bind through the real SDK path.
+    /// </summary>
+    [Fact]
+    public async Task CreateReceivedInvoice_ReverseChargeItemParams_Bind()
+    {
+        await using var session = await McpSdkTestSession.StartAsync();
+
+        await session.Client.CallToolAsync(
+            "create_received_invoice",
+            new Dictionary<string, object?>
+            {
+                ["invoice"] = new
+                {
+                    supplierId = 3,
+                    items = new[]
+                    {
+                        new { description = "Stavba", quantity = 1, unitPrice = 1000, vatRatePercentage = 21,
+                              vatRegime = "ReverseCharge", reverseChargeCodeId = 5 }
+                    }
+                }
+            }!,
+            cancellationToken: session.Deadline.Token);
+
+        var item = session.Api.LastReceivedInvoiceRequest!.Items.ShouldHaveSingleItem();
+        item.VatRegime.ShouldBe(Fakvio.Domain.Enums.EVatRegime.ReverseCharge);
+        item.ReverseChargeCodeId.ShouldBe(5L);
+    }
+
+    /// <summary>
     /// N2.5 typed-DTO parameter coverage, Codex review follow-up: <c>create_client</c> takes
     /// <c>CreateClientDto</c> directly (nested address/contact/bank account arrays, a string enum
     /// on the contact type) — the same "no more JSON strings" change as

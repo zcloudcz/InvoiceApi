@@ -45,11 +45,16 @@ public interface IVatReportService
     /// and how to compute the date range for invoice filtering.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>UTF-8 XML bytes ready to upload to the EPO portal.</returns>
+    /// <param name="goodsKeys">
+    /// EU customers (country prefix + VAT id, e.g. "DE123456789") whose supplies are GOODS
+    /// (DPHDP3 row 20 / summary statement code 0) instead of the default SERVICES (row 21 / code 3).
+    /// </param>
     Task<byte[]> ExportEpoVatReturnAsync(
         int year,
         int period,
         EVatPeriodType type,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        IReadOnlyCollection<string>? goodsKeys = null);
 
     /// <summary>
     /// Generates an EPO DPHKH1 XML export (Czech VAT control statement —
@@ -71,8 +76,8 @@ public interface IVatReportService
     /// - <b>B.2</b>: total incl. VAT ≥ 10 000 CZK AND supplier has a CZ VAT number → one row per invoice.
     /// - <b>B.3</b>: all other received invoices → one aggregated row per period.
     ///
-    /// A.1 and B.1 (PDP — přenesení daňové povinnosti) are intentionally left empty
-    /// pending story #4 where EVatRegime will be introduced.
+    /// A.1 (reverse charge supplied) and B.1 (reverse charge received) are filled from items
+    /// with VatRegime = ReverseCharge, one row per (document, kód předmětu plnění).
     ///
     /// Non-CZK invoices are converted to CZK using <c>ICurrencyService.ConvertToCzkAsync</c>
     /// with the invoice's TaxableSupplyDate (DUZP) as the rate date.
@@ -92,5 +97,27 @@ public interface IVatReportService
         int year,
         int period,
         EVatPeriodType type,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Previews the DPHSHV (EU summary statement) rows for a period: items of issued invoices
+    /// and credit notes (negative) to EU (non-CZ) clients with a VAT id where the customer
+    /// pays the tax (Exempt / OutOfScope regime), aggregated by (country, VAT id, supply code).
+    /// Supply code defaults to 3 (services); keys listed in <paramref name="goodsKeys"/>
+    /// (format "DE123456789" = country prefix + VAT id) are reported as 0 (goods).
+    /// </summary>
+    Task<List<SummaryStatementRowDto>> GetSummaryStatementRowsAsync(
+        int year, int period, EVatPeriodType type,
+        IReadOnlyCollection<string>? goodsKeys = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Generates the DPHSHV XML (XSD-validated, UTF-8 no BOM) from the same rows as
+    /// <see cref="GetSummaryStatementRowsAsync"/>. Throws when there is nothing to report, or
+    /// when a quarterly statement contains goods (§102(6) ZDPH: goods require monthly filing).
+    /// </summary>
+    Task<byte[]> ExportEpoSummaryStatementAsync(
+        int year, int period, EVatPeriodType type,
+        IReadOnlyCollection<string>? goodsKeys = null,
         CancellationToken ct = default);
 }

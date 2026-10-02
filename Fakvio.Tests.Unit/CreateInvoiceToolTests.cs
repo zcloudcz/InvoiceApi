@@ -3,6 +3,7 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Service.ChatTools;
@@ -26,6 +27,7 @@ public class CreateInvoiceToolTests
     private readonly IClientService _clientService;
     private readonly ICurrencyService _currencyService;
     private readonly IVatRateService _vatRateService;
+    private readonly IReverseChargeCodeService _reverseChargeCodeService;
 
     // Standard test data — reused across tests.
     private readonly ClientDto _testClient = new()
@@ -66,6 +68,7 @@ public class CreateInvoiceToolTests
         _clientService = Substitute.For<IClientService>();
         _currencyService = Substitute.For<ICurrencyService>();
         _vatRateService = Substitute.For<IVatRateService>();
+        _reverseChargeCodeService = Substitute.For<IReverseChargeCodeService>();
         var logger = Substitute.For<ILogger<CreateInvoiceTool>>();
 
         // Default mock setup: single client match, issuer configured, CZK currency, 21% VAT.
@@ -119,7 +122,8 @@ public class CreateInvoiceToolTests
             });
 
         _tool = new CreateInvoiceTool(
-            _invoiceService, _clientService, _currencyService, _vatRateService, logger);
+            _invoiceService, _clientService, _currencyService, _vatRateService,
+            _reverseChargeCodeService, logger);
     }
 
     [Fact]
@@ -736,5 +740,42 @@ public class CreateInvoiceToolTests
         await _invoiceService.Received(1).CreateInvoiceAsync(
             Arg.Is<CreateInvoiceDto>(dto => dto.Notes == "Urgent delivery requested"),
             Arg.Any<CancellationToken>());
+    }
+
+    // ─── Reverse charge item parsing ────────────────────────────────────
+
+    private Task<ChatToolResult> RunWithItems(string itemsJson) =>
+        _tool.ExecuteAsync(new Dictionary<string, string> { ["client_name"] = "Alza", ["items"] = itemsJson });
+
+    [Fact]
+    public async Task CreateInvoice_ReverseChargeWithKnownCode_SetsCodeId()
+    {
+        _reverseChargeCodeService.GetByCodeAsync("4", Arg.Any<CancellationToken>())
+            .Returns(new ReverseChargeCodeDto { Id = 9, Code = "4" });
+
+        var result = await RunWithItems("""[{"description":"Build","unit_price":100,"vat_regime":"ReverseCharge","reverse_charge_code":"4"}]""");
+
+        result.IsSuccess.ShouldBeTrue();
+        await _invoiceService.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.InvoiceItem[0].VatRegime == EVatRegime.ReverseCharge
+                                          && d.InvoiceItem[0].ReverseChargeCodeId == 9),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("""[{"description":"x","unit_price":1,"vat_regime":"ReverseCharge","reverse_charge_code":"99"}]""")] // unknown code
+    [InlineData("""[{"description":"x","unit_price":1,"vat_regime":"ReverseCharge"}]""")] // RC without code
+    [InlineData("""[{"description":"x","unit_price":1,"reverse_charge_code":"4"}]""")] // code without RC
+    [InlineData("""[{"description":"x","unit_price":1,"vat_regime":"Bogus"}]""")] // invalid name
+    [InlineData("""[{"description":"x","unit_price":1,"vat_regime":"7"}]""")] // undefined numeric
+    public async Task CreateInvoice_InvalidReverseChargeInput_ReturnsError(string itemsJson)
+    {
+        _reverseChargeCodeService.GetByCodeAsync("4", Arg.Any<CancellationToken>())
+            .Returns(new ReverseChargeCodeDto { Id = 9, Code = "4" });
+
+        var result = await RunWithItems(itemsJson);
+
+        result.IsSuccess.ShouldBeFalse();
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
     }
 }

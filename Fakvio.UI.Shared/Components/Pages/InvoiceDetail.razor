@@ -166,7 +166,13 @@ else if (_isCreateMode)
         @* Full-width: Invoice items editor *@
         <MudItem xs="12">
             <MudText Typo="Typo.h6" Class="mb-2">@L["Invoice_Items"]</MudText>
-            <InvoiceItemEditor Items="_createDto.InvoiceItem"
+@if (!string.IsNullOrEmpty(_createOssEligible))
+            {
+                <MudCheckBox T="bool" Value="_createApplyOss" ValueChanged="OnCreateApplyOssChanged" Color="Color.Primary"
+                             Label="@L["Oss_ApplyToInvoice"].Value" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">@string.Format(L["Oss_ApplyHint"].Value, _createOssEligible)</MudText>
+            }
+            <InvoiceItemEditor Items="_createDto.InvoiceItem" OssCountryCode="@(_createApplyOss ? _createOssEligible : null)" RateDate="_createTaxableSupplyDate"
                                ItemsChanged="@(items => _createDto.InvoiceItem = items)" />
         </MudItem>
 
@@ -382,7 +388,13 @@ else
             @* Full-width: Editable items grid *@
             <MudItem xs="12">
                 <MudText Typo="Typo.h6" Class="mb-2">@L["Invoice_Items"]</MudText>
-                <InvoiceItemEditor Items="_editItems"
+@if (!string.IsNullOrEmpty(_editOssEligible))
+                {
+                    <MudCheckBox T="bool" Value="_editApplyOss" ValueChanged="OnEditApplyOssChanged" Color="Color.Primary"
+                                 Label="@L["Oss_ApplyToInvoice"].Value" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">@string.Format(L["Oss_ApplyHint"].Value, _editOssEligible)</MudText>
+                }
+                <InvoiceItemEditor Items="_editItems" OssCountryCode="@(_editApplyOss ? _editOssEligible : null)" RateDate="_invoice.TaxableSupplyDate"
                                    ItemsChanged="@(items => _editItems = items)" />
             </MudItem>
 
@@ -1064,7 +1076,38 @@ else
         _originalInvoice = null;
         _createDto.OriginalInvoiceId = null;
         _originalSearchFailed = false;
+        await RefreshOssCountryAsync();
         await LoadDocumentNumberPreview();
+    }
+
+    // EU OSS is OPT-IN (DEVGUIDE §4.16): the preview only says the invoice is ELIGIBLE (country or null);
+    // the user ticks the checkbox when the supply really falls under OSS, then the item editor offers that
+    // country's rates and the server validates them on save.
+    private string? _createOssEligible;
+    private bool _createApplyOss;
+    private string? _editOssEligible;
+    private bool _editApplyOss;
+
+    private async Task RefreshOssCountryAsync()
+    {
+        _createOssEligible = _createDto.ClientId > 0
+            ? await InvoiceService.GetOssCountryAsync(_createDto.ClientId, _createDto.IssuerId, _createDto.DocumentType)
+            : null;
+        if (_createOssEligible == null) _createApplyOss = false; // opt-in vanishes with eligibility
+        _createDto.ApplyOss = _createApplyOss;
+    }
+
+    private void OnCreateApplyOssChanged(bool value)
+    {
+        _createApplyOss = value;
+        _createDto.ApplyOss = value;
+        _isDirty = true;
+    }
+
+    private void OnEditApplyOssChanged(bool value)
+    {
+        _editApplyOss = value;
+        _editDto.ApplyOss = value;
     }
 
     private void OnOriginalInvoiceChanged(InvoiceDto? invoice)
@@ -1256,19 +1299,7 @@ else
                 NumberSequenceId = template.NumberSequenceId,
                 // Copy invoice items from template
                 // Copy invoice items from template — preserve IsTextRow for text-only rows
-                InvoiceItem = template.InvoiceItem.Select(item => new CreateInvoiceItemDto
-                {
-                    OrderIndex = item.OrderIndex,
-                    IsTextRow = item.IsTextRow,
-                    Description = item.Description,
-                    Quantity = item.Quantity,
-                    Unit = item.Unit,
-                    UnitPrice = item.UnitPrice,
-                    VatRateId = item.VatRateId,
-                    VatRatePercentage = item.VatRatePercentage,
-                    ProductCode = item.ProductCode,
-                    Notes = item.Notes
-                }).ToList()
+                InvoiceItem = template.InvoiceItem.Select(Fakvio.UI.Shared.Models.InvoiceItemEditMapper.ToEditDto).ToList()
             };
 
             // If client is selected, auto-fill billing params from client settings too
@@ -1282,6 +1313,7 @@ else
                     // Client's DueDays + DueDateCalculationType overrides template's simple offset
                     RecalculateDueDate(bs.DueDays, bs.DueDateCalculationType);
                 }
+                await RefreshOssCountryAsync();
             }
         }
         catch (Exception ex)
@@ -1517,10 +1549,11 @@ else
     /// due date from the client's BillingSettings — saves the user manual entry.
     /// Only fills empty fields to avoid overwriting explicit user input.
     /// </summary>
-    private void OnClientChanged(long clientId)
+    private async Task OnClientChanged(long clientId)
     {
         _createDto.ClientId = clientId;
         _isDirty = true;
+        await RefreshOssCountryAsync();
 
         var client = _allClients.FirstOrDefault(c => c.Id == clientId);
         if (client?.BillingSettings != null)
@@ -1585,6 +1618,29 @@ else
     /// Validates and saves a new invoice via POST /api/invoice.
     /// On success, navigates to the newly created invoice's detail page.
     /// </summary>
+    /// <summary>
+    /// Client-side mirror of InvoiceService.ValidateReverseChargeCodes (server messages are not localized):
+    /// a Reverse Charge item needs a code, any other regime must not carry one. Shows a localized snackbar.
+    /// </summary>
+    private bool ValidateReverseCharge(IEnumerable<CreateInvoiceItemDto> items)
+    {
+        foreach (var item in items.Where(i => !i.IsTextRow))
+        {
+            var isRc = item.VatRegime == EVatRegime.ReverseCharge;
+            if (isRc && !item.ReverseChargeCodeId.HasValue)
+            {
+                Snackbar.Add(L["Validation_ReverseChargeCodeRequired"].Value, Severity.Warning);
+                return false;
+            }
+            if (!isRc && item.ReverseChargeCodeId.HasValue)
+            {
+                Snackbar.Add(L["Validation_ReverseChargeCodeNotAllowed"].Value, Severity.Warning);
+                return false;
+            }
+        }
+        return true;
+    }
+
     private async Task SaveNewInvoice()
     {
         if (_saving) return;
@@ -1610,6 +1666,8 @@ else
                 Snackbar.Add(L["Invoice_AddAtLeastOneItem"].Value, Severity.Warning);
                 return;
             }
+
+            if (!ValidateReverseCharge(_createDto.InvoiceItem)) return;
 
             if (_createDto.DocumentType == EDocumentType.CreditNote && !_createDto.OriginalInvoiceId.HasValue)
             {
@@ -1672,9 +1730,17 @@ else
         _selectedBankAccountId = _issuerBankAccounts
             .FirstOrDefault(a => a.AccountNumber == _invoice.BankAccountNumber)?.Id;
 
+        // OSS: the invoice's current regime + whether it is (still) eligible for the opt-in.
+        _editApplyOss = _invoice.OssCountryCode != null;
+        _editOssEligible = _invoice.OssCountryCode
+            ?? (_invoice.ClientId.HasValue
+                ? await InvoiceService.GetOssCountryAsync(_invoice.ClientId.Value, _invoice.IssuerId, _invoice.DocumentType)
+                : null);
+
         // Populate edit DTO from current invoice (only editable fields)
         _editDto = new UpdateInvoiceDto
         {
+            ApplyOss = _editApplyOss,
             DueDate = _invoice.DueDate,
             TaxableSupplyDate = _invoice.TaxableSupplyDate,
             VariableSymbol = _invoice.VariableSymbol,
@@ -1693,19 +1759,7 @@ else
         // Copy items for editing
         // Map existing items to editable DTOs — IsTextRow must be preserved
         // so the InvoiceItemEditor renders text rows correctly (italic, colspan).
-        _editItems = _invoice.InvoiceItem.Select(i => new CreateInvoiceItemDto
-        {
-            OrderIndex = i.OrderIndex,
-            IsTextRow = i.IsTextRow,
-            Description = i.Description,
-            Quantity = i.Quantity,
-            Unit = i.Unit,
-            UnitPrice = i.UnitPrice,
-            VatRateId = i.VatRateId,
-            VatRatePercentage = i.VatRatePercentage,
-            ProductCode = i.ProductCode,
-            Notes = i.Notes
-        }).ToList();
+        _editItems = _invoice.InvoiceItem.Select(Fakvio.UI.Shared.Models.InvoiceItemEditMapper.ToEditDto).ToList();
 
         _isEditing = true;
         _isDirty = true; // Entering edit mode means the user intends to change something
@@ -1737,6 +1791,8 @@ else
                 Snackbar.Add(L["Invoice_AddAtLeastOneItem"].Value, Severity.Warning);
                 return;
             }
+
+            if (!ValidateReverseCharge(_editItems)) return;
 
             _editDto.IssueDate = _editIssueDate;
             _editDto.DueDate = _editDueDate;
@@ -2144,6 +2200,8 @@ else
             Snackbar.Add(L["IssueFinalInvoice_AddAtLeastOneItem"].Value, Severity.Warning);
             return;
         }
+
+        if (!ValidateReverseCharge(_issueFinalItems)) return;
 
         _issuingFinalInvoice = true;
         try

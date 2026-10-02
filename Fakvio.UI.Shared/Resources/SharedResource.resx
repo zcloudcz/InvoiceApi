@@ -198,6 +198,8 @@
   <data name="Client_RegistrationNumber" xml:space="preserve"><value>IČO</value></data>
   <data name="Client_TaxNumber" xml:space="preserve"><value>DIČ</value></data>
   <data name="Client_IsVatPayer" xml:space="preserve"><value>Plátce DPH</value></data>
+  <data name="Client_AutoIssueTaxReceiptForAdvance" xml:space="preserve"><value>Automaticky vystavit DPP při úhradě zálohy</value></data>
+  <data name="Client_AutoIssueTaxReceiptForAdvance_Help" xml:space="preserve"><value>Při přijetí platby zálohové faktury se automaticky vystaví daňový doklad k přijaté platbě (DPP). Platí jen pro plátce DPH.</value></data>
   <data name="Client_Addresses" xml:space="preserve"><value>Adresy</value></data>
   <data name="Client_Contacts" xml:space="preserve"><value>Kontakty</value></data>
   <data name="Client_BillingSettings" xml:space="preserve"><value>Fakturační nastavení</value></data>
@@ -515,6 +517,23 @@
   <data name="EPaymentMethod_CreditCard" xml:space="preserve"><value>Platební karta</value></data>
   <data name="EPaymentMethod_PayPal" xml:space="preserve"><value>PayPal</value></data>
   <data name="EPaymentMethod_Other" xml:space="preserve"><value>Jiný</value></data>
+
+  <!-- VAT regime enum labels (localized display for EVatRegime, used by generic EnumSelect) -->
+  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standardní</value></data>
+  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Přenesená daňová povinnost</value></data>
+  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Osvobozeno</value></data>
+  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Mimo předmět daně</value></data>
+
+  <!-- Reverse charge (PDP, §92a-92e ZDPH) UI on the invoice item editor -->
+  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>Režim DPH</value></data>
+  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Kód PDP</value></data>
+  <data name="Invoice_ReverseChargeToggle" xml:space="preserve"><value>Přenesená daňová povinnost</value></data>
+  <data name="Invoice_ReverseChargeToggle_Hint" xml:space="preserve"><value>Nastaví u všech položek režim PDP se zvoleným kódem</value></data>
+  <data name="Invoice_ReverseChargeToggle_SelectCode" xml:space="preserve"><value>Vyberte kód předmětu plnění</value></data>
+  <data name="InvoiceItem_VatZeroCustomerPays" xml:space="preserve"><value>DPH 0 %, daň odvede zákazník</value></data>
+  <data name="Invoice_ReverseChargeNote" xml:space="preserve"><value>Daň odvede zákazník. Přenesená daňová povinnost dle §92a zákona č. 235/2004 Sb., o dani z přidané hodnoty.</value></data>
+  <data name="Validation_ReverseChargeCodeRequired" xml:space="preserve"><value>U položky s režimem Přenesená daňová povinnost musí být vybrán kód předmětu plnění.</value></data>
+  <data name="Validation_ReverseChargeCodeNotAllowed" xml:space="preserve"><value>Kód předmětu plnění lze vybrat jen u položky v režimu Přenesená daňová povinnost.</value></data>
 
   <!-- Missing billing title key used in Clients.razor -->
   <data name="Billing_Title" xml:space="preserve"><value>Fakturační nastavení</value></data>
@@ -1064,16 +1083,8 @@
   <data name="BankAccount_SelectAccount" xml:space="preserve"><value>Bankovní účet</value></data>
 
   <!-- Billing Settings (Client detail) -->
-  <data name="Billing_Title" xml:space="preserve"><value>Fakturační nastavení</value></data>
-  <data name="Billing_DueDateCalcType" xml:space="preserve"><value>Typ výpočtu splatnosti</value></data>
-  <data name="Billing_DueDays" xml:space="preserve"><value>Počet dnů splatnosti</value></data>
   <data name="Billing_InvoiceNumberPrefix" xml:space="preserve"><value>Prefix čísla faktury</value></data>
   <data name="Billing_InvoiceNumberSuffix" xml:space="preserve"><value>Suffix čísla faktury</value></data>
-  <data name="Billing_CreditNotePrefix" xml:space="preserve"><value>Prefix čísla dobropisu</value></data>
-  <data name="Billing_CreditNoteSuffix" xml:space="preserve"><value>Suffix čísla dobropisu</value></data>
-  <data name="Billing_PaymentMethod" xml:space="preserve"><value>Platební metoda</value></data>
-  <data name="Billing_BankAccount" xml:space="preserve"><value>Bankovní účet</value></data>
-  <data name="Billing_Notes" xml:space="preserve"><value>Poznámky</value></data>
   <data name="Billing_NotConfigured" xml:space="preserve"><value>Fakturační nastavení není nakonfigurováno</value></data>
 
   <!-- AI Chat -->
@@ -1216,7 +1227,6 @@
 
   <!-- Navigation and generic labels for tax estimation -->
   <data name="Nav_TaxEstimation" xml:space="preserve"><value>Odhad daní</value></data>
-  <data name="Label_Description" xml:space="preserve"><value>Popis</value></data>
   <data name="Label_Amount" xml:space="preserve"><value>Částka</value></data>
   <data name="Label_Formula" xml:space="preserve"><value>Vzorec</value></data>
   <data name="TaxConfig_Title" xml:space="preserve"><value>Konfigurace daňových sazeb</value></data>
@@ -1393,7 +1403,6 @@
   <data name="Dashboard_DraftReminders" xml:space="preserve"><value>Koncepty</value></data>
   <data name="Dashboard_SentReminders" xml:space="preserve"><value>Odeslané</value></data>
   <data name="Dashboard_FailedReminders" xml:space="preserve"><value>Chybové</value></data>
-  <data name="Dashboard_OverdueInvoices" xml:space="preserve"><value>Faktury po splatnosti</value></data>
   <data name="Dashboard_TotalOverdueAmount" xml:space="preserve"><value>Celkem dlužná částka</value></data>
   <data name="Dashboard_RemindersLast30Days" xml:space="preserve"><value>Upomínky za 30 dní</value></data>
   <data name="Dashboard_RecentReminders" xml:space="preserve"><value>Poslední upomínky</value></data>
@@ -2033,4 +2042,132 @@
   <data name="Vies_Unavailable" xml:space="preserve">
     <value>Ověření ve VIES se nezdařilo (služba je nedostupná). Zkuste to později.</value>
   </data>
+  <data name="Nav_OssReport" xml:space="preserve"><value>Hlášení OSS</value></data>
+  <data name="OssReport_Title" xml:space="preserve"><value>Hlášení OSS (EU One-Stop-Shop)</value></data>
+  <data name="OssReport_Info" xml:space="preserve"><value>Čtvrtletní přehled prodeje spotřebitelům v jiných státech EU v režimu OSS: základ a DPH podle cílové země a sazby v EUR. Faktury v jiné měně se přepočítají kurzem ECB k poslednímu dni čtvrtletí. Podklad pro podání na portálu Finanční správy; neslouží jako DPHDP3/KH.</value></data>
+  <data name="OssReport_Year" xml:space="preserve"><value>Rok</value></data>
+  <data name="OssReport_Quarter" xml:space="preserve"><value>Čtvrtletí</value></data>
+  <data name="OssReport_Generate" xml:space="preserve"><value>Zobrazit</value></data>
+  <data name="OssReport_DownloadCsv" xml:space="preserve"><value>Stáhnout CSV</value></data>
+  <data name="OssReport_DocumentCount" xml:space="preserve"><value>doklady v období: {0}</value></data>
+  <data name="OssReport_Country" xml:space="preserve"><value>Země spotřeby</value></data>
+  <data name="OssReport_Rate" xml:space="preserve"><value>Sazba</value></data>
+  <data name="OssReport_BaseEur" xml:space="preserve"><value>Základ (EUR)</value></data>
+  <data name="OssReport_VatEur" xml:space="preserve"><value>DPH (EUR)</value></data>
+  <data name="OssReport_Total" xml:space="preserve"><value>Celkem</value></data>
+  <data name="OssReport_NoData" xml:space="preserve"><value>V tomto čtvrtletí nejsou žádné doklady v režimu OSS.</value></data>
+  <data name="OssReport_EcbNote" xml:space="preserve"><value>Dobropisy snižují základ i daň. Kurz: referenční kurz ECB k poslednímu dni čtvrtletí, resp. k nejbližšímu dalšímu dni zveřejnění, pokud ten den kurz nevyšel (čl. 369h odst. 2 směrnice o DPH).</value></data>
+  <data name="Oss_SettingsTitle" xml:space="preserve"><value>Režim OSS (jedno správní místo EU)</value></data>
+  <data name="Oss_SettingsInfoText" xml:space="preserve"><value>Pokud jste v režimu OSS registrováni, faktury spotřebitelům (klient bez DIČ) v jiných státech EU se automaticky vystaví s DPH cílové země a nezahrnou se do přiznání a kontrolního hlášení DPH. Limit 10 000 EUR Fakvio nehlídá.</value></data>
+  <data name="Oss_Registered" xml:space="preserve"><value>Jsem registrován(a) v režimu OSS</value></data>
+  <data name="Oss_RegisteredSince" xml:space="preserve"><value>Registrace od</value></data>
+  <data name="Oss_ApplyToInvoice" xml:space="preserve"><value>Režim OSS (DPH země odběratele)</value></data>
+  <data name="Oss_ApplyHint" xml:space="preserve"><value>Zaškrtněte jen pokud plnění spadá do OSS (např. dodání zboží na dálku, telekomunikační, vysílací nebo elektronické služby). Běžné služby spotřebitelům (poradenství, vývoj software) se zdaňují v ČR. Použije se DPH země {0}.</value></data>
+  <data name="AccountingExport_Open" xml:space="preserve"><value>Export do účetnictví</value></data>
+  <data name="AccountingExport_System" xml:space="preserve"><value>Účetní systém</value></data>
+  <data name="AccountingExport_From" xml:space="preserve"><value>Od</value></data>
+  <data name="AccountingExport_To" xml:space="preserve"><value>Do</value></data>
+  <data name="AccountingExport_IncludeIssued" xml:space="preserve"><value>Vydané faktury</value></data>
+  <data name="AccountingExport_IncludeReceived" xml:space="preserve"><value>Přijaté faktury</value></data>
+  <data name="AccountingExport_Export" xml:space="preserve"><value>Exportovat</value></data>
+  <data name="AccountingExport_Success" xml:space="preserve"><value>Export byl stažen.</value></data>
+  <data name="AccountingExport_Error" xml:space="preserve"><value>Export se nepodařilo vytvořit. Zkontrolujte období a zkuste to znovu.</value></data>
+  <data name="EAccountingSystem_Pohoda" xml:space="preserve"><value>POHODA</value></data>
+  <data name="EAccountingSystem_MoneyS3" xml:space="preserve"><value>Money S3</value></data>
+  <data name="EAccountingSystem_AbraFlexi" xml:space="preserve"><value>ABRA Flexi</value></data>
+  <data name="AccountingExport_Note" xml:space="preserve"><value>Do souboru se nezahrnují doklady, které cílový systém nedokáže správně přijmout: doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi), daňové doklady k přijaté platbě a doklady se sazbou DPH jinou než 21 / 12 / 0 %. Počet vynechaných dokladů se zobrazí po exportu.</value></data>
+  <data name="AccountingExport_Skipped" xml:space="preserve"><value>Vynecháno dokladů, které cílový systém nepodporuje: {0}.</value></data>
+  <data name="Nav_Webhooks" xml:space="preserve"><value>Webhooky</value></data>
+  <data name="Webhook_Title" xml:space="preserve"><value>Webhooky</value></data>
+  <data name="Webhook_Subtitle" xml:space="preserve"><value>Fakvio pošle na vaši URL podepsaný HTTP požadavek při události (vytvoření, odeslání nebo úhrada faktury, přijatá faktura, platba). Hodí se pro napojení e-shopu, účetnictví nebo vlastní aplikace.</value></data>
+  <data name="Webhook_New" xml:space="preserve"><value>Nový webhook</value></data>
+  <data name="Webhook_Edit" xml:space="preserve"><value>Upravit webhook</value></data>
+  <data name="Webhook_Url" xml:space="preserve"><value>URL endpointu</value></data>
+  <data name="Webhook_UrlHelper" xml:space="preserve"><value>Pouze https:// – adresy v interní síti jsou z bezpečnostních důvodů blokovány.</value></data>
+  <data name="Webhook_Events" xml:space="preserve"><value>Události</value></data>
+  <data name="Webhook_Event_invoice_created" xml:space="preserve"><value>Faktura vytvořena</value></data>
+  <data name="Webhook_Event_invoice_sent" xml:space="preserve"><value>Faktura odeslána e-mailem</value></data>
+  <data name="Webhook_Event_invoice_paid" xml:space="preserve"><value>Faktura zaplacena</value></data>
+  <data name="Webhook_Event_invoice_cancelled" xml:space="preserve"><value>Faktura stornována/smazána</value></data>
+  <data name="Webhook_Event_received_invoice_created" xml:space="preserve"><value>Přijatá faktura vytvořena</value></data>
+  <data name="Webhook_Event_payment_received" xml:space="preserve"><value>Platba přijata</value></data>
+  <data name="Webhook_Test" xml:space="preserve"><value>Otestovat</value></data>
+  <data name="Webhook_TestOk" xml:space="preserve"><value>Test úspěšný (HTTP {0}).</value></data>
+  <data name="Webhook_TestFailed" xml:space="preserve"><value>Test selhal: {0}</value></data>
+  <data name="Webhook_Deliveries" xml:space="preserve"><value>Doručení</value></data>
+  <data name="Webhook_Redeliver" xml:space="preserve"><value>Odeslat znovu</value></data>
+  <data name="Webhook_Redelivered" xml:space="preserve"><value>Doručení bylo zařazeno k opětovnému odeslání.</value></data>
+  <data name="Webhook_RotateSecret" xml:space="preserve"><value>Vygenerovat nový klíč</value></data>
+  <data name="Webhook_RotateConfirmTitle" xml:space="preserve"><value>Vygenerovat nový podpisový klíč?</value></data>
+  <data name="Webhook_RotateConfirmText" xml:space="preserve"><value>Dosavadní klíč přestane okamžitě platit; příjemce musí použít nový.</value></data>
+  <data name="Webhook_DeleteConfirmTitle" xml:space="preserve"><value>Smazat webhook?</value></data>
+  <data name="Webhook_DeleteConfirmText" xml:space="preserve"><value>Webhook „{0}“ a jeho historie doručení budou smazány.</value></data>
+  <data name="Webhook_Saved" xml:space="preserve"><value>Webhook byl uložen.</value></data>
+  <data name="Webhook_Deleted" xml:space="preserve"><value>Webhook byl smazán.</value></data>
+  <data name="Webhook_SecretTitle" xml:space="preserve"><value>Podpisový klíč webhooku</value></data>
+  <data name="Webhook_SecretWarning" xml:space="preserve"><value>Tento klíč se zobrazí pouze jednou. Uložte si ho – slouží k ověření podpisu (hlavička Fakvio-Webhook-Signature) na vaší straně.</value></data>
+  <data name="Webhook_SecretSaved" xml:space="preserve"><value>Klíč jsem si uložil</value></data>
+  <data name="Webhook_CopySecret" xml:space="preserve"><value>Kopírovat klíč</value></data>
+  <data name="Webhook_NoSubscriptions" xml:space="preserve"><value>Zatím nemáte žádný webhook.</value></data>
+  <data name="Webhook_NoDeliveries" xml:space="preserve"><value>Zatím žádná doručení.</value></data>
+  <data name="Webhook_Col_Event" xml:space="preserve"><value>Událost</value></data>
+  <data name="Webhook_Col_Attempts" xml:space="preserve"><value>Pokusy</value></data>
+  <data name="Webhook_Col_NextAttempt" xml:space="preserve"><value>Další pokus</value></data>
+  <data name="Webhook_Col_HttpStatus" xml:space="preserve"><value>HTTP stav</value></data>
+  <data name="Webhook_Col_Error" xml:space="preserve"><value>Chyba</value></data>
+  <data name="Webhook_Col_Created" xml:space="preserve"><value>Vytvořeno</value></data>
+  <data name="Webhook_Status_Pending" xml:space="preserve"><value>Čeká</value></data>
+  <data name="Webhook_Status_Succeeded" xml:space="preserve"><value>Doručeno</value></data>
+  <data name="Webhook_Status_Failed" xml:space="preserve"><value>Selhalo</value></data>
+  <data name="DashboardWidget_Kpis" xml:space="preserve"><value>Přehledové dlaždice</value></data>
+  <data name="DashboardWidget_TaxInsurance" xml:space="preserve"><value>Zálohy a daně</value></data>
+  <data name="DashboardWidget_RevenueByMonth" xml:space="preserve"><value>Tržby po měsících</value></data>
+  <data name="DashboardWidget_IncomeVsExpense" xml:space="preserve"><value>Příjmy vs výdaje po měsících</value></data>
+  <data name="DashboardWidget_ReceivablesAging" xml:space="preserve"><value>Neuhrazené pohledávky podle stáří</value></data>
+  <data name="DashboardWidget_InvoicesByStatus" xml:space="preserve"><value>Faktury podle stavu</value></data>
+  <data name="DashboardWidget_TopClients" xml:space="preserve"><value>Top klienti podle tržeb</value></data>
+  <data name="DashboardWidget_Overdue" xml:space="preserve"><value>Faktury po splatnosti</value></data>
+  <data name="DashboardWidget_RecentInvoices" xml:space="preserve"><value>Poslední faktury</value></data>
+  <data name="DashboardWidget_Reminders" xml:space="preserve"><value>Upomínky</value></data>
+  <data name="Dashboard_EditLayout" xml:space="preserve"><value>Upravit nástěnku</value></data>
+  <data name="Dashboard_ResetLayout" xml:space="preserve"><value>Obnovit výchozí</value></data>
+  <data name="Dashboard_MoveUp" xml:space="preserve"><value>Posunout nahoru</value></data>
+  <data name="Dashboard_MoveDown" xml:space="preserve"><value>Posunout dolů</value></data>
+  <data name="Dashboard_RevenueByMonth" xml:space="preserve"><value>Tržby po měsících</value></data>
+  <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Příjmy vs výdaje po měsících</value></data>
+  <data name="Dashboard_Income" xml:space="preserve"><value>Příjmy</value></data>
+  <data name="Dashboard_Expense" xml:space="preserve"><value>Výdaje</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Posledních 12 měsíců, bez DPH, jen faktury v CZK</value></data>
+  <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Neuhrazené pohledávky podle stáří</value></data>
+  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Dny po splatnosti, s DPH, v CZK</value></data>
+  <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Spustit průvodce</value></data>
+  <data name="SetupWizard_Title" xml:space="preserve"><value>Průvodce nastavením</value></data>
+  <data name="SetupWizard_Intro" xml:space="preserve"><value>Pár kroků a můžete vystavit první fakturu. Každý krok jde později změnit v nastavení.</value></data>
+  <data name="SetupWizard_Skip" xml:space="preserve"><value>Přeskočit průvodce</value></data>
+  <data name="SetupWizard_NoIssuer" xml:space="preserve"><value>Firma nebyla nalezena. Dokončete nejdříve registraci firmy.</value></data>
+  <data name="SetupWizard_StepCompany" xml:space="preserve"><value>Firma</value></data>
+  <data name="SetupWizard_StepBank" xml:space="preserve"><value>Banka</value></data>
+  <data name="SetupWizard_StepBilling" xml:space="preserve"><value>Fakturace</value></data>
+  <data name="SetupWizard_StepUsers" xml:space="preserve"><value>Uživatelé (volitelné)</value></data>
+  <data name="SetupWizard_StepDone" xml:space="preserve"><value>Hotovo</value></data>
+  <data name="SetupWizard_LoadFromAres" xml:space="preserve"><value>Načíst z ARES</value></data>
+  <data name="SetupWizard_SaveAndContinue" xml:space="preserve"><value>Uložit a pokračovat</value></data>
+  <data name="SetupWizard_Next" xml:space="preserve"><value>Pokračovat</value></data>
+  <data name="SetupWizard_AddBankAccount" xml:space="preserve"><value>Přidat bankovní účet</value></data>
+  <data name="SetupWizard_SequencesMissing" xml:space="preserve"><value>Chybí číselné řady dokladů. Po uložení se vytvoří výchozí řady pro faktury a dobropisy.</value></data>
+  <data name="SetupWizard_UsersHint" xml:space="preserve"><value>Pozvěte kolegu nebo účetní. Tento krok můžete přeskočit.</value></data>
+  <data name="SetupWizard_AllDone" xml:space="preserve"><value>Vše je nastaveno, můžete vystavovat faktury.</value></data>
+  <data name="SetupWizard_StillMissing" xml:space="preserve"><value>Stále chybí tyto údaje:</value></data>
+  <data name="SetupWizard_GoToDashboard" xml:space="preserve"><value>Přejít na nástěnku</value></data>
+  <data name="EpoSummaryPreview" xml:space="preserve"><value>Náhled souhrnného hlášení</value></data>
+  <data name="EpoSummaryTitle" xml:space="preserve"><value>Souhrnné hlášení (plnění do EU)</value></data>
+  <data name="EpoSummaryEmpty" xml:space="preserve"><value>V období nejsou žádná plnění pro odběratele z EU s DIČ.</value></data>
+  <data name="EpoSummaryCountry" xml:space="preserve"><value>Stát</value></data>
+  <data name="EpoSummaryVatId" xml:space="preserve"><value>DIČ</value></data>
+  <data name="EpoSummaryClient" xml:space="preserve"><value>Odběratel</value></data>
+  <data name="EpoSummaryInvoices" xml:space="preserve"><value>Faktur</value></data>
+  <data name="EpoSummaryTotal" xml:space="preserve"><value>Hodnota plnění</value></data>
+  <data name="EpoSummaryGoods" xml:space="preserve"><value>Zboží (jinak služba)</value></data>
+  <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Stáhnout EPO – souhrnné hlášení</value></data>
+  <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Zboží (kód 0) lze v souhrnném hlášení vykázat jen za měsíc (§ 102 odst. 6 ZDPH). Přepněte na měsíční období nebo odškrtněte zboží.</value></data>
 </root>

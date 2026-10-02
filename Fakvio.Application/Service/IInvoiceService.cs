@@ -139,6 +139,14 @@ public interface IInvoiceService
     /// <returns>List of credit notes</returns>
     Task<List<InvoiceDto>> GetCreditNotesForInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Previews the EU OSS destination country (ISO2) an invoice from <paramref name="issuerId"/> to
+    /// <paramref name="clientId"/> is ELIGIBLE for, or null when it is not an OSS case. Eligibility only — OSS is
+    /// applied when the user opts in (ApplyOss). Lets the UI offer the opt-in and the destination rates before
+    /// saving (the server re-checks on save). See DEVGUIDE §4.16.
+    /// </summary>
+    Task<string?> GetOssCountryCodeAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken cancellationToken = default);
+
     // ─── Bulk Operations ─────────────────────────────────────────────────────
 
     /// <summary>
@@ -222,6 +230,37 @@ public interface IInvoiceService
     /// <param name="proformaId">Proforma ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task<List<InvoiceDto>> GetTaxReceiptsForProformaAsync(long proformaId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Issues a Tax Receipt for Advance Payment (DPP) for the given Proforma — manually, or as
+    /// the manual override when auto-issuance is disabled. Idempotent: clamps to the amount of
+    /// the advance not yet covered by an existing DPP; returns null (no-op) if nothing is left
+    /// to cover, or if the issuer is not a VAT payer (non-VAT-payers never issue a DPP).
+    /// </summary>
+    /// <param name="proformaId">Proforma ID</param>
+    /// <param name="paymentDate">Date the advance was received — used as IssueDate/DUZP. Null = today.</param>
+    /// <param name="amount">
+    /// Amount (including VAT) to cover. Null = the full remaining advance not yet covered by a DPP.
+    /// Always clamped to that remaining amount, even when explicitly given.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <exception cref="KeyNotFoundException">Proforma not found</exception>
+    /// <exception cref="InvalidOperationException">proformaId references a non-Proforma document</exception>
+    Task<InvoiceDto?> IssueTaxReceiptForPaidProformaAsync(
+        long proformaId, DateTime? paymentDate, decimal? amount, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Called by every code path that increases a Proforma's PaidAmount (manual mark-paid, bank
+    /// payment matching). Auto-issues a DPP for the newly received portion, gated by the issuer
+    /// being a VAT payer and <see cref="Fakvio.Domain.Entities.Client.AutoIssueTaxReceiptForAdvance"/>.
+    /// Never throws — logs and swallows any failure so the payment itself is never affected.
+    /// </summary>
+    /// <param name="proformaId">Proforma ID (no-op if it's not a Proforma)</param>
+    /// <param name="paidDelta">The amount newly received by this payment (no-op if &lt;= 0)</param>
+    /// <param name="paymentDate">Date of the payment — used as the DPP's IssueDate/DUZP</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task TryAutoIssueTaxReceiptAsync(
+        long proformaId, decimal paidDelta, DateTime? paymentDate, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reverts a Paid invoice back to Completed status (marks it as unpaid).

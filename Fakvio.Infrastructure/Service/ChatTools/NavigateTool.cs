@@ -105,6 +105,7 @@ public class NavigateTool : IChatTool
 
         // Taxes and VAT
         new("vat_report", "/vat-report", "VAT report"),
+        new("oss_report", "/oss-report", "EU OSS report"),
         new("vat_rate_list", "/vat-rates", "VAT rate list"),
         new("tax_estimation", "/tax-estimation", "tax estimation"),
         new("tax_year_configs", "/tax-configs", "tax year configuration"),
@@ -116,12 +117,14 @@ public class NavigateTool : IChatTool
         // Company and user settings
         new("dashboard", "/", "dashboard"),
         new("my_company", "/my-company", "my company page"),
+        new("setup_wizard", "/setup", "guided setup wizard (company, bank, invoicing)"),
         new("number_sequences", "/number-sequences", "number sequence settings"),
         new("feedback", "/feedback", "my feedback reports"),
         new("preferences", "/preferences", "user preferences"),
         new("two_factor_settings", "/profile/two-factor", "two-factor authentication settings"),
         new("notifications", "/notifications", "notification list"),
-        new("integrations", "/settings/integrations", "integrations and API keys for AI clients")
+        new("integrations", "/settings/integrations", "integrations and API keys for AI clients"),
+        new("webhooks", "/settings/webhooks", "outbound webhooks (admin only)")
     ];
 
     /// <summary>Lookup built once from <see cref="Routes"/> — the switch below is a dictionary hit.</summary>

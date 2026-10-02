@@ -1,4 +1,5 @@
 using Fakvio.Domain.Common;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Domain.Entities;
 
@@ -77,6 +78,36 @@ public class ReceivedInvoiceItem : BaseEntity
     /// Total price with VAT: TotalBeforeVat + VatAmount.
     /// </summary>
     public decimal TotalWithVat { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime for this line item — mirrors <see cref="InvoiceItem.VatRegime"/>.
+    /// For received invoices, <see cref="EVatRegime.ReverseCharge"/> means WE (the recipient)
+    /// must self-assess the VAT the supplier did not charge (§92a ZDPH): we owe output tax
+    /// AND may claim the same amount as input tax (net zero, but both sides must be reported
+    /// in DPHDP3/DPHKH1 — see <c>VatReportService</c>).
+    /// Default is <see cref="EVatRegime.Standard"/> — backward-compatible with all existing rows.
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
+
+    /// <summary>
+    /// FK to ReverseChargeCode lookup table. Required when VatRegime == ReverseCharge,
+    /// must be null otherwise. Used for DPHKH1 section B.1 (kód předmětu plnění).
+    /// </summary>
+    public long? ReverseChargeCodeId { get; set; }
+
+    /// <summary>
+    /// Navigation property to ReverseChargeCode lookup.
+    /// </summary>
+    public ReverseChargeCode? ReverseChargeCode { get; set; }
+
+    /// <summary>
+    /// Self-assessed VAT amount for Reverse Charge items (base * rate).
+    /// The supplier's invoice shows 0 VAT (TotalWithVat == TotalBeforeVat); this is the
+    /// amount WE must self-assess as both output tax (we owe it) and input tax (we may
+    /// deduct it) — see DPHDP3 rows 10/11 (output) and 43/44 (nárok na odpočet).
+    /// Always 0 for Standard/Exempt/OutOfScope items (the real tax lives in VatAmount then).
+    /// </summary>
+    public decimal InformationalVatAmount { get; set; }
 
     /// <summary>
     /// Optional product/service code.
