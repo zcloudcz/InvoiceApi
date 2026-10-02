@@ -1828,6 +1828,8 @@
   <data name="Recurring_MaxOccurrences" xml:space="preserve"><value>Počet opakování</value></data>
   <data name="Recurring_AutoSend" xml:space="preserve"><value>Rovnou vystavit a odeslat e-mailem</value></data>
   <data name="Recurring_AutoSendHelp" xml:space="preserve"><value>Faktura se vždy vystaví; tento přepínač navíc pošle e-mail klientovi.</value></data>
+  <data name="Recurring_ShiftPeriods" xml:space="preserve"><value>Posouvat období v textech</value></data>
+  <data name="Recurring_ShiftPeriodsHelp" xml:space="preserve"><value>Měsíce a čtvrtletí v textu šablony (např. „3/2026“) se u každé další faktury posunou. Text v šabloně musí odpovídat období první vygenerované faktury.</value></data>
   <data name="Recurring_NextRun" xml:space="preserve"><value>Další běh</value></data>
   <data name="Recurring_LastRun" xml:space="preserve"><value>Poslední běh</value></data>
   <data name="Recurring_OccurrenceCount" xml:space="preserve"><value>Počet vystavení</value></data>

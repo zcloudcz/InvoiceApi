@@ -542,7 +542,7 @@ automatické generování faktur z této šablony:
 nastane naplánovaný termín. Faktura se **rovnou vystaví** (ne koncept) — číslo dokladu se přidělí
 ihned, takže po smazání vygenerované faktury nezůstane v číselné řadě díra.
 
-**Období v textech:** měsíce/čtvrtletí zapsaná v textu položek a poznámky šablony (např. „Hosting 3/2026“) se u každé vygenerované faktury posunou automaticky — text v šabloně se považuje za období před prvním během a n-tá faktura se posune o (n+1) intervalů plánu. Týdenní plány text neposouvají. Zástupné značky typu `{month}` šablony nepodporují.
+**Období v textech:** měsíce/čtvrtletí zapsaná v textu položek a poznámky šablony (např. „Hosting 3/2026“) se u každé vygenerované faktury posunou automaticky — text v šabloně musí odpovídat období **první vygenerované faktury**; n-tá faktura se posune o (n-1) intervalů plánu. Volba **„Posouvat období v textech“** je u nových plánů zapnutá; u plánů vytvořených dříve je vypnutá, a po zapnutí se aktuální text šablony bere jako období příští faktury. Týdenní plány text neposouvají. Zástupné značky typu `{month}` šablony nepodporují.
 
 **Co když aplikace byla dočasně nedostupná:** zmeškaná perioda se dožene v příštím běhu, ale vždy
 jen jedna faktura za cyklus — datum vystavení odpovídá původně plánovanému datu, ne datu, kdy se

@@ -70,7 +70,8 @@ public class CreateInvoiceFromTemplateDto
 
     /// <summary>
     /// Months to move billing periods named in the template texts ("Hosting 3/2026" → "4/2026") forward.
-    /// Set by the recurring-invoice worker; 0 (default) leaves texts untouched.
+    /// Worker-internal ([JsonIgnore]: not settable through the API/MCP); 0 (default) leaves texts untouched.
     /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
     public int ShiftMonths { get; set; }
 }

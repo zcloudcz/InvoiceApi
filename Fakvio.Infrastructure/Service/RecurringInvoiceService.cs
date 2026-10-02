@@ -131,6 +131,7 @@ public class RecurringInvoiceService : IRecurringInvoiceService
             EndDate = createDto.EndDate,
             MaxOccurrences = createDto.MaxOccurrences,
             AutoSend = createDto.AutoSend,
+            ShiftPeriodsInText = createDto.ShiftPeriodsInText,
             IsActive = true,
         };
 
@@ -180,6 +181,13 @@ public class RecurringInvoiceService : IRecurringInvoiceService
         schedule.EndDate = endDate;
         schedule.MaxOccurrences = updateDto.ClearMaxOccurrences ? null : updateDto.MaxOccurrences ?? schedule.MaxOccurrences;
         schedule.AutoSend = updateDto.AutoSend ?? schedule.AutoSend;
+        // Switching shifting ON: the current template text becomes the period of the NEXT invoice.
+        if (updateDto.ShiftPeriodsInText is { } shift)
+        {
+            if (shift && !schedule.ShiftPeriodsInText)
+                schedule.ShiftBaselineOccurrence = schedule.OccurrenceCount;
+            schedule.ShiftPeriodsInText = shift;
+        }
         if (updateDto.NextRunAt.HasValue)
             schedule.NextRunAt = updateDto.NextRunAt.Value;
 
@@ -381,7 +389,9 @@ public class RecurringInvoiceService : IRecurringInvoiceService
                 // consumed immediately, there is no "draft with a hole in the sequence".
                 AutoComplete = true,
                 // Billing periods in the template text ("Hosting 3/2026") advance with each generated invoice.
-                ShiftMonths = RecurrenceCalculator.PeriodShiftMonths(schedule.Frequency, schedule.IntervalCount, schedule.OccurrenceCount),
+                ShiftMonths = schedule.ShiftPeriodsInText
+                    ? RecurrenceCalculator.PeriodShiftMonths(schedule.Frequency, schedule.IntervalCount, schedule.OccurrenceCount - schedule.ShiftBaselineOccurrence)
+                    : 0,
             },
             ct);
 

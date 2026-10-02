@@ -1828,6 +1828,8 @@
   <data name="Recurring_MaxOccurrences" xml:space="preserve"><value>Number of occurrences</value></data>
   <data name="Recurring_AutoSend" xml:space="preserve"><value>Complete and e-mail automatically</value></data>
   <data name="Recurring_AutoSendHelp" xml:space="preserve"><value>The invoice is always issued; this switch also e-mails it to the client.</value></data>
+  <data name="Recurring_ShiftPeriods" xml:space="preserve"><value>Shift periods in texts</value></data>
+  <data name="Recurring_ShiftPeriodsHelp" xml:space="preserve"><value>Months and quarters in the template text (e.g. "3/2026") advance with every invoice. The template text must name the period of the first generated invoice.</value></data>
   <data name="Recurring_NextRun" xml:space="preserve"><value>Next run</value></data>
   <data name="Recurring_LastRun" xml:space="preserve"><value>Last run</value></data>
   <data name="Recurring_OccurrenceCount" xml:space="preserve"><value>Occurrences</value></data>

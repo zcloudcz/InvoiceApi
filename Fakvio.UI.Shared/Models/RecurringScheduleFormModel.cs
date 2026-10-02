@@ -24,4 +24,7 @@ public class RecurringScheduleFormModel
     public int? MaxOccurrences { get; set; }
 
     public bool AutoSend { get; set; }
+
+    /// <summary>Move billing periods in the template text forward with each generated invoice.</summary>
+    public bool ShiftPeriodsInText { get; set; } = true;
 }

@@ -1,4 +1,3 @@
-using Fakvio.Application.Common.Helpers;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
@@ -223,24 +222,26 @@ public class InvoiceServiceCopyTests : IDisposable
     // Billing-period shifting
     // ═════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Source issued 2 months ago with period text → copy moves the period 2 months forward.</summary>
+    /// <summary>Source issued 2 months ago with period text → copy names the current month instead.</summary>
     [Fact]
-    public async Task CopyInvoiceAsync_ShiftsPeriodsInItemsAndNotes_ByIssueMonthDifference()
+    public async Task CopyInvoiceAsync_ShiftsPeriodsInItemsAndNotes_ToCurrentMonth()
     {
+        // The service uses DateTime.UtcNow, so the texts are built from "now minus 2 months" and the
+        // expected values from "now" — formatted independently of BillingPeriodShifter.
+        var now = DateTime.UtcNow;
+        var past = now.AddDays(-now.Day + 1).AddMonths(-2); // 1st of the month, 2 months back (avoids day clamping)
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         var sourceId = CreateSourceInvoice();
         var source = _context.Invoice.Include(i => i.InvoiceItem).Single(i => i.Id == sourceId);
-        source.IssueDate = DateTime.UtcNow.AddMonths(-2);
-        source.Notes = "Fakturace za 2026-01";
-        source.InvoiceItem.First(i => i.OrderIndex == 1).Description = "Hosting 1/2026";
+        source.IssueDate = past;
+        source.Notes = $"Fakturace za {past.ToString("yyyy-MM", inv)}";
+        source.InvoiceItem.First(i => i.OrderIndex == 1).Description = $"Hosting {past.ToString("M/yyyy", inv)}";
         _context.SaveChanges();
 
         var copy = await _service.CopyInvoiceAsync(sourceId);
 
-        var delta = 2;
-        delta.ShouldBe(2);
-        copy.Notes.ShouldBe(BillingPeriodShifter.Shift("Fakturace za 2026-01", delta));
-        copy.Notes.ShouldNotBe("Fakturace za 2026-01");
-        copy.InvoiceItem.First(i => i.OrderIndex == 1).Description.ShouldBe(BillingPeriodShifter.Shift("Hosting 1/2026", delta));
+        copy.Notes.ShouldBe($"Fakturace za {now.ToString("yyyy-MM", inv)}");
+        copy.InvoiceItem.First(i => i.OrderIndex == 1).Description.ShouldBe($"Hosting {now.ToString("M/yyyy", inv)}");
         // Untouched text stays as is.
         copy.InvoiceItem.First(i => i.OrderIndex == 2).Description.ShouldBe("Travel");
     }

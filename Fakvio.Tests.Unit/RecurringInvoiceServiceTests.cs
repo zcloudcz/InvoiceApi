@@ -177,6 +177,68 @@ public class RecurringInvoiceServiceTests : IDisposable
         await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateAsync(dto));
     }
 
+    // ── Period shifting in template text ───────────────────────────────────────
+
+    private List<string> GeneratedDescriptions() =>
+        _context.Invoice.Include(i => i.InvoiceItem)
+            .Where(i => i.ClientId == ClientId && i.Id != TemplateId)
+            .OrderBy(i => i.IssueDate)
+            .Select(i => i.InvoiceItem.First().Description)
+            .ToList();
+
+    private async Task RunMonthlyCyclesAsync(int count)
+    {
+        for (var i = 0; i < count; i++)
+            await _service.RunCycleAsync(companyId: 1, nowUtc: new DateTimeOffset(2026, 1 + _cyclesRun++, 15, 8, 0, 0, TimeSpan.Zero));
+    }
+
+    private int _cyclesRun;
+
+    [Fact]
+    public async Task RunCycleAsync_ShiftPeriodsOn_FirstInvoiceKeepsTemplateTextThenAdvances()
+    {
+        _context.Set<InvoiceTemplate>().Include(t => t.InvoiceItem).Single(t => t.Id == TemplateId)
+            .InvoiceItem.First().Description = "Hosting 1/2026";
+        _context.SaveChanges();
+        await _service.CreateAsync(ValidMonthlyDto()); // ShiftPeriodsInText defaults to true
+
+        await RunMonthlyCyclesAsync(3);
+
+        GeneratedDescriptions().ShouldBe(["Hosting 1/2026", "Hosting 2/2026", "Hosting 3/2026"]);
+    }
+
+    [Fact]
+    public async Task RunCycleAsync_ShiftPeriodsOff_TemplateTextNeverChanges()
+    {
+        _context.Set<InvoiceTemplate>().Include(t => t.InvoiceItem).Single(t => t.Id == TemplateId)
+            .InvoiceItem.First().Description = "Hosting 1/2026";
+        _context.SaveChanges();
+        var dto = ValidMonthlyDto();
+        dto.ShiftPeriodsInText = false;
+        await _service.CreateAsync(dto);
+
+        await RunMonthlyCyclesAsync(2);
+
+        GeneratedDescriptions().ShouldBe(["Hosting 1/2026", "Hosting 1/2026"]);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_SwitchingShiftOn_UsesCurrentTextAsNextInvoicesPeriod()
+    {
+        _context.Set<InvoiceTemplate>().Include(t => t.InvoiceItem).Single(t => t.Id == TemplateId)
+            .InvoiceItem.First().Description = "Hosting 2/2026";
+        _context.SaveChanges();
+        var dto = ValidMonthlyDto();
+        dto.ShiftPeriodsInText = false; // like a schedule that existed before the feature
+        var created = await _service.CreateAsync(dto);
+        await RunMonthlyCyclesAsync(1); // Jan invoice, text untouched
+
+        await _service.UpdateAsync(created.Id, new UpdateRecurringInvoiceScheduleDto { ShiftPeriodsInText = true });
+        await RunMonthlyCyclesAsync(2); // Feb keeps "2/2026" (baseline), Mar → "3/2026"
+
+        GeneratedDescriptions().ShouldBe(["Hosting 2/2026", "Hosting 2/2026", "Hosting 3/2026"]);
+    }
+
     // ── Update / SetActive / Delete ─────────────────────────────────────────────
 
     [Fact]

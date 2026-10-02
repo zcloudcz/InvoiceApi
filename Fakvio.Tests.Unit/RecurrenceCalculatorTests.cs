@@ -12,10 +12,10 @@ namespace Fakvio.Tests.Unit;
 public class RecurrenceCalculatorTests
 {
     [Theory]
-    [InlineData(ERecurrenceFrequency.Monthly, 1, 0, 1)]
-    [InlineData(ERecurrenceFrequency.Monthly, 2, 2, 6)]
-    [InlineData(ERecurrenceFrequency.Quarterly, 1, 0, 3)]
-    [InlineData(ERecurrenceFrequency.Yearly, 1, 1, 24)]
+    [InlineData(ERecurrenceFrequency.Monthly, 1, 0, 0)]
+    [InlineData(ERecurrenceFrequency.Monthly, 2, 2, 4)]
+    [InlineData(ERecurrenceFrequency.Quarterly, 1, 1, 3)]
+    [InlineData(ERecurrenceFrequency.Yearly, 1, 2, 24)]
     [InlineData(ERecurrenceFrequency.Weekly, 1, 5, 0)]
     public void PeriodShiftMonths_ScalesWithIntervalAndOccurrence(ERecurrenceFrequency f, int interval, int done, int expected) =>
         RecurrenceCalculator.PeriodShiftMonths(f, interval, done).ShouldBe(expected);
