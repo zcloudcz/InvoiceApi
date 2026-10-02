@@ -1,4 +1,5 @@
 using Fakvio.Application.Common.Extensions;
+using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Application.Service;
@@ -200,32 +201,32 @@ public class CurrencyService : ICurrencyService
     /// <summary>
     /// Converts an amount in <paramref name="currencyCode"/> to CZK.
     ///
-    /// CZK: returned unchanged. Foreign currency: multiplied by the ČNB rate valid on <paramref name="date"/>
-    /// (<see cref="IExchangeRateService"/>, DEVGUIDE §4.17) and rounded to 2 decimals. When no rate can be
-    /// obtained (ČNB down and nothing cached) it logs a warning and returns the amount as-is — the same
-    /// "visible in logs" fallback as before the rate table existed.
+    /// CZK: returned unchanged. Foreign currency: multiplied by <paramref name="storedRate"/> (CZK per 1 unit, the rate
+    /// stored on the document — it is what the PDF prints, so returns must match it) or, for historic documents
+    /// without one, by the ČNB rate valid on <paramref name="date"/> (<see cref="IExchangeRateService"/>, DEVGUIDE §4.17);
+    /// rounded to 2 decimals. When no rate can be determined it THROWS <see cref="ExchangeRateUnavailableException"/> —
+    /// a foreign amount must never be reported as CZK.
     /// </summary>
     public async Task<decimal> ConvertToCzkAsync(
         decimal amount,
         string currencyCode,
         DateOnly date,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        decimal? storedRate = null)
     {
         // CZK → no conversion needed.
         if (string.Equals(currencyCode, "CZK", StringComparison.OrdinalIgnoreCase))
             return amount;
 
+        if (storedRate is > 0m)
+            return Math.Round(amount * storedRate.Value, 2, MidpointRounding.AwayFromZero);
+
         var rate = _exchangeRateService == null
             ? null
             : await _exchangeRateService.GetRateAsync(currencyCode, date, cancellationToken);
-        if (rate != null)
-            return Math.Round(amount * rate.RatePerUnit, 2, MidpointRounding.AwayFromZero);
-
-        _logger.LogWarning(
-            "ConvertToCzkAsync: no ČNB rate for {Currency} on {Date}. Returning {Amount} as-is — " +
-            "EPO amounts for this non-CZK document will be incorrect.",
-            currencyCode, date, amount);
-        return amount;
+        if (rate == null)
+            throw new ExchangeRateUnavailableException(currencyCode, date);
+        return Math.Round(amount * rate.RatePerUnit, 2, MidpointRounding.AwayFromZero);
     }
 
     /// <summary>

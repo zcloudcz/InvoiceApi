@@ -1234,6 +1234,8 @@ public class InvoiceService : IInvoiceService
 
         // A credit note uses the rate of the invoice it corrects (§42 ZDPH) — copy it (and its ČNB date).
         createDto.ExchangeRate ??= originalInvoice.ExchangeRate;
+        if (originalInvoice.ExchangeRate == null && createDto.ExchangeRate == null)
+            _logger.LogWarning("Original invoice {Id} has no stored exchange rate; credit note will use the rate for its own DUZP", originalInvoiceId);
 
         var creditNote = await CreateInvoiceAsync(createDto, cancellationToken);
 

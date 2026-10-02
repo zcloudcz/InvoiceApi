@@ -279,7 +279,7 @@ Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukl
 - Ve stavu Issued/Paid: pouze zobrazení; pro editaci vraťte fakturu do Draft (pokud to systém umožňuje)
 - Unsaved changes guard: při navigaci pryč bez uložení se zobrazí potvrzovací dialog
 
-**Kurz u faktury v cizí měně:** při vystavení faktury v jiné měně než CZK Fakvio samo doplní **kurz České národní banky** platný ke dni zdanitelného plnění (o víkendu nebo svátku poslední vyhlášený) a zobrazí ho v detailu faktury. Na konceptu můžete kurz přepsat vlastním (pole „Kurz“ — Kč za 1 jednotku měny); prázdné pole = použije se kurz ČNB. Vystavenou fakturu už kurz změnit nejde. Dobropis přebírá kurz původní faktury. Není-li kurz ČNB dostupný, faktura se vystaví i tak, jen bez kurzu.
+**Kurz u faktury v cizí měně:** při vystavení faktury v jiné měně než CZK Fakvio samo doplní **kurz České národní banky** platný ke dni zdanitelného plnění (o víkendu nebo svátku poslední vyhlášený) a zobrazí ho v detailu faktury. Na konceptu můžete kurz přepsat vlastním (pole „Kurz“ — Kč za 1 jednotku měny); prázdné pole = použije se kurz ČNB. Použije se vždy poslední vyhlášený kurz ČNB ke dni zdanitelného plnění nebo dříve — kurz se vyhlašuje kolem 14:30, takže u dnešního data před 14:30 platí kurz předchozího pracovního dne (datum kurzu najdete na faktuře). Potřebujete-li jiný kurz, přepište ho na konceptu. Vystavenou fakturu už kurz změnit nejde. Dobropis přebírá kurz původní faktury. Není-li kurz ČNB dostupný, faktura se vystaví i tak, jen bez kurzu.
 
 ### 2.6 Kopírování faktury
 

@@ -317,7 +317,7 @@ public class VatReportService : IVatReportService
             {
                 // Convert item amounts to CZK (no-op for CZK invoices).
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
-                    item.TotalBeforeVat, currencyCode, duzp, ct);
+                    item.TotalBeforeVat, currencyCode, duzp, ct, storedRate: inv.ExchangeRate);
 
                 // Reverse charge (PDP) items are supplied under §92a–92e ZDPH: the supplier does
                 // not charge VAT (VatAmount == 0, see InvoiceService.CalculateItemVat), so they
@@ -330,7 +330,7 @@ public class VatReportService : IVatReportService
                 }
 
                 var vatCzk = await _currencyService.ConvertToCzkAsync(
-                    item.VatAmount, currencyCode, duzp, ct);
+                    item.VatAmount, currencyCode, duzp, ct, storedRate: inv.ExchangeRate);
 
                 // EPO standard rate bucket: >= 20 % (currently 21 %).
                 // EPO reduced rate bucket:  < 20 % (currently 12 %).
@@ -379,7 +379,7 @@ public class VatReportService : IVatReportService
             foreach (var item in rec.Items)
             {
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
-                    item.TotalBeforeVat, currencyCode, duzp, ct);
+                    item.TotalBeforeVat, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
 
                 if (item.VatRegime == EVatRegime.ReverseCharge)
                 {
@@ -388,7 +388,7 @@ public class VatReportService : IVatReportService
                     // Self-assessed tax lives in InformationalVatAmount (VatAmount is 0 — the
                     // supplier did not bill it, see ReceivedInvoiceService.CalculateItemVat).
                     var selfAssessedVatCzk = await _currencyService.ConvertToCzkAsync(
-                        item.InformationalVatAmount, currencyCode, duzp, ct);
+                        item.InformationalVatAmount, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
 
                     if (item.VatRatePercentage >= 20m)
                     {
@@ -404,7 +404,7 @@ public class VatReportService : IVatReportService
                 }
 
                 var vatCzk = await _currencyService.ConvertToCzkAsync(
-                    item.VatAmount, currencyCode, duzp, ct);
+                    item.VatAmount, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
 
                 if (item.VatRatePercentage >= 20m)
                 {
@@ -620,7 +620,7 @@ public class VatReportService : IVatReportService
                 // Credit notes are listed with negative amounts under their own document number
                 // (sign forced on the per-document / per-rate NET after this loop).
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
-                    item.TotalBeforeVat, currencyCode, duzp, ct);
+                    item.TotalBeforeVat, currencyCode, duzp, ct, storedRate: inv.ExchangeRate);
 
                 if (item.VatRegime == EVatRegime.ReverseCharge)
                 {
@@ -637,7 +637,7 @@ public class VatReportService : IVatReportService
                 }
 
                 var vatCzk = await _currencyService.ConvertToCzkAsync(
-                    item.VatAmount, currencyCode, duzp, ct);
+                    item.VatAmount, currencyCode, duzp, ct, storedRate: inv.ExchangeRate);
                 perItemCzk.Add((baseCzk, vatCzk, item.VatRatePercentage));
                 totalWithVatCzk += baseCzk + vatCzk;
             }
@@ -703,12 +703,12 @@ public class VatReportService : IVatReportService
             foreach (var item in rec.Items)
             {
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
-                    item.TotalBeforeVat, currencyCode, duzp, ct);
+                    item.TotalBeforeVat, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
 
                 if (item.VatRegime == EVatRegime.ReverseCharge)
                 {
                     var selfAssessedVatCzk = await _currencyService.ConvertToCzkAsync(
-                        item.InformationalVatAmount, currencyCode, duzp, ct);
+                        item.InformationalVatAmount, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
                     RequireCzDic(rec.Supplier?.TaxNumber, docNum, "B.1", "supplier");
                     var code = item.ReverseChargeCode?.Code ?? string.Empty;
                     var key = (docNum, code);
@@ -727,7 +727,7 @@ public class VatReportService : IVatReportService
                 }
 
                 var vatCzk = await _currencyService.ConvertToCzkAsync(
-                    item.VatAmount, currencyCode, duzp, ct);
+                    item.VatAmount, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
                 perItemCzk.Add((baseCzk, vatCzk, item.VatRatePercentage));
                 totalWithVatCzk += baseCzk + vatCzk;
             }
@@ -918,7 +918,7 @@ public class VatReportService : IVatReportService
                 if (item.VatRegime is not (EVatRegime.Exempt or EVatRegime.OutOfScope) || item.VatAmount != 0m)
                     continue;
 
-                totalCzk += await _currencyService.ConvertToCzkAsync(item.TotalBeforeVat, currencyCode, duzp, ct);
+                totalCzk += await _currencyService.ConvertToCzkAsync(item.TotalBeforeVat, currencyCode, duzp, ct, storedRate: inv.ExchangeRate);
                 any = true;
             }
             if (!any) continue;

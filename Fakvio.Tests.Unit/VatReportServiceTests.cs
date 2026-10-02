@@ -336,4 +336,76 @@ public class VatReportServiceTests : IDisposable
         report.PeriodFrom.ShouldBe(_periodFrom);
         report.PeriodTo.ShouldBe(_periodTo);
     }
+
+    // ── foreign currency (DEVGUIDE §4.17): stored document rate wins, no rate = failure ──
+
+    private VatReportService ServiceWithRealConversion(Fakvio.Application.Service.IExchangeRateService rates)
+    {
+        var master = new MasterDbContext(new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var currency = new CurrencyService(null!, master, Substitute.For<ITenantResolver>(),
+            Substitute.For<ILogger<CurrencyService>>(), rates);
+        var resolver = Substitute.For<ITenantResolver>();
+        return new VatReportService(_context, master, resolver, Substitute.For<IEpoSchemaProvider>(), currency,
+            Substitute.For<ILogger<VatReportService>>());
+    }
+
+    /// <summary>EU B2B EUR invoice (exempt, 100 EUR, March 2026) — lands in the summary statement (SHV).</summary>
+    private void SeedEurInvoice(decimal? storedRate)
+    {
+        _context.Currency.Add(new Currency { Id = 2, Code = "EUR", Name = "Euro", Symbol = "EUR", DecimalPlaces = 2, SortOrder = 2, IsActive = true });
+        var de = new Client { Id = 3, CompanyName = "GmbH", RegistrationNumber = "R3", TaxNumber = "DE123456789", IsActive = true };
+        de.Address.Add(new Address { ClientId = 3, Country = "DE", IsPrimary = true });
+        _context.Client.Add(de);
+        var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+        var inv = new Invoice
+        {
+            DocumentType = EDocumentType.Invoice, Status = EInvoiceStatus.Completed, DocumentNumber = "EUR1",
+            IssueDate = duzp, TaxableSupplyDate = duzp, DueDate = duzp.AddDays(14), ClientId = 3, IssuerId = 2,
+            CurrencyId = 2, ExchangeRate = storedRate, TotalBeforeVat = 100, TotalWithVat = 100,
+            InvoiceItem = new List<InvoiceItem>()
+        };
+        inv.InvoiceItem.Add(new InvoiceItem { OrderIndex = 1, Description = "x", Quantity = 1, UnitPrice = 100, TotalBeforeVat = 100,
+            TotalWithVat = 100, VatAmount = 0, VatRegime = EVatRegime.Exempt });
+        _context.Invoice.Add(inv);
+        _context.SaveChanges();
+    }
+
+    private static Task<List<Fakvio.Contracts.Dto.VatReport.SummaryStatementRowDto>> Shv(VatReportService s) =>
+        s.GetSummaryStatementRowsAsync(2026, 3, EVatPeriodType.Monthly);
+
+    [Fact]
+    public async Task EpoRows_ForeignInvoice_UsesRateStoredOnTheDocument_EvenWhenCnbDiffers()
+    {
+        SeedEurInvoice(storedRate: 25m); // e.g. a manual override: must match what the PDF printed
+        var rates = Substitute.For<Fakvio.Application.Service.IExchangeRateService>();
+        rates.GetRateAsync(Arg.Any<string>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns(new Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto { CurrencyCode = "EUR", Amount = 1, Rate = 99m, RatePerUnit = 99m });
+
+        var rows = await Shv(ServiceWithRealConversion(rates));
+
+        rows.Single().TotalCzk.ShouldBe(2500);
+        await rates.DidNotReceive().GetRateAsync(Arg.Any<string>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EpoRows_HistoricForeignInvoiceWithoutStoredRate_FallsBackToCnbRateAtDuzp()
+    {
+        SeedEurInvoice(storedRate: null);
+        var rates = Substitute.For<Fakvio.Application.Service.IExchangeRateService>();
+        rates.GetRateAsync("EUR", new DateOnly(2026, 3, 10), Arg.Any<CancellationToken>())
+            .Returns(new Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto { CurrencyCode = "EUR", Amount = 1, Rate = 24m, RatePerUnit = 24m });
+
+        (await Shv(ServiceWithRealConversion(rates))).Single().TotalCzk.ShouldBe(2400);
+    }
+
+    [Fact]
+    public async Task EpoRows_ForeignInvoiceWithNoRateAnywhere_Throws_NeverReportsForeignAmountAsCzk()
+    {
+        SeedEurInvoice(storedRate: null);
+        var rates = Substitute.For<Fakvio.Application.Service.IExchangeRateService>(); // returns null
+
+        await Should.ThrowAsync<Fakvio.Application.Exceptions.ExchangeRateUnavailableException>(
+            () => Shv(ServiceWithRealConversion(rates)));
+    }
 }

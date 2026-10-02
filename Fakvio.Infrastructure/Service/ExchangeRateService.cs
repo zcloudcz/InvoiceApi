@@ -46,12 +46,14 @@ public class ExchangeRateService : IExchangeRateService
 
         // Exact day stored = definitely the right fixing. Otherwise (weekend, holiday, missing day, not yet
         // published) ask ČNB which fixing is the last one on or before the date.
-        if (best?.ValidFor != date)
+        var trustworthy = best?.ValidFor == date;
+        if (!trustworthy)
         {
             try
             {
                 var validFor = await FetchAndStoreAsync(date, ct);
                 best = await FindStoredAsync(code, validFor, ct) ?? best;
+                trustworthy = true; // ČNB answered: best is the real "last fixing on or before date"
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -61,7 +63,8 @@ public class ExchangeRateService : IExchangeRateService
         }
 
         var dto = best is null ? null : ToDto(best);
-        if (cacheable && dto != null) _cache.Set(key, dto, TimeSpan.FromHours(12));
+        // Never cache an answer produced by the outage fallback — it may be older than the real fixing.
+        if (cacheable && dto != null && trustworthy) _cache.Set(key, dto, TimeSpan.FromHours(12));
         return dto;
     }
 
@@ -103,8 +106,9 @@ public class ExchangeRateService : IExchangeRateService
         {
             await _context.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex)
+        catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
         {
+            // Only a unique violation is swallowed; any other DB error propagates.
             // Another instance/request inserted the same (currency, date) rows first (unique index) — the
             // data is there, which is all we wanted. Detach our failed attempt so the context stays usable.
             _logger.LogInformation(ex, "ČNB rates for {ValidFor} were stored concurrently", daily.ValidFor);

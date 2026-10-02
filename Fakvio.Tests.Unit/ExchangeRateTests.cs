@@ -171,6 +171,20 @@ public class ExchangeRateTests : IDisposable
         (await _service.GetRateAsync("USD", new DateOnly(2026, 10, 2))).ShouldBeNull();   // nothing at all
     }
 
+    [Fact]
+    public async Task GetRate_OutageFallbackAnswer_IsNotCached()
+    {
+        var day = new DateOnly(2026, 9, 25);
+        _master.ExchangeRate.Add(new ExchangeRate { CurrencyCode = "EUR", Amount = 1, Rate = 24.0m, ValidFor = new DateOnly(2026, 9, 24) });
+        await _master.SaveChangesAsync();
+        _cnb.GetDailyRatesAsync(day, Arg.Any<CancellationToken>()).Returns<CnbDailyRates>(_ => throw new InvalidOperationException("down"));
+        (await _service.GetRateAsync("EUR", day))!.ValidFor.ShouldBe(new DateOnly(2026, 9, 24)); // outage fallback
+
+        _cnb.GetDailyRatesAsync(day, Arg.Any<CancellationToken>()).Returns(Daily(day, 24.7m)); // ČNB is back
+
+        (await _service.GetRateAsync("EUR", day))!.RatePerUnit.ShouldBe(24.7m); // not served from a cached fallback
+    }
+
     [Theory]
     [InlineData("CZK")]
     [InlineData("")]
@@ -373,7 +387,7 @@ public class ExchangeRateTests : IDisposable
     // ── CZK conversion ───────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ConvertToCzk_UsesPerUnitRate_AndFallsBackToAmountWhenNoRate()
+    public async Task ConvertToCzk_UsesPerUnitRate_AndThrowsWhenNoRate()
     {
         var rates = Substitute.For<IExchangeRateService>();
         rates.GetRateAsync("HUF", Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
@@ -383,7 +397,9 @@ public class ExchangeRateTests : IDisposable
 
         (await svc.ConvertToCzkAsync(10000m, "HUF", new DateOnly(2026, 10, 1))).ShouldBe(666m);
         (await svc.ConvertToCzkAsync(100m, "CZK", new DateOnly(2026, 10, 1))).ShouldBe(100m);
-        (await svc.ConvertToCzkAsync(100m, "USD", new DateOnly(2026, 10, 1))).ShouldBe(100m); // no rate: as-is + warning
+        await Should.ThrowAsync<Fakvio.Application.Exceptions.ExchangeRateUnavailableException>(
+            () => svc.ConvertToCzkAsync(100m, "USD", new DateOnly(2026, 10, 1))); // no rate: never the foreign amount as CZK
+        (await svc.ConvertToCzkAsync(10m, "USD", new DateOnly(2026, 10, 1), storedRate: 25m)).ShouldBe(250m); // stored document rate wins
     }
 
     // ── PDF block ────────────────────────────────────────────────────────────
