@@ -404,6 +404,9 @@
   <data name="Template_DocumentTypeInvoice" xml:space="preserve"><value>Faktura</value></data>
   <data name="Template_DocumentTypeCreditNote" xml:space="preserve"><value>Dobropis</value></data>
   <data name="Template_Currency" xml:space="preserve"><value>Měna</value></data>
+  <data name="Invoice_ExchangeRate" xml:space="preserve"><value>Kurz (CZK za 1 jednotku)</value></data>
+  <data name="Invoice_ExchangeRateHint" xml:space="preserve"><value>Prázdné = kurz ČNB k datu zdanitelného plnění se doplní při vystavení dokladu.</value></data>
+  <data name="Invoice_ExchangeRateCnb" xml:space="preserve"><value>ČNB k</value></data>
   <data name="Template_Never" xml:space="preserve"><value>Nikdy</value></data>
   <data name="Template_CreateInvoice" xml:space="preserve"><value>Vytvořit fakturu ze šablony</value></data>
   <data name="Template_TemplateName" xml:space="preserve"><value>Název šablony</value></data>
@@ -2137,9 +2140,9 @@
   <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Příjmy vs výdaje po měsících</value></data>
   <data name="Dashboard_Income" xml:space="preserve"><value>Příjmy</value></data>
   <data name="Dashboard_Expense" xml:space="preserve"><value>Výdaje</value></data>
-  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Posledních 12 měsíců, bez DPH, jen faktury v CZK</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Posledních 12 měsíců, bez DPH, v CZK (cizí měny kurzem ČNB uvedeným na dokladu; doklady bez kurzu se nezapočítávají)</value></data>
   <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Neuhrazené pohledávky podle stáří</value></data>
-  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Dny po splatnosti, s DPH, v CZK</value></data>
+  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Dny po splatnosti, s DPH, v CZK (cizí měny kurzem ČNB uvedeným na dokladu)</value></data>
   <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Spustit průvodce</value></data>
   <data name="SetupWizard_Title" xml:space="preserve"><value>Průvodce nastavením</value></data>
   <data name="SetupWizard_Intro" xml:space="preserve"><value>Pár kroků a můžete vystavit první fakturu. Každý krok jde později změnit v nastavení.</value></data>
