@@ -1217,7 +1217,8 @@ else
             // Auto-select the default bank account from the issuer's 1:N BankAccount collection
             var defaultAccount = _issuerBankAccounts.FirstOrDefault(a => a.IsDefault)
                                  ?? _issuerBankAccounts.FirstOrDefault();
-            _bankAccountManuallySelectedInCreate = false;
+            // A template-supplied account is a deliberate choice: a later currency change must not replace it.
+            _bankAccountManuallySelectedInCreate = !string.IsNullOrEmpty(template.BankAccountNumber);
 
             // Template's own account wins over the issuer's default — but AccountNumber, IBAN
             // and SWIFT must all come from the SAME source. Mixing e.g. the template's account

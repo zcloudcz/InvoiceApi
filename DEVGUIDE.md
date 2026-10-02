@@ -1561,7 +1561,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Šablony** (`TemplateTools`, 3) |
 | `ListTemplates` | Read | `list_invoice_templates` | ✅ | |
 | `GetTemplate` | Read | `get_invoice_template` | ✅ | |
-| `CreateInvoiceFromTemplate` | Create | — | ❌ | zatím bez tasku |
+| `CreateInvoiceFromTemplate` | Create (`bankAccountId` volitelné) | — | ❌ | zatím bez tasku |
 | **Readiness** (`ReadinessTools`, 1) |
 | `GetReadiness` | Read | `get_readiness` | ✅ | |
 | **Číselníky** (`CodeListTools`, 1) |

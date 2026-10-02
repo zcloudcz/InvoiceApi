@@ -134,10 +134,15 @@ public class CreateInvoiceTool : IChatTool
         // Optional parameters.
         parameters.TryGetValue("currency", out var currencyCode);
         parameters.TryGetValue("notes", out var notes);
-        long? bankAccountId = parameters.TryGetValue("bank_account_id", out var bankAccountIdRaw)
-            && long.TryParse(bankAccountIdRaw, out var parsedBankAccountId)
-                ? parsedBankAccountId
-                : null;
+        long? bankAccountId = null;
+        if (parameters.TryGetValue("bank_account_id", out var bankAccountIdRaw)
+            && !string.IsNullOrWhiteSpace(bankAccountIdRaw))
+        {
+            // Present but not a number: fail loudly instead of silently using the default account.
+            if (!long.TryParse(bankAccountIdRaw, out var parsedBankAccountId))
+                return ChatToolResult.Failure("bank_account_id must be a number");
+            bankAccountId = parsedBankAccountId;
+        }
 
         _logger.LogInformation(
             "CreateInvoiceTool executing: client_name={ClientName}, items={Items}, currency={Currency}",

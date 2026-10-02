@@ -315,6 +315,9 @@ public class InvoiceService : IInvoiceService
         // must not have the resolver silently invent one.
         => CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: true, cancellationToken);
 
+    public Task<InvoiceDto> CreateImportedInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+        => CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
+
     private async Task<InvoiceDto> CreateInvoiceCoreAsync(
         CreateInvoiceDto createDto, bool applyBankAccountDefaulting, CancellationToken cancellationToken = default)
     {
@@ -630,6 +633,7 @@ public class InvoiceService : IInvoiceService
 
         var issuerAccounts = await _context.BankAccount
             .Where(a => a.ClientId == issuerId)
+            .OrderBy(a => a.Id) // deterministic rung choice
             .ToListAsync(cancellationToken);
 
         if (issuerAccounts.Count == 0)
@@ -644,7 +648,7 @@ public class InvoiceService : IInvoiceService
             issuerAccounts.FirstOrDefault(a => a.IsDefault && CurrencyMatches(a, currencyCode))
             ?? issuerAccounts.FirstOrDefault(a => CurrencyMatches(a, currencyCode))
             ?? issuerAccounts.FirstOrDefault(a => a.IsDefault)
-            ?? issuerAccounts.OrderBy(a => a.Id).First();
+            ?? issuerAccounts.First();
 
         invoice.BankAccountNumber = chosen.AccountNumber;
         invoice.IBAN = chosen.IBAN;
