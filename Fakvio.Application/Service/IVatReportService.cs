@@ -71,8 +71,8 @@ public interface IVatReportService
     /// - <b>B.2</b>: total incl. VAT ≥ 10 000 CZK AND supplier has a CZ VAT number → one row per invoice.
     /// - <b>B.3</b>: all other received invoices → one aggregated row per period.
     ///
-    /// A.1 and B.1 (PDP — přenesení daňové povinnosti) are intentionally left empty
-    /// pending story #4 where EVatRegime will be introduced.
+    /// A.1 (reverse charge supplied) and B.1 (reverse charge received) are filled from items
+    /// with VatRegime = ReverseCharge, one row per (document, kód předmětu plnění).
     ///
     /// Non-CZK invoices are converted to CZK using <c>ICurrencyService.ConvertToCzkAsync</c>
     /// with the invoice's TaxableSupplyDate (DUZP) as the rate date.
@@ -92,5 +92,25 @@ public interface IVatReportService
         int year,
         int period,
         EVatPeriodType type,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Previews the DPHSHV (EU summary statement) rows for a period: issued invoices to
+    /// EU (non-CZ) clients with a VAT id, aggregated by (country, VAT id, supply code).
+    /// Supply code defaults to 3 (services); keys listed in <paramref name="goodsKeys"/>
+    /// (format "DE123456789" = country prefix + VAT id) are reported as 0 (goods).
+    /// </summary>
+    Task<List<SummaryStatementRowDto>> GetSummaryStatementRowsAsync(
+        int year, int period, EVatPeriodType type,
+        IReadOnlyCollection<string>? goodsKeys = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Generates the DPHSHV XML (XSD-validated, UTF-8 no BOM) from the same rows as
+    /// <see cref="GetSummaryStatementRowsAsync"/>. Throws when there is nothing to report.
+    /// </summary>
+    Task<byte[]> ExportEpoSummaryStatementAsync(
+        int year, int period, EVatPeriodType type,
+        IReadOnlyCollection<string>? goodsKeys = null,
         CancellationToken ct = default);
 }

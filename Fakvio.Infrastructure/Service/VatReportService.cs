@@ -275,6 +275,8 @@ public class VatReportService : IVatReportService
         var outStdVat  = 0m; // row 1: VAT   at standard rate
         var outRedBase = 0m; // row 2: base  at reduced rate
         var outRedVat  = 0m; // row 2: VAT   at reduced rate
+        var outRcBase  = 0m; // row 25: reverse charge, supplier side (Veta2/pln_rez_pren) — base only,
+                              // the recipient self-assesses the tax, so no VAT is reported here.
 
         foreach (var inv in issuedInvoices)
         {
@@ -288,6 +290,17 @@ public class VatReportService : IVatReportService
                 // Convert item amounts to CZK (no-op for CZK invoices).
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
                     item.TotalBeforeVat, currencyCode, duzp, ct);
+
+                // Reverse charge (PDP) items are supplied under §92a–92e ZDPH: the supplier does
+                // not charge VAT (VatAmount == 0, see InvoiceService.CalculateItemVat), so they
+                // must NOT be mixed into the standard/reduced-rate rows — they are reported
+                // separately as row 25 (base only; the recipient self-assesses the tax).
+                if (item.VatRegime == EVatRegime.ReverseCharge)
+                {
+                    outRcBase += baseCzk;
+                    continue;
+                }
+
                 var vatCzk = await _currencyService.ConvertToCzkAsync(
                     item.VatAmount, currencyCode, duzp, ct);
 
@@ -313,6 +326,16 @@ public class VatReportService : IVatReportService
         var inRedBase = 0m; // row 41: base  at reduced rate
         var inRedVat  = 0m; // row 41: VAT   at reduced rate
 
+        // Reverse charge (PDP) received items: WE self-assess the VAT the supplier did not
+        // charge. The SAME base+tax amount is reported twice per §92a ZDPH:
+        //   - as output tax we owe   (Veta1 rows 10/11 — rez_pren23/dan_rpren23, rez_pren5/dan_rpren5)
+        //   - as input tax we deduct (Veta4 rows 43/44 — od_zdp23/nar_zdp23, od_zdp5/nar_zdp5)
+        // Net effect on the tax liability is zero, but both sides must appear in the filing.
+        var rcStdBase = 0m; // rows 10/43: base  at standard rate
+        var rcStdVat  = 0m; // rows 10/43: self-assessed VAT at standard rate
+        var rcRedBase = 0m; // rows 11/44: base  at reduced rate
+        var rcRedVat  = 0m; // rows 11/44: self-assessed VAT at reduced rate
+
         foreach (var rec in receivedInvoices)
         {
             var currencyCode = rec.Currency?.Code ?? "CZK";
@@ -323,6 +346,27 @@ public class VatReportService : IVatReportService
             {
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
                     item.TotalBeforeVat, currencyCode, duzp, ct);
+
+                if (item.VatRegime == EVatRegime.ReverseCharge)
+                {
+                    // Self-assessed tax lives in InformationalVatAmount (VatAmount is 0 — the
+                    // supplier did not bill it, see ReceivedInvoiceService.CalculateItemVat).
+                    var selfAssessedVatCzk = await _currencyService.ConvertToCzkAsync(
+                        item.InformationalVatAmount, currencyCode, duzp, ct);
+
+                    if (item.VatRatePercentage >= 20m)
+                    {
+                        rcStdBase += baseCzk;
+                        rcStdVat  += selfAssessedVatCzk;
+                    }
+                    else if (item.VatRatePercentage > 0m)
+                    {
+                        rcRedBase += baseCzk;
+                        rcRedVat  += selfAssessedVatCzk;
+                    }
+                    continue;
+                }
+
                 var vatCzk = await _currencyService.ConvertToCzkAsync(
                     item.VatAmount, currencyCode, duzp, ct);
 
@@ -339,8 +383,8 @@ public class VatReportService : IVatReportService
             }
         }
 
-        // Row 51 = sum of all deductible input VAT (rows 40 + 41).
-        var inSumVat = inStdVat + inRedVat;
+        // Row 51 = sum of all deductible input VAT (rows 40, 41, 43, 44).
+        var inSumVat = inStdVat + inRedVat + rcStdVat + rcRedVat;
 
         // EPO requires integer amounts (whole CZK, no decimals).
         // Round using MidpointRounding.AwayFromZero (standard Czech accounting rounding).
@@ -348,10 +392,15 @@ public class VatReportService : IVatReportService
         var outStdVatI  = RoundToCzk(outStdVat);
         var outRedBaseI = RoundToCzk(outRedBase);
         var outRedVatI  = RoundToCzk(outRedVat);
+        var outRcBaseI  = RoundToCzk(outRcBase);
         var inStdBaseI  = RoundToCzk(inStdBase);
         var inStdVatI   = RoundToCzk(inStdVat);
         var inRedBaseI  = RoundToCzk(inRedBase);
         var inRedVatI   = RoundToCzk(inRedVat);
+        var rcStdBaseI  = RoundToCzk(rcStdBase);
+        var rcStdVatI   = RoundToCzk(rcStdVat);
+        var rcRedBaseI  = RoundToCzk(rcRedBase);
+        var rcRedVatI   = RoundToCzk(rcRedVat);
         var inSumVatI   = RoundToCzk(inSumVat);
 
         // ── 8. Build the XML document ─────────────────────────────────────────
@@ -360,10 +409,14 @@ public class VatReportService : IVatReportService
             periodFrom, periodTo,
             issuer,
             epoSettings,
-            hasOutputVat: outStdBaseI != 0 || outRedBaseI != 0,
+            hasOutputVat: outStdBaseI != 0 || outRedBaseI != 0 || rcStdBaseI != 0 || rcRedBaseI != 0,
             outStdBaseI, outStdVatI,
             outRedBaseI, outRedVatI,
-            hasInputVat: inStdBaseI != 0 || inRedBaseI != 0,
+            rcStdBaseI, rcStdVatI,
+            rcRedBaseI, rcRedVatI,
+            hasOutputRc: outRcBaseI != 0,
+            outRcBaseI,
+            hasInputVat: inStdBaseI != 0 || inRedBaseI != 0 || rcStdBaseI != 0 || rcRedBaseI != 0,
             inStdBaseI, inStdVatI,
             inRedBaseI, inRedVatI,
             inSumVatI);
@@ -404,11 +457,13 @@ public class VatReportService : IVatReportService
 
         _logger.LogInformation(
             "DPHDP3 generated: year={Year}, period={Period}, {Bytes} bytes, " +
-            "outStd={OutStdBase}/{OutStdVat}, outRed={OutRedBase}/{OutRedVat}, " +
-            "inStd={InStdBase}/{InStdVat}, inRed={InRedBase}/{InRedVat}, inSum={InSumVat}",
+            "outStd={OutStdBase}/{OutStdVat}, outRed={OutRedBase}/{OutRedVat}, outRc(r25)={OutRcBase}, " +
+            "inStd={InStdBase}/{InStdVat}, inRed={InRedBase}/{InRedVat}, inRc(r10/11,43/44)={RcStdBase}/{RcStdVat}+{RcRedBase}/{RcRedVat}, " +
+            "inSum={InSumVat}",
             year, period, bytes.Length,
-            outStdBaseI, outStdVatI, outRedBaseI, outRedVatI,
-            inStdBaseI, inStdVatI, inRedBaseI, inRedVatI, inSumVatI);
+            outStdBaseI, outStdVatI, outRedBaseI, outRedVatI, outRcBaseI,
+            inStdBaseI, inStdVatI, inRedBaseI, inRedVatI, rcStdBaseI, rcStdVatI, rcRedBaseI, rcRedVatI,
+            inSumVatI);
 
         return bytes;
     }
@@ -459,7 +514,7 @@ public class VatReportService : IVatReportService
         var issuedInvoices = await _context.Invoice
             .AsNoTracking()
             .Include(i => i.Currency)
-            .Include(i => i.InvoiceItem)
+            .Include(i => i.InvoiceItem).ThenInclude(item => item.ReverseChargeCode) // needed for A.1 kod_pred_pl
             .Include(i => i.Client) // needed for TaxNumber (CZ DIČ check)
             .Where(i => !(i is InvoiceTemplate)
                 && i.TaxableSupplyDate >= fromUtc
@@ -473,7 +528,7 @@ public class VatReportService : IVatReportService
         var receivedInvoices = await _context.ReceivedInvoice
             .AsNoTracking()
             .Include(r => r.Currency)
-            .Include(r => r.Items)
+            .Include(r => r.Items).ThenInclude(item => item.ReverseChargeCode) // needed for B.1 kod_pred_pl
             .Include(r => r.Supplier) // needed for TaxNumber (CZ DIČ check)
             .Where(r => r.TaxableSupplyDate >= fromUtc
                 && r.TaxableSupplyDate <= toUtc
@@ -494,12 +549,24 @@ public class VatReportService : IVatReportService
         var a5RedBase = 0m;
         var a5RedVat  = 0m;
 
+        // A.1 — reverse charge (PDP) supplied by us. One row per (document, kód předmětu
+        // plnění); base only — the recipient self-assesses the tax (§92a ZDPH), so there is
+        // no rate split and no tax amount in VetaA1 (zakl_dane1 is "bez rozlišení sazby daně").
+        // Keyed by (DocumentNumber, Code) so multiple RC items with the same code on one
+        // invoice collapse into a single row, as required by the XSD (no duplicate
+        // c_evid_dd + kod_pred_pl combination).
+        var a1Rows = new Dictionary<(string DocNum, string Code), KhA1Row>();
+
         foreach (var inv in issuedInvoices)
         {
             var currencyCode = inv.Currency?.Code ?? "CZK";
             var duzp = DateOnly.FromDateTime(inv.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+            var dppd   = inv.TaxableSupplyDate!.Value.ToString(EpoDateFormat);
+            var docNum = inv.DocumentNumber ?? string.Empty;
 
-            // Convert all invoice items to CZK to determine total incl. VAT.
+            // Convert all NON-reverse-charge items to CZK to determine total incl. VAT —
+            // reverse charge items never carry billed VAT, so they must not affect the
+            // A.4/A.5 10 000 CZK threshold; they are reported separately in A.1.
             var totalWithVatCzk = 0m;
             var perItemCzk = new List<(decimal baseCzk, decimal vatCzk, decimal vatPct)>();
 
@@ -507,6 +574,20 @@ public class VatReportService : IVatReportService
             {
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
                     item.TotalBeforeVat, currencyCode, duzp, ct);
+
+                if (item.VatRegime == EVatRegime.ReverseCharge)
+                {
+                    var code = item.ReverseChargeCode?.Code ?? string.Empty;
+                    var key = (docNum, code);
+                    if (a1Rows.TryGetValue(key, out var existing))
+                        a1Rows[key] = existing with { Base = existing.Base + baseCzk };
+                    else
+                        a1Rows[key] = new KhA1Row(
+                            StripCzPrefix(inv.Client?.TaxNumber ?? string.Empty),
+                            docNum, dppd, baseCzk, code);
+                    continue;
+                }
+
                 var vatCzk = await _currencyService.ConvertToCzkAsync(
                     item.VatAmount, currencyCode, duzp, ct);
                 perItemCzk.Add((baseCzk, vatCzk, item.VatRatePercentage));
@@ -519,8 +600,6 @@ public class VatReportService : IVatReportService
             {
                 // A.4 — individual row. Use numeric part of DIČ (strip "CZ" prefix).
                 var dicOdb = StripCzPrefix(clientTaxNumber!);
-                var dppd   = inv.TaxableSupplyDate!.Value.ToString(EpoDateFormat);
-                var docNum = inv.DocumentNumber ?? string.Empty;
 
                 // Sum the per-item CZK amounts by rate.
                 var rowStdBase = perItemCzk.Where(x => x.vatPct >= 20m).Sum(x => x.baseCzk);
@@ -528,7 +607,8 @@ public class VatReportService : IVatReportService
                 var rowRedBase = perItemCzk.Where(x => x.vatPct is > 0m and < 20m).Sum(x => x.baseCzk);
                 var rowRedVat  = perItemCzk.Where(x => x.vatPct is > 0m and < 20m).Sum(x => x.vatCzk);
 
-                a4Rows.Add(new KhRow(dicOdb, docNum, dppd, rowStdBase, rowStdVat, rowRedBase, rowRedVat));
+                if (rowStdBase != 0m || rowStdVat != 0m || rowRedBase != 0m || rowRedVat != 0m)
+                    a4Rows.Add(new KhRow(dicOdb, docNum, dppd, rowStdBase, rowStdVat, rowRedBase, rowRedVat));
             }
             else
             {
@@ -556,10 +636,17 @@ public class VatReportService : IVatReportService
         var b3RedBase = 0m;
         var b3RedVat  = 0m;
 
+        // B.1 — reverse charge (PDP) received by us. One row per (document, kód předmětu
+        // plnění), carrying base+tax split by rate (zakl_dane1/dan1 standard, zakl_dane2/dan2
+        // reduced) — unlike A.1, the recipient DOES report the self-assessed tax here.
+        var b1Rows = new Dictionary<(string DocNum, string Code), KhB1Row>();
+
         foreach (var rec in receivedInvoices)
         {
             var currencyCode = rec.Currency?.Code ?? "CZK";
             var duzp = DateOnly.FromDateTime(rec.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+            var dppd   = rec.TaxableSupplyDate!.Value.ToString(EpoDateFormat);
+            var docNum = rec.DocumentNumber ?? string.Empty;
 
             var totalWithVatCzk = 0m;
             var perItemCzk = new List<(decimal baseCzk, decimal vatCzk, decimal vatPct)>();
@@ -568,6 +655,27 @@ public class VatReportService : IVatReportService
             {
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
                     item.TotalBeforeVat, currencyCode, duzp, ct);
+
+                if (item.VatRegime == EVatRegime.ReverseCharge)
+                {
+                    var selfAssessedVatCzk = await _currencyService.ConvertToCzkAsync(
+                        item.InformationalVatAmount, currencyCode, duzp, ct);
+                    var code = item.ReverseChargeCode?.Code ?? string.Empty;
+                    var key = (docNum, code);
+                    var isStd = item.VatRatePercentage >= 20m;
+
+                    var row = b1Rows.TryGetValue(key, out var existing)
+                        ? existing
+                        : new KhB1Row(
+                            StripCzPrefix(rec.Supplier?.TaxNumber ?? string.Empty),
+                            docNum, dppd, 0m, 0m, 0m, 0m, code);
+
+                    b1Rows[key] = isStd
+                        ? row with { StdBase = row.StdBase + baseCzk, StdVat = row.StdVat + selfAssessedVatCzk }
+                        : row with { RedBase = row.RedBase + baseCzk, RedVat = row.RedVat + selfAssessedVatCzk };
+                    continue;
+                }
+
                 var vatCzk = await _currencyService.ConvertToCzkAsync(
                     item.VatAmount, currencyCode, duzp, ct);
                 perItemCzk.Add((baseCzk, vatCzk, item.VatRatePercentage));
@@ -579,15 +687,14 @@ public class VatReportService : IVatReportService
             {
                 // B.2 — individual row. dic_dod = numeric part of supplier's CZ DIČ.
                 var dicDod = StripCzPrefix(supplierTaxNumber!);
-                var dppd   = rec.TaxableSupplyDate!.Value.ToString(EpoDateFormat);
-                var docNum = rec.DocumentNumber ?? string.Empty;
 
                 var rowStdBase = perItemCzk.Where(x => x.vatPct >= 20m).Sum(x => x.baseCzk);
                 var rowStdVat  = perItemCzk.Where(x => x.vatPct >= 20m).Sum(x => x.vatCzk);
                 var rowRedBase = perItemCzk.Where(x => x.vatPct is > 0m and < 20m).Sum(x => x.baseCzk);
                 var rowRedVat  = perItemCzk.Where(x => x.vatPct is > 0m and < 20m).Sum(x => x.vatCzk);
 
-                b2Rows.Add(new KhRow(dicDod, docNum, dppd, rowStdBase, rowStdVat, rowRedBase, rowRedVat));
+                if (rowStdBase != 0m || rowStdVat != 0m || rowRedBase != 0m || rowRedVat != 0m)
+                    b2Rows.Add(new KhRow(dicDod, docNum, dppd, rowStdBase, rowStdVat, rowRedBase, rowRedVat));
             }
             else
             {
@@ -613,8 +720,10 @@ public class VatReportService : IVatReportService
             periodFrom, periodTo,
             issuer,
             epoSettings,
+            a1Rows.Values.Where(r => r.Base != 0m).ToList(),
             a4Rows,
             a5StdBase, a5StdVat, a5RedBase, a5RedVat,
+            b1Rows.Values.Where(r => r.StdBase != 0m || r.RedBase != 0m).ToList(),
             b2Rows,
             b3StdBase, b3StdVat, b3RedBase, b3RedVat);
 
@@ -650,13 +759,168 @@ public class VatReportService : IVatReportService
 
         _logger.LogInformation(
             "DPHKH1 generated: year={Year}, period={Period}, {Bytes} bytes, " +
-            "A4rows={A4}, A5std={A5StdBase}/{A5StdVat}, A5red={A5RedBase}/{A5RedVat}, " +
-            "B2rows={B2}, B3std={B3StdBase}/{B3StdVat}, B3red={B3RedBase}/{B3RedVat}",
+            "A1rows={A1}, A4rows={A4}, A5std={A5StdBase}/{A5StdVat}, A5red={A5RedBase}/{A5RedVat}, " +
+            "B1rows={B1}, B2rows={B2}, B3std={B3StdBase}/{B3StdVat}, B3red={B3RedBase}/{B3RedVat}",
             year, period, bytes.Length,
-            a4Rows.Count, a5StdBase, a5StdVat, a5RedBase, a5RedVat,
-            b2Rows.Count, b3StdBase, b3StdVat, b3RedBase, b3RedVat);
+            a1Rows.Count, a4Rows.Count, a5StdBase, a5StdVat, a5RedBase, a5RedVat,
+            b1Rows.Count, b2Rows.Count, b3StdBase, b3StdVat, b3RedBase, b3RedVat);
 
         return bytes;
+    }
+
+    // =========================================================================
+    // DPHSHV — EU summary statement ("Souhrnné hlášení")
+    // =========================================================================
+
+    /// <summary>
+    /// EU member states other than CZ, as they appear in a VAT-id prefix
+    /// (Greece uses "EL", not the ISO "GR"). Northern Ireland ("XI") is intentionally
+    /// absent — it is only an EU VAT id for goods, which we cannot tell apart here.
+    /// </summary>
+    private static readonly HashSet<string> EuVatPrefixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "AT", "BE", "BG", "CY", "DE", "DK", "EE", "EL", "ES", "FI", "FR", "HR", "HU",
+        "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK"
+    };
+
+    /// <summary>
+    /// Splits a client VAT number like "DE 123456789" into (country prefix, id without prefix)
+    /// when the prefix is an EU member state other than CZ; otherwise returns null.
+    /// </summary>
+    internal static (string Country, string VatId)? TryGetEuVatId(string? taxNumber)
+    {
+        if (string.IsNullOrWhiteSpace(taxNumber)) return null;
+
+        // EPO wants the id without spaces, dots or dashes.
+        var compact = new string(taxNumber.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        if (compact.Length < 4) return null;
+
+        var country = compact[..2];
+        return EuVatPrefixes.Contains(country) ? (country, compact[2..]) : null;
+    }
+
+    /// <inheritdoc />
+    public async Task<List<SummaryStatementRowDto>> GetSummaryStatementRowsAsync(
+        int year, int period, EVatPeriodType type,
+        IReadOnlyCollection<string>? goodsKeys = null,
+        CancellationToken ct = default)
+    {
+        ValidatePeriodArgs(year, period, type);
+        var (periodFrom, periodTo) = ResolvePeriodDates(year, period, type);
+        var fromUtc = DateTime.SpecifyKind(periodFrom, DateTimeKind.Utc);
+        var toUtc   = DateTime.SpecifyKind(periodTo.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+
+        var goods = new HashSet<string>(
+            (goodsKeys ?? []).Select(k => new string(k.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant()));
+
+        var invoices = await _context.Invoice
+            .AsNoTracking()
+            .Include(i => i.Currency)
+            .Include(i => i.Client)
+            .Where(i => !(i is InvoiceTemplate)
+                && i.TaxableSupplyDate >= fromUtc
+                && i.TaxableSupplyDate <= toUtc
+                && i.Status != EInvoiceStatus.Draft
+                && i.Status != EInvoiceStatus.Deleted
+                && i.DocumentType == EDocumentType.Invoice)
+            .ToListAsync(ct);
+
+        // (country, vatId) -> running total in CZK + invoice count + display name.
+        var acc = new Dictionary<(string Country, string VatId), (decimal Total, int Count, string? Name)>();
+
+        foreach (var inv in invoices)
+        {
+            if (TryGetEuVatId(inv.Client?.TaxNumber) is not var (country, vatId)) continue;
+
+            var currencyCode = inv.Currency?.Code ?? "CZK";
+            var duzp = DateOnly.FromDateTime(inv.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+            var totalCzk = await _currencyService.ConvertToCzkAsync(inv.TotalBeforeVat, currencyCode, duzp, ct);
+
+            var key = (country, vatId);
+            acc.TryGetValue(key, out var cur);
+            acc[key] = (cur.Total + totalCzk, cur.Count + 1, cur.Name ?? inv.Client?.CompanyName);
+        }
+
+        return acc
+            .Select(kv => new SummaryStatementRowDto
+            {
+                CountryCode  = kv.Key.Country,
+                VatId        = kv.Key.VatId,
+                ClientName   = kv.Value.Name,
+                // 3 = services (default), 0 = goods when the caller flagged this customer.
+                SupplyCode   = goods.Contains(kv.Key.Country + kv.Key.VatId) ? 0 : 3,
+                InvoiceCount = kv.Value.Count,
+                // Law: total value is rounded UP to whole crowns.
+                TotalCzk     = (long)Math.Ceiling(kv.Value.Total)
+            })
+            .Where(r => r.TotalCzk != 0)
+            .OrderBy(r => r.CountryCode).ThenBy(r => r.VatId)
+            .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<byte[]> ExportEpoSummaryStatementAsync(
+        int year, int period, EVatPeriodType type,
+        IReadOnlyCollection<string>? goodsKeys = null,
+        CancellationToken ct = default)
+    {
+        var rows = await GetSummaryStatementRowsAsync(year, period, type, goodsKeys, ct);
+
+        var epoSettings = await LoadAndValidateEpoSettingsAsync(ct);
+        var issuer = await _context.Client
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IsIssuer && c.IsActive, ct)
+            ?? throw new InvalidOperationException(
+                "No active issuer (IsIssuer=true) found in the tenant database. " +
+                "Set up your company data before generating EPO exports.");
+        if (!issuer.IsVatPayer)
+            throw new VatPayerRequiredException();
+
+        if (rows.Count == 0)
+            throw new InvalidOperationException(
+                "No supplies to EU customers with a VAT id in this period - nothing to report in the summary statement.");
+
+        // VetaD: R = ordinary summary statement (not a follow-up "N").
+        var vetaD = new XElement("VetaD",
+            new XAttribute("k_uladis", "DPH"),
+            new XAttribute("dokument", "SHV"),
+            new XAttribute("rok", year.ToString()),
+            new XAttribute("shvies_forma", "R"),
+            new XAttribute("d_poddp", DateTime.Today.ToString(EpoDateFormat)));
+        vetaD.Add(type == EVatPeriodType.Monthly
+            ? new XAttribute("mesic", period.ToString())
+            : new XAttribute("ctvrt", period.ToString()));
+
+        var dphshv = new XElement("DPHSHV", vetaD, BuildVetaP(issuer, epoSettings));
+        foreach (var r in rows)
+        {
+            dphshv.Add(new XElement("VetaR",
+                new XAttribute("k_stat", r.CountryCode),
+                new XAttribute("c_vat", r.VatId),
+                new XAttribute("k_pln_eu", r.SupplyCode.ToString()),
+                new XAttribute("pln_pocet", r.InvoiceCount.ToString()),
+                new XAttribute("pln_hodnota", r.TotalCzk.ToString())));
+        }
+
+        var doc = new XDocument(new XDeclaration("1.0", "utf-8", null), new XElement("Pisemnost", dphshv));
+
+        var xsdErrors = new List<string>();
+        doc.Validate(_schemaProvider.GetSchemaSet(EEpoFormType.SummaryStatement, year), (_, e) => xsdErrors.Add(e.Message));
+        if (xsdErrors.Count > 0)
+        {
+            _logger.LogError("Generated DPHSHV XML failed XSD validation: {Errors}", string.Join("; ", xsdErrors.Take(5)));
+            throw new EpoValidationException("DPHSHV", xsdErrors);
+        }
+
+        using var ms = new MemoryStream();
+        using (var writer = XmlWriter.Create(ms, new XmlWriterSettings
+        {
+            Encoding = new UTF8Encoding(false), Indent = true, IndentChars = "  "
+        }))
+        {
+            doc.WriteTo(writer);
+        }
+        return ms.ToArray();
     }
 
     // =========================================================================
@@ -736,6 +1000,10 @@ public class VatReportService : IVatReportService
         bool hasOutputVat,
         long outStdBase, long outStdVat,
         long outRedBase, long outRedVat,
+        long rcStdBase, long rcStdVat,
+        long rcRedBase, long rcRedVat,
+        bool hasOutputRc,
+        long outRcBase,
         bool hasInputVat,
         long inStdBase, long inStdVat,
         long inRedBase, long inRedVat,
@@ -788,7 +1056,31 @@ public class VatReportService : IVatReportService
                 veta1.Add(new XAttribute("dan5",   outRedVat.ToString()));
             }
 
+            if (rcStdBase != 0 || rcStdVat != 0)
+            {
+                // Row 10: reverse charge, RECIPIENT side — we self-assess base+tax on
+                // standard-rate received PDP supplies (§92a ZDPH).
+                veta1.Add(new XAttribute("rez_pren23", rcStdBase.ToString()));
+                veta1.Add(new XAttribute("dan_rpren23", rcStdVat.ToString()));
+            }
+
+            if (rcRedBase != 0 || rcRedVat != 0)
+            {
+                // Row 11: same, reduced rate.
+                veta1.Add(new XAttribute("rez_pren5", rcRedBase.ToString()));
+                veta1.Add(new XAttribute("dan_rpren5", rcRedVat.ToString()));
+            }
+
             dphdp3.Add(veta1);
+        }
+
+        // Veta2 — reverse charge, SUPPLIER side (row 25). Base only: the recipient
+        // self-assesses the tax, so no VAT amount is reported here (§92a ZDPH).
+        if (hasOutputRc)
+        {
+            var veta2 = new XElement("Veta2",
+                new XAttribute("pln_rez_pren", outRcBase.ToString()));
+            dphdp3.Add(veta2);
         }
 
         // Veta4 — input VAT. Omitted when the period has no deductible input-VAT.
@@ -810,7 +1102,23 @@ public class VatReportService : IVatReportService
                 veta4.Add(new XAttribute("odp_tuz5_nar", inRedVat.ToString()));
             }
 
-            // Row 51: total deductible VAT (sum of rows 40 and 41).
+            if (rcStdBase != 0 || rcStdVat != 0)
+            {
+                // Row 43: nárok na odpočet (deduction claim) for reverse-charge received
+                // supplies at the standard rate — same base+tax values as row 10,
+                // since we assume full (non-prorated) deduction under §72.
+                veta4.Add(new XAttribute("od_zdp23",  rcStdBase.ToString()));
+                veta4.Add(new XAttribute("nar_zdp23", rcStdVat.ToString()));
+            }
+
+            if (rcRedBase != 0 || rcRedVat != 0)
+            {
+                // Row 44: same, reduced rate (mirrors row 11).
+                veta4.Add(new XAttribute("od_zdp5",  rcRedBase.ToString()));
+                veta4.Add(new XAttribute("nar_zdp5", rcRedVat.ToString()));
+            }
+
+            // Row 51: total deductible VAT — sum of rows 40, 41, 43 and 44.
             veta4.Add(new XAttribute("odp_sum_nar", inSumVat.ToString()));
 
             dphdp3.Add(veta4);
@@ -1002,6 +1310,33 @@ public class VatReportService : IVatReportService
         decimal RedVat);
 
     /// <summary>
+    /// A.1 row — reverse charge (PDP) supplied by us. No rate split and no tax amount:
+    /// the XSD's <c>zakl_dane1</c> on VetaA1 is documented as "bez rozlišení sazby daně"
+    /// (without rate distinction) because the recipient self-assesses the tax, not us.
+    /// </summary>
+    /// <param name="DicOdb">Numeric part of the buyer's CZ DIČ (no "CZ" prefix).</param>
+    /// <param name="DocumentNumber">Invoice document number used as c_evid_dd.</param>
+    /// <param name="Duzp">Date of taxable supply in EPO format "D.M.RRRR".</param>
+    /// <param name="Base">Tax base (any rate) in CZK — summed across all rates on the item.</param>
+    /// <param name="Code">Kód předmětu plnění (MFČR reverse-charge supply code).</param>
+    private sealed record KhA1Row(string DicOdb, string DocumentNumber, string Duzp, decimal Base, string Code);
+
+    /// <summary>
+    /// B.1 row — reverse charge (PDP) received by us. Unlike A.1, WE self-assess the tax,
+    /// so both base and tax are reported, split by rate (standard → zakl_dane1/dan1,
+    /// reduced → zakl_dane2/dan2) just like B.2/B.3.
+    /// </summary>
+    private sealed record KhB1Row(
+        string DicDod,
+        string DocumentNumber,
+        string Duzp,
+        decimal StdBase,
+        decimal StdVat,
+        decimal RedBase,
+        decimal RedVat,
+        string Code);
+
+    /// <summary>
     /// Builds the complete DPHKH1 XDocument according to the EPO schema.
     ///
     /// Structure:
@@ -1009,10 +1344,10 @@ public class VatReportService : IVatReportService
     ///     DPHKH1
     ///       VetaD   — period metadata (rok, mesic/ctvrt, khdph_forma, dokument, k_uladis)
     ///       VetaP   — taxpayer identification (dic, c_ufo, typ_ds, zkrobchjm)
-    ///       VetaA1* — PDP outputs — intentionally EMPTY (TODO #4)
+    ///       VetaA1* — reverse charge (PDP) supplied by us (one row per document+code)
     ///       VetaA4* — output invoices ≥ 10 000 CZK incl. VAT with CZ DIČ, one row per invoice
     ///       VetaA5? — aggregate of all other output invoices
-    ///       VetaB1* — PDP inputs — intentionally EMPTY (TODO #4)
+    ///       VetaB1* — reverse charge (PDP) received by us (one row per document+code)
     ///       VetaB2* — input invoices ≥ 10 000 CZK incl. VAT with CZ DIČ, one row per invoice
     ///       VetaB3? — aggregate of all other input invoices
     ///
@@ -1025,9 +1360,11 @@ public class VatReportService : IVatReportService
         DateTime periodFrom, DateTime periodTo,
         Client issuer,
         EpoSettings epo,
+        IReadOnlyList<KhA1Row> a1Rows,
         IReadOnlyList<KhRow> a4Rows,
         decimal a5StdBase, decimal a5StdVat,
         decimal a5RedBase, decimal a5RedVat,
+        IReadOnlyList<KhB1Row> b1Rows,
         IReadOnlyList<KhRow> b2Rows,
         decimal b3StdBase, decimal b3StdVat,
         decimal b3RedBase, decimal b3RedVat)
@@ -1059,8 +1396,16 @@ public class VatReportService : IVatReportService
         // VetaD, VetaP, VetaA1*, VetaA2*, VetaA3*, VetaA4*, VetaA5?, VetaB1*, VetaB2*, VetaB3?, VetaC?
         var dphkh1 = new XElement("DPHKH1", vetaD, vetaP);
 
-        // TODO #4 PDP — A.1/B.1 will be filled when EVatRegime is introduced.
-        // For now, we emit no VetaA1 / VetaB1 elements (minOccurs=0, so omitting is valid).
+        // VetaA1 — one element per (document, kód předmětu plnění) reverse-charge supply.
+        foreach (var row in a1Rows)
+        {
+            dphkh1.Add(new XElement("VetaA1",
+                new XAttribute("dic_odb",   row.DicOdb),
+                new XAttribute("c_evid_dd", row.DocumentNumber),
+                new XAttribute("duzp",      row.Duzp),
+                new XAttribute("zakl_dane1",FormatKhAmount(row.Base)),
+                new XAttribute("kod_pred_pl", row.Code)));
+        }
 
         // VetaA4 — one element per qualifying output invoice.
         foreach (var row in a4Rows)
@@ -1108,6 +1453,30 @@ public class VatReportService : IVatReportService
             }
 
             dphkh1.Add(vetaA5);
+        }
+
+        // VetaB1 — one element per (document, kód předmětu plnění) reverse-charge receipt.
+        foreach (var row in b1Rows)
+        {
+            var vetaB1 = new XElement("VetaB1",
+                new XAttribute("dic_dod",   row.DicDod),
+                new XAttribute("c_evid_dd", row.DocumentNumber),
+                new XAttribute("duzp",      row.Duzp));
+
+            if (row.StdBase != 0m || row.StdVat != 0m)
+            {
+                vetaB1.Add(new XAttribute("zakl_dane1", FormatKhAmount(row.StdBase)));
+                vetaB1.Add(new XAttribute("dan1",       FormatKhAmount(row.StdVat)));
+            }
+
+            if (row.RedBase != 0m || row.RedVat != 0m)
+            {
+                vetaB1.Add(new XAttribute("zakl_dane2", FormatKhAmount(row.RedBase)));
+                vetaB1.Add(new XAttribute("dan2",       FormatKhAmount(row.RedVat)));
+            }
+
+            vetaB1.Add(new XAttribute("kod_pred_pl", row.Code));
+            dphkh1.Add(vetaB1);
         }
 
         // VetaB2 — one element per qualifying input invoice.
