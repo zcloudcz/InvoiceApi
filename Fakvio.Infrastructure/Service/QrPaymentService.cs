@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
@@ -79,7 +80,7 @@ public class QrPaymentService : IQrPaymentService
         // EUR invoices use the SEPA EPC QR format; everything else keeps the Czech SPD (QR Platba).
         if (!string.IsNullOrWhiteSpace(invoice.IBAN))
         {
-            var isEur = string.Equals(invoice.Currency?.Code, "EUR", StringComparison.OrdinalIgnoreCase);
+            var isEur = UsesEpc(invoice);
             var qrContent = BuildIbanPaymentQrContent(invoice);
 
             _logger.LogInformation(
@@ -191,9 +192,17 @@ public class QrPaymentService : IQrPaymentService
     /// currency keeps using the Czech QR Platba (SPD) format — unchanged behaviour.
     /// Internal (not private) so unit tests can verify the routing rule directly.
     /// </summary>
+    /// <summary>
+    /// THE decision whether an invoice gets the SEPA EPC QR: EUR + IBAN + an amount EPC can carry.
+    /// Zero/negative totals (credit notes, fully advance-covered final invoices) stay on SPD.
+    /// The PDF label and the UI title use the same <see cref="EpcQrPolicy"/> rule.
+    /// </summary>
+    public static bool UsesEpc(Invoice invoice) =>
+        EpcQrPolicy.UsesEpc(invoice.Currency?.Code, invoice.IBAN, invoice.TotalWithVat);
+
     internal static string BuildIbanPaymentQrContent(Invoice invoice)
     {
-        if (string.Equals(invoice.Currency?.Code, "EUR", StringComparison.OrdinalIgnoreCase))
+        if (UsesEpc(invoice))
         {
             return EpcQrBuilder.Build(
                 invoice.Issuer?.CompanyName ?? string.Empty,

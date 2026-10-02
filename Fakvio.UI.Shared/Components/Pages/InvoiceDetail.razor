@@ -706,7 +706,7 @@ else
                                 <MudText Typo="Typo.h6">
                                     @(string.IsNullOrWhiteSpace(_invoice.IBAN)
                                         ? "QR Faktura"
-                                        : _invoice.CurrencyCode == "EUR"
+                                        : EpcQrPolicy.UsesEpc(_invoice.CurrencyCode, _invoice.IBAN, _invoice.TotalWithVat)
                                             ? @L["QR_SepaTitle"].Value
                                             : "QR Platba+F")
                                 </MudText>

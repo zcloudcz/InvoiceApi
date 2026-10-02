@@ -103,4 +103,15 @@ public class ViesServiceTests
         (await svc.VerifyAsync(input)).Status.ShouldBe(EViesCheckStatus.Invalid);
         handler.Calls.ShouldBe(0);
     }
+
+    [Theory]
+    [InlineData("INVALID")]
+    [InlineData("INVALID_INPUT")]
+    public async Task Verify_InvalidUserError_GivesFriendlyMessage(string code)
+    {
+        var (svc, _) = Create(_ => Task.FromResult(Json("{\"valid\":false,\"userError\":\"" + code + "\"}")));
+        var result = await svc.VerifyAsync("CZ12345678");
+        result.Status.ShouldBe(EViesCheckStatus.Invalid);
+        result.ErrorMessage.ShouldNotContain("INVALID", Case.Sensitive);
+    }
 }

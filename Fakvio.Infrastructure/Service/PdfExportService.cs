@@ -340,8 +340,7 @@ public class PdfExportService : IPdfExportService
         {
             // EUR invoices with an IBAN get the SEPA EPC QR code (see QrPaymentService) —
             // label it accordingly instead of the generic Czech "QR Platba".
-            var isSepa = !string.IsNullOrWhiteSpace(invoice.IBAN)
-                && string.Equals(invoice.Currency?.Code, "EUR", StringComparison.OrdinalIgnoreCase);
+            var isSepa = QrPaymentService.UsesEpc(invoice);
             var altText = isSepa ? "QR platba SEPA" : "QR Platba";
             html = html.Replace("{{QrCodeImage}}", $@"<img src=""data:image/png;base64,{qrCodeBase64}"" alt=""{altText}"" style=""width:120px; height:120px;"" />");
         }

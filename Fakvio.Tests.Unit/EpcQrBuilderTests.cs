@@ -81,4 +81,52 @@ public class EpcQrBuilderTests
         content.StartsWith("BCD\n").ShouldBe(epc);
         if (!epc) content.StartsWith("SPD*").ShouldBeTrue();
     }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-50")]
+    [InlineData("1000000000")]
+    public void Routing_UnsupportedAmount_FallsBackToSpd(string amount)
+    {
+        var invoice = new Invoice
+        {
+            IBAN = "DE89370400440532013000",
+            TotalWithVat = decimal.Parse(amount, CultureInfo.InvariantCulture),
+            DocumentNumber = "1",
+            VariableSymbol = "1",
+            Currency = new Currency { Code = "EUR" },
+            Issuer = new Client { CompanyName = "Issuer" }
+        };
+
+        QrPaymentService.UsesEpc(invoice).ShouldBeFalse();
+        QrPaymentService.BuildIbanPaymentQrContent(invoice).StartsWith("SPD*").ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(" cobadeffxxx ", "COBADEFFXXX")]
+    [InlineData("COBADEFF", "COBADEFF")]
+    [InlineData("bad bic!", "")]
+    [InlineData("COBADEFFXX", "")]
+    public void Build_NormalizesOrDropsBic(string bic, string expected)
+    {
+        EpcQrBuilder.Build("A", "DE89370400440532013000", bic, 1m, "1", null).Split('\n')[4].ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Build_NonAsciiText_TrimsRemittanceToByteBudget_WithoutSplittingChars()
+    {
+        var payload = EpcQrBuilder.Build(new string('Ž', 70), "DE89370400440532013000", "COBADEFFXXX", 1m, new string('Ř', 140), "1");
+
+        Encoding.UTF8.GetByteCount(payload).ShouldBeLessThanOrEqualTo(331);
+        payload.ShouldNotContain("�");
+    }
+
+    [Fact]
+    public void Build_NameTruncation_DoesNotSplitSurrogatePair()
+    {
+        // 69 ASCII chars + an emoji (2 UTF-16 chars) would be cut at 70 in the middle of the pair.
+        var payload = EpcQrBuilder.Build(new string('A', 69) + "😀", "DE89370400440532013000", null, 1m, "1", null);
+
+        payload.Split('\n')[5].ShouldBe(new string('A', 69));
+    }
 }

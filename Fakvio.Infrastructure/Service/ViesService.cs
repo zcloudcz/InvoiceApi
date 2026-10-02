@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Fakvio.Application.Service;
@@ -133,8 +134,8 @@ public class ViesService : IViesService
             (root.TryGetProperty("isValid", out var isValidProp) && IsTrue(isValidProp));
 
         DateTime? requestDate = root.TryGetProperty("requestDate", out var dateProp)
-            && DateTime.TryParse(dateProp.GetString(), out var parsedDate)
-                ? parsedDate
+            && DateTimeOffset.TryParse(dateProp.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedDate)
+                ? parsedDate.UtcDateTime
                 : null;
 
         return new ViesVerificationResult
@@ -145,9 +146,15 @@ public class ViesService : IViesService
             Name = CleanUnknown(root, "name"),
             Address = CleanUnknown(root, "address"),
             RequestDate = requestDate,
-            ErrorMessage = isValid ? null : (userError ?? "VAT ID is not registered in VIES.")
+            ErrorMessage = isValid ? null : FriendlyInvalidMessage(userError)
         };
     }
+
+    /// <summary>Maps VIES codes like INVALID / INVALID_INPUT to readable text (never leaks raw codes).</summary>
+    private static string FriendlyInvalidMessage(string? userError) =>
+        string.Equals(userError, "INVALID_INPUT", StringComparison.OrdinalIgnoreCase)
+            ? "VAT ID has an invalid format for the given country."
+            : "VAT ID is not registered in VIES.";
 
     private static bool IsTrue(JsonElement element) =>
         element.ValueKind == JsonValueKind.True || (element.ValueKind == JsonValueKind.String

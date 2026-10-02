@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
+using Fakvio.Contracts.Common;
 
 namespace Fakvio.Application.QrPayment;
 
@@ -22,8 +24,12 @@ public static class EpcQrBuilder
     private const int MaxNameLength = 70;
     private const int MaxRemittanceLength = 140;
     private const int MaxTotalBytes = 331;
-    private const decimal MinAmount = 0.01m;
-    private const decimal MaxAmount = 999999999.99m;
+    private const decimal MinAmount = EpcQrPolicy.MinAmount;
+    private const decimal MaxAmount = EpcQrPolicy.MaxAmount;
+    private static readonly Regex BicPattern = new("^[A-Z0-9]{8}([A-Z0-9]{3})?$", RegexOptions.Compiled);
+
+    /// <summary>True when the amount can be expressed in an EPC QR (0.01 - 999,999,999.99).</summary>
+    public static bool IsAmountSupported(decimal amount) => EpcQrPolicy.IsAmountSupported(amount);
 
     /// <summary>
     /// Builds the EPC QR payload string, ready to be encoded into a QR code (ECC level M).
@@ -53,7 +59,15 @@ public static class EpcQrBuilder
         // IBANs copied from bank statements with separators).
         var cleanIban = iban.Replace(" ", "").Replace("-", "");
         var name = Truncate(beneficiaryName ?? string.Empty, MaxNameLength);
+        var cleanBic = NormalizeBic(bic);
+        var amountText = "EUR" + amount.ToString("F2", CultureInfo.InvariantCulture);
         var remittance = Truncate(BuildRemittanceText(documentNumber, variableSymbol), MaxRemittanceLength);
+
+        // Trim the remittance to whatever UTF-8 byte budget is left (non-ASCII names/text take
+        // 2-4 bytes per char) so the payload never exceeds the 331-byte spec limit.
+        var fixedBytes = Encoding.UTF8.GetByteCount(
+            string.Join("\n", "BCD", "002", "1", "SCT", cleanBic, name, cleanIban, amountText, "", "", ""));
+        remittance = TruncateToBytes(remittance, MaxTotalBytes - fixedBytes);
 
         var lines = new[]
         {
@@ -61,7 +75,7 @@ public static class EpcQrBuilder
             "002",                                              // Version
             "1",                                                // Character set: 1 = UTF-8
             "SCT",                                               // Identification: SEPA Credit Transfer
-            bic?.Trim() ?? string.Empty,                         // BIC — optional in v002
+            cleanBic,                                            // BIC — optional in v002
             name,                                                // Beneficiary name
             cleanIban,                                           // Beneficiary IBAN
             "EUR" + amount.ToString("F2", CultureInfo.InvariantCulture), // Amount: "EUR" + up to 2 decimals
@@ -101,6 +115,34 @@ public static class EpcQrBuilder
         return string.Join(" ", parts);
     }
 
-    private static string Truncate(string value, int maxLength) =>
-        value.Length > maxLength ? value[..maxLength] : value;
+    /// <summary>Strips whitespace, upper-cases, and drops anything that is not a valid 8/11-char BIC.</summary>
+    private static string NormalizeBic(string? bic)
+    {
+        var cleaned = new string((bic ?? string.Empty).Where(c => !char.IsWhiteSpace(c)).ToArray()).ToUpperInvariant();
+        return BicPattern.IsMatch(cleaned) ? cleaned : string.Empty;
+    }
+
+    /// <summary>Truncates to at most maxLength UTF-16 chars without splitting a surrogate pair.</summary>
+    private static string Truncate(string value, int maxLength)
+    {
+        if (value.Length <= maxLength) return value;
+        if (char.IsHighSurrogate(value[maxLength - 1])) maxLength--;
+        return value[..maxLength];
+    }
+
+    /// <summary>Truncates to at most maxBytes UTF-8 bytes, never cutting through a character.</summary>
+    private static string TruncateToBytes(string value, int maxBytes)
+    {
+        if (maxBytes <= 0) return string.Empty;
+        var sb = new StringBuilder();
+        var bytes = 0;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            var b = rune.Utf8SequenceLength;
+            if (bytes + b > maxBytes) break;
+            sb.Append(rune.ToString());
+            bytes += b;
+        }
+        return sb.ToString();
+    }
 }
