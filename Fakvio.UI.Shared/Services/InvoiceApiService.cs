@@ -32,6 +32,24 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
+    /// EU OSS destination country (ISO2) an invoice from this issuer to this client is ELIGIBLE for, or null
+    /// (drives the opt-in checkbox; the server re-checks on save — DEVGUIDE §4.16).
+    /// </summary>
+    public async Task<string?> GetOssCountryAsync(long clientId, long issuerId, EDocumentType documentType)
+    {
+        try
+        {
+            var dto = await GetAsync<Fakvio.Contracts.Dto.OssReport.OssCountryDto>(
+                $"/api/invoice/oss-country?clientId={clientId}&issuerId={issuerId}&documentType={(int)documentType}");
+            return dto?.CountryCode;
+        }
+        catch (ApiException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Gets all invoices (non-paginated).
     /// </summary>
     public async Task<List<InvoiceDto>> GetAllAsync()

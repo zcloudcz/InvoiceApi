@@ -1429,6 +1429,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<long?>("OriginalInvoiceId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("OssCountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
                     b.Property<decimal>("PaidAmount")
                         .ValueGeneratedOnAdd()
                         .HasPrecision(18, 2)
@@ -1496,6 +1500,8 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasIndex("IssuerId");
 
                     b.HasIndex("OriginalInvoiceId");
+
+                    b.HasIndex("OssCountryCode");
 
                     b.HasIndex("Status");
 

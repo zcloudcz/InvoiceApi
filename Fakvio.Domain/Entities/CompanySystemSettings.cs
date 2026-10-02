@@ -357,4 +357,26 @@ public class CompanySystemSettings : BaseEntity
     /// Null = not yet configured; UI will require the user to select each time.
     /// </summary>
     public EVatPeriodType? EpoDefaultPeriodType { get; set; }
+
+    // ─── EU OSS (One-Stop-Shop) Registration ───────────────────────────────
+    // Whether this company (issuer) is registered for the EU OSS special scheme
+    // ("zvláštní režim jednoho správního místa — režim Unie"). When true, B2C
+    // sales to consumers in other EU member states are detected as OSS invoices
+    // (see Fakvio.Infrastructure.Service.Oss.OssDetector) and must charge the
+    // destination country's VAT rate instead of CZ VAT — see DEVGUIDE §4.16.
+
+    /// <summary>
+    /// Is this company registered for the EU OSS scheme? Only meaningful for VAT
+    /// payers (<c>Client.IsVatPayer == true</c> on the issuer) — the UI only offers
+    /// the toggle to VAT payers, but the flag itself does not enforce that here;
+    /// <see cref="Fakvio.Infrastructure.Service.Oss.OssDetector"/> checks IsVatPayer too.
+    /// </summary>
+    public bool OssRegistered { get; set; }
+
+    /// <summary>
+    /// Date from which the OSS registration is effective. Null while not registered.
+    /// Not currently used to gate detection by date (OSS registration in practice starts
+    /// at a calendar-quarter boundary already) — kept for display/audit purposes.
+    /// </summary>
+    public DateTime? OssRegisteredSince { get; set; }
 }

@@ -176,7 +176,9 @@ public static class InvoiceTools
         "Create a new invoice or credit note (Draft status). Recommended flow: " +
         "find_client / list_clients to get clientId → create_invoice → complete_invoice to issue it. " +
         "For a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
-        "the matching VatRateId active on issueDate is resolved automatically. " +
+        "the matching VatRateId active on issueDate is resolved automatically. EU OSS is opt-in (applyOss=true) for an " +
+        "OSS-registered issuer invoicing a consumer (client without a VAT id) in another EU state: vatRatePercentage " +
+        "must then be a VAT rate of the client's country (rejected otherwise). " +
         "Bank account: when bankAccountId is omitted and the payment method is (or defaults to) " +
         "BankTransfer, the server automatically fills in one of the issuer's bank accounts " +
         "(currency-matching default first) — you don't need to set one for a normal invoice.")]
@@ -200,6 +202,10 @@ public static class InvoiceTools
         [Description("Payment method: BankTransfer, Cash, CreditCard, PayPal, Other. Omit for the client's default.")] string? paymentMethod = null,
         [Description("Optional notes on the invoice")] string? notes = null,
         [Description("For a credit note (documentType='CreditNote'): the ID of the invoice it corrects")] long? originalInvoiceId = null,
+        [Description(
+            "Apply the EU OSS regime (destination-country VAT). Default false. Set true only for supplies that really fall " +
+            "under OSS (goods distance sales, telecom/broadcasting/electronic services, ...) — general B2C services such as " +
+            "consulting are taxed in CZ. Requires an OSS-registered VAT-payer issuer and a consumer client in another EU state.")] bool applyOss = false,
         [Description(
             "Optional: one of the issuer's bank accounts (BankAccount.Id, see the bankAccount " +
             "list in get_issuer) to use instead of the automatic default. Must belong to the issuer.")]
@@ -263,7 +269,14 @@ public static class InvoiceTools
             // A non-VAT-payer issuer has no VAT rates to configure at all (readiness never
             // asks for one), so items are left exactly as the model sent them (same rule as
             // InvoiceService.CreateInvoiceAsync, which only demands VatRateId for VAT payers).
-            if (issuer.IsVatPayer)
+            // EU OSS (DEVGUIDE §4.16): when the invoice falls under OSS the server auto-detects it and
+            // validates vatRatePercentage against the destination country's rates — the CZ rate table
+            // must not be consulted (a German 19 % would be "no matching rate" there).
+            var ossCountry = applyOss ? await api.GetOssCountryAsync(clientId, issuer.Id, parsedDocumentType, ct) : null;
+            if (applyOss && string.IsNullOrEmpty(ossCountry))
+                return Error("applyOss=true but this invoice is not eligible for OSS: it needs an OSS-registered VAT-payer issuer, " +
+                             "an Invoice (not proforma/credit note) and a consumer client without VAT id in another EU state.");
+            if (issuer.IsVatPayer && string.IsNullOrEmpty(ossCountry))
             {
                 var itemsNeedingRate = items.Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
                 if (itemsNeedingRate.Count > 0)
@@ -313,6 +326,7 @@ public static class InvoiceTools
                 PaymentMethod = parsedPaymentMethod,
                 Notes = notes,
                 OriginalInvoiceId = originalInvoiceId,
+                ApplyOss = applyOss,
                 BankAccountId = bankAccountId,
                 InvoiceItem = items
             };
