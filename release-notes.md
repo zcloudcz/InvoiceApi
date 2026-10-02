@@ -20,6 +20,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Nové funkce
+
+- **#488** — Přiznání k DPH (ř. 1/2/25), přehled DPH a kontrolní hlášení (A.1, A.4/A.5) nově započítávají dobropisy záporně v období jejich DUZP — dřív se ignorovaly a DPH vycházela vyšší. O zařazení do A.4/A.5 rozhoduje absolutní hodnota opravy (dle FAQ Finanční správy). (PR #488, `1f0121f`)
+- **#489** — Ukládání časů do databáze sjednoceno na UTC jedním převodníkem pro obě databáze (dosavadní normalizace u hodnot bez časové zóny nedělala nic); v produkci beze změny, na vývojových strojích zmizí posun o časové pásmo. (PR #489, `d34d664`)
+
 ## 2026.10.02 — 2026-10-02
 
 ### Nové funkce
