@@ -53,6 +53,9 @@
                     <MudNavLink Href="/my-company" Icon="@Icons.Material.Filled.Business">@L["Nav_MyCompany"]</MudNavLink>
                     <MudNavLink Href="/vat-rates" Icon="@Icons.Material.Filled.Percent">@L["Nav_VatRates"]</MudNavLink>
                     <MudNavLink Href="/number-sequences" Icon="@Icons.Material.Filled.Numbers">@L["Nav_NumberSequences"]</MudNavLink>
+                    <AuthorizeView Roles="Admin,SysAdmin" Context="webhookContext">
+                        <MudNavLink Href="/settings/webhooks" Icon="@Icons.Material.Filled.Webhook">@L["Nav_Webhooks"]</MudNavLink>
+                    </AuthorizeView>
                 }
 
                 @* User management — SysAdmin only *@

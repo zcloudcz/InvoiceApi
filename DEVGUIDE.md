@@ -2271,6 +2271,77 @@ syntetická data.
 
 ---
 
+### 4.15 Webhooky (odchozí události)
+
+Tenant (Admin / SysAdmin) si na `Nastavení → Webhooky` (`/settings/webhooks`) zaregistruje HTTPS URL; Fakvio na ni
+při události pošle podepsaný `POST`. Architektonicky jde o **transakční outbox + stateless dispatcher** (§6).
+
+**Entity (Tenant DB, migrace `AddWebhooks`):**
+- `WebhookSubscription` — `Url`, `Description`, `Events` (seznam názvů uložený jako text oddělený čárkami), `SecretEncrypted`
+  (Data Protection přes `ICredentialProtector`, stejně jako SMTP/IMAP hesla — §2.6), `IsActive`.
+- `WebhookDelivery` — outbox: `SubscriptionId`, `EventId`, `EventType`, `PayloadJson`, `Status` (`Pending`/`Succeeded`/`Failed`),
+  `Attempts`, `NextAttemptAt`, `LastStatusCode`, `LastError` (max 2000 znaků), `DeliveredAt`. Řádky ve stavu Succeeded/Failed
+  starší 30 dní maže dispatcher v každém cyklu.
+
+**Události v1** (`WebhookEventCatalog` v `Fakvio.Contracts` — jediný seznam pro validaci i UI): `invoice.created`, `invoice.sent`,
+`invoice.paid`, `invoice.cancelled` (= smazání/storno konceptu, `InvoiceService.DeleteInvoiceAsync`), `received_invoice.created`,
+`payment.received`. Tlačítko „Otestovat" posílá synchronně speciální událost `ping` (není v katalogu, nelze ji odebírat).
+
+**Publikace** — `IWebhookPublisher` se volá z jediné service metody každého přechodu, vždy **po** `SaveChanges` byznys změny:
+
+| Událost | Místo volání |
+|---------|--------------|
+| `invoice.created` | `InvoiceService.CreateInvoiceAsync` |
+| `invoice.sent` | `EmailService.SendInvoiceEmailAsync` |
+| `invoice.paid` | `InvoiceService.MarkAsPaidAsync`; `PaymentMatchingService` (ruční / potvrzené / automatické spárování, jen při přechodu na Paid) |
+| `invoice.cancelled` | `InvoiceService.DeleteInvoiceAsync` |
+| `received_invoice.created` | `ReceivedInvoiceService.CreateAsync` (pokrývá i import e-mailem) |
+| `payment.received` | `PaymentMatchingService` (příchozí platba spárovaná s vydanou fakturou; payload `{invoice, amount, matchedAt}`) |
+
+Publisher **nikdy nevyhodí výjimku** do byznys toku (loguje a spolkne) a bez odpovídajících aktivních subscription je
+no-op za jeden dotaz. Závislost je v konstruktorech služeb nepovinná (`IWebhookPublisher? = null`), aby ručně konstruované
+instance (testy, `ImapPollService`) fungovaly beze změny. Payload: `{ id, type, createdAt, companyId, data }`, kde `data` je
+`WebhookDocumentSummaryDto` (id, number, type, status, clientName, clientIco, total, currency, dueDate, paidAt).
+`companyId` se čte z názvu schématu (`tenant_42` → 42), takže funguje i v background jobech.
+
+**Dispatch** — `IWebhookDispatchService.RunCycleAsync` (stateless, jedna iterace pro aktuální tenant) + `WebhookWorker`
+(každou minutu, všechny aktivní provisioned tenanty, advisory lock — §6.3). Zpracuje max. 100 splatných `Pending` řádků za cyklus.
+Úspěch = HTTP 2xx. Timeout 10 s, bez přesměrování, odpověď se čte max. 4 KB (jen aby šlo spojení znovu použít).
+Backoff po neúspěchu: **1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 24 h**; po 8. neúspěšném pokusu `Failed`. Redeliver
+(`POST api/webhooks/deliveries/{id}/redeliver`) vrátí řádek do `Pending` s `Attempts = 0`. Žádný Functions projekt v repu
+neexistuje, takže worker běží jen v API.
+
+**Podpis** — hlavičky `Fakvio-Webhook-Id` (= `EventId`, pro deduplikaci), `Fakvio-Webhook-Timestamp` (Unix sekundy),
+`Fakvio-Webhook-Signature: v1=<hex HMAC-SHA256(secret, "{timestamp}.{body}")>` (`WebhookSigner`). Secret = 32 náhodných bajtů
+(base64), v plaintextu se vrací **jen** v odpovědi na create a rotate (`WebhookSubscriptionCreatedDto`), čtecí DTO ho nemá.
+
+**SSRF (bezpečnostně kritické)** — `WebhookUrlGuard`:
+1. při uložení: jen `https://` (`http://localhost` jen v Development);
+2. při připojení: `SocketsHttpHandler.ConnectCallback` sám přeloží hostname a **zkontroluje přeloženou IP** těsně před otevřením
+   socketu (jediné místo, které je odolné proti DNS rebindingu), a připojí se přímo na tuto IP. Blokuje loopback, RFC1918, link-local
+   (včetně `169.254.169.254`), `0.0.0.0/8`, multicast + rezervované (`>= 224.0.0.0`), CGNAT `100.64.0.0/10`, IPv6 ULA `fc00::/7`,
+   IPv6 link-local/site-local/multicast a IPv4-mapped IPv6. Loopback povoluje jen `WebhookUrlGuard.AllowLoopback` (nastavuje
+   `Program.cs` v Development);
+3. `AllowAutoRedirect = false` — přesměrování by obešlo kontrolu.
+
+Pojmenovaný `HttpClient` `WebhookDispatch` (DI v `ServiceCollectionExtensions`) používá dispatcher i test endpoint.
+
+**API** (`WebhookController`, `[Authorize(Roles = "Admin,SysAdmin")]`; API klíč se řídí `ApiKeyRequestGuard` — GET = read scope):
+`GET/POST api/webhooks`, `GET/PUT/DELETE api/webhooks/{id}`, `POST api/webhooks/{id}/rotate-secret`, `POST api/webhooks/{id}/test`,
+`GET api/webhooks/{id}/deliveries` (posledních 200), `POST api/webhooks/deliveries/{id}/redeliver`. Chyby validace → 400 `{ message }`.
+
+**UI** — `Fakvio.UI.Shared/Components/Pages/Webhooks.razor` (FakvioGrid, dialog s checkboxy událostí, jednorázové zobrazení secretu
+jako u API klíčů na `Integrations.razor`, test, log doručení s redeliver). Texty `Webhook_*` v `SharedResource*.resx`, route je
+v `NavigateTool.Routes` (`webhooks`). Webhooky **nemají** chat/MCP tool (paritní tabulka §4.7 se nemění).
+
+**Testy:** `Fakvio.Tests.Unit/WebhookTests.cs` (podpis, SSRF tabulka + `ConnectCallback`, retry schedule, publisher, platba → události,
+dispatcher s fake handlerem, retence, izolace tenantů), `Fakvio.Tests.Integration/WebhookEndpointTests.cs`.
+
+**Rozšíření:** nová událost = konstanta + položka v `WebhookEventCatalog.All`, klíč `Webhook_Event_<název_s_podtržítky>` v obou resx
+a volání `IWebhookPublisher` z místa přechodu (po SaveChanges).
+
+---
+
 ## 5. Datová vrstva
 
 ### 5.1 PostgreSQL specifika
@@ -2361,6 +2432,7 @@ Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 | Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | `ReminderWorker` v Infrastructure | daily 06:00 UTC, per-tenant | `0x46414B56494F524DL` ("FAKVIORM") |
 | Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | dle `PollIntervalMinutes` (default 30 min) | `0x46414B56494F5059L` |
 | Recurring invoices | `IRecurringInvoiceService.RunCycleAsync` | `RecurringInvoiceWorker` v Infrastructure | hodinově, per-tenant | `0x46414B56494F5249L` ("FAKVIORI") |
+| Webhooky (odchozí doručení + retry) | `IWebhookDispatchService.RunCycleAsync` | `WebhookWorker` v Infrastructure | každou 1 min, per-tenant | `0x46414B56494F5748L` ("FAKVIOWH") |
 
 ### 6.4 Když přidáš novou periodickou úlohu
 

@@ -29,6 +29,7 @@
 18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
 19. [Nastavení hesla a první přihlášení](#19-nastavení-hesla-a-první-přihlášení)
 20. [Napojení vlastního AI klienta (MCP server)](#20-napojení-vlastního-ai-klienta-mcp-server)
+21. [Webhooky (automatické upozornění vaší aplikace)](#21-webhooky-automatické-upozornění-vaší-aplikace)
 
 ---
 
@@ -1407,6 +1408,119 @@ nové připojení (staré tím zmizí ze seznamu, žádné duplicity).
 **všechny** vaše připojené aplikace najednou (API klíče zůstávají beze změny — jsou to jiný,
 samostatně spravovaný typ přístupu). Po takové změně je tedy potřeba se v claude.ai/ChatGPT
 znovu přihlásit.
+
+## 21. Webhooky (automatické upozornění vaší aplikace)
+
+**Stránka:** `Nastavení → Webhooky` (`/settings/webhooks`). Vidí ji a spravuje role **Účetní** (v API Admin) a systémový správce.
+
+Webhook je adresa (URL) vaší aplikace — například e-shopu, účetního systému nebo vlastního skriptu. Když ve Fakviu nastane
+vybraná událost, Fakvio na tuto adresu automaticky pošle krátkou zprávu (HTTP požadavek) s údaji o dokladu. Vaše aplikace tak
+nemusí Fakvio pravidelně „vyptávat", zda se něco změnilo.
+
+### Dostupné události
+
+| Událost | Kdy se pošle |
+|---------|--------------|
+| Faktura vytvořena (`invoice.created`) | po vytvoření faktury (včetně dobropisu a faktury z šablony) |
+| Faktura odeslána e-mailem (`invoice.sent`) | po úspěšném odeslání faktury e-mailem klientovi |
+| Faktura zaplacena (`invoice.paid`) | po označení faktury jako uhrazené nebo po spárování platby, která fakturu uhradila celou |
+| Faktura stornována/smazána (`invoice.cancelled`) | po smazání faktury |
+| Přijatá faktura vytvořena (`received_invoice.created`) | po zadání nebo importu přijaté faktury |
+| Platba přijata (`payment.received`) | po spárování příchozí platby s vydanou fakturou (i částečné) |
+
+### Založení webhooku
+
+1. Klikněte **Nový webhook**.
+2. Zadejte **URL endpointu** — musí začínat `https://`. Adresy směřující do interní sítě nebo na „localhost" jsou z bezpečnostních
+   důvodů blokovány.
+3. Zaškrtněte události, které chcete dostávat, a uložte.
+4. Zobrazí se **podpisový klíč**. **Je vidět jen jednou** — zkopírujte si ho a bezpečně uložte (ve vaší aplikaci ho použijete k ověření,
+   že zpráva opravdu přišla z Fakvia). Pokud ho ztratíte nebo unikne, použijte ikonu klíče **Vygenerovat nový klíč**; starý okamžitě přestane platit.
+
+Další akce v řádku: **Otestovat** (pošle zkušební událost `ping` a hned ukáže výsledek), **Doručení** (historie odeslaných zpráv),
+smazání. Kliknutím na řádek upravíte URL, popis, události nebo webhook pozastavíte (přepínač Aktivní).
+
+### Doručení a opakování
+
+Vaše adresa musí do 10 sekund odpovědět stavem 2xx (např. 200). Jinak Fakvio zprávu zkusí poslat znovu, po 1 minutě, 5 minutách,
+30 minutách, 2, 6, 12 a 24 hodinách. Po 8. neúspěšném pokusu je doručení označeno **Selhalo**. V okně **Doručení** vidíte stav, počet
+pokusů, HTTP kód a chybu; tlačítkem **Odeslat znovu** lze doručení poslat znovu ručně. Historie se uchovává 30 dní.
+
+Zprávy se mohou kvůli opakování doručit i vícekrát — používejte hlavičku `Fakvio-Webhook-Id` (je pro stejnou událost stále stejná)
+a duplicity ignorujte.
+
+### Co zpráva obsahuje
+
+HTTP `POST` s tělem JSON:
+
+```json
+{
+  "id": "6f1c2f1e-3c0d-4a77-9a55-0d2f1c3b9a10",
+  "type": "invoice.paid",
+  "createdAt": "2026-10-02T08:15:30+00:00",
+  "companyId": 42,
+  "data": {
+    "id": 1234, "number": "2026001", "type": "Invoice", "status": "Paid",
+    "clientName": "Klient s.r.o.", "clientIco": "12345678",
+    "total": 12100.00, "currency": "CZK", "dueDate": "2026-10-15T00:00:00", "paidAt": "2026-10-02T00:00:00"
+  }
+}
+```
+
+Pro `payment.received` je `data` ve tvaru `{ "invoice": {…}, "amount": 12100.00, "matchedAt": "…" }`.
+
+Hlavičky:
+
+| Hlavička | Význam |
+|----------|--------|
+| `Fakvio-Webhook-Id` | jedinečné ID události (shodné při opakování) |
+| `Fakvio-Webhook-Timestamp` | čas odeslání, Unix sekundy |
+| `Fakvio-Webhook-Signature` | `v1=` + hex HMAC-SHA256 podpis |
+
+### Ověření podpisu (důležité)
+
+Podpis se počítá z textu `{timestamp}.{tělo}` (časová značka, tečka, přesné nezměněné tělo požadavku) klíčem, který jste dostali při
+založení webhooku. Vždy ověřte podpis **nad surovým tělem** (před parsováním JSON) a odmítněte zprávy se starým časem (např. starší než 5 minut),
+aby je nešlo znovu přehrát.
+
+**C# (ASP.NET Core)**
+
+```csharp
+using System.Security.Cryptography;
+using System.Text;
+
+static bool IsValid(string secret, string timestamp, string body, string signatureHeader)
+{
+    if (!long.TryParse(timestamp, out var ts) ||
+        Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ts) > 300)
+        return false; // stará zpráva
+
+    using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+    var expected = "v1=" + Convert.ToHexString(
+        hmac.ComputeHash(Encoding.UTF8.GetBytes($"{timestamp}.{body}"))).ToLowerInvariant();
+
+    return CryptographicOperations.FixedTimeEquals(
+        Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(signatureHeader));
+}
+```
+
+**JavaScript (Node.js)**
+
+```js
+const crypto = require("crypto");
+
+function isValid(secret, timestamp, rawBody, signatureHeader) {
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false; // stará zpráva
+  const expected =
+    "v1=" + crypto.createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+  const a = Buffer.from(expected), b = Buffer.from(signatureHeader);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+```
+
+> Klíč se do kódu nevkládá natvrdo — načtěte ho z proměnné prostředí nebo trezoru.
+
+---
 
 ## Zpětná vazba: chyby, nápady a postřehy
 
