@@ -211,4 +211,18 @@ public class InvoiceBankAccountEndpointTests : IClassFixture<FakvioFactory>
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public async Task UpdateInvoice_Put_WithMismatchingExpectedStatus_Returns409_AndChangesNothing()
+    {
+        var client = await AuthClientAsync();
+        var created = await (await client.PostAsJsonAsync("/api/invoice", Dto())).Content.ReadFromJsonAsync<InvoiceDto>();
+
+        var response = await client.PutAsJsonAsync($"/api/invoice/{created!.Id}",
+            new UpdateInvoiceDto { Notes = "nope", ExpectedStatus = EInvoiceStatus.Completed });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var current = await (await client.GetAsync($"/api/invoice/{created.Id}")).Content.ReadFromJsonAsync<InvoiceDto>();
+        current!.Notes.ShouldNotBe("nope");
+    }
 }

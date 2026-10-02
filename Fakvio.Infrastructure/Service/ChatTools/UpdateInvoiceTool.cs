@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Fakvio.Contracts.Dto.Invoice;
@@ -56,9 +57,9 @@ public class UpdateInvoiceTool : IConfirmableChatTool
         new() { Name = "issue_date", Type = ChatToolParameterType.String, Description = "New issue date (YYYY-MM-DD)" },
         new() { Name = "due_date", Type = ChatToolParameterType.String, Description = "New due date (YYYY-MM-DD)" },
         new() { Name = "taxable_supply_date", Type = ChatToolParameterType.String, Description = "New date of taxable supply / DUZP (YYYY-MM-DD)" },
-        new() { Name = "variable_symbol", Type = ChatToolParameterType.String, Description = "New variable symbol (digits only, max 10)" },
-        new() { Name = "constant_symbol", Type = ChatToolParameterType.String, Description = "New constant symbol (max 50 characters)" },
-        new() { Name = "specific_symbol", Type = ChatToolParameterType.String, Description = "New specific symbol (max 50 characters)" },
+        new() { Name = "variable_symbol", Type = ChatToolParameterType.String, Description = "New variable symbol (digits only, max 10; empty string clears it)" },
+        new() { Name = "constant_symbol", Type = ChatToolParameterType.String, Description = "New constant symbol (max 50 characters; empty string clears it)" },
+        new() { Name = "specific_symbol", Type = ChatToolParameterType.String, Description = "New specific symbol (max 50 characters; empty string clears it)" },
         new()
         {
             Name = "payment_method",
@@ -119,6 +120,12 @@ public class UpdateInvoiceTool : IConfirmableChatTool
                 $"Updated {InvoiceLookup.Describe(updated)}:\n- " + string.Join("\n- ", plan.Changes),
                 ChatUiAction.Navigate($"/invoices/{updated.Id}"));
         }
+        catch (InvoiceStatusConflictException)
+        {
+            // Status changed after the check: re-plan to produce the same guidance (revert / not editable).
+            var replan = await PlanAsync(parameters, ct);
+            return ChatToolResult.Failure(replan.Error ?? "The invoice status changed meanwhile — read it again with get_invoice.");
+        }
         catch (InvalidOperationException ex)
         {
             // Business rule violations (e.g. status, VAT rate, bank account of another issuer).
@@ -149,12 +156,18 @@ public class UpdateInvoiceTool : IConfirmableChatTool
                 "the issued document becomes a draft, it must be issued again with complete_invoice after editing, and re-sent " +
                 "if it was already e-mailed. Only after the user agrees, call revert_invoice_to_draft and then update_invoice again.");
 
+        if (invoice.Status == EInvoiceStatus.PartiallyPaid)
+            return Fail(
+                $"{InvoiceLookup.Describe(invoice)} is partially paid — a partial payment is recorded, so it cannot be edited. " +
+                "Issue a credit note and a new invoice instead.");
+
         if (invoice.Status != EInvoiceStatus.Draft)
             return Fail(
                 $"{InvoiceLookup.Describe(invoice)} is {invoice.Status} — it cannot be edited. To correct it, issue a credit " +
                 "note and a new invoice; if a payment was recorded by mistake, mark the invoice as unpaid in the app first.");
 
-        var dto = new UpdateInvoiceDto();
+        // Guards the gap between the status check above and the write (conflict if the status changed meanwhile).
+        var dto = new UpdateInvoiceDto { ExpectedStatus = EInvoiceStatus.Draft };
         var changes = new List<string>();
 
         // ── Dates ──────────────────────────────────────────────────────
@@ -174,31 +187,31 @@ public class UpdateInvoiceTool : IConfirmableChatTool
         }
 
         // ── Symbols (the API DTO has attribute validation that a direct service call skips) ──
-        var variableSymbol = Read(parameters, "variable_symbol");
+        var variableSymbol = ReadSymbol(parameters, "variable_symbol");
         if (variableSymbol is not null)
         {
-            if (!Regex.IsMatch(variableSymbol, @"^\d{1,10}$"))
-                return Fail("variable_symbol must contain only digits (max 10).");
+            if (!Regex.IsMatch(variableSymbol, @"^\d{0,10}$"))
+                return Fail("variable_symbol must contain only digits (max 10), or empty to clear it.");
             dto.VariableSymbol = variableSymbol;
-            changes.Add($"variable symbol → {variableSymbol}");
+            changes.Add($"variable symbol → {(variableSymbol.Length == 0 ? "(cleared)" : variableSymbol)}");
         }
 
-        var constantSymbol = Read(parameters, "constant_symbol");
+        var constantSymbol = ReadSymbol(parameters, "constant_symbol");
         if (constantSymbol is not null)
         {
             if (constantSymbol.Length > 50)
                 return Fail("constant_symbol must be at most 50 characters.");
             dto.ConstantSymbol = constantSymbol;
-            changes.Add($"constant symbol → {constantSymbol}");
+            changes.Add($"constant symbol → {(constantSymbol.Length == 0 ? "(cleared)" : constantSymbol)}");
         }
 
-        var specificSymbol = Read(parameters, "specific_symbol");
+        var specificSymbol = ReadSymbol(parameters, "specific_symbol");
         if (specificSymbol is not null)
         {
             if (specificSymbol.Length > 50)
                 return Fail("specific_symbol must be at most 50 characters.");
             dto.SpecificSymbol = specificSymbol;
-            changes.Add($"specific symbol → {specificSymbol}");
+            changes.Add($"specific symbol → {(specificSymbol.Length == 0 ? "(cleared)" : specificSymbol)}");
         }
 
         var notes = Read(parameters, "notes");
@@ -272,6 +285,10 @@ public class UpdateInvoiceTool : IConfirmableChatTool
 
         return new UpdatePlan(invoice, dto, changes, null);
     }
+
+    /// <summary>Symbols: missing = keep (null), empty string = clear (sent as "").</summary>
+    private static string? ReadSymbol(Dictionary<string, string> parameters, string key)
+        => parameters.TryGetValue(key, out var raw) ? raw.Trim() : null;
 
     /// <summary>Returns the trimmed parameter value, or null when missing or blank.</summary>
     private static string? Read(Dictionary<string, string> parameters, string key)

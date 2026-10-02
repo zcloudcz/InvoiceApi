@@ -855,7 +855,7 @@ public static class InvoiceTools
     /// documents, but the product rule for agents is "never edit an issued document without the user agreeing
     /// to revert it to Draft" — so Completed returns a structured hint and Paid/Creditnoted a clear error.
     /// </summary>
-    [McpServerTool(Title = "Update invoice", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Update invoice", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false), Description(
         "Edit an existing invoice, credit note or proforma. Partial update: only the arguments you pass " +
         "are changed, omitted ones stay as they are. Edits Draft documents. For an issued (Completed) invoice " +
         "nothing is changed and the result has status 'requires_revert_to_draft': ask the user for explicit " +
@@ -870,9 +870,9 @@ public static class InvoiceTools
         [Description("New issue date, ISO 8601 (e.g. '2026-01-15'). Omit to keep.")] string? issueDate = null,
         [Description("New due date, ISO 8601. Omit to keep.")] string? dueDate = null,
         [Description("New date of taxable supply (DUZP), ISO 8601. Omit to keep.")] string? taxableSupplyDate = null,
-        [Description("New variable symbol (digits only, max 10). Omit to keep.")] string? variableSymbol = null,
-        [Description("New constant symbol. Omit to keep.")] string? constantSymbol = null,
-        [Description("New specific symbol. Omit to keep.")] string? specificSymbol = null,
+        [Description("New variable symbol (digits only, max 10). Omit to keep, '' to clear.")] string? variableSymbol = null,
+        [Description("New constant symbol. Omit to keep, '' to clear.")] string? constantSymbol = null,
+        [Description("New specific symbol. Omit to keep, '' to clear.")] string? specificSymbol = null,
         [Description("New payment method: BankTransfer, Cash, CreditCard, PayPal, Other. Omit to keep.")] string? paymentMethod = null,
         [Description("One of the issuer's bank accounts (BankAccount.Id, see get_issuer). Omit to keep.")] long? bankAccountId = null,
         [Description("New ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit to keep.")] string? currency = null,
@@ -904,10 +904,10 @@ public static class InvoiceTools
         if (dateError is not null)
             return Error(dateError);
 
-        // Empty string = "not provided" (models often send "" instead of omitting the argument).
-        variableSymbol = string.IsNullOrWhiteSpace(variableSymbol) ? null : variableSymbol;
-        constantSymbol = string.IsNullOrWhiteSpace(constantSymbol) ? null : constantSymbol;
-        specificSymbol = string.IsNullOrWhiteSpace(specificSymbol) ? null : specificSymbol;
+        // Empty currency = "not provided" (models often send "" instead of omitting the argument).
+        // Symbols are different: "" is sent as-is and CLEARS the symbol (null = keep).
+        if (variableSymbol is not null && !System.Text.RegularExpressions.Regex.IsMatch(variableSymbol, @"^\d{0,10}$"))
+            return Error("variableSymbol must contain only digits (max 10), or '' to clear it.");
         currency = string.IsNullOrWhiteSpace(currency) ? null : currency;
 
         if (items is { Count: 0 })
@@ -927,27 +927,9 @@ public static class InvoiceTools
             if (existing is null)
                 return Error($"Invoice with ID {invoiceId} not found.");
 
-            // Completed (issued) documents are never modified silently: the user must first agree to
-            // switch the document back to Draft. Structured result (not an error) so the model knows the next step.
-            if (existing.Status == EInvoiceStatus.Completed)
-                return JsonSerializer.Serialize(new
-                {
-                    status = "requires_revert_to_draft",
-                    invoiceId,
-                    number = existing.DocumentNumber,
-                    message = "This invoice is already issued (Completed), so it was NOT changed. To edit it, it must first " +
-                              "be switched back to Draft. Ask the user explicitly whether to do that and explain the consequences: " +
-                              "the issued document becomes a draft, it must be issued again with complete_invoice after editing, " +
-                              "and it must be re-sent if it was already e-mailed to the client. Only after the user confirms, " +
-                              "call revert_invoice_to_draft and then update_invoice again."
-                }, JsonOptions);
-
-            if (existing.Status != EInvoiceStatus.Draft)
-                return Error(
-                    $"Invoice {existing.DocumentNumber ?? invoiceId.ToString()} is not editable in status {existing.Status}: " +
-                    "only Draft documents can be edited (issued ones after reverting to draft). To correct it, issue a credit note " +
-                    "(create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice. If a payment was recorded " +
-                    "by mistake, the user can mark the invoice as unpaid in the Fakvio app first.");
+            var notDraft = NotEditableResult(existing);
+            if (notDraft is not null)
+                return notDraft;
 
             long? currencyId = null;
             if (currency is not null)
@@ -984,10 +966,26 @@ public static class InvoiceTools
                 CurrencyId = currencyId,
                 Notes = notes,
                 ApplyOss = applyOss,
-                InvoiceItem = items
+                InvoiceItem = items,
+                // Guards the gap between the status check above and the write: 409 if someone changed the status meanwhile.
+                ExpectedStatus = EInvoiceStatus.Draft
             };
 
-            var result = await api.UpdateInvoiceAsync(invoiceId, dto, ct);
+            InvoiceDto? result;
+            try
+            {
+                result = await api.UpdateInvoiceAsync(invoiceId, dto, ct);
+            }
+            catch (FakvioApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                // Status changed since the pre-flight read: re-read and give the same guidance as above.
+                var current = await api.GetInvoiceByIdAsync(invoiceId, ct);
+                var guidance = current is null ? null : NotEditableResult(current);
+                if (guidance is not null)
+                    return guidance;
+                throw;
+            }
+
             if (result is null)
                 return Error($"Invoice with ID {invoiceId} not found.");
 
@@ -1010,7 +1008,7 @@ public static class InvoiceTools
     [McpServerTool(Title = "Revert invoice to draft", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
         "Switch an issued (Completed) invoice back to Draft so it can be edited. Call ONLY after the user has " +
         "explicitly confirmed this in the current conversation (explain: the issued document becomes a draft, it must be " +
-        "issued again with complete_invoice after editing, and re-sent if it was already e-mailed). The document number " +
+        "issued again with complete_invoice after editing, and re-sent if it was already e-mailed; the invoice still shows as e-mailed, and re-completing fires the invoice webhook again). The document number " +
         "is kept. Only Completed invoices can be reverted — Paid and credit-noted ones cannot. Typical flow: " +
         "update_invoice answers 'requires_revert_to_draft' → ask the user → revert_invoice_to_draft → update_invoice → complete_invoice.")]
     public static async Task<string> RevertInvoiceToDraft(
@@ -1033,6 +1031,41 @@ public static class InvoiceTools
         {
             return McpToolError.ToJson(ex);
         }
+    }
+
+    /// <summary>
+    /// Explains why a non-Draft invoice cannot be edited, or null for a Draft. Completed (issued) documents are never
+    /// modified silently: a structured result (not an error) tells the model to ask the user and revert first.
+    /// </summary>
+    private static string? NotEditableResult(InvoiceDto existing)
+    {
+        if (existing.Status == EInvoiceStatus.Draft)
+            return null;
+
+        if (existing.Status == EInvoiceStatus.Completed)
+            return JsonSerializer.Serialize(new
+            {
+                status = "requires_revert_to_draft",
+                invoiceId = existing.Id,
+                number = existing.DocumentNumber,
+                message = "This invoice is already issued (Completed), so it was NOT changed. To edit it, it must first " +
+                          "be switched back to Draft. Ask the user explicitly whether to do that and explain the consequences: " +
+                          "the issued document becomes a draft, it must be issued again with complete_invoice after editing, " +
+                          "and it must be re-sent if it was already e-mailed to the client. Only after the user confirms, " +
+                          "call revert_invoice_to_draft and then update_invoice again."
+            }, JsonOptions);
+
+        var number = existing.DocumentNumber ?? existing.Id.ToString();
+        if (existing.Status == EInvoiceStatus.PartiallyPaid)
+            return Error(
+                $"Invoice {number} is partially paid — a partial payment is recorded, so it cannot be edited. " +
+                "Issue a credit note (create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice instead.");
+
+        return Error(
+            $"Invoice {number} is not editable in status {existing.Status}: " +
+            "only Draft documents can be edited (issued ones after reverting to draft). To correct it, issue a credit note " +
+            "(create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice. If a payment was recorded " +
+            "by mistake, the user can mark the invoice as unpaid in the Fakvio app first.");
     }
 
     /// <summary>Parses an optional ISO date argument; blank = not provided, unparsable = error message.</summary>

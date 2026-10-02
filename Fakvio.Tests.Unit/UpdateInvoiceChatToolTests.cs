@@ -199,4 +199,41 @@ public class UpdateInvoiceChatToolTests
         result.IsSuccess.ShouldBeFalse();
         await _invoices.DidNotReceiveWithAnyArgs().RevertToDraftAsync(default, default);
     }
+
+    [Fact]
+    public async Task PartiallyPaid_FailsWithDedicatedMessage()
+    {
+        Given(EInvoiceStatus.PartiallyPaid);
+
+        var result = await _tool.ExecuteAsync(P(("notes", "x")));
+
+        result.IsSuccess.ShouldBeFalse();
+        (result.ErrorMessage ?? result.OutputText).ShouldContain("partially paid");
+        await _invoices.DidNotReceiveWithAnyArgs().UpdateInvoiceAsync(default, default!, default);
+    }
+
+    [Fact]
+    public async Task Execute_SendsExpectedStatusDraft_AndEmptySymbolClears()
+    {
+        await _tool.ExecuteAsync(P(("variable_symbol", "")));
+
+        await _invoices.Received(1).UpdateInvoiceAsync(42, Arg.Is<UpdateInvoiceDto>(d =>
+            d.ExpectedStatus == EInvoiceStatus.Draft && d.VariableSymbol == ""), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StatusConflict_ReturnsRevertGuidance()
+    {
+        _invoices.UpdateInvoiceAsync(42, Arg.Any<UpdateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns<InvoiceDto?>(_ =>
+            {
+                Given(EInvoiceStatus.Completed); // someone issued it between the check and the write
+                throw new Fakvio.Application.Exceptions.InvoiceStatusConflictException("changed");
+            });
+
+        var result = await _tool.ExecuteAsync(P(("notes", "x")));
+
+        result.IsSuccess.ShouldBeFalse();
+        (result.ErrorMessage ?? result.OutputText).ShouldContain("REQUIRES_REVERT_TO_DRAFT");
+    }
 }

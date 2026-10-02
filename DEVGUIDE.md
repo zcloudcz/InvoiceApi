@@ -1242,7 +1242,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `send_invoice_email` | `SendInvoiceEmailTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number` + `recipient_email` |
 | `delete_invoice` | `DeleteInvoiceTool` | Invoice (vydaná) | **Destructive** (confirm) | `id` nebo `document_number`; jen Draft (soft delete) |
 | `update_invoice` | `UpdateInvoiceTool` | Invoice (vydaná) | **Write** (confirm) | `id`/`document_number` + volitelně `issue_date`, `due_date`, `taxable_supply_date`, `variable_symbol`, `constant_symbol`, `specific_symbol`, `payment_method`, `bank_account_id`, `currency`, `notes`, `items` (nahrazuje všechny řádky; sazba DPH = výchozí). Jen Draft; Completed vrátí `REQUIRES_REVERT_TO_DRAFT` |
-| `revert_invoice_to_draft` | `RevertInvoiceToDraftTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Completed → Draft, model se musí napřed zeptat uživatele |
+| `revert_invoice_to_draft` | `RevertInvoiceToDraftTool` | Invoice (vydaná) | **Destructive** (confirm) | `id` nebo `document_number`; jen Completed → Draft, model se musí napřed zeptat uživatele |
 | `list_number_sequences` | `ListNumberSequencesTool` | NumberSequence | Read (list) | `document_type`, `include_inactive`; vypíše i **formáty číslování** s ID pro create |
 | `create_number_sequence` | `CreateNumberSequenceTool` | NumberSequence | **Write** (confirm) | `name`, `document_type`, `format_id` (povinné) + `prefix`, `suffix`, `starting_number`, `is_default` |
 | `update_number_sequence` | `UpdateNumberSequenceTool` | NumberSequence | **Write** (confirm) | `id` (povinný) + `name`, `prefix`, `suffix`, `current_number`, `is_default` |
@@ -1580,8 +1580,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Vydané faktury** (`InvoiceTools`, 16) |
 | `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné, `bankAccountId` volitelné; chat `bank_account_id`) | `create_invoice` | ✅ | |
 | `SetInvoiceBankAccount` | **Write** (změní bankovní účet faktury přes `UpdateInvoiceDto.BankAccountId`) | `update_invoice` (`bank_account_id`, confirm) | ✅ | jen Draft, viz `UpdateInvoice` |
-| `UpdateInvoice` | **Write** (částečná úprava konceptu: data, symboly, platba, účet, měna, poznámka, `items` = náhrada VŠECH řádků; Completed → `requires_revert_to_draft`, Paid/Creditnoted → chyba) | `update_invoice` (confirm; bez `applyOss`, OSS fakturu s `items` odmítne) | ✅ | |
-| `RevertInvoiceToDraft` | **Destructive** (Completed → Draft přes `POST /api/invoice/{id}/revert-to-draft`; volat až po výslovném souhlasu uživatele) | `revert_invoice_to_draft` (confirm) | ✅ | |
+| `UpdateInvoice` | **Destructive** (`items` smaže všechny řádky; `ExpectedStatus=Draft` → 409 při změně stavu; `""` u VS/KS/SS symbol smaže; částečná úprava konceptu: data, symboly, platba, účet, měna, poznámka, `items` = náhrada VŠECH řádků; Completed → `requires_revert_to_draft`, Paid/Creditnoted → chyba) | `update_invoice` (confirm; bez `applyOss`, OSS fakturu s `items` odmítne) | ✅ | |
+| `RevertInvoiceToDraft` | **Destructive** (Completed → Draft přes `POST /api/invoice/{id}/revert-to-draft`; volat až po výslovném souhlasu uživatele) | `revert_invoice_to_draft` (confirm) | ✅ | faktura zůstává označená jako odeslaná; opětovné vystavení znovu spustí webhook faktury |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
 | `GetInvoice` | Read | `get_invoice` (`id`) | ✅ | |

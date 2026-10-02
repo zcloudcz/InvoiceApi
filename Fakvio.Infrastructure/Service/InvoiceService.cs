@@ -716,6 +716,11 @@ public class InvoiceService : IInvoiceService
         if (invoice == null)
             return null;
 
+        // Caller-supplied guard against a status change between its own check and this write (409 in the API).
+        if (updateDto.ExpectedStatus.HasValue && updateDto.ExpectedStatus.Value != invoice.Status)
+            throw new InvoiceStatusConflictException(
+                $"Invoice status is {invoice.Status}, expected {updateDto.ExpectedStatus.Value}");
+
         // Validate status - only Draft and Completed can be updated
         if (invoice.Status == EInvoiceStatus.Paid)
             throw new InvalidOperationException("Cannot update paid invoices");

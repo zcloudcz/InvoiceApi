@@ -28,7 +28,8 @@ public class RevertInvoiceToDraftTool : IConfirmableChatTool
     public string Description =>
         "Switch an issued COMPLETED invoice back to Draft so it can be edited with update_invoice. " +
         "Call it only after the user explicitly agreed: the document becomes a draft again, must be issued with " +
-        "complete_invoice after editing and re-sent if it was already e-mailed. The document number is kept. " +
+        "complete_invoice after editing and re-sent if it was already e-mailed (the invoice still shows as e-mailed; " +
+        "re-completing fires the invoice webhook again). The document number is kept. " +
         "Identify the invoice by ID or document number.";
 
     public IReadOnlyList<ChatToolParameter> Parameters => InvoiceLookup.IdentitySchema;

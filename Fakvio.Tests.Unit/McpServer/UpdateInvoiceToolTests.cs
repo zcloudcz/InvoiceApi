@@ -199,4 +199,54 @@ public class UpdateInvoiceToolTests
         root.GetProperty("error").GetString().ShouldBe("validation_error");
         root.GetProperty("message").GetString().ShouldContain("Only completed");
     }
+
+    [Fact]
+    public async Task PartiallyPaid_ReturnsDedicatedError_AndDoesNotCallUpdate()
+    {
+        _api.GetInvoiceByIdAsync(8, Arg.Any<CancellationToken>()).Returns(new InvoiceDto { Id = 8, DocumentNumber = "FV8", Status = EInvoiceStatus.PartiallyPaid });
+
+        var msg = Error(await InvoiceTools.UpdateInvoice(_api, 8, notes: "x"));
+
+        msg.ShouldContain("partially paid");
+        msg.ShouldContain("credit note");
+        await _api.DidNotReceiveWithAnyArgs().UpdateInvoiceAsync(default, default!, default);
+    }
+
+    [Fact]
+    public async Task Update_SendsExpectedStatusDraft()
+    {
+        await InvoiceTools.UpdateInvoice(_api, 5, notes: "x");
+
+        await _api.Received(1).UpdateInvoiceAsync(5, Arg.Is<UpdateInvoiceDto>(d => d.ExpectedStatus == EInvoiceStatus.Draft), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Conflict409_StatusChangedMeanwhile_ReturnsRevertHint()
+    {
+        // Pre-flight sees Draft, but the write is rejected with 409 and the re-read shows Completed.
+        _api.UpdateInvoiceAsync(5, Arg.Any<UpdateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Throws(new FakvioApiException("api", HttpStatusCode.Conflict, safeMessage: "status changed"));
+        _api.GetInvoiceByIdAsync(5, Arg.Any<CancellationToken>()).Returns(
+            new InvoiceDto { Id = 5, DocumentNumber = "FV1", Status = EInvoiceStatus.Draft },
+            new InvoiceDto { Id = 5, DocumentNumber = "FV1", Status = EInvoiceStatus.Completed });
+
+        var root = JsonDocument.Parse(await InvoiceTools.UpdateInvoice(_api, 5, notes: "x")).RootElement;
+
+        root.GetProperty("status").GetString().ShouldBe("requires_revert_to_draft");
+    }
+
+    [Fact]
+    public async Task EmptySymbols_AreSentAsEmptyStrings_ToClearThem()
+    {
+        await InvoiceTools.UpdateInvoice(_api, 5, variableSymbol: "", constantSymbol: "", specificSymbol: "");
+
+        await _api.Received(1).UpdateInvoiceAsync(5, Arg.Is<UpdateInvoiceDto>(d =>
+            d.VariableSymbol == "" && d.ConstantSymbol == "" && d.SpecificSymbol == ""), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EmptyCurrency_MeansKeep()
+    {
+        Error(await InvoiceTools.UpdateInvoice(_api, 5, currency: "")).ShouldContain("Nothing to update");
+    }
 }
