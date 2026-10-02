@@ -369,6 +369,7 @@ public class DashboardServiceTests : IDisposable
         {
             Status = status,
             SupplierId = supplierId,
+            CurrencyId = _context.Currency.First(c => c.Code == "CZK").Id,
             IssueDate = issueDate,
             TotalBeforeVat = totalBeforeVat,
             TotalWithVat = totalBeforeVat * 1.21m
