@@ -10,6 +10,31 @@ namespace Fakvio.Contracts.Dto.Invoice;
 public class IssueFinalInvoiceDto
 {
     /// <summary>
+    /// Builds the request used by the MCP/chat tools, which do not take line items from the
+    /// user: the final invoice repeats the proforma's items, and the API appends the advance
+    /// deduction rows.
+    /// </summary>
+    public static IssueFinalInvoiceDto FromProforma(InvoiceDto proforma, decimal? deductionAmount) => new()
+    {
+        DeductionAmount = deductionAmount,
+        InvoiceItem = proforma.InvoiceItem.Select(i => new CreateInvoiceItemDto
+        {
+            OrderIndex = i.OrderIndex,
+            IsTextRow = i.IsTextRow,
+            Description = i.Description,
+            Quantity = i.Quantity,
+            Unit = i.Unit,
+            UnitPrice = i.UnitPrice,
+            VatRateId = i.VatRateId,
+            VatRatePercentage = i.VatRatePercentage,
+            VatRegime = i.VatRegime,
+            ReverseChargeCodeId = i.ReverseChargeCodeId,
+            ProductCode = i.ProductCode,
+            Notes = i.Notes
+        }).ToList()
+    };
+
+    /// <summary>
     /// Line items for the final invoice (the "real" services/goods being invoiced).
     /// At least one billable item is required.
     /// The service will append automatic deduction rows for the advance payment.

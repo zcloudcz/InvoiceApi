@@ -824,6 +824,51 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
+    /// Issues a Tax Receipt for Advance Payment (DPP) for the received advance of a Proforma.
+    /// Used by the issue_tax_receipt MCP/chat tool, and as the manual path when automatic DPP
+    /// issuance is switched off. Idempotent: only the part of the advance not yet covered by
+    /// an existing DPP is covered, so calling it twice never double-books.
+    /// </summary>
+    /// <param name="proformaId">Proforma invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <response code="201">DPP issued</response>
+    /// <response code="400">Not a proforma, issuer is not a VAT payer, or nothing left to cover</response>
+    /// <response code="404">Proforma not found</response>
+    [HttpPost("{proformaId:long}/issue-tax-receipt")]
+    [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<InvoiceDto>> IssueTaxReceipt(
+        long proformaId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/{ProformaId}/issue-tax-receipt", proformaId);
+
+        try
+        {
+            var receipt = await _invoiceService.IssueTaxReceiptForPaidProformaAsync(
+                proformaId, paymentDate: null, amount: null, cancellationToken);
+
+            if (receipt == null)
+                return BadRequest(new
+                {
+                    message = "No tax receipt issued: the issuer is not a VAT payer, " +
+                              "or the received advance is already fully covered by existing tax receipts."
+                });
+
+            return CreatedAtAction(nameof(GetInvoiceById), new { id = receipt.Id }, receipt);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Returns all TaxReceiptForAdvance documents linked to the given proforma.
     /// Used on the proforma detail page to show the DPP cross-link section.
     /// </summary>
