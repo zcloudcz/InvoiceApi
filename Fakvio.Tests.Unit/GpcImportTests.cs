@@ -94,12 +94,11 @@ public class GpcImportTests
             Header(),
             bad,                          // non-numeric amount
             Item("9", 100),               // invalid posting code
-            Item("2", 100, account: "0000000000000001"), // account differs from header
             "076" + "".PadRight(60),      // additional info - ignored silently
             Item("2", 700)));             // valid
 
         r.Statements.ShouldHaveSingleItem().Items.ShouldHaveSingleItem().Amount.ShouldBe(7m);
-        r.Errors.Count.ShouldBe(4);
+        r.Errors.Count.ShouldBe(3);
     }
 
     [Fact]
@@ -194,6 +193,64 @@ public class GpcImportTests
         r.Imported.ShouldBe(0);
         r.Errors.ShouldHaveSingleItem().ShouldContain("no matching bank account");
         (await db.BankTransaction.CountAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Import_PaymentAlreadyIngestedFromImap_IsDuplicate_OneToOne()
+    {
+        var (db, sut) = Create();
+        var accountId = (await db.BankAccount.SingleAsync()).Id;
+        db.BankTransaction.Add(new BankTransaction
+        {
+            BankAccountId = accountId, DeduplicationHash = "imap-hash", ImportSource = EImportSource.InboundEmail,
+            TransactionDate = new DateTime(2026, 3, 13, 22, 0, 0, DateTimeKind.Utc), // +-1 day tolerance
+            Amount = 50m, Direction = EPaymentDirection.Incoming, VariableSymbol = "555", CurrencyCode = "CZK",
+        });
+        db.SaveChanges();
+
+        // One GPC payment == the IMAP row.
+        var one = await sut.ImportAsync(Bytes(Header(), Item("2", 5000, vs: "555")), null);
+        one.Imported.ShouldBe(0);
+        one.Duplicates.ShouldBe(1);
+
+        // Two identical GPC payments, one IMAP row: only one of them is the twin.
+        var two = await sut.ImportAsync(Bytes(Header(), Item("2", 5000, vs: "555"), Item("2", 5000, vs: "555")), null);
+        two.Imported.ShouldBe(1);
+        two.Duplicates.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Import_OutgoingDebit_MatchesReceivedInvoice()
+    {
+        var (db, sut) = Create();
+        db.ReceivedInvoice.Add(new ReceivedInvoice
+        {
+            DocumentNumber = "RI-1", Status = EReceivedInvoiceStatus.Approved, SupplierId = 1,
+            CurrencyId = db.Currency.Single().Id, TotalWithVat = 300m, TotalBeforeVat = 300m, VariableSymbol = "777",
+        });
+        db.SaveChanges();
+
+        var r = await sut.ImportAsync(Bytes(Header(), Item("1", 30000, vs: "777")), null);
+
+        r.Imported.ShouldBe(1);
+        r.Matched.ShouldBe(1);
+        (await db.ReceivedInvoice.SingleAsync()).Status.ShouldBe(EReceivedInvoiceStatus.Paid);
+    }
+
+    [Fact]
+    public void AccountMatches_Iban()
+    {
+        var acc = new BankAccount { AccountNumber = "", IBAN = "CZ65 0800 0001 2300 0456 7890" };
+        BankStatementImportService.AccountMatches(acc, "0001230004567890").ShouldBeTrue();
+        BankStatementImportService.AccountMatches(acc, "0000000000000001").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Parse_BlankValueDate_FallsBackToPostingDate()
+    {
+        var line = Put(Item("2", 100, valueDate: "      "), 123, "100326");
+        GpcParser.Parse(Join(Header(), line)).Statements[0].Items[0].ValueDate
+            .ShouldBe(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc));
     }
 
     [Theory]

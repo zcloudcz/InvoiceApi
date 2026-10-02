@@ -9,13 +9,13 @@ public class BankStatementImportResultDto
     /// <summary>New bank transactions created.</summary>
     public int Imported { get; set; }
 
-    /// <summary>Items skipped because the same transaction was already imported earlier.</summary>
+    /// <summary>Items skipped because the same transaction was already imported (earlier GPC import or IMAP e-mail).</summary>
     public int Duplicates { get; set; }
 
-    /// <summary>Imported incoming payments that the matcher paired with an invoice.</summary>
+    /// <summary>Imported payments (incoming and outgoing) that the matcher paired with an issued/received invoice.</summary>
     public int Matched { get; set; }
 
-    /// <summary>Imported incoming payments left unmatched for manual review.</summary>
+    /// <summary>Imported payments (incoming and outgoing) left unmatched or needing review.</summary>
     public int Unmatched { get; set; }
 
     /// <summary>Malformed lines, storno items and statements whose account could not be resolved (human-readable, English).</summary>

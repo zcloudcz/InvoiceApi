@@ -55,7 +55,7 @@ public class BankStatementImportService : IBankStatementImportService
         {
             var account = bankAccountId.HasValue
                 ? accounts.FirstOrDefault(a => a.Id == bankAccountId.Value)
-                : accounts.FirstOrDefault(a => AccountMatches(a.AccountNumber, statement.Account));
+                : accounts.FirstOrDefault(a => AccountMatches(a, statement.Account));
             if (account == null)
             {
                 result.Errors.Add($"Statement {statement.SequenceNumber} (account {FormatOwnAccount(statement.Account)}): no matching bank account in company settings - add it there or choose the target account.");
@@ -117,6 +117,28 @@ public class BankStatementImportService : IBankStatementImportService
             .ToListAsync(ct)).ToHashSet();
 
         var fresh = candidates.Where(c => !existing.Contains(c.DeduplicationHash)).ToList();
+
+        // Cross-source duplicates: the same payment may already be there from an IMAP e-mail (different hash format).
+        // Pair one-to-one so two genuine identical payments are not collapsed into one.
+        if (fresh.Count > 0)
+        {
+            var from = fresh.Min(c => c.TransactionDate).Date.AddDays(-1);
+            var to = fresh.Max(c => c.TransactionDate).Date.AddDays(2);
+            var others = await _tenant.BankTransaction
+                .Where(t => t.BankAccountId == account.Id && t.ImportSource != EImportSource.GpcImport
+                            && t.TransactionDate >= from && t.TransactionDate < to)
+                .ToListAsync(ct);
+            fresh.RemoveAll(c =>
+            {
+                var twin = others.FirstOrDefault(o => o.Direction == c.Direction && o.Amount == c.Amount
+                    && o.VariableSymbol == c.VariableSymbol
+                    && Math.Abs((o.TransactionDate.Date - c.TransactionDate.Date).TotalDays) <= 1);
+                if (twin == null) return false;
+                others.Remove(twin); // an existing row absorbs at most one candidate
+                return true;
+            });
+        }
+
         result.Duplicates += candidates.Count - fresh.Count;
         if (fresh.Count == 0) return;
 
@@ -124,8 +146,8 @@ public class BankStatementImportService : IBankStatementImportService
         await _tenant.SaveChangesAsync(ct);
         result.Imported += fresh.Count;
 
-        // Only incoming credits are matched against issued invoices.
-        foreach (var tx in fresh.Where(t => t.Direction == EPaymentDirection.Incoming))
+        // Match everything like the IMAP flow: credits against issued invoices, debits against received invoices.
+        foreach (var tx in fresh)
         {
             try
             {
@@ -136,10 +158,23 @@ public class BankStatementImportService : IBankStatementImportService
                 _logger.LogError(ex, "Matcher failed for imported transaction {TxId} - it remains Unmatched", tx.Id);
             }
 
-            // MatchAsync updates the same tracked entity; re-read status from the DB-tracked instance.
+            // MatchAsync works on its own tracked instance of the same row (same context = same entity).
             if (tx.MatchStatus is EMatchStatus.Matched or EMatchStatus.PartiallyMatched) result.Matched++;
             else result.Unmatched++;
         }
+    }
+
+    /// <summary>
+    /// Our account ("123-4567890/0800" or IBAN) vs GPC's zero-padded prefix+number (074 carries no bank code).
+    /// CZ IBAN = "CZkk" + 4-digit bank code + 16-digit prefix+number.
+    /// </summary>
+    internal static bool AccountMatches(BankAccount account, string gpcAccount16)
+    {
+        if (gpcAccount16.Length != 16) return false;
+        if (AccountMatches(account.AccountNumber, gpcAccount16)) return true;
+        var iban = account.IBAN?.Replace(" ", "");
+        return iban is { Length: 24 } && iban.StartsWith("CZ", StringComparison.OrdinalIgnoreCase)
+            && iban[8..] == gpcAccount16;
     }
 
     /// <summary>"123-4567890/0800" (our account) vs GPC's zero-padded prefix+number; bank code is not in the 074 record.</summary>

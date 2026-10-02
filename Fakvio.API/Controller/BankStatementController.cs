@@ -50,7 +50,7 @@ public class BankStatementController : ControllerBase
         await file.CopyToAsync(ms, ct);
         var result = await _importService.ImportAsync(ms.ToArray(), bankAccountId, ct);
         if (result.Statements == 0)
-            return BadRequest(new { message = "No GPC/ABO statement (074 record) found in the file." });
+            return BadRequest(new { message = "No GPC/ABO statement (074 record) found in the file.", errors = result.Errors });
         return Ok(result);
     }
 }

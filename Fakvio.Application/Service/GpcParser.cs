@@ -51,7 +51,8 @@ public class GpcParseResult
 ///
 /// 075 layout (1-based): 4-19 own account, 20-35 counter account (prefix 6 + number 10),
 /// 36-48 document number, 49-60 amount in halere, 61 posting code, 62-71 VS,
-/// 72-75 counter bank code, 78-81 KS, 82-91 SS, 92-97 value date DDMMYY, 98-117 name.
+/// 72-75 counter bank code, 76-81 KS, 82-91 SS, 92-97 value date DDMMYY, 98-117 name,
+/// 123-128 posting date (fallback when the value date is blank).
 /// </summary>
 public static class GpcParser
 {
@@ -105,7 +106,6 @@ public static class GpcParser
                     if (!IsDigits(line.Substring(48, 12))) throw new FormatException("invalid amount");
                     var code = line[60] - '0';
                     if (code is not (1 or 2 or 4 or 5)) throw new FormatException("invalid posting code");
-                    if (line.Substring(3, 16) != current.Account) throw new FormatException("item account differs from statement header");
 
                     current.Items.Add(new GpcItem
                     {
@@ -116,9 +116,9 @@ public static class GpcParser
                         Amount = decimal.Parse(line.Substring(48, 12), CultureInfo.InvariantCulture) / 100m,
                         PostingCode = code,
                         VariableSymbol = Symbol(line.Substring(61, 10)),
-                        ConstantSymbol = Symbol(line.Substring(77, 4)),
+                        ConstantSymbol = Symbol(line.Substring(75, 6)),
                         SpecificSymbol = Symbol(line.Substring(81, 10)),
-                        ValueDate = TryParseDate(line.Substring(91, 6)) ?? current.StatementDate,
+                        ValueDate = TryParseDate(line.Substring(91, 6)) ?? TryParseDate(line.Substring(122, 6)) ?? current.StatementDate,
                         Name = NullIfBlank(line.Substring(97, 20)),
                     });
                 }
