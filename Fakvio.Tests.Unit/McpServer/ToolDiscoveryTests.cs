@@ -131,6 +131,74 @@ public class ToolDiscoveryTests
         }
     }
 
+    /// <summary>
+    /// JSON Schema keywords whose value must be a number (draft 2020-12 validation vocabulary).
+    /// </summary>
+    private static readonly string[] NumericSchemaKeywords =
+    [
+        "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+        "minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties"
+    ];
+
+    /// <summary>
+    /// Every numeric constraint in every input schema must be a JSON number.
+    ///
+    /// Why: ChatGPT validates the whole <c>tools/list</c> response strictly and rejects ALL tools
+    /// ("action discovery failed") when one schema is invalid. A
+    /// <c>[Range(typeof(decimal), "0.00000001", "1000000")]</c> on a DTO property made the SDK emit
+    /// <c>"minimum":"0.00000001"</c> — a string — and the connector broke in production while
+    /// Claude (lenient) kept working, so no other test or manual check noticed.
+    ///
+    /// Junior note: the walk is recursive because DTO parameters nest (tool → dto → items → item),
+    /// and the broken constraint sat three levels deep.
+    /// </summary>
+    [Fact]
+    public void EveryToolSchema_UsesNumbersForNumericConstraints()
+    {
+        foreach (var tool in DiscoverTools())
+        {
+            foreach (var (path, value) in NumericConstraints(tool.ProtocolTool.InputSchema, "$"))
+            {
+                value.ValueKind.ShouldBe(JsonValueKind.Number,
+                    $"Tool '{tool.ProtocolTool.Name}' has a non-numeric constraint at {path}: {value.GetRawText()}. " +
+                    "Use the numeric RangeAttribute/MinLength overloads, not the string ones.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Yields every numeric-keyword value anywhere inside <paramref name="schema"/>, with its JSON path.
+    /// </summary>
+    private static IEnumerable<(string Path, JsonElement Value)> NumericConstraints(JsonElement schema, string path)
+    {
+        if (schema.ValueKind == JsonValueKind.Array)
+        {
+            var index = 0;
+            foreach (var item in schema.EnumerateArray())
+            {
+                foreach (var found in NumericConstraints(item, $"{path}[{index++}]"))
+                    yield return found;
+            }
+            yield break;
+        }
+
+        if (schema.ValueKind != JsonValueKind.Object)
+            yield break;
+
+        foreach (var property in schema.EnumerateObject())
+        {
+            var childPath = $"{path}.{property.Name}";
+
+            // Under "properties" the keys are user field names (a DTO could have a field called
+            // "maximum"), so only treat a keyword as a constraint outside of that map.
+            if (NumericSchemaKeywords.Contains(property.Name) && !path.EndsWith(".properties", StringComparison.Ordinal))
+                yield return (childPath, property.Value);
+
+            foreach (var found in NumericConstraints(property.Value, childPath))
+                yield return found;
+        }
+    }
+
     [Fact]
     public void NoTool_ExposesItsInjectedApiClientAsAnInputParameter()
     {

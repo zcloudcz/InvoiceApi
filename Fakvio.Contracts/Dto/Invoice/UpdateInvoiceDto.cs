@@ -90,7 +90,10 @@ public class UpdateInvoiceDto
     /// Allowed only while the document is still a draft / not yet approved.
     /// On update, null means "no change" (a manual rate cannot be cleared through this DTO).
     /// </summary>
-    [Range(typeof(decimal), "0.00000001", "1000000")]
+    // Numeric (double) overload on purpose: the MCP schema generator copies Range arguments into
+    // JSON Schema minimum/maximum verbatim, so the string overload emitted "0.00000001" as a string —
+    // invalid JSON Schema that made ChatGPT reject the whole tools/list. Validation is unchanged.
+    [Range(0.00000001, 1000000)]
     public decimal? ExchangeRate { get; set; }
 
     /// <summary>
