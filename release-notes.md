@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Nové funkce
+
+- **#494** — Kurzy ČNB: Fakvio denně stahuje kurzy ČNB; faktura i přijatá faktura v cizí měně si při vystavení/schválení uloží kurz k DUZP (v konceptu lze přepsat), PDF plátce DPH uvádí kurz a rekapitulaci DPH v Kč. Přiznání, KH, přehled DPH i nástěnka přepočítávají cizí měny uloženým kurzem; exporty do Pohody/Money/Flexi nově přenášejí i doklady v cizí měně. MCP get_exchange_rate. (PR #494, `00f4847`)
+
 ## 2026.10.02.2 — 2026-10-02
 
 ### Nové funkce
