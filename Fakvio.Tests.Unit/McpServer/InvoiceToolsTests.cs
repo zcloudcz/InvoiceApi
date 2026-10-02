@@ -951,3 +951,45 @@ public class InvoiceToolsTests
         doc.RootElement.GetProperty("error").GetString().ShouldContain("Invalid dateFrom");
     }
 }
+
+public class InvoiceBankAccountToolsTests
+{
+    private readonly IFakvioApiClient _api = Substitute.For<IFakvioApiClient>();
+
+    [Fact]
+    public async Task CreateInvoice_PassesBankAccountIdToApi()
+    {
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>()).Returns(new InvoiceDto { Id = 1 });
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>()).Returns(new ClientDto { Id = 2, IsVatPayer = false });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>()).Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+        var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };
+
+        await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items, bankAccountId: 77);
+
+        await _api.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.BankAccountId == 77), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetInvoiceBankAccount_SendsUpdateWithBankAccountId()
+    {
+        _api.UpdateInvoiceAsync(5, Arg.Any<UpdateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto { Id = 5, BankAccountNumber = "222/0100" });
+
+        var json = await InvoiceTools.SetInvoiceBankAccount(_api, invoiceId: 5, bankAccountId: 11);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("bankAccountNumber").GetString().ShouldBe("222/0100");
+        await _api.Received(1).UpdateInvoiceAsync(
+            5, Arg.Is<UpdateInvoiceDto>(d => d.BankAccountId == 11), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetInvoiceBankAccount_NotFound_ReturnsError()
+    {
+        _api.UpdateInvoiceAsync(9, Arg.Any<UpdateInvoiceDto>(), Arg.Any<CancellationToken>()).Returns((InvoiceDto?)null);
+
+        var json = await InvoiceTools.SetInvoiceBankAccount(_api, invoiceId: 9, bankAccountId: 1);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("not found");
+    }
+}

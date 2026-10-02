@@ -661,6 +661,8 @@ Správa informací o vaší firmě (vydavatele faktur).
 Základní informace, primární adresu i bankovní účet jde nastavit i přes AI (kapitola 20) —
 `update_my_company` a `add_bank_account`.
 
+Nová faktura (včetně té vytvořené přes AI nebo z opakování) dostane bankovní účet automaticky: nejdřív výchozí účet v měně faktury, potom jakýkoli účet v této měně, jinak výchozí účet. V editoru faktury ho můžete změnit; po změně měny se účet přepne jen pokud jste žádný ručně nevybrali.
+
 **Email pro příjem faktur:**
 - Aktivace unikátní emailové adresy pro automatický příjem faktur — viz [§18](#18-příjem-faktur-emailem)
 
@@ -1157,7 +1159,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 70 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 71 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.

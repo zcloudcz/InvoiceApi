@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Nové funkce
+
+- **#477** — Nová faktura (z aplikace, MCP, chatu, šablony i opakované faktury) bez zadaného účtu automaticky dostane výchozí bankovní účet firmy, přednostně v měně faktury; přes MCP lze účet zvolit (`bankAccountId`) i dodatečně změnit (`set_invoice_bank_account`). Opraveno míchání čísla účtu a IBAN ze dvou různých účtů při vytvoření ze šablony. (PR #477, `d83e2e5`)
+
 ### Změny pro vývojáře
 
 - **#472** — Ve Fakviu je návod na připojení ChatGPT krok za krokem, včetně odkazu do nastavení aplikací a adresy MCP serveru; správce najde samostatný postup pro první nastavení. (PR #473, `4a9b4f1`)
