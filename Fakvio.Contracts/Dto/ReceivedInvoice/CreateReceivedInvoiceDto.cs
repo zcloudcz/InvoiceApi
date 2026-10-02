@@ -59,7 +59,10 @@ public class CreateReceivedInvoiceDto
     /// Normally omitted — the ČNB rate for the DUZP is assigned when the document is issued/approved.
     /// Allowed only while the document is still a draft / not yet approved.
     /// </summary>
-    [Range(typeof(decimal), "0.00000001", "1000000")]
+    // Numeric (double) overload on purpose: the MCP schema generator copies Range arguments into
+    // JSON Schema minimum/maximum verbatim, so the string overload emitted "0.00000001" as a string —
+    // invalid JSON Schema that made ChatGPT reject the whole tools/list. Validation is unchanged.
+    [Range(0.00000001, 1000000)]
     public decimal? ExchangeRate { get; set; }
 
     /// <summary>
