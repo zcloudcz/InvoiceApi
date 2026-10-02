@@ -104,14 +104,29 @@
             @if (_isVatPayer)
             {
                 <MudTd>
-                    <MudSelect T="long?" Value="@context.VatRateId"
-                               ValueChanged="@(v => OnVatRateChanged(context, v))"
-                               Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
-                        @foreach (var vr in _vatRates)
-                        {
-                            <MudSelectItem T="long?" Value="@((long?)vr.Id)">@vr.Rate%</MudSelectItem>
-                        }
-                    </MudSelect>
+                    @if (!string.IsNullOrEmpty(OssCountryCode))
+                    {
+                        @* EU OSS invoice: rates of the destination country (no tenant VatRate FK). *@
+                        <MudSelect T="decimal" Value="@context.VatRatePercentage"
+                                   ValueChanged="@(v => OnOssRateChanged(context, v))"
+                                   Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                            @foreach (var r in _ossRates)
+                            {
+                                <MudSelectItem T="decimal" Value="@r.Rate">@r.Rate.ToString("0.##")% (@OssCountryCode)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudSelect T="long?" Value="@context.VatRateId"
+                                   ValueChanged="@(v => OnVatRateChanged(context, v))"
+                                   Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                            @foreach (var vr in _vatRates)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)vr.Id)">@vr.Rate%</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
                 </MudTd>
             }
             <MudTd>
@@ -181,7 +196,44 @@
     [Parameter]
     public EventCallback<List<CreateInvoiceItemDto>> ItemsChanged { get; set; }
 
+    /// <summary>
+    /// ISO2 destination country when the invoice is an EU OSS invoice (see DEVGUIDE §4.15); the VAT column
+    /// then offers that country's OSS rates. Null/empty = ordinary invoice with the tenant's CZ rates.
+    /// </summary>
+    [Parameter]
+    public string? OssCountryCode { get; set; }
+
     private List<VatRateDto> _vatRates = new();
+    private List<Fakvio.Contracts.Dto.OssVatRate.OssVatRateDto> _ossRates = new();
+    private string? _loadedOssCountry;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedOssCountry == OssCountryCode) return;
+        _loadedOssCountry = OssCountryCode;
+        _ossRates = string.IsNullOrEmpty(OssCountryCode) ? new() : await VatRateService.GetOssRatesAsync(OssCountryCode);
+
+        // Items carrying a rate that is not valid for the destination country (e.g. CZ 21 % on a German
+        // invoice) switch to that country's standard rate so the user never submits an invalid rate.
+        var standard = _ossRates.OrderBy(r => r.Category).FirstOrDefault();
+        if (standard == null) return;
+        var changed = false;
+        foreach (var item in Items.Where(i => !i.IsTextRow && !_ossRates.Any(r => r.Rate == i.VatRatePercentage)))
+        {
+            item.VatRateId = null;
+            item.VatRatePercentage = standard.Rate;
+            changed = true;
+        }
+        if (changed) NotifyChanged();
+    }
+
+    /// <summary>OSS item: only the percentage matters (the tenant VatRateId must stay empty).</summary>
+    private void OnOssRateChanged(CreateInvoiceItemDto item, decimal rate)
+    {
+        item.VatRateId = null;
+        item.VatRatePercentage = rate;
+        NotifyChanged();
+    }
 
     /// <summary>
     /// Whether the issuing company is a VAT payer. Defaults to true until the issuer is
@@ -249,6 +301,7 @@
         var nextOrder = Items.Any() ? Items.Max(i => i.OrderIndex) + 1 : 1;
         // A non-VAT payer never gets a VAT rate; a VAT payer starts with the default rate.
         var defaultVatRate = _isVatPayer ? _vatRates.FirstOrDefault(v => v.IsDefault) : null;
+        var ossStandard = !string.IsNullOrEmpty(OssCountryCode) ? _ossRates.OrderBy(r => r.Category).FirstOrDefault() : null;
 
         Items.Add(new CreateInvoiceItemDto
         {
@@ -256,8 +309,8 @@
             Unit = "ks",
             Quantity = 1,
             UnitPrice = 0,
-            VatRateId = defaultVatRate?.Id,
-            VatRatePercentage = _isVatPayer ? defaultVatRate?.Rate ?? 21 : 0
+            VatRateId = ossStandard != null ? null : defaultVatRate?.Id,
+            VatRatePercentage = ossStandard?.Rate ?? (_isVatPayer ? defaultVatRate?.Rate ?? 21 : 0)
         });
 
         NotifyChanged();

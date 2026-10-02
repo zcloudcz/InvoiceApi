@@ -647,6 +647,21 @@ else
         </Authorized>
     </AuthorizeView>
 
+    @* ─── EU OSS registration (Admin/SysAdmin, VAT payers only) ─────────────── *@
+    @if (_company.IsVatPayer)
+    {
+        <AuthorizeView Roles="Admin,SysAdmin">
+            <Authorized>
+                <MudPaper Elevation="2" Class="pa-4 mb-4 mt-4">
+                    <OssSettingsSection Settings="_companySettings"
+                                        Loading="_smtpLoading"
+                                        Saving="_epoSaving"
+                                        OnSave="SaveEpoSettings" />
+                </MudPaper>
+            </Authorized>
+        </AuthorizeView>
+    }
+
     @* ─── Invoice Email Mailbox (Admin/SysAdmin) ─────────────────────────── *@
     <AuthorizeView Roles="Admin,SysAdmin">
         <Authorized>

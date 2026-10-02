@@ -28,6 +28,24 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
+    /// EU OSS destination country (ISO2) a new invoice to this client would get, or null for an ordinary
+    /// invoice (hint for the item editor; the server re-detects on save — DEVGUIDE §4.15).
+    /// </summary>
+    public async Task<string?> GetOssCountryAsync(long clientId, EDocumentType documentType)
+    {
+        try
+        {
+            var dto = await GetAsync<Fakvio.Contracts.Dto.OssReport.OssCountryDto>(
+                $"/api/invoice/oss-country?clientId={clientId}&documentType={(int)documentType}");
+            return dto?.CountryCode;
+        }
+        catch (ApiException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Gets all invoices (non-paginated).
     /// </summary>
     public async Task<List<InvoiceDto>> GetAllAsync()

@@ -2018,4 +2018,23 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Aktuální stránka {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Stránka {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Rozbalit nebo sbalit {0}</value></data>
+  <data name="Nav_OssReport" xml:space="preserve"><value>Hlášení OSS</value></data>
+  <data name="OssReport_Title" xml:space="preserve"><value>Hlášení OSS (EU One-Stop-Shop)</value></data>
+  <data name="OssReport_Info" xml:space="preserve"><value>Čtvrtletní přehled prodeje spotřebitelům v jiných státech EU v režimu OSS: základ a DPH podle cílové země a sazby v EUR. Faktury v jiné měně se přepočítají kurzem ECB k poslednímu dni čtvrtletí. Podklad pro podání na portálu Finanční správy; neslouží jako DPHDP3/KH.</value></data>
+  <data name="OssReport_Year" xml:space="preserve"><value>Rok</value></data>
+  <data name="OssReport_Quarter" xml:space="preserve"><value>Čtvrtletí</value></data>
+  <data name="OssReport_Generate" xml:space="preserve"><value>Zobrazit</value></data>
+  <data name="OssReport_DownloadCsv" xml:space="preserve"><value>Stáhnout CSV</value></data>
+  <data name="OssReport_DocumentCount" xml:space="preserve"><value>doklady v období: {0}</value></data>
+  <data name="OssReport_Country" xml:space="preserve"><value>Země spotřeby</value></data>
+  <data name="OssReport_Rate" xml:space="preserve"><value>Sazba</value></data>
+  <data name="OssReport_BaseEur" xml:space="preserve"><value>Základ (EUR)</value></data>
+  <data name="OssReport_VatEur" xml:space="preserve"><value>DPH (EUR)</value></data>
+  <data name="OssReport_Total" xml:space="preserve"><value>Celkem</value></data>
+  <data name="OssReport_NoData" xml:space="preserve"><value>V tomto čtvrtletí nejsou žádné doklady v režimu OSS.</value></data>
+  <data name="OssReport_EcbNote" xml:space="preserve"><value>Dobropisy snižují základ i daň. Kurz: referenční kurz ECB k poslednímu dni čtvrtletí (při víkendu nebo svátku poslední předchozí).</value></data>
+  <data name="Oss_SettingsTitle" xml:space="preserve"><value>Režim OSS (jedno správní místo EU)</value></data>
+  <data name="Oss_SettingsInfoText" xml:space="preserve"><value>Pokud jste v režimu OSS registrováni, faktury spotřebitelům (klient bez DIČ) v jiných státech EU se automaticky vystaví s DPH cílové země a nezahrnou se do přiznání a kontrolního hlášení DPH. Limit 10 000 EUR Fakvio nehlídá.</value></data>
+  <data name="Oss_Registered" xml:space="preserve"><value>Jsem registrován(a) v režimu OSS</value></data>
+  <data name="Oss_RegisteredSince" xml:space="preserve"><value>Registrace od</value></data>
 </root>

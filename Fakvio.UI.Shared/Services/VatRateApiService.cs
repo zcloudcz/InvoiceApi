@@ -103,6 +103,23 @@ public class VatRateApiService : ApiClientBase
     }
 
     /// <summary>
+    /// Active EU OSS VAT rates of an EU country valid on <paramref name="date"/> (default today) —
+    /// offered in the invoice item editor for OSS invoices (DEVGUIDE §4.15). Empty list on error.
+    /// </summary>
+    public async Task<List<Fakvio.Contracts.Dto.OssVatRate.OssVatRateDto>> GetOssRatesAsync(string countryCode, DateTime? date = null)
+    {
+        try
+        {
+            var query = date.HasValue ? $"?date={date.Value:yyyy-MM-dd}" : "";
+            return await GetAsync<List<Fakvio.Contracts.Dto.OssVatRate.OssVatRateDto>>($"/api/oss-vat-rate/country/{countryCode}{query}") ?? [];
+        }
+        catch (ApiException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
     /// Sets a VAT rate as default
     /// </summary>
     public async Task<VatRateDto?> SetAsDefaultAsync(long id)

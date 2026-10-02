@@ -2018,4 +2018,23 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Toggle {0}</value></data>
+  <data name="Nav_OssReport" xml:space="preserve"><value>OSS report</value></data>
+  <data name="OssReport_Title" xml:space="preserve"><value>EU OSS report (One-Stop-Shop)</value></data>
+  <data name="OssReport_Info" xml:space="preserve"><value>Quarterly summary of B2C sales to other EU states under OSS: taxable base and VAT per destination country and rate, in EUR. Invoices in other currencies are converted at the ECB rate of the last day of the quarter. A basis for the filing on the tax portal; it is not a DPHDP3/control statement.</value></data>
+  <data name="OssReport_Year" xml:space="preserve"><value>Year</value></data>
+  <data name="OssReport_Quarter" xml:space="preserve"><value>Quarter</value></data>
+  <data name="OssReport_Generate" xml:space="preserve"><value>Show</value></data>
+  <data name="OssReport_DownloadCsv" xml:space="preserve"><value>Download CSV</value></data>
+  <data name="OssReport_DocumentCount" xml:space="preserve"><value>documents in period: {0}</value></data>
+  <data name="OssReport_Country" xml:space="preserve"><value>Consumption country</value></data>
+  <data name="OssReport_Rate" xml:space="preserve"><value>Rate</value></data>
+  <data name="OssReport_BaseEur" xml:space="preserve"><value>Base (EUR)</value></data>
+  <data name="OssReport_VatEur" xml:space="preserve"><value>VAT (EUR)</value></data>
+  <data name="OssReport_Total" xml:space="preserve"><value>Total</value></data>
+  <data name="OssReport_NoData" xml:space="preserve"><value>There are no OSS documents in this quarter.</value></data>
+  <data name="OssReport_EcbNote" xml:space="preserve"><value>Credit notes reduce both base and tax. Rate: ECB reference rate of the last day of the quarter (the last earlier day on a weekend or holiday).</value></data>
+  <data name="Oss_SettingsTitle" xml:space="preserve"><value>OSS scheme (EU One-Stop-Shop)</value></data>
+  <data name="Oss_SettingsInfoText" xml:space="preserve"><value>If you are registered for OSS, invoices to consumers (clients without a VAT id) in other EU states are issued with the destination country VAT and are excluded from the VAT return and control statement. Fakvio does not monitor the EUR 10,000 threshold.</value></data>
+  <data name="Oss_Registered" xml:space="preserve"><value>I am registered for the OSS scheme</value></data>
+  <data name="Oss_RegisteredSince" xml:space="preserve"><value>Registered since</value></data>
 </root>

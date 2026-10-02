@@ -49,7 +49,7 @@ export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace
 proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
 žádné volání ze 2.2.0 se neláme.
 
-**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 69 nástrojů. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
+**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 70 nástrojů. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
 
 ---
 
@@ -272,14 +272,14 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (69)
+## Dostupné nástroje (70)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
 | `Tools/InvoiceTools.cs` | 11 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, DeleteInvoice |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
-| `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
+| `Tools/ReportingTools.cs` | 7 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices, GetOssReport (kvartální hlášení EU OSS v EUR) |
 | `Tools/TaxTools.cs` | 5 | EstimateTax, CompareTaxRegimes, GetAnnualIncome, GetInsuranceAdvance, GetTaxConfig |
 | `Tools/TemplateTools.cs` | 3 | ListTemplates, GetTemplate, CreateInvoiceFromTemplate |
 | `Tools/ReadinessTools.cs` | 1 | GetReadiness |

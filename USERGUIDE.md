@@ -21,6 +21,7 @@
 10. [Nastavení firmy](#10-nastavení-firmy)
 11. [DPH sazby a režimy](#11-dph-sazby-a-režimy)
 12. [Přehled DPH + EPO export](#12-přehled-dph--epo-export)
+    - [12a. Prodej spotřebitelům v EU — režim OSS](#12a-prodej-spotřebitelům-v-eu--režim-oss)
 13. [AI asistent](#13-ai-asistent)
 14. [Upomínky (Dunning)](#14-upomínky-dunning)
 15. [Párování plateb](#15-párování-plateb)
@@ -673,6 +674,7 @@ Základní informace, primární adresu i bankovní účet jde nastavit i přes 
 - Kontaktní telefon, kontaktní e-mail a jméno oprávněné osoby jsou volitelné (uložený kontaktní
   e-mail zatím nejde vymazat, jen přepsat jiným)
 - Sekce má vlastní tlačítko „Uložit" — ukládá se nezávisle na tlačítku „Upravit" nahoře
+- **Režim OSS (jen plátci DPH):** přepínač „Jsem registrován(a) v režimu OSS" a datum registrace — viz [§12a](#12a-prodej-spotřebitelům-v-eu--režim-oss)
 - **Známé omezení:** uložení dnes projde jen správci systému. U role Admin skončí chybou —
   než bude opraveno, požádejte o vyplnění správce systému.
 
@@ -778,6 +780,31 @@ místo staženého souboru se zobrazí upozornění se seznamem chybějících p
   přenese na `/my-company` do sekce „Nastavení EPO" (viz [§10](#10-nastavení-firmy)).
 - **Nemáte roli Admin** — sekce nastavení je pro vás skrytá, takže upozornění místo odkazu
   napíše, že pole musí doplnit administrátor firmy.
+
+---
+
+## 12a. Prodej spotřebitelům v EU — režim OSS
+
+Pokud jste plátce DPH a jste registrováni v režimu **OSS** (jedno správní místo), při prodeji
+spotřebitelům v jiných státech EU účtujete **DPH cílové země** a odvádíte ho čtvrtletně jedním podáním.
+
+**Nastavení:** na `/my-company` sekce „Režim OSS" (jen plátci DPH): zapněte „Jsem registrován(a) v režimu OSS"
+a vyplňte datum registrace. (Uložení dnes projde jen správci systému, stejně jako u EPO.)
+
+**Fakturace:** faktura se automaticky vystaví jako OSS, když je klient **bez DIČ** a jeho adresa je v **jiném
+státě EU** než ČR. V položkách pak vybíráte sazby DPH země klienta (např. 19 % pro Německo); jiná sazba se
+neuloží. PDF ukáže „DPH DE 19 %" a poznámku „Režim OSS". Klient s DIČ (firma) se fakturuje jako dosud.
+Dobropis převezme režim původní faktury.
+
+**Hlášení OSS:** stránka `/oss-report` (menu Fakturace → Hlášení OSS) — vyberte rok a čtvrtletí, zobrazí se základ
+a DPH za každou zemi a sazbu v EUR; tlačítko „Stáhnout CSV". Faktury v jiné měně se přepočtou kurzem ECB k poslednímu
+dni čtvrtletí; když kurz nejde stáhnout, zobrazí se chyba (zkuste to později). Výsledek použijte jako podklad
+pro podání OSS na portálu Finanční správy.
+
+**Důležité:**
+- OSS faktury se **nezahrnují** do přiznání DPH (DPHDP3) ani kontrolního hlášení (DPHKH1) — nejsou českým DPH.
+- Fakvio **nehlídá limit 10 000 EUR** ročně (pod ním lze uplatnit české DPH) — registraci do OSS si řešíte sami.
+- Přes AI (kapitola 20) lze OSS hlášení načíst nástrojem `get_oss_report`.
 
 ---
 
@@ -1146,7 +1173,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 69 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 70 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.

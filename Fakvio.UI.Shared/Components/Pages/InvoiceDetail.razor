@@ -165,7 +165,7 @@ else if (_isCreateMode)
         @* Full-width: Invoice items editor *@
         <MudItem xs="12">
             <MudText Typo="Typo.h6" Class="mb-2">@L["Invoice_Items"]</MudText>
-            <InvoiceItemEditor Items="_createDto.InvoiceItem"
+            <InvoiceItemEditor Items="_createDto.InvoiceItem" OssCountryCode="_createOssCountry"
                                ItemsChanged="@(items => _createDto.InvoiceItem = items)" />
         </MudItem>
 
@@ -381,7 +381,7 @@ else
             @* Full-width: Editable items grid *@
             <MudItem xs="12">
                 <MudText Typo="Typo.h6" Class="mb-2">@L["Invoice_Items"]</MudText>
-                <InvoiceItemEditor Items="_editItems"
+                <InvoiceItemEditor Items="_editItems" OssCountryCode="_invoice.OssCountryCode"
                                    ItemsChanged="@(items => _editItems = items)" />
             </MudItem>
 
@@ -1054,7 +1054,19 @@ else
         _originalInvoice = null;
         _createDto.OriginalInvoiceId = null;
         _originalSearchFailed = false;
+        await RefreshOssCountryAsync();
         await LoadDocumentNumberPreview();
+    }
+
+    // EU OSS destination country preview for the selected client (null = ordinary invoice). The item editor
+    // then offers that country's VAT rates; the server re-detects on save. See DEVGUIDE §4.15.
+    private string? _createOssCountry;
+
+    private async Task RefreshOssCountryAsync()
+    {
+        _createOssCountry = _createDto.ClientId > 0
+            ? await InvoiceService.GetOssCountryAsync(_createDto.ClientId, _createDto.DocumentType)
+            : null;
     }
 
     private void OnOriginalInvoiceChanged(InvoiceDto? invoice)
@@ -1260,6 +1272,7 @@ else
                     // Client's DueDays + DueDateCalculationType overrides template's simple offset
                     RecalculateDueDate(bs.DueDays, bs.DueDateCalculationType);
                 }
+                await RefreshOssCountryAsync();
             }
         }
         catch (Exception ex)
@@ -1463,10 +1476,11 @@ else
     /// due date from the client's BillingSettings — saves the user manual entry.
     /// Only fills empty fields to avoid overwriting explicit user input.
     /// </summary>
-    private void OnClientChanged(long clientId)
+    private async Task OnClientChanged(long clientId)
     {
         _createDto.ClientId = clientId;
         _isDirty = true;
+        await RefreshOssCountryAsync();
 
         var client = _allClients.FirstOrDefault(c => c.Id == clientId);
         if (client?.BillingSettings != null)

@@ -465,7 +465,7 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 4. `app.UseTenantContext()` (řádek 180) — z `CompanyId` claimu resolvuje schema name a nastaví na scoped `TenantDbContext`.
 
 **TenantContextMiddleware** (`Fakvio.API/Middleware/TenantContextMiddleware.cs`):
-- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/api-key`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`. **Skip** tenant kontroly.
+- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/api-key`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`, `/api/oss-vat-rate`. **Skip** tenant kontroly.
 - Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků). Patří sem **jen dual-context číselníky** (`/api/currency`, `/api/vatrate`, `/api/contenttemplate`, `/api/numbersequence/formats`), jejichž service umí sáhnout do Master i Tenant DB.
 - **Tenant-only číselník do žádného z těch dvou seznamů nepatří.** Např. `/api/reversechargecode` (issue #46) čte přes `ReverseChargeCodeService` výhradně `TenantDbContext`, takže potřebuje normální tenant resolution — data jsou sice statutární (MFČR), ale fyzicky leží v tenant schématu. Bez `X-Company-Id` proto SysAdmin tyto řádky nevidí; až #49 přidá SysAdmin CRUD, bude nutné vědomě rozhodnout, zda service překlopit na dual-context.
 - Řádek 126: `await factory.ResolveSchemaAsync(companyId)` — jediný zdroj pravdy.
@@ -1204,7 +1204,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
-MCP `ReportingTools` má šest metod, chat tools jen tři (`GetDashboard` a `GetVatReport` mají
+MCP `ReportingTools` má sedm metod, chat tools jen tři (`GetDashboard` a `GetVatReport` mají
 1:1 protějšek). Zbylé **čtyři nejsou mezera** — jejich schopnost už pokrývá jiný tool:
 
 | MCP metoda | Chat ekvivalent |
@@ -1507,7 +1507,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 69 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 70 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1548,13 +1548,14 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `MarkReceivedInvoicePaid` | **Write** | `mark_received_invoice_paid` (+ `paid_at`, MCP neumí) | ✅ | |
 | `DeleteReceivedInvoice` | **Destructive** | `delete_received_invoice` | ✅ | |
 | `UploadReceivedInvoiceAttachment` | **Write** (upload) | `attach_file` (`entity_name=ReceivedInvoice`) | ✅ | |
-| **Reporting** (`ReportingTools`, 6) |
+| **Reporting** (`ReportingTools`, 7) |
 | `GetDashboard` | Read | `get_dashboard` | ✅ | |
 | `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |
 | `GetClientInvoices` | Read | `list_invoices` + `client_name` | ✅ | |
 | `GetInvoicesByDateRange` | Read | `list_invoices` + `issue_date_from/to` | ✅ | |
 | `GetVatReport` | Read | `get_vat_report` | ✅ | |
 | `GetOverdueReceivedInvoices` | Read | `list_received_invoices` + `overdue=true` | ✅ | |
+| `GetOssReport` | Read | — | ❌ | zatím bez tasku (§4.15) |
 | **Daně** (`TaxTools`, 5) |
 | `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
 | **Šablony** (`TemplateTools`, 3) |
@@ -1607,12 +1608,12 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 69 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 27 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
+**Součty:** 70 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 28 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
-zatím nepokrývají).
+zatím nepokrývají), OSS hlášení (1 — `GetOssReport`, §4.15).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1695,7 +1696,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **69 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **70 tools**: 11 invoice + 6 client + 7 received invoice + 7 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -2247,6 +2248,52 @@ syntetická data.
   `Clients.razor`. Texty přes `SharedResource*.resx` (klíče `ClientImport_*`).
 - **Fáze 2 (zatím neimplementováno):** import historie vydaných faktur z CSV — čeká na rozhodnutí
   ownera a reálné exporty (viz Story N6, tasky N6.5/N6.6).
+
+---
+
+### 4.15 EU OSS — prodej spotřebitelům v jiných státech EU (One-Stop-Shop)
+
+Plátce DPH registrovaný v režimu OSS ("zvláštní režim jednoho správního místa — režim Unie") účtuje při
+B2C prodeji do jiného státu EU **DPH cílové země** a odvádí ji čtvrtletně jedním podáním přes CZ portál.
+
+**Detekce** (`Infrastructure/Service/Oss/OssDetector.cs`, čistá funkce; volá ji `InvoiceService`
+při create i update položek — `DetermineOssCountryCodeAsync`). OSS faktura = **všechno** z:
+vydavatel má `CompanySystemSettings.OssRegistered` (Master) a `IsVatPayer`; doklad je `Invoice`
+nebo `TaxReceiptForAdvance` (proforma nic nezakládá, dobropis **dědí** `OssCountryCode` původní faktury);
+klient je spotřebitel (bez DIČ a `IsVatPayer=false`); země primární adresy klienta je jiný stát EU než CZ
+(`EuCountries`, `UblCodes.CountryToIso2`). Výsledek se uloží do `Invoice.OssCountryCode` (ISO2, nullable,
+Tenant migrace `AddInvoiceOssCountryCode`). Klient ho nikdy neposílá — počítá se na serveru.
+
+**Sazby:** číselník `OssVatRate` (CountryCode, Rate, Category, Description, ValidFrom, ValidTo, IsActive) je
+**jen v Master DB, bez tenant kopie** (statutární data, tenant je nemá co upravovat — odchylka od dual-context
+`VatRate`, viz §11.2). Seed: standardní + hlavní snížená sazba 26 států (migrace `AddOssVatRate`, surové
+idempotentní SQL `ON CONFLICT (CountryCode, Rate, ValidFrom) DO NOTHING`, bez natvrdo zadaných Id; zdroj
+EK/TEDB k 2026-10-02, **ručně přepsáno — SysAdmin ať před prvním podáním ověří**; chybějící sazby
+(super-snížené, parking) se doplní přes `POST /api/oss-vat-rate`). `/api/oss-vat-rate` je v `MasterOnlyPaths`;
+čtení (`GET country/{cc}`) pro každého přihlášeného, zápis jen SysAdmin.
+`ValidateOssItemRatesAsync` při DUZP ověří, že každá položka má sazbu platnou pro cílovou zemi
+(`VatRateId` se u OSS položek zahazuje, `VatRegime` musí být Standard). UI (`InvoiceItemEditor`,
+parametr `OssCountryCode`) nabízí sazby cílové země; country preview dává `GET /api/invoice/oss-country`.
+MCP `create_invoice` při OSS nehledá CZ `VatRateId`, jen pošle `vatRatePercentage` a server ho ověří.
+
+**PDF:** u OSS faktury `PdfExportService.ReplacePlaceholders` označí sazby "DPH {země} x %" a přidá poznámku
+"Režim OSS".
+
+**Vyloučení z CZ DPH:** `VatReportService` filtruje `OssCountryCode == null` ve všech místech, kde čte vydané
+faktury (přehled, DPHDP3, DPHKH1) — OSS není české DPH.
+
+**Hlášení** (`GET /api/oss-report?year&quarter`, `/csv`; `OssReportService`): součet základu a DPH per
+(země, sazba) za čtvrtletí podle DUZP, dobropisy odečítají (`-Abs`), ne-EUR doklady se přepočtou kurzem **ECB
+posledního dne čtvrtletí** (`EcbExchangeRateClient`, `IHttpClientFactory`, `IMemoryCache`, při víkendu/svátku
+poslední předchozí fixing do 10 dní). Nedostupný kurz = `EcbRateUnavailableException` → HTTP 502
+`ECB_RATE_UNAVAILABLE` (nikdy tiché 1:1). Výstup JSON + CSV; XML neexistuje (pro OSS není v repu XSD).
+UI `/oss-report` (`OssReport.razor`), MCP `get_oss_report`, chat tool zatím ne.
+
+**Nastavení:** sekce `OssSettingsSection` na `/my-company` (jen plátce DPH, role Admin/SysAdmin; ukládá přes
+stejné `PUT api/company/{id}/settings` jako EPO — s týmž omezením, že endpoint je SysAdmin-only).
+
+**Známé limity:** nehlídá se roční limit 10 000 EUR (pod ním může mikropodnik uplatnit CZ DPH místo OSS) —
+registrace v OSS je dobrovolné rozhodnutí uživatele; `OssRegisteredSince` je jen informační (nehradluje detekci).
 
 ---
 
@@ -3105,6 +3152,9 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 ```
 
 ### 11.2 "Přidávám nový code-table"
+
+> Třetí varianta vedle Master/Tenant/dual-context: **jen Master bez tenant kopie** — statutární data, která tenant
+> neupravuje (vzor `OssVatRate`, §4.15). Cesta jde do `MasterOnlyPaths`, čtení pro každého uživatele, zápis SysAdmin.
 
 ```
 1. Master nebo tenant?
