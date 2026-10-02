@@ -8,6 +8,7 @@ using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -140,6 +141,9 @@ public class WebhookTests : IDisposable
     [InlineData("ff02::1", true)]           // multicast
     [InlineData("::ffff:127.0.0.1", true)]  // IPv4-mapped loopback
     [InlineData("::ffff:10.0.0.1", true)]
+    [InlineData("64:ff9b::7f00:1", true)]   // NAT64 embedding 127.0.0.1
+    [InlineData("2002:7f00:1::1", true)]    // 6to4
+    [InlineData("2001:0:4136:e378:8000:63bf:3fff:fdd2", true)] // Teredo
     [InlineData("8.8.8.8", false)]
     [InlineData("93.184.216.34", false)]
     [InlineData("2606:4700:4700::1111", false)]
@@ -174,6 +178,91 @@ public class WebhookTests : IDisposable
 
         var ex = await Should.ThrowAsync<HttpRequestException>(() => client.GetAsync("http://127.0.0.1:9/"));
         ex.InnerException.ShouldBeOfType<InvalidOperationException>();
+    }
+
+    // ─── Publisher: save:false + failure handling ─────────────────────────
+
+    [Fact]
+    public async Task Publish_SaveFalse_OnlyAddsRows_CallerSaveCommitsThem()
+    {
+        AddSubscription(_context, WebhookEventCatalog.InvoicePaid);
+        var invoice = await _context.Invoice.FirstAsync();
+        invoice.Status = EInvoiceStatus.Paid; // unsaved change must be visible in the payload
+
+        await Publisher(_context).PublishInvoiceEventAsync(WebhookEventCatalog.InvoicePaid, invoice, save: false);
+
+        _context.ChangeTracker.Entries<WebhookDelivery>().Count(e => e.State == EntityState.Added).ShouldBe(1);
+        (await NewReaderCount()).ShouldBe(0);
+
+        await _context.SaveChangesAsync();
+        var delivery = await _context.WebhookDelivery.SingleAsync();
+        delivery.PayloadJson.ShouldContain("\"status\":\"Paid\"");
+    }
+
+    private Task<int> NewReaderCount() => _context.WebhookDelivery.AsNoTracking().CountAsync();
+
+    [Fact]
+    public async Task Publish_WhenSaveFails_DetachesRows_SoCallersNextSaveIsNotPoisoned()
+    {
+        var options = new DbContextOptionsBuilder<TenantDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        using var ctx = new ThrowingContext(options) { Schema = "tenant_42" };
+        AddSubscription(ctx, WebhookEventCatalog.InvoicePaid);
+        ctx.FailSaves = true;
+
+        await Should.NotThrowAsync(() => Publisher(ctx).PublishAsync("invoice.paid", new { }));
+
+        ctx.ChangeTracker.Entries<WebhookDelivery>().ShouldBeEmpty();
+        ctx.FailSaves = false;
+        await ctx.SaveChangesAsync(); // would re-insert the orphan row if it were still tracked
+        (await ctx.WebhookDelivery.CountAsync()).ShouldBe(0);
+    }
+
+    private sealed class ThrowingContext(DbContextOptions<TenantDbContext> o) : TenantDbContext(o)
+    {
+        public bool FailSaves { get; set; }
+
+        public override Task<int> SaveChangesAsync(CancellationToken ct = default)
+            => FailSaves ? throw new DbUpdateException("boom") : base.SaveChangesAsync(ct);
+    }
+
+    // ─── Worker sets the schema on the scoped context ─────────────────────
+
+    [Fact]
+    public async Task Worker_SetsSchemaOnScopedTenantContext_BeforeDispatch()
+    {
+        string? seenSchema = null;
+        var dispatch = Substitute.For<IWebhookDispatchService>();
+        dispatch.RunCycleAsync(Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddLogging();
+        var masterDb = Guid.NewGuid().ToString();
+        services.AddDbContext<MasterDbContext>(o => o.UseInMemoryDatabase(masterDb));
+        services.AddDbContext<TenantDbContext>(o => o.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+        // Factory returns a NEW context (like the real one) and does not touch the scoped one.
+        services.AddScoped<ITenantDbContextFactory>(_ => Substitute.For<ITenantDbContextFactory>());
+        services.AddScoped<IWebhookDispatchService>(sp =>
+        {
+            var d = Substitute.For<IWebhookDispatchService>();
+            d.RunCycleAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                seenSchema = sp.GetRequiredService<TenantDbContext>().Schema;
+                return Task.CompletedTask;
+            });
+            return d;
+        });
+        using var provider = services.BuildServiceProvider();
+        using (var seed = provider.CreateScope())
+        {
+            var master = seed.ServiceProvider.GetRequiredService<MasterDbContext>();
+            master.CompanySystemSettings.Add(new CompanySystemSettings { CompanyId = 7, SchemaName = "tenant_7", IsProvisioned = true, IsActive = true });
+            await master.SaveChangesAsync();
+        }
+
+        await new WebhookWorker(provider.GetRequiredService<IServiceScopeFactory>(), Substitute.For<ILogger<WebhookWorker>>())
+            .RunOnceAsync(CancellationToken.None);
+
+        seenSchema.ShouldBe("tenant_7");
     }
 
     // ─── Subscription service ─────────────────────────────────────────────

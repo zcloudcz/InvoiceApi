@@ -62,6 +62,8 @@ public class WebhookDispatchService : IWebhookDispatchService
             .Take(100) // Bound the cycle — a huge backlog is spread across several ticks rather than blocking one.
             .ToListAsync(ct);
 
+        // ponytail: deliveries are sent serially (<= 100 per tenant per cycle, 10 s timeout each), so a
+        // tenant with many slow endpoints can lag; add bounded parallelism per subscription if needed.
         foreach (var delivery in due)
         {
             ct.ThrowIfCancellationRequested();
@@ -126,7 +128,7 @@ public class WebhookDispatchService : IWebhookDispatchService
         {
             // Includes timeouts, connection refused, TLS failures, and SSRF rejections raised by
             // WebhookUrlGuard.ConnectCallback — all are just "delivery failed", retried the same way.
-            ScheduleRetryOrFail(delivery, ex.Message);
+            ScheduleRetryOrFail(delivery, ex.GetBaseException().Message);
         }
 
         await _context.SaveChangesAsync(ct);

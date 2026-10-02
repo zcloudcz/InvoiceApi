@@ -75,7 +75,8 @@ public class WebhookSubscriptionService : IWebhookSubscriptionService
         _context.WebhookSubscription.Add(entity);
         await _context.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Created webhook subscription {Id} for {Url}", entity.Id, entity.Url);
+        // Log only the host: URLs may carry secrets in path/query.
+        _logger.LogInformation("Created webhook subscription {Id} for host {Host}", entity.Id, uri.Host);
 
         return new WebhookSubscriptionCreatedDto { Subscription = MapToDto(entity), Secret = secret };
     }
@@ -129,6 +130,7 @@ public class WebhookSubscriptionService : IWebhookSubscriptionService
             id = Guid.NewGuid(),
             type = WebhookEventCatalog.Ping,
             createdAt = DateTimeOffset.UtcNow,
+            companyId = long.TryParse(_context.Schema?.Replace("tenant_", ""), out var cid) ? cid : (long?)null,
             data = new { message = "This is a test event from Fakvio." },
         };
         var body = JsonSerializer.Serialize(payload);
@@ -148,7 +150,8 @@ public class WebhookSubscriptionService : IWebhookSubscriptionService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Webhook test failed for subscription {Id}", id);
-            return new WebhookTestResultDto { Success = false, Error = ex.Message };
+            // Base exception carries the useful reason (e.g. our SSRF refusal), the outer HttpRequestException is generic.
+            return new WebhookTestResultDto { Success = false, Error = ex.GetBaseException().Message };
         }
     }
 

@@ -208,6 +208,9 @@ public static class ServiceCollectionExtensions
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
                 AllowAutoRedirect = false,
+                // A proxy (HTTP_PROXY env vars) would make the PROXY resolve/connect, bypassing
+                // ConnectCallback and its IP validation entirely — never use one.
+                UseProxy = false,
                 ConnectCallback = WebhookUrlGuard.ConnectCallback,
                 PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             });

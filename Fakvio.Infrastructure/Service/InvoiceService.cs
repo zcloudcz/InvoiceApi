@@ -801,10 +801,12 @@ public class InvoiceService : IInvoiceService
         invoice.Status = EInvoiceStatus.Paid;
         invoice.PaidAt = paidAt ?? DateTime.UtcNow;
 
-        await _context.SaveChangesAsync(cancellationToken);
-
+        // Outbox row is added to the same context (save: false) so it commits atomically
+        // with the status change below.
         if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
-            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoicePaid, invoice.Id, cancellationToken);
+            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoicePaid, invoice, save: false, cancellationToken);
+
+        await _context.SaveChangesAsync(cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
     }
@@ -851,14 +853,14 @@ public class InvoiceService : IInvoiceService
         // but clearing the number explicitly prevents any edge cases and makes it
         // obvious in the DB that the number is no longer in use.
         invoice.Status = EInvoiceStatus.Deleted;
+
+        // "invoice.cancelled" — published BEFORE the number is cleared so the payload still
+        // carries it, and with save: false so the outbox row commits atomically with the delete.
+        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
+            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceCancelled, invoice, save: false, cancellationToken);
+
         invoice.DocumentNumber = null;
         await _context.SaveChangesAsync(cancellationToken);
-
-        // "invoice.cancelled" — fired after the soft delete, so Number is already cleared in the
-        // payload (ponytail: minor — the event id/type/clientName/total still identify the
-        // invoice; add a captured-before-clear Number if a subscriber ever needs it).
-        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
-            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceCancelled, invoice.Id, cancellationToken);
 
         return true;
     }

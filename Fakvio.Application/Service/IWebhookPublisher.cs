@@ -21,7 +21,22 @@ public interface IWebhookPublisher
     /// subscriptions or none match. <paramref name="data"/> is serialized as-is into the
     /// payload's "data" field.
     /// </summary>
-    Task PublishAsync(string eventType, object data, CancellationToken ct = default);
+    /// <param name="save">
+    /// true (default): saves the outbox rows immediately. false: only ADDS them to the current
+    /// DbContext so the caller's own SaveChanges commits them atomically with the business change
+    /// (preferred wherever the entity is already loaded and mutated before the save).
+    /// </param>
+    Task PublishAsync(string eventType, object data, CancellationToken ct = default, bool save = true);
+
+    /// <summary>
+    /// Publishes an invoice event from an already loaded (tracked, possibly not yet saved) entity,
+    /// so the payload reflects the in-memory state. Use with <c>save: false</c> right before the
+    /// business SaveChanges to get an atomic outbox write.
+    /// </summary>
+    Task PublishInvoiceEventAsync(string eventType, Domain.Entities.Invoice invoice, bool save, CancellationToken ct = default);
+
+    /// <summary>Entity-based variant of <see cref="PublishPaymentReceivedAsync(long, decimal, DateTime, CancellationToken)"/>; see <see cref="PublishInvoiceEventAsync(string, Domain.Entities.Invoice, bool, CancellationToken)"/>.</summary>
+    Task PublishPaymentReceivedAsync(Domain.Entities.Invoice invoice, decimal amount, DateTime matchedAt, bool save, CancellationToken ct = default);
 
     /// <summary>
     /// Convenience wrapper for invoice-related events: loads the invoice (with Client/Currency)

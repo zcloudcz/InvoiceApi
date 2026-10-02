@@ -97,6 +97,11 @@ public static class WebhookUrlGuard
         {
             var b = address.GetAddressBytes();
             if ((b[0] & 0xFE) == 0xFC) return true; // fc00::/7 — unique local address (ULA)
+            // IPv6 transition ranges that embed an arbitrary IPv4 address (could tunnel to an
+            // internal host): NAT64 64:ff9b::/96, 6to4 2002::/16, Teredo 2001:0000::/32.
+            if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b) return true;
+            if (b[0] == 0x20 && b[1] == 0x02) return true;
+            if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0 && b[3] == 0) return true;
             // IPv4-mapped IPv6 (::ffff:a.b.c.d) must be checked as its IPv4 form too.
             if (address.IsIPv4MappedToIPv6 && IsBlockedAddress(address.MapToIPv4())) return true;
         }

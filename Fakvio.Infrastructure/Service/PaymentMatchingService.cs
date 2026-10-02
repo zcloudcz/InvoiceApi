@@ -35,7 +35,7 @@ public class PaymentMatchingService : IPaymentMatchingService
     private readonly IWebhookPublisher? _webhookPublisher;
 
     /// <summary>Payments applied during auto-matching, published as webhooks after the SaveChanges commits them.</summary>
-    private readonly List<(long InvoiceId, decimal Amount, DateTime At, bool BecamePaid)> _pendingPaymentEvents = new();
+    private readonly List<(Invoice Invoice, decimal Amount, DateTime At, bool BecamePaid)> _pendingPaymentEvents = new();
 
     /// <summary>How many days before/after the due date we accept for account-based fallback.</summary>
     private const int AccountMatchWindowDays = 7;
@@ -53,15 +53,16 @@ public class PaymentMatchingService : IPaymentMatchingService
     }
 
     /// <summary>
-    /// Publishes "payment.received" (and "invoice.paid" when the payment completed the invoice)
-    /// for an incoming payment already committed to the DB. Never throws (see IWebhookPublisher).
+    /// Adds "payment.received" (and "invoice.paid" when the payment completed the invoice) to the
+    /// outbox WITHOUT saving — call right before the business SaveChanges so the events commit
+    /// atomically with the match. Never throws (see IWebhookPublisher).
     /// </summary>
-    private async Task PublishPaymentAsync(long invoiceId, decimal amount, DateTime at, bool becamePaid, CancellationToken ct)
+    private async Task PublishPaymentAsync(Invoice invoice, decimal amount, DateTime at, bool becamePaid, CancellationToken ct)
     {
         if (_webhookPublisher == null) return;
-        await _webhookPublisher.PublishPaymentReceivedAsync(invoiceId, amount, at, ct);
+        await _webhookPublisher.PublishPaymentReceivedAsync(invoice, amount, at, save: false, ct);
         if (becamePaid)
-            await _webhookPublisher.PublishInvoiceEventAsync(Contracts.Dto.Webhook.WebhookEventCatalog.InvoicePaid, invoiceId, ct);
+            await _webhookPublisher.PublishInvoiceEventAsync(Contracts.Dto.Webhook.WebhookEventCatalog.InvoicePaid, invoice, save: false, ct);
     }
 
     /// <inheritdoc />
@@ -95,11 +96,11 @@ public class PaymentMatchingService : IPaymentMatchingService
             await MatchOutgoingAsync(tx, ct);
         }
 
-        await _context.SaveChangesAsync(ct);
-
         foreach (var e in _pendingPaymentEvents)
-            await PublishPaymentAsync(e.InvoiceId, e.Amount, e.At, e.BecamePaid, ct);
+            await PublishPaymentAsync(e.Invoice, e.Amount, e.At, e.BecamePaid, ct);
         _pendingPaymentEvents.Clear();
+
+        await _context.SaveChangesAsync(ct);
     }
 
     /// <inheritdoc />
@@ -149,8 +150,8 @@ public class PaymentMatchingService : IPaymentMatchingService
         RecalculateInvoice(invoice, delta: matchedAmount, tx.TransactionDate);
         RecalculateTransactionStatus(tx, alreadyAssigned + matchedAmount);
 
+        await PublishPaymentAsync(invoice, matchedAmount, match.MatchedAt, !wasPaid && invoice.Status == EInvoiceStatus.Paid, ct);
         await _context.SaveChangesAsync(ct);
-        await PublishPaymentAsync(invoice.Id, matchedAmount, match.MatchedAt, !wasPaid && invoice.Status == EInvoiceStatus.Paid, ct);
 
         _logger.LogInformation(
             "Manual match: Tx={TxId} → Invoice={InvoiceId} Amount={Amount} User={UserId}",
@@ -683,8 +684,8 @@ public class PaymentMatchingService : IPaymentMatchingService
             RecalculateInvoice(invoice, delta: matched, tx.TransactionDate);
             RecalculateTransactionStatus(tx, alreadyAssigned + matched);
 
+            await PublishPaymentAsync(invoice, matched, match.MatchedAt, !wasPaid && invoice.Status == EInvoiceStatus.Paid, ct);
             await _context.SaveChangesAsync(ct);
-            await PublishPaymentAsync(invoice.Id, matched, match.MatchedAt, !wasPaid && invoice.Status == EInvoiceStatus.Paid, ct);
 
             _logger.LogInformation(
                 "ConfirmAutoMatch: Tx={TxId} → Invoice={InvoiceId} Amount={Amount} User={UserId}",
@@ -915,7 +916,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         var wasPaid = invoice.Status == EInvoiceStatus.Paid;
         RecalculateInvoice(invoice, delta: matched, tx.TransactionDate);
         RecalculateTransactionStatus(tx, matched);
-        _pendingPaymentEvents.Add((invoice.Id, matched, DateTime.UtcNow, !wasPaid && invoice.Status == EInvoiceStatus.Paid));
+        _pendingPaymentEvents.Add((invoice, matched, DateTime.UtcNow, !wasPaid && invoice.Status == EInvoiceStatus.Paid));
 
         _logger.LogInformation(
             "Auto match: Tx={TxId} VS={VS} Amount={Amount} → Invoice={InvoiceId}",

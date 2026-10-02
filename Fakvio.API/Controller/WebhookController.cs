@@ -125,8 +125,9 @@ public class WebhookController : ControllerBase
     /// <summary>Last 200 deliveries of a subscription (newest first).</summary>
     [HttpGet("{id:long}/deliveries")]
     [ProducesResponseType(typeof(List<WebhookDeliveryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<List<WebhookDeliveryDto>>> GetDeliveries(long id, CancellationToken ct)
-        => Ok(await _service.GetDeliveriesAsync(id, ct));
+        => await _service.GetByIdAsync(id, ct) == null ? NotFound() : Ok(await _service.GetDeliveriesAsync(id, ct));
 
     /// <summary>Resets a delivery to Pending so the dispatcher sends it again (same event id).</summary>
     [HttpPost("deliveries/{deliveryId:long}/redeliver")]

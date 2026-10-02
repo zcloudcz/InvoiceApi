@@ -80,6 +80,13 @@ public class WebhookEndpointTests : IClassFixture<FakvioFactory>
         rotated.Secret.ShouldNotBe(created.Secret);
     }
 
+    [Fact]
+    public async Task Deliveries_ForUnknownSubscription_Returns404()
+    {
+        var client = await AdminClientAsync();
+        (await client.GetAsync("/api/webhooks/999999/deliveries")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     [Theory]
     [InlineData("http://hooks.example.com/x")]
     [InlineData("not a url")]
@@ -107,6 +114,7 @@ public class WebhookEndpointTests : IClassFixture<FakvioFactory>
             .Content.ReadFromJsonAsync<WebhookTestResultDto>())!;
 
         result.Success.ShouldBeFalse();
-        result.Error.ShouldNotBeNullOrEmpty();
+        // The refusal must come from the SSRF guard, not from a generic connection failure.
+        result.Error.ShouldNotBeNull().ShouldContain("blocked");
     }
 }

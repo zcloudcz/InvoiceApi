@@ -27,7 +27,7 @@ public class WebhookPublisher : IWebhookPublisher
     }
 
     /// <inheritdoc />
-    public async Task PublishAsync(string eventType, object data, CancellationToken ct = default)
+    public async Task PublishAsync(string eventType, object data, CancellationToken ct = default, bool save = true)
     {
         try
         {
@@ -74,7 +74,8 @@ public class WebhookPublisher : IWebhookPublisher
                 });
             }
 
-            await _context.SaveChangesAsync(ct);
+            if (save)
+                await _context.SaveChangesAsync(ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -82,6 +83,16 @@ public class WebhookPublisher : IWebhookPublisher
         }
         catch (Exception ex)
         {
+            // Detach the outbox rows we added: left in the change tracker, they would be retried
+            // (and fail again) by the caller's NEXT SaveChanges and poison the business operation.
+            try
+            {
+                foreach (var entry in _context.ChangeTracker.Entries<WebhookDelivery>()
+                             .Where(e => e.State == EntityState.Added).ToList())
+                    entry.State = EntityState.Detached;
+            }
+            catch (ObjectDisposedException) { /* context already gone - nothing to clean */ }
+
             // A webhook enqueue failure must never break the business operation that triggered
             // it (invoice creation/payment/etc. already succeeded) — log and move on.
             _logger.LogError(ex, "WebhookPublisher: failed to enqueue event {EventType}", eventType);
@@ -96,6 +107,61 @@ public class WebhookPublisher : IWebhookPublisher
             return;
 
         await PublishAsync(eventType, summary, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task PublishInvoiceEventAsync(string eventType, Invoice invoice, bool save, CancellationToken ct = default)
+    {
+        try
+        {
+            await PublishAsync(eventType, await ToSummaryAsync(invoice, ct), ct, save);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WebhookPublisher: failed to build payload for {EventType}", eventType);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task PublishPaymentReceivedAsync(Invoice invoice, decimal amount, DateTime matchedAt, bool save, CancellationToken ct = default)
+    {
+        try
+        {
+            var summary = await ToSummaryAsync(invoice, ct);
+            await PublishAsync(WebhookEventCatalog.PaymentReceived, new { invoice = summary, amount, matchedAt }, ct, save);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WebhookPublisher: failed to build payment payload");
+        }
+    }
+
+    /// <summary>
+    /// Summary from the in-memory entity (status/paid date may be unsaved); client and currency
+    /// names are looked up by id because the entity's navigations are not always loaded.
+    /// </summary>
+    private async Task<WebhookDocumentSummaryDto> ToSummaryAsync(Invoice invoice, CancellationToken ct)
+    {
+        var client = await _context.Client.AsNoTracking().Where(c => c.Id == invoice.ClientId)
+            .Select(c => new { c.CompanyName, c.RegistrationNumber }).FirstOrDefaultAsync(ct);
+        var currency = await _context.Currency.AsNoTracking().Where(c => c.Id == invoice.CurrencyId)
+            .Select(c => c.Code).FirstOrDefaultAsync(ct);
+
+        return new WebhookDocumentSummaryDto
+        {
+            Id = invoice.Id,
+            Number = invoice.DocumentNumber,
+            Type = invoice.DocumentType.ToString(),
+            Status = invoice.Status.ToString(),
+            ClientName = client?.CompanyName ?? string.Empty,
+            ClientIco = client?.RegistrationNumber,
+            Total = invoice.TotalWithVat,
+            Currency = currency ?? string.Empty,
+            DueDate = invoice.DueDate,
+            PaidAt = invoice.PaidAt,
+        };
     }
 
     /// <inheritdoc />
