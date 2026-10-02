@@ -79,12 +79,13 @@ public class EpoReverseChargeAndSummaryTests : IDisposable
 
     /// <summary>Issued invoice with one item; regime/code default to a plain standard item.</summary>
     private void Issued(string number, decimal baseAmount, long clientId = CzCustomerId,
-        EVatRegime regime = EVatRegime.Standard, decimal vatPct = 21m, string? ossCountry = null)
+        EVatRegime regime = EVatRegime.Standard, decimal vatPct = 21m, string? ossCountry = null,
+        EDocumentType docType = EDocumentType.Invoice)
     {
         var vat = regime == EVatRegime.Standard ? Math.Round(baseAmount * vatPct / 100m, 2) : 0m;
         _context.Invoice.Add(new Invoice
         {
-            DocumentType = EDocumentType.Invoice, Status = EInvoiceStatus.Completed, DocumentNumber = number, OssCountryCode = ossCountry,
+            DocumentType = docType, Status = EInvoiceStatus.Completed, DocumentNumber = number, OssCountryCode = ossCountry,
             IssueDate = Duzp, TaxableSupplyDate = Duzp, DueDate = Duzp.AddDays(14),
             ClientId = clientId, IssuerId = IssuerId, Issuer = _context.Client.Find(IssuerId)!, CurrencyId = 1,
             TotalBeforeVat = baseAmount, TotalVat = vat, TotalWithVat = baseAmount + vat,
@@ -218,6 +219,20 @@ public class EpoReverseChargeAndSummaryTests : IDisposable
     }
 
     // ── DPHKH1 ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ReverseChargeCreditNote_IsNegativeInRow25AndA1UnderItsOwnNumber()
+    {
+        Issued("INV-RC", 50_000m, regime: EVatRegime.ReverseCharge);
+        Issued("CN-RC", 20_000m, regime: EVatRegime.ReverseCharge, docType: EDocumentType.CreditNote); // stored positive
+
+        (await Return()).Descendants("Veta2").Single().Attribute("pln_rez_pren")!.Value.ShouldBe("30000");
+
+        var a1 = (await Control()).Descendants("VetaA1").ToList();
+        a1.Count.ShouldBe(2);
+        a1.Single(r => r.Attribute("c_evid_dd")!.Value == "CN-RC").Attribute("zakl_dane1")!.Value.ShouldBe("-20000.00");
+        a1.Single(r => r.Attribute("c_evid_dd")!.Value == "INV-RC").Attribute("zakl_dane1")!.Value.ShouldBe("50000.00");
+    }
 
     [Fact]
     public async Task Dphkh1_IssuedReverseCharge_ProducesA1RowWithCode_AndAggregatesSameDocCode()
