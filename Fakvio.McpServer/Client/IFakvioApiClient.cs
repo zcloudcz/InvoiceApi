@@ -103,6 +103,15 @@ public interface IFakvioApiClient
     /// </summary>
     Task<byte[]> ExportInvoiceUblAsync(long id, CancellationToken ct = default);
 
+    /// <summary>
+    /// POST /api/accounting-export/{system} — "Export do účetnictví". Generates one XML file
+    /// with issued and/or received invoices for a date range, formatted for Pohoda/MoneyS3/AbraFlexi.
+    /// </summary>
+    Task<(byte[] Content, int SkippedCount)> ExportAccountingAsync(
+        Fakvio.Domain.Enums.EAccountingSystem system,
+        DateTime from, DateTime to, bool includeIssued, bool includeReceived,
+        CancellationToken ct = default);
+
     // ── Client endpoints ───────────────────────────────────────────────
 
     /// <summary>GET /api/client/paged — paginated client list with filters.</summary>

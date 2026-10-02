@@ -70,6 +70,13 @@
     </None>
   </ItemGroup>
 
+  <!-- Vendor schemas for AccountingExporterTests (see Schemas/README.md). -->
+  <ItemGroup>
+    <None Update="Schemas\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Fakvio.Domain\Fakvio.Domain.csproj" />
     <ProjectReference Include="..\Fakvio.Application\Fakvio.Application.csproj" />
