@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+
 namespace Fakvio.Infrastructure.Data;
 
 /// <summary>
@@ -17,7 +20,7 @@ namespace Fakvio.Infrastructure.Data;
 /// instead of re-deriving the fix per entity.
 ///
 /// <c>Unspecified</c> is treated as UTC rather than converted, matching
-/// <c>MasterDbContext.NormalizeDateTimesToUtc</c>, which stamps every stored DateTime as UTC
+/// <c>PostgresDateTime.UtcOnWrite</c>, which stamps every stored DateTime as UTC
 /// without shifting it.
 /// </summary>
 public static class PostgresDateTime
@@ -31,4 +34,21 @@ public static class PostgresDateTime
 
     /// <summary>Convenience overload for the many nullable <c>ExpiresAt</c>/<c>ConsumedAt</c>/<c>RevokedAt</c> columns.</summary>
     public static DateTime? ToUtc(DateTime? value) => value.HasValue ? ToUtc(value.Value) : null;
+
+    /// <summary>
+    /// Registers a write-side converter for every DateTime / DateTime? property of a context
+    /// (call from <c>ConfigureConventions</c>). Npgsql 10 rejects non-UTC values for
+    /// "timestamp with time zone", and Blazor date pickers send <c>Unspecified</c>. A SaveChanges
+    /// hook cannot fix that (EF compares DateTime ignoring Kind, so assigning the same instant
+    /// with a different Kind is a no-op) — a converter runs on every parameter, always.
+    /// The converter is not part of the migration model, so it creates no migration.
+    /// Reads are left as-is (see <see cref="ToUtc(DateTime)"/> for read-side normalization).
+    /// </summary>
+    public static void UtcOnWrite(ModelConfigurationBuilder builder) =>
+        builder.Properties<DateTime>().HaveConversion<UtcWriteConverter>();
+
+    private sealed class UtcWriteConverter : ValueConverter<DateTime, DateTime>
+    {
+        public UtcWriteConverter() : base(v => ToUtc(v), v => v) { }
+    }
 }
