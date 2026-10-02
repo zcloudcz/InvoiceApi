@@ -332,7 +332,10 @@ internal static class IsdocMapper
         decimal unitPrice, decimal vatRate, string description,
         string? reverseChargeCode = null, decimal reverseChargeQuantity = 0)
     {
-        var unitPriceTaxInclusive = unitPrice * (1 + vatRate / 100m);
+        // Reverse charge lines bill no VAT, so the tax-inclusive unit price equals the net one.
+        var unitPriceTaxInclusive = string.IsNullOrWhiteSpace(reverseChargeCode)
+            ? unitPrice * (1 + vatRate / 100m)
+            : unitPrice;
 
         var taxCategory = new XElement(Ns + "ClassifiedTaxCategory",
             new XElement(Ns + "Percent", FormatDecimal(vatRate)),

@@ -402,7 +402,7 @@ public class CreateInvoiceTool : IChatTool
                 var vatRegime = EVatRegime.Standard;
                 var vatRegimeRaw = GetJsonString(element, "vat_regime");
                 if (!string.IsNullOrWhiteSpace(vatRegimeRaw) &&
-                    !Enum.TryParse(vatRegimeRaw, ignoreCase: true, out vatRegime))
+                    (!Enum.TryParse(vatRegimeRaw, ignoreCase: true, out vatRegime) || !Enum.IsDefined(vatRegime)))
                 {
                     return new ItemParseResult
                     {

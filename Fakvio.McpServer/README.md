@@ -49,7 +49,9 @@ export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace
 proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
 žádné volání ze 2.2.0 se neláme.
 
-**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 69 nástrojů (po tomto vydání 70 s list_reverse_charge_codes). Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
+**2.6.0 (dosud nevydaná)** přidává dva nástroje pro správu jednotlivých členství: `list_user_company_memberships` a `update_user_company_membership`. Celkem je dostupných 69 nástrojů. Oba nové nástroje vyžadují SysAdmina; změna role či aktivity navíc scope zápisu. Nemění ostatní členství, výchozí firmu ani granty klíčů/OAuth a zneplatní čekající pozvánky pro upravované členství.
+
+**2.6.0 (dosud nevydaná, přenesená daňová povinnost)** přidává nástroj `list_reverse_charge_codes` (číselník kódů PDP, §92a–92e ZDPH) a volitelná pole `vatRegime` + `reverseChargeCodeId` (pole `id` z toho číselníku) u položek `create_invoice`. S tím je dostupných 70 nástrojů. Zpětně kompatibilní.
 
 ---
 

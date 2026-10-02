@@ -276,11 +276,10 @@
         }
 
         var codeIds = billable.Select(i => i.VatRegime == EVatRegime.ReverseCharge ? i.ReverseChargeCodeId : null).ToList();
-        if (billable.All(i => i.VatRegime == EVatRegime.ReverseCharge) && codeIds.Distinct().Count() == 1)
-        {
-            _reverseChargeToggleOn = true;
-            _bulkReverseChargeCodeId = codeIds[0];
-        }
+        var allSame = billable.All(i => i.VatRegime == EVatRegime.ReverseCharge) && codeIds.Distinct().Count() == 1;
+        // Also switches the toggle OFF when a per-row change broke the "all items share one code" state.
+        _reverseChargeToggleOn = allSame;
+        _bulkReverseChargeCodeId = allSame ? codeIds[0] : null;
     }
 
     /// <summary>
@@ -479,6 +478,7 @@
     /// </summary>
     private void NotifyChanged()
     {
+        if (_isVatPayer) SyncReverseChargeToggleFromItems();
         ItemsChanged.InvokeAsync(Items);
     }
 

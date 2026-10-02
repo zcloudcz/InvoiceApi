@@ -64,12 +64,12 @@ public static class CodeListTools
 
     /// <summary>
     /// Lists reverse charge codes (kódy předmětu plnění PDP, §92a-92e ZDPH) — the AI client needs
-    /// one of these codes (the "code" field, e.g. "4") when creating an invoice item with
+    /// one of these codes (its "id" field, passed as reverseChargeCodeId) when creating an invoice item with
     /// vatRegime "ReverseCharge" via create_invoice.
     /// </summary>
     [McpServerTool(Title = "List reverse charge codes", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "List active reverse charge codes (kódy předmětu plnění PDP, §92a-92e ZDPH). " +
-        "Use the 'code' field as reverseChargeCode when creating an invoice item with vatRegime 'ReverseCharge'.")]
+        "Pass the 'id' field as reverseChargeCodeId when creating an invoice item with vatRegime 'ReverseCharge' (the 'code' like '4' is only the human-readable label).")]
     public static async Task<string> ListReverseChargeCodes(
         IFakvioApiClient api,
         CancellationToken ct = default)

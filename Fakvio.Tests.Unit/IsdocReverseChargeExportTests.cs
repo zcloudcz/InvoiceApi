@@ -102,6 +102,8 @@ public class IsdocReverseChargeExportTests
 
         // The LineExtensionTaxAmount must be 0 — the item bills no VAT.
         rcLine.Element(Ns + "LineExtensionTaxAmount")!.Value.ShouldBe("0.00");
+        // No VAT is billed, so the tax-inclusive unit price equals the net one.
+        rcLine.Element(Ns + "UnitPriceTaxInclusive")!.Value.ShouldBe(rcLine.Element(Ns + "UnitPrice")!.Value);
     }
 
     [Fact]

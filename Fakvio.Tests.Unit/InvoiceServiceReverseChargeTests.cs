@@ -317,6 +317,22 @@ public class InvoiceServiceReverseChargeTests : IDisposable
         ex.Message.ShouldContain("Standard");
     }
 
+    /// <summary>An undefined numeric VatRegime (e.g. from a JSON client) is rejected up front.</summary>
+    [Fact]
+    public async Task CreateInvoice_UndefinedVatRegime_ThrowsValidationError()
+    {
+        var dto = BuildInvoiceHeader();
+        dto.InvoiceItem = new List<CreateInvoiceItemDto>
+        {
+            new() { OrderIndex = 1, Description = "Bad", Quantity = 1, Unit = "pcs", UnitPrice = 1,
+                    VatRateId = VatRate21Id, VatRegime = (EVatRegime)7 }
+        };
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateInvoiceAsync(dto));
+
+        ex.Message.ShouldContain("VatRegime");
+    }
+
     // ─── Exempt and OutOfScope items ─────────────────────────────────────────
 
     /// <summary>

@@ -1624,6 +1624,12 @@ public class InvoiceService : IInvoiceService
     {
         foreach (var item in items.Where(i => !i.IsTextRow))
         {
+            // JSON clients (MCP/API) can send an undefined numeric enum value; reject it up front
+            // instead of failing later in CalculateItemVat.
+            if (!Enum.IsDefined(item.VatRegime))
+                throw new InvalidOperationException(
+                    $"Invoice item '{item.Description}' has an invalid VatRegime value '{(int)item.VatRegime}'.");
+
             if (item.VatRegime == EVatRegime.ReverseCharge && !item.ReverseChargeCodeId.HasValue)
                 throw new InvalidOperationException(
                     $"Invoice item '{item.Description}' has VatRegime=ReverseCharge but no ReverseChargeCodeId. " +

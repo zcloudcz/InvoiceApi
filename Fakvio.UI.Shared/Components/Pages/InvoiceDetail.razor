@@ -1234,19 +1234,7 @@ else
                 NumberSequenceId = template.NumberSequenceId,
                 // Copy invoice items from template
                 // Copy invoice items from template — preserve IsTextRow for text-only rows
-                InvoiceItem = template.InvoiceItem.Select(item => new CreateInvoiceItemDto
-                {
-                    OrderIndex = item.OrderIndex,
-                    IsTextRow = item.IsTextRow,
-                    Description = item.Description,
-                    Quantity = item.Quantity,
-                    Unit = item.Unit,
-                    UnitPrice = item.UnitPrice,
-                    VatRateId = item.VatRateId,
-                    VatRatePercentage = item.VatRatePercentage,
-                    ProductCode = item.ProductCode,
-                    Notes = item.Notes
-                }).ToList()
+                InvoiceItem = template.InvoiceItem.Select(Fakvio.UI.Shared.Models.InvoiceItemEditMapper.ToEditDto).ToList()
             };
 
             // If client is selected, auto-fill billing params from client settings too
@@ -1664,19 +1652,7 @@ else
         // Copy items for editing
         // Map existing items to editable DTOs — IsTextRow must be preserved
         // so the InvoiceItemEditor renders text rows correctly (italic, colspan).
-        _editItems = _invoice.InvoiceItem.Select(i => new CreateInvoiceItemDto
-        {
-            OrderIndex = i.OrderIndex,
-            IsTextRow = i.IsTextRow,
-            Description = i.Description,
-            Quantity = i.Quantity,
-            Unit = i.Unit,
-            UnitPrice = i.UnitPrice,
-            VatRateId = i.VatRateId,
-            VatRatePercentage = i.VatRatePercentage,
-            ProductCode = i.ProductCode,
-            Notes = i.Notes
-        }).ToList();
+        _editItems = _invoice.InvoiceItem.Select(Fakvio.UI.Shared.Models.InvoiceItemEditMapper.ToEditDto).ToList();
 
         _isEditing = true;
         _isDirty = true; // Entering edit mode means the user intends to change something

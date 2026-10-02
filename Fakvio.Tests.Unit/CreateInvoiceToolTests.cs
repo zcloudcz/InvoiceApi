@@ -724,4 +724,41 @@ public class CreateInvoiceToolTests
             Arg.Is<CreateInvoiceDto>(dto => dto.Notes == "Urgent delivery requested"),
             Arg.Any<CancellationToken>());
     }
+
+    // ─── Reverse charge item parsing ────────────────────────────────────
+
+    private Task<ChatToolResult> RunWithItems(string itemsJson) =>
+        _tool.ExecuteAsync(new Dictionary<string, string> { ["client_name"] = "Alza", ["items"] = itemsJson });
+
+    [Fact]
+    public async Task CreateInvoice_ReverseChargeWithKnownCode_SetsCodeId()
+    {
+        _reverseChargeCodeService.GetByCodeAsync("4", Arg.Any<CancellationToken>())
+            .Returns(new ReverseChargeCodeDto { Id = 9, Code = "4" });
+
+        var result = await RunWithItems("""[{"description":"Build","unit_price":100,"vat_regime":"ReverseCharge","reverse_charge_code":"4"}]""");
+
+        result.IsSuccess.ShouldBeTrue();
+        await _invoiceService.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.InvoiceItem[0].VatRegime == EVatRegime.ReverseCharge
+                                          && d.InvoiceItem[0].ReverseChargeCodeId == 9),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("""[{"description":"x","unit_price":1,"vat_regime":"ReverseCharge","reverse_charge_code":"99"}]""")] // unknown code
+    [InlineData("""[{"description":"x","unit_price":1,"vat_regime":"ReverseCharge"}]""")] // RC without code
+    [InlineData("""[{"description":"x","unit_price":1,"reverse_charge_code":"4"}]""")] // code without RC
+    [InlineData("""[{"description":"x","unit_price":1,"vat_regime":"Bogus"}]""")] // invalid name
+    [InlineData("""[{"description":"x","unit_price":1,"vat_regime":"7"}]""")] // undefined numeric
+    public async Task CreateInvoice_InvalidReverseChargeInput_ReturnsError(string itemsJson)
+    {
+        _reverseChargeCodeService.GetByCodeAsync("4", Arg.Any<CancellationToken>())
+            .Returns(new ReverseChargeCodeDto { Id = 9, Code = "4" });
+
+        var result = await RunWithItems(itemsJson);
+
+        result.IsSuccess.ShouldBeFalse();
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
 }

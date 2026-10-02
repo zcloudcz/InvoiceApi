@@ -687,6 +687,22 @@ optionally `ReverseChargeCodeId` (FK to `ReverseChargeCode` lookup, nullable).
 - PDP section is **TODO** — will be filled when VatReport populates A.1/B.1 from ReverseCharge items.
 - `VatRegime` and `ReverseChargeCodeId` on `InvoiceItem` are the data source for that future work.
 
+**UI**: `InvoiceItemEditor` uses the reusable `VatRegimeSelect` (wraps `EnumSelect<EVatRegime>`) and
+`ReverseChargeCodeSelect` (code list supplied by the caller) from `Fakvio.UI.Shared/Components/Shared/`; the
+invoice-level "reverse charge" switch is UI-only (loops over items, no persisted field) and re-syncs when per-row
+regimes change. Edit mode / create-from-template project stored items via `InvoiceItemEditMapper.ToEditDto`, which
+must copy `VatRegime` + `ReverseChargeCodeId` (otherwise a re-save silently bills 21 % VAT).
+`ValidateReverseChargeCodes` also rejects undefined numeric `VatRegime` values (JSON clients); the localized
+messages live in the UI (`ValidateReverseCharge` in `InvoiceDetail`), server messages stay English.
+
+**PDF** (`PdfExportService`): the mandatory §92a note + used codes are rendered **in code** (inserted before the
+grand-total table), not via a `{{Placeholder}}`, so user-customized content templates need no edit. RC items get
+an asterisk on the rate and their own recap line grouped by rate.
+
+**ISDOC** (`IsdocMapper`): RC lines carry `ClassifiedTaxCategory/LocalReverseCharge` (code + quantity), their
+`UnitPriceTaxInclusive` equals the net unit price, and TaxSubTotals are grouped by `(rate, isReverseCharge)` with
+`LocalReverseChargeFlag` on the RC sub-totals.
+
 **Calculation helper**: `InvoiceService.CalculateItemVat(InvoiceItem item)` — called from both
 `CreateInvoiceAsync` and `UpdateInvoiceAsync` for DRY calculation (issue #45, §9 KISS/DRY rule).
 
