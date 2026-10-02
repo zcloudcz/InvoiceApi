@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.02.4 — 2026-10-02
+
+### Opravy
+
+- **#500** — ChatGPT konektor Fakvio MCP po vydání kurzů ČNB hlásil „action discovery failed" a nenačetl žádný nástroj: meze kurzu (`exchangeRate`) šly do schématu nástroje jako text místo čísla a ChatGPT takové schéma odmítne celé. Meze jsou teď číselné (validace beze změny) a nový test hlídá, aby se to neopakovalo. (PR #500, `8a07cf7`)
+
 ## 2026.10.02.3 — 2026-10-02
 
 ### Nové funkce
