@@ -21,9 +21,12 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     private readonly TenantDbContext _context;
     private readonly ILogger<ReceivedInvoiceService> _logger;
     private readonly IWebhookPublisher? _webhookPublisher;
+    private readonly IExchangeRateService? _exchangeRateService; // optional: without it no ČNB rate is assigned (§4.17)
 
-    public ReceivedInvoiceService(TenantDbContext context, ILogger<ReceivedInvoiceService> logger, IWebhookPublisher? webhookPublisher = null)
+    public ReceivedInvoiceService(TenantDbContext context, ILogger<ReceivedInvoiceService> logger, IWebhookPublisher? webhookPublisher = null,
+        IExchangeRateService? exchangeRateService = null)
     {
+        _exchangeRateService = exchangeRateService;
         _context = context;
         _logger = logger;
         _webhookPublisher = webhookPublisher;
@@ -237,6 +240,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
             TaxableSupplyDate = dto.TaxableSupplyDate ?? dto.IssueDate,
             VariableSymbol = dto.VariableSymbol,
             CurrencyId = dto.CurrencyId,
+            ExchangeRate = dto.ExchangeRate, // manual override (null = ČNB rate is assigned on approval)
             PaymentMethod = dto.PaymentMethod,
             BankAccountNumber = dto.BankAccountNumber,
             IBAN = dto.IBAN,
@@ -331,6 +335,14 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         if (dto.TaxableSupplyDate.HasValue) entity.TaxableSupplyDate = dto.TaxableSupplyDate;
         if (dto.VariableSymbol is not null) entity.VariableSymbol = dto.VariableSymbol;
         if (dto.CurrencyId.HasValue) entity.CurrencyId = dto.CurrencyId.Value;
+        if (dto.ExchangeRate.HasValue)
+        {
+            // Like an issued invoice: the rate is fixed once the document is approved.
+            if (entity.Status != EReceivedInvoiceStatus.Received)
+                throw new InvalidOperationException("The exchange rate can be changed only before the invoice is approved.");
+            entity.ExchangeRate = dto.ExchangeRate.Value;
+            entity.ExchangeRateDate = null; // manual rate has no ČNB date
+        }
         if (dto.PaymentMethod.HasValue) entity.PaymentMethod = dto.PaymentMethod;
         if (dto.BankAccountNumber is not null) entity.BankAccountNumber = dto.BankAccountNumber;
         if (dto.IBAN is not null) entity.IBAN = dto.IBAN;
@@ -402,17 +414,42 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     /// <inheritdoc />
     public async Task<ReceivedInvoiceDto?> ApproveAsync(long id, CancellationToken ct = default)
     {
-        var entity = await _context.ReceivedInvoice.FindAsync(new object[] { id }, ct);
+        var entity = await _context.ReceivedInvoice.Include(r => r.Currency).FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return null;
 
         if (entity.Status != EReceivedInvoiceStatus.Received)
             throw new InvalidOperationException($"Cannot approve invoice in {entity.Status} status. Only Received allowed.");
 
+        await AssignExchangeRateAsync(entity, ct);
         entity.Status = EReceivedInvoiceStatus.Approved;
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Approved received invoice ID {Id}", id);
         return await GetByIdAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Fills the ČNB rate (CZK per unit, valid for the DUZP) of a non-CZK received invoice on approval —
+    /// same rules as InvoiceService.AssignExchangeRateAsync (manual rate kept, CZK cleared, outage = no rate).
+    /// </summary>
+    private async Task AssignExchangeRateAsync(ReceivedInvoice entity, CancellationToken ct)
+    {
+        var code = entity.Currency?.Code;
+        if (string.IsNullOrEmpty(code) || code.Equals("CZK", StringComparison.OrdinalIgnoreCase))
+        {
+            entity.ExchangeRate = null;
+            entity.ExchangeRateDate = null;
+            return;
+        }
+
+        if (_exchangeRateService == null || (entity.ExchangeRate != null && entity.ExchangeRateDate == null)) return;
+
+        var duzp = DateOnly.FromDateTime(entity.TaxableSupplyDate ?? entity.IssueDate ?? entity.ReceivedDate ?? DateTime.UtcNow);
+        var rate = await _exchangeRateService.GetRateAsync(code, duzp, ct);
+        if (rate == null)
+            _logger.LogWarning("No ČNB rate for {Currency} on {Date}; received invoice {Id} is approved without an exchange rate", code, duzp, entity.Id);
+        entity.ExchangeRate = rate?.RatePerUnit;
+        entity.ExchangeRateDate = rate?.ValidFor;
     }
 
     /// <inheritdoc />

@@ -63,6 +63,42 @@ public static class CodeListTools
     }
 
     /// <summary>
+    /// Official ČNB exchange rate for a currency on a date — what Czech VAT (§38 ZDPH) uses to convert a
+    /// foreign-currency invoice to CZK. Issued/received invoices get the same rate automatically (DUZP).
+    /// </summary>
+    [McpServerTool(Title = "Get exchange rate", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Get the official Czech National Bank (ČNB) exchange rate to CZK for a currency on a date: the last daily fixing " +
+        "declared on or before that date (weekends/holidays get the previous business day). Returns the published rate " +
+        "(for amount units, e.g. 100 for HUF/JPY), ratePerUnit (CZK for exactly one unit) and validFor (the fixing date). " +
+        "Foreign-currency invoices store this rate (valid for the taxable supply date) when they are issued.")]
+    public static async Task<string> GetExchangeRate(
+        IFakvioApiClient api,
+        [Description("ISO 4217 currency code other than CZK, e.g. \"EUR\"")] string currency,
+        [Description("Date (yyyy-MM-dd). Omit for today.")] DateOnly? date = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(currency) || currency.Trim().Length != 3 ||
+            currency.Trim().Equals("CZK", StringComparison.OrdinalIgnoreCase))
+            return JsonSerializer.Serialize(new { error = "currency must be a 3-letter ISO code other than CZK." }, JsonOptions);
+
+        try
+        {
+            var rate = await api.GetExchangeRateAsync(currency.Trim(), date, ct);
+            return rate is null
+                ? JsonSerializer.Serialize(new { error = $"No ČNB rate available for {currency.Trim().ToUpperInvariant()}." }, JsonOptions)
+                : JsonSerializer.Serialize(rate, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Lists reverse charge codes (kódy předmětu plnění PDP, §92a-92e ZDPH) — the AI client needs
     /// one of these codes (its "id" field, passed as reverseChargeCodeId) when creating an invoice item with
     /// vatRegime "ReverseCharge" via create_invoice.

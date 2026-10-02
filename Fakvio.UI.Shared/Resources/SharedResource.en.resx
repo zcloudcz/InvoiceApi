@@ -404,6 +404,9 @@
   <data name="Template_DocumentTypeInvoice" xml:space="preserve"><value>Invoice</value></data>
   <data name="Template_DocumentTypeCreditNote" xml:space="preserve"><value>Credit Note</value></data>
   <data name="Template_Currency" xml:space="preserve"><value>Currency</value></data>
+  <data name="Invoice_ExchangeRate" xml:space="preserve"><value>Exchange rate (CZK per 1 unit)</value></data>
+  <data name="Invoice_ExchangeRateHint" xml:space="preserve"><value>Empty = the ČNB rate for the taxable supply date is filled in when the document is issued.</value></data>
+  <data name="Invoice_ExchangeRateCnb" xml:space="preserve"><value>ČNB of</value></data>
   <data name="Template_Never" xml:space="preserve"><value>Never</value></data>
   <data name="Template_CreateInvoice" xml:space="preserve"><value>Create invoice from template</value></data>
   <data name="Template_TemplateName" xml:space="preserve"><value>Template name</value></data>
@@ -2141,9 +2144,9 @@
   <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Income vs expenses by month</value></data>
   <data name="Dashboard_Income" xml:space="preserve"><value>Income</value></data>
   <data name="Dashboard_Expense" xml:space="preserve"><value>Expenses</value></data>
-  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Last 12 months, excl. VAT, CZK invoices only</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Last 12 months, excl. VAT, in CZK (foreign currencies at the CNB rate stored on the document; documents without a rate are left out)</value></data>
   <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Unpaid receivables by age</value></data>
-  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Days past due, incl. VAT, in CZK</value></data>
+  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Days past due, incl. VAT, in CZK (foreign currencies at the CNB rate stored on the document)</value></data>
   <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Start setup wizard</value></data>
   <data name="SetupWizard_Title" xml:space="preserve"><value>Setup wizard</value></data>
   <data name="SetupWizard_Intro" xml:space="preserve"><value>A few steps and you can issue your first invoice. You can change every step later in settings.</value></data>

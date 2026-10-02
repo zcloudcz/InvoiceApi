@@ -16,8 +16,9 @@ namespace Fakvio.Infrastructure.Service.AccountingExport;
 /// - Validated in the unit tests against the official Stormware XSDs (data/invoice/type .xsd, version 2).
 /// - rateVAT only distinguishes "high"/"low"/"none" — Fakvio's VatRate table has no concept of
 ///   Pohoda's historical "third" (10 %) rate, see <see cref="AccountingExportCommon.ClassifyVatRate"/>.
-/// - Foreign-currency invoices fill the foreignCurrency blocks WITHOUT rate/amount — Fakvio does not
-///   store the exchange rate, so POHODA applies its own rate list for the document date.
+/// - Foreign-currency invoices fill the foreignCurrency blocks; when the document carries a ČNB rate
+///   (Invoice.ExchangeRate, DEVGUIDE §4.17) it is written as rate (CZK per 1 unit) + amount 1, otherwise
+///   both are omitted and POHODA applies its own rate list for the document date.
 /// - Only the 2024+ VAT rates 21 / 12 / 0 % are mapped; documents with other rates are skipped (CanExport).
 /// - Advance-payment tax receipts (DPP) are skipped; proformas map to issuedProformaInvoice.
 /// </summary>
@@ -127,7 +128,7 @@ public class PohodaAccountingExporter : IAccountingExporter
             items.Select(i => BuildItem(i.Description, i.Quantity, i.Unit, i.UnitPrice,
                 i.TotalBeforeVat, i.VatAmount, i.TotalWithVat, i.VatRatePercentage, currency)));
 
-        var summary = BuildSummary(items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), currency);
+        var summary = BuildSummary(items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), currency, invoice.ExchangeRate);
 
         return new XElement(Inv + "invoice", new XAttribute("version", "2.0"), header, detail, summary);
     }
@@ -161,7 +162,7 @@ public class PohodaAccountingExporter : IAccountingExporter
             items.Select(i => BuildItem(i.Description, i.Quantity, i.Unit, i.UnitPrice,
                 i.TotalBeforeVat, i.VatAmount, i.TotalWithVat, i.VatRatePercentage, currency)));
 
-        var summary = BuildSummary(items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), currency);
+        var summary = BuildSummary(items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), currency, invoice.ExchangeRate);
 
         return new XElement(Inv + "invoice", new XAttribute("version", "2.0"), header, detail, summary);
     }
@@ -209,7 +210,7 @@ public class PohodaAccountingExporter : IAccountingExporter
 
     private static bool IsHome(string currency) => currency.Equals("CZK", StringComparison.OrdinalIgnoreCase);
 
-    private static XElement BuildSummary(IEnumerable<(decimal Rate, decimal Base, decimal Vat)> items, string currency)
+    private static XElement BuildSummary(IEnumerable<(decimal Rate, decimal Base, decimal Vat)> items, string currency, decimal? exchangeRate)
     {
         decimal noneBase = 0, lowBase = 0, lowVat = 0, highBase = 0, highVat = 0;
         foreach (var (rate, @base, vat) in items)
@@ -236,11 +237,17 @@ public class PohodaAccountingExporter : IAccountingExporter
         }
         else
         {
-            // No rate/amount on purpose: Fakvio stores no exchange rate, so Pohoda applies its own
-            // exchange-rate list for the document date (both elements are optional in the schema).
-            summary.Add(new XElement(Inv + "foreignCurrency",
-                new XElement(Typ + "currency", new XElement(Typ + "ids", currency)),
-                new XElement(Typ + "priceSum", AccountingExportCommon.FormatDecimal(noneBase + lowBase + lowVat + highBase + highVat))));
+            // rate + amount are optional in the schema: written only when the document carries a ČNB rate
+            // (CZK per ONE unit, so amount = 1); without one Pohoda applies its own exchange-rate list.
+            var foreign = new XElement(Inv + "foreignCurrency",
+                new XElement(Typ + "currency", new XElement(Typ + "ids", currency)));
+            if (exchangeRate is > 0m)
+            {
+                foreign.Add(new XElement(Typ + "rate", AccountingExportCommon.FormatRate(exchangeRate.Value)),
+                            new XElement(Typ + "amount", "1"));
+            }
+            foreign.Add(new XElement(Typ + "priceSum", AccountingExportCommon.FormatDecimal(noneBase + lowBase + lowVat + highBase + highVat)));
+            summary.Add(foreign);
         }
         return summary;
     }

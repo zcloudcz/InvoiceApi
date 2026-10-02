@@ -268,6 +268,11 @@ public interface IFakvioApiClient
     /// <summary>GET /api/oss-report?year=...&amp;quarter=... — quarterly OSS report in EUR.</summary>
     Task<OssReportDto> GetOssReportAsync(int year, int quarter, CancellationToken ct = default);
 
+    // ── Exchange rates ───────────────────────────────────────────────────
+
+    /// <summary>GET /api/exchange-rate?currency=...&amp;date=... — official ČNB rate valid on the date (last fixing on or before it), or null when unavailable.</summary>
+    Task<Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto?> GetExchangeRateAsync(string currency, DateOnly? date, CancellationToken ct = default);
+
     // ── Dashboard endpoints ────────────────────────────────────────────
 
     /// <summary>GET /api/dashboard — tenant dashboard with stats and charts.</summary>

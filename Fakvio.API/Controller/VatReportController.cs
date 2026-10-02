@@ -50,8 +50,14 @@ public class VatReportController : ControllerBase
         if (from > to)
             return BadRequest(new { message = "Period 'from' date must be before or equal to 'to' date." });
 
-        var result = await _service.GetReportAsync(from, to, ct);
-        return Ok(result);
+        try
+        {
+            return Ok(await _service.GetReportAsync(from, to, ct));
+        }
+        catch (ExchangeRateUnavailableException ex)
+        {
+            return Conflict(new { code = "EXCHANGE_RATE_UNAVAILABLE", message = ex.Message });
+        }
     }
 
     // =========================================================================
@@ -126,6 +132,10 @@ public class VatReportController : ControllerBase
                 message        = ex.Message,
                 missingFields  = ex.MissingFields
             });
+        }
+        catch (ExchangeRateUnavailableException ex)
+        {
+            return Conflict(new { code = "EXCHANGE_RATE_UNAVAILABLE", message = ex.Message });
         }
         catch (ArgumentOutOfRangeException ex)
         {
@@ -202,6 +212,10 @@ public class VatReportController : ControllerBase
                 missingFields  = ex.MissingFields
             });
         }
+        catch (ExchangeRateUnavailableException ex)
+        {
+            return Conflict(new { code = "EXCHANGE_RATE_UNAVAILABLE", message = ex.Message });
+        }
         catch (ArgumentOutOfRangeException ex)
         {
             _logger.LogWarning("EPO DPHKH1 export: invalid argument — {Message}", ex.Message);
@@ -238,6 +252,10 @@ public class VatReportController : ControllerBase
         try
         {
             return Ok(await _service.GetSummaryStatementRowsAsync(year, period, type, goods, ct));
+        }
+        catch (ExchangeRateUnavailableException ex)
+        {
+            return Conflict(new { code = "EXCHANGE_RATE_UNAVAILABLE", message = ex.Message });
         }
         catch (ArgumentOutOfRangeException ex)
         {
@@ -277,6 +295,10 @@ public class VatReportController : ControllerBase
         catch (EpoHeaderIncompleteException ex)
         {
             return BadRequest(new { code = "EPO_HEADER_INCOMPLETE", message = ex.Message, missingFields = ex.MissingFields });
+        }
+        catch (ExchangeRateUnavailableException ex)
+        {
+            return Conflict(new { code = "EXCHANGE_RATE_UNAVAILABLE", message = ex.Message });
         }
         catch (ArgumentOutOfRangeException ex)
         {
