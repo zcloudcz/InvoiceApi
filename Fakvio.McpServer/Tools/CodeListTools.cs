@@ -3,6 +3,7 @@ using System.Text.Json;
 using Fakvio.Contracts.Dto.Currency;
 using Fakvio.McpServer.Client;
 using ModelContextProtocol.Server;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 
 namespace Fakvio.McpServer.Tools;
 
@@ -47,6 +48,42 @@ public static class CodeListTools
                 c.Code,
                 c.Name,
                 c.Symbol
+            });
+
+            return JsonSerializer.Serialize(narrowed, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Lists reverse charge codes (kódy předmětu plnění PDP, §92a-92e ZDPH) — the AI client needs
+    /// one of these codes (the "code" field, e.g. "4") when creating an invoice item with
+    /// vatRegime "ReverseCharge" via create_invoice.
+    /// </summary>
+    [McpServerTool(Title = "List reverse charge codes", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "List active reverse charge codes (kódy předmětu plnění PDP, §92a-92e ZDPH). " +
+        "Use the 'code' field as reverseChargeCode when creating an invoice item with vatRegime 'ReverseCharge'.")]
+    public static async Task<string> ListReverseChargeCodes(
+        IFakvioApiClient api,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var codes = await api.GetActiveReverseChargeCodesAsync(ct);
+            var narrowed = codes.Select(c => new
+            {
+                c.Id,
+                c.Code,
+                c.NameCs,
+                c.NameEn,
+                c.ParagraphRef
             });
 
             return JsonSerializer.Serialize(narrowed, JsonOptions);

@@ -287,9 +287,14 @@ internal static class IsdocMapper
             var vatAmount = item.IsTextRow ? 0m : item.VatAmount;
             var unitPrice = item.IsTextRow ? 0m : item.UnitPrice;
             var vatRate = item.IsTextRow ? 0m : item.VatRatePercentage;
+            // Reverse charge (PDP, §92a-92e ZDPH): supplier bills 0 VAT, so ClassifiedTaxCategory
+            // carries a LocalReverseCharge block with the MFCR code (kod predmetu plneni) instead
+            // of a plain VAT amount. Text rows never carry a regime.
+            var isReverseCharge = !item.IsTextRow && item.VatRegime == EVatRegime.ReverseCharge;
+            var reverseChargeCode = isReverseCharge ? item.ReverseChargeCode?.Code : null;
             yield return BuildInvoiceLine(lineId, item.Unit ?? "H87", quantity,
                 totalBeforeVat, totalWithVat, vatAmount, unitPrice, vatRate,
-                item.Description ?? string.Empty);
+                item.Description ?? string.Empty, reverseChargeCode, quantity);
         }
     }
 
@@ -304,10 +309,12 @@ internal static class IsdocMapper
             var item = items[i];
             var lineId = (i + 1).ToString(CultureInfo.InvariantCulture);
 
-            // ReceivedInvoiceItem has no text rows — every item carries amounts.
+            // ReceivedInvoiceItem has no reverse-charge regime yet (received-invoice PDP is
+            // handled separately) — always pass null/no reverse charge for this line.
             yield return BuildInvoiceLine(lineId, item.Unit, item.Quantity,
                 item.TotalBeforeVat, item.TotalWithVat, item.VatAmount,
-                item.UnitPrice, item.VatRatePercentage, item.Description);
+                item.UnitPrice, item.VatRatePercentage, item.Description,
+                reverseChargeCode: null, reverseChargeQuantity: 0);
         }
     }
 
@@ -315,12 +322,30 @@ internal static class IsdocMapper
     /// Builds one InvoiceLine element in the official XSD sequence order.
     /// Shared by issued and received invoice mapping — the line structure is identical.
     /// </summary>
+    /// <param name="reverseChargeCode">MFCR "kod predmetu plneni" (e.g. "4" = construction/assembly
+    /// work) when this line is under local reverse charge (PDP, §92a-92e ZDPH); null otherwise.</param>
+    /// <param name="reverseChargeQuantity">Quantity reported in the LocalReverseCharge block —
+    /// ISDOC XSD LocalReverseChargeType.LocalReverseChargeQuantity (optional, same unit as the line).</param>
     private static XElement BuildInvoiceLine(
         string lineId, string unit, decimal quantity,
         decimal totalBeforeVat, decimal totalWithVat, decimal vatAmount,
-        decimal unitPrice, decimal vatRate, string description)
+        decimal unitPrice, decimal vatRate, string description,
+        string? reverseChargeCode = null, decimal reverseChargeQuantity = 0)
     {
         var unitPriceTaxInclusive = unitPrice * (1 + vatRate / 100m);
+
+        var taxCategory = new XElement(Ns + "ClassifiedTaxCategory",
+            new XElement(Ns + "Percent", FormatDecimal(vatRate)),
+            new XElement(Ns + "VATCalculationMethod", "0"));
+
+        if (!string.IsNullOrWhiteSpace(reverseChargeCode))
+        {
+            // XSD sequence inside ClassifiedTaxCategoryType: Percent, VATCalculationMethod,
+            // VATApplicable?, LocalReverseCharge? — LocalReverseCharge must come last.
+            taxCategory.Add(new XElement(Ns + "LocalReverseCharge",
+                new XElement(Ns + "LocalReverseChargeCode", reverseChargeCode),
+                new XElement(Ns + "LocalReverseChargeQuantity", FormatDecimal(reverseChargeQuantity))));
+        }
 
         return new XElement(Ns + "InvoiceLine",
             new XElement(Ns + "ID", lineId),
@@ -337,9 +362,7 @@ internal static class IsdocMapper
                 FormatDecimal(unitPrice)),
             new XElement(Ns + "UnitPriceTaxInclusive",
                 FormatDecimal(unitPriceTaxInclusive)),
-            new XElement(Ns + "ClassifiedTaxCategory",
-                new XElement(Ns + "Percent", FormatDecimal(vatRate)),
-                new XElement(Ns + "VATCalculationMethod", "0")),
+            taxCategory,
             new XElement(Ns + "Item",
                 new XElement(Ns + "Description", description)));
     }
@@ -350,14 +373,18 @@ internal static class IsdocMapper
 
     private static XElement MapTaxTotal(Invoice invoice)
     {
+        // Group by (Rate, IsReverseCharge): a reverse-charge item bills 0 VAT even though it
+        // carries a normal-looking rate, so it must never be summed into the same TaxSubTotal as
+        // a Standard-regime item at the same rate — that would silently net away real VAT.
         var taxGroups = (invoice.InvoiceItem ?? Enumerable.Empty<InvoiceItem>())
             .Where(i => !i.IsTextRow)
-            .GroupBy(i => i.VatRatePercentage)
+            .GroupBy(i => (i.VatRatePercentage, IsReverseCharge: i.VatRegime == EVatRegime.ReverseCharge))
             .Select(g => (
-                Rate: g.Key,
+                Rate: g.Key.VatRatePercentage,
                 TaxableAmount: g.Sum(x => x.TotalBeforeVat),
                 TaxAmount: g.Sum(x => x.VatAmount),
-                TaxInclusiveAmount: g.Sum(x => x.TotalWithVat)));
+                TaxInclusiveAmount: g.Sum(x => x.TotalWithVat),
+                IsReverseCharge: g.Key.IsReverseCharge));
 
         return BuildTaxTotal(taxGroups, invoice.TotalVat);
     }
@@ -370,7 +397,8 @@ internal static class IsdocMapper
                 Rate: g.Key,
                 TaxableAmount: g.Sum(x => x.TotalBeforeVat),
                 TaxAmount: g.Sum(x => x.VatAmount),
-                TaxInclusiveAmount: g.Sum(x => x.TotalWithVat)));
+                TaxInclusiveAmount: g.Sum(x => x.TotalWithVat),
+                IsReverseCharge: false));
 
         return BuildTaxTotal(taxGroups, invoice.TotalVat);
     }
@@ -380,15 +408,23 @@ internal static class IsdocMapper
     /// Official XSD TaxTotalType: TaxSubTotal(1..n) -> TaxAmountCurr? -> TaxAmount.
     /// </summary>
     private static XElement BuildTaxTotal(
-        IEnumerable<(decimal Rate, decimal TaxableAmount, decimal TaxAmount, decimal TaxInclusiveAmount)> taxGroups,
+        IEnumerable<(decimal Rate, decimal TaxableAmount, decimal TaxAmount, decimal TaxInclusiveAmount, bool IsReverseCharge)> taxGroups,
         decimal totalVat)
     {
         var taxTotalEl = new XElement(Ns + "TaxTotal");
 
-        foreach (var group in taxGroups.OrderByDescending(g => g.Rate))
+        foreach (var group in taxGroups.OrderByDescending(g => g.Rate).ThenBy(g => g.IsReverseCharge))
         {
             // Official TaxSubTotalType has many required elements for advance-payment
             // scenarios. For standard invoices: AlreadyClaimed* = 0, Difference* = actual.
+            var taxCategory = new XElement(Ns + "TaxCategory",
+                new XElement(Ns + "Percent", FormatDecimal(group.Rate)),
+                new XElement(Ns + "TaxScheme", "VAT"));
+            // LocalReverseChargeFlag (minOccurs=0) marks this sub-total as PDP (§92a ZDPH) —
+            // TaxAmount is 0 here by construction (CalculateItemVat never bills VAT for RC items).
+            if (group.IsReverseCharge)
+                taxCategory.Add(new XElement(Ns + "LocalReverseChargeFlag", "true"));
+
             taxTotalEl.Add(new XElement(Ns + "TaxSubTotal",
                 new XElement(Ns + "TaxableAmount",                       FormatDecimal(group.TaxableAmount)),
                 new XElement(Ns + "TaxAmount",                           FormatDecimal(group.TaxAmount)),
@@ -399,9 +435,7 @@ internal static class IsdocMapper
                 new XElement(Ns + "DifferenceTaxableAmount",             FormatDecimal(group.TaxableAmount)),
                 new XElement(Ns + "DifferenceTaxAmount",                 FormatDecimal(group.TaxAmount)),
                 new XElement(Ns + "DifferenceTaxInclusiveAmount",        FormatDecimal(group.TaxInclusiveAmount)),
-                new XElement(Ns + "TaxCategory",
-                    new XElement(Ns + "Percent", FormatDecimal(group.Rate)),
-                    new XElement(Ns + "TaxScheme", "VAT"))));
+                taxCategory));
         }
 
         // TaxAmount at the end

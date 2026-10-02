@@ -3,6 +3,7 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Service.ChatTools;
@@ -26,6 +27,7 @@ public class CreateInvoiceToolTests
     private readonly IClientService _clientService;
     private readonly ICurrencyService _currencyService;
     private readonly IVatRateService _vatRateService;
+    private readonly IReverseChargeCodeService _reverseChargeCodeService;
 
     // Standard test data — reused across tests.
     private readonly ClientDto _testClient = new()
@@ -66,6 +68,7 @@ public class CreateInvoiceToolTests
         _clientService = Substitute.For<IClientService>();
         _currencyService = Substitute.For<ICurrencyService>();
         _vatRateService = Substitute.For<IVatRateService>();
+        _reverseChargeCodeService = Substitute.For<IReverseChargeCodeService>();
         var logger = Substitute.For<ILogger<CreateInvoiceTool>>();
 
         // Default mock setup: single client match, issuer configured, CZK currency, 21% VAT.
@@ -119,7 +122,8 @@ public class CreateInvoiceToolTests
             });
 
         _tool = new CreateInvoiceTool(
-            _invoiceService, _clientService, _currencyService, _vatRateService, logger);
+            _invoiceService, _clientService, _currencyService, _vatRateService,
+            _reverseChargeCodeService, logger);
     }
 
     // ─── Successful Creation Tests ──────────────────────────────────────
