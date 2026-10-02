@@ -393,7 +393,7 @@ používá ho MCP server na validaci session.
 > `ExpiresAt <= DateTime.UtcNow` je pak posunuté o lokální offset a v CEST v tom nebezpečném
 > směru: expirovaný klíč by autentizoval o další 2 hodiny déle. `ApiKeyAuthenticator.ToUtc`
 > proto před porovnáním normalizuje (`Local` → převod, `Unspecified` → jen přeznačení na UTC,
-> shodně s `MasterDbContext.NormalizeDateTimesToUtc`). InMemory test tohle **neukáže** —
+> shodně s `PostgresDateTime.UtcOnWrite`). InMemory test tohle **neukáže** —
 > důkaz je v `ApiKeyDatabaseConstraintTests` proti reálnému PG.
 
 **Zápis do `LastUsedAt`** je hrubozrnný (nejvýš jednou za 5 minut) a best-effort — jeden AI
@@ -3448,6 +3448,12 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 ---
 
 ## 12. Známé gotchas (rychlý lookup)
+
+### `DateTime` do PostgreSQL = vždy UTC (`PostgresDateTime.UtcOnWrite`)
+- Oba hosty zapínají `Npgsql.EnableLegacyTimestampBehavior`, pod kterým se `Unspecified` (Blazor date pickery) bere jako Local a posune o TZ hostitele (na App Service v UTC bez efektu, na pražských dev strojích/testech posun).
+  `MasterDbContext` i `TenantDbContext` proto v `ConfigureConventions` registrují value converter na **všechny** `DateTime`/`DateTime?` (zápis → UTC, `Unspecified` jen přeznačit, `Local` převést).
+- Dřívější SaveChanges hook `NormalizeDateTimesToUtc` nefungoval: EF porovnává `DateTime` bez `Kind`, přiřazení stejné hodnoty s jiným `Kind` nevidí jako změnu. Nevracej ho; converter není součástí migračního modelu (žádná migrace).
+- Test: `DateTimeUtcConventionTests` (kontroluje converter v modelu; `Unspecified` se nechá jak je, `Local` → `ToUniversalTime()`).
 
 ### Neplátce DPH (`Client.IsVatPayer = false` na issueru)
 - Server nevěří klientovi: `InvoiceService` i `InvoiceTemplateService` (create + update) volají pro
