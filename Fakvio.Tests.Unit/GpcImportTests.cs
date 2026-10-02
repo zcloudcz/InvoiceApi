@@ -146,7 +146,7 @@ public class GpcImportTests
     private static byte[] Bytes(params string[] lines) => Encoding.UTF8.GetBytes(Join(lines));
 
     [Fact]
-    public async Task Import_CreatesTransactions_MatchesIncoming_SkipsStornoAndDebitMatching()
+    public async Task Import_CreatesTransactions_MatchesIncoming_SkipsStorno()
     {
         var (db, sut) = Create();
 
@@ -154,14 +154,14 @@ public class GpcImportTests
             Header(),
             Item("2", 100000, vs: "2026001", doc: "1"),   // pays the invoice
             Item("2", 5000, vs: "999", doc: "2"),          // no invoice -> unmatched
-            Item("1", 2000, doc: "3"),                     // debit - imported, not matched against issued invoices
+            Item("1", 2000, doc: "3"),                     // debit - imported, no received invoice to pair with
             Item("4", 2000, doc: "4")), null);             // storno - skipped with a warning
 
         r.Statements.ShouldBe(1);
         r.Imported.ShouldBe(3);
         r.Duplicates.ShouldBe(0);
         r.Matched.ShouldBe(1);
-        r.Unmatched.ShouldBe(1);
+        r.Unmatched.ShouldBe(2); // unknown credit + debit without a received invoice
         r.Errors.ShouldHaveSingleItem().ShouldContain("storno");
         (await db.Invoice.SingleAsync()).Status.ShouldBe(EInvoiceStatus.Paid);
         (await db.BankTransaction.CountAsync(t => t.ImportSource == EImportSource.GpcImport)).ShouldBe(3);
