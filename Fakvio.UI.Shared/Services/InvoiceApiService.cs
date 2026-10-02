@@ -534,9 +534,9 @@ public class FakvioService : ApiClientBase
     /// Returns the newly created invoice DTO (with the new DocumentNumber),
     /// or null if the copy failed.
     /// </summary>
-    public async Task<InvoiceDto?> CopyAsync(long id)
+    public async Task<InvoiceDto?> CopyAsync(long id, bool shiftPeriods = true)
     {
-        return await PostWithoutBodyAsync<InvoiceDto>($"/api/invoice/{id}/copy");
+        return await PostWithoutBodyAsync<InvoiceDto>($"/api/invoice/{id}/copy?shiftPeriods={shiftPeriods.ToString().ToLowerInvariant()}");
     }
 
     // ─── Auto-match ──────────────────────────────────────────────────────────

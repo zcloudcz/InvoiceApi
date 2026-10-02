@@ -297,8 +297,9 @@ public interface IInvoiceService
     /// </summary>
     /// <param name="sourceId">ID of the invoice to copy from</param>
     /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="shiftPeriods">When true (default), billing periods named in item descriptions/notes ("3/2026", "březen 2026", "Q1 2026") move forward by the month difference between the new and source issue date.</param>
     /// <returns>Newly created Draft invoice DTO</returns>
     /// <exception cref="KeyNotFoundException">Source invoice not found</exception>
     /// <exception cref="InvalidOperationException">Source is a CreditNote — copying is not allowed</exception>
-    Task<InvoiceDto> CopyInvoiceAsync(long sourceId, CancellationToken cancellationToken = default);
+    Task<InvoiceDto> CopyInvoiceAsync(long sourceId, bool shiftPeriods = true, CancellationToken cancellationToken = default);
 }
