@@ -161,11 +161,12 @@ public class EpoVatReturnExportTests : IDisposable
         EInvoiceStatus status,
         decimal baseAmount,
         decimal vatPct,
-        long currencyId = CzkCurrencyId)
+        long currencyId = CzkCurrencyId,
+        EDocumentType docType = EDocumentType.Invoice)
     {
         var invoice = new Invoice
         {
-            DocumentType = EDocumentType.Invoice,
+            DocumentType = docType,
             Status = status,
             DocumentNumber = $"INV-{Guid.NewGuid():N}",
             IssueDate = duzp,
@@ -514,6 +515,69 @@ public class EpoVatReturnExportTests : IDisposable
     // =========================================================================
     // 3. Row mapping — output VAT (rows 1, 2) and input VAT (rows 40, 41, 51)
     // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoVatReturnAsync_CreditNote_ReducesRows1And2InItsOwnPeriod()
+    {
+        var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 1000m, 21m);
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 2000m, 12m);
+        // Credit notes stored positive — forced negative. The April one must not leak into March.
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 400m, 21m, docType: EDocumentType.CreditNote);
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 500m, 12m, docType: EDocumentType.CreditNote);
+        SeedIssuedInvoice(duzp.AddMonths(1), EInvoiceStatus.Completed, 900m, 21m, docType: EDocumentType.CreditNote);
+
+        var bytes = await _service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var veta1 = doc.Descendants("Veta1").Single();
+        veta1.Attribute("obrat23")!.Value.ShouldBe("600");
+        veta1.Attribute("dan23")!.Value.ShouldBe("126");
+        veta1.Attribute("obrat5")!.Value.ShouldBe("1500");
+        veta1.Attribute("dan5")!.Value.ShouldBe("180");
+    }
+
+    [Fact]
+    public async Task ExportEpoVatReturnAsync_CreditNoteWithMixedSignRows_UsesNegativeNet()
+    {
+        var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, -1000m, 21m, docType: EDocumentType.CreditNote);
+        var cn = _context.Invoice.Include(i => i.InvoiceItem).Single();
+        cn.InvoiceItem.Add(new InvoiceItem
+        {
+            OrderIndex = 2, Description = "Positive row", Quantity = 1, UnitPrice = 600m,
+            VatRatePercentage = 21m, TotalBeforeVat = 600m, VatAmount = 126m, TotalWithVat = 726m
+        });
+        _context.SaveChanges();
+
+        var bytes = await _service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var veta1 = doc.Descendants("Veta1").Single();
+        veta1.Attribute("obrat23")!.Value.ShouldBe("-400");
+        veta1.Attribute("dan23")!.Value.ShouldBe("-84");
+    }
+
+    [Fact]
+    public async Task ExportEpoVatReturnAsync_EurCreditNote_IsConvertedAtItsOwnDuzpAndNegative()
+    {
+        // Only the credit note's own DUZP has a rate (25) — any other date would give 1:1.
+        var duzp = new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc);
+        _currencyService
+            .ConvertToCzkAsync(Arg.Any<decimal>(), "EUR", DateOnly.FromDateTime(duzp), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult(call.ArgAt<decimal>(0) * 25m));
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 100m, 21m, EurCurrencyId, EDocumentType.CreditNote);
+
+        var bytes = await _service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var veta1 = doc.Descendants("Veta1").Single();
+        veta1.Attribute("obrat23")!.Value.ShouldBe("-2500");
+        veta1.Attribute("dan23")!.Value.ShouldBe("-525");
+    }
 
     [Fact]
     public async Task ExportEpoVatReturnAsync_StandardRateInvoice_MapsToRow1()
