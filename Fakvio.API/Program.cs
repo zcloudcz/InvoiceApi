@@ -123,7 +123,8 @@ builder.Services.AddCors(options =>
                   .AllowAnyHeader()
                   // Expose X-Correlation-Id so browser JavaScript (Blazor WASM) can read the
                   // CorrelationId from the response header for client-side debugging/logging.
-                  .WithExposedHeaders("X-Correlation-Id")
+                  // X-Export-* carry the accounting-export counts (exported / skipped documents).
+                  .WithExposedHeaders("X-Correlation-Id", "X-Export-Exported", "X-Export-Skipped")
                   .AllowCredentials(); // Required for cookie-based auth and SignalR
         }
         else

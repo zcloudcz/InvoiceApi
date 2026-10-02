@@ -273,6 +273,46 @@ public class InvoiceToolsTests
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>EU OSS: a German 19 % must not be looked up in the CZ rate table — the server validates it.</summary>
+    [Fact]
+    public async Task CreateInvoice_OssInvoice_SkipsCzechRateLookup_AndSendsPercentage()
+    {
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto { Id = 13, OssCountryCode = "DE" });
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = true });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+        _api.GetOssCountryAsync(5, 2, EDocumentType.Invoice, Arg.Any<CancellationToken>()).Returns("DE");
+
+        var items = new List<CreateInvoiceItemDto>
+        {
+            new() { Description = "Consulting", Quantity = 1, UnitPrice = 100, VatRatePercentage = 19 }
+        };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 5, items: items, applyOss: true);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("ossCountryCode").GetString().ShouldBe("DE");
+        await _api.DidNotReceive().GetActiveVatRatesAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>());
+        await _api.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.InvoiceItem.Single().VatRateId == null && d.InvoiceItem.Single().VatRatePercentage == 19m),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetOssReport_ReturnsReport_AndRejectsBadQuarter()
+    {
+        _api.GetOssReportAsync(2026, 1, Arg.Any<CancellationToken>())
+            .Returns(new Fakvio.Contracts.Dto.OssReport.OssReportDto { Year = 2026, Quarter = 1, TotalVatEur = 12.5m });
+
+        var ok = await ReportingTools.GetOssReport(_api, 2026, 1);
+        JsonDocument.Parse(ok).RootElement.GetProperty("totalVatEur").GetDecimal().ShouldBe(12.5m);
+
+        var bad = await ReportingTools.GetOssReport(_api, 2026, 7);
+        JsonDocument.Parse(bad).RootElement.TryGetProperty("error", out _).ShouldBeTrue();
+        await _api.DidNotReceive().GetOssReportAsync(2026, 7, Arg.Any<CancellationToken>());
+    }
+
     /// <summary>
     /// Codex review: two active rates at the same percentage (e.g. overlapping validity periods
     /// during a rate change) must not resolve to an arbitrary one via FirstOrDefault — the model

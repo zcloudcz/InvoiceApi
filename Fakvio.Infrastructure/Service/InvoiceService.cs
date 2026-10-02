@@ -7,6 +7,7 @@ using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
+using Fakvio.Infrastructure.Service.Oss;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ZMapper;
@@ -21,19 +22,40 @@ namespace Fakvio.Infrastructure.Service;
 public class InvoiceService : IInvoiceService
 {
     private readonly TenantDbContext _context;
+    private readonly MasterDbContext _masterContext;
+    private readonly ITenantResolver _tenantResolver;
     private readonly INumberSequenceService _numberSequenceService;
     private readonly ITenantReadinessService _tenantReadinessService;
     private readonly IWebhookPublisher? _webhookPublisher; // optional so manually-constructed instances (tests) work
     private readonly ILogger<InvoiceService> _logger;
 
+    /// <summary>
+    /// Constructor without the Master context / tenant resolver — EU OSS detection is then switched off
+    /// (every invoice is an ordinary CZ invoice). Kept so that code and tests that only deal with
+    /// tenant-local invoices need not wire up the master database. DI uses the full constructor below
+    /// (the one with the most resolvable parameters).
+    /// </summary>
+    internal InvoiceService(
+        TenantDbContext context,
+        INumberSequenceService numberSequenceService,
+        ITenantReadinessService tenantReadinessService,
+        ILogger<InvoiceService> logger)
+        : this(context, null!, null!, numberSequenceService, tenantReadinessService, logger)
+    {
+    }
+
     public InvoiceService(
         TenantDbContext context,
+        MasterDbContext masterContext,
+        ITenantResolver tenantResolver,
         INumberSequenceService numberSequenceService,
         ITenantReadinessService tenantReadinessService,
         ILogger<InvoiceService> logger,
         IWebhookPublisher? webhookPublisher = null)
     {
         _context = context;
+        _masterContext = masterContext;
+        _tenantResolver = tenantResolver;
         _numberSequenceService = numberSequenceService;
         _tenantReadinessService = tenantReadinessService;
         _webhookPublisher = webhookPublisher;
@@ -421,8 +443,23 @@ public class InvoiceService : IInvoiceService
             invoice.TaxableSupplyDate = invoice.IssueDate;
         }
 
-        // Validate VAT requirements: If issuer is VAT payer, all items must have VatRateId
-        if (issuer.IsVatPayer)
+        // EU OSS (One-Stop-Shop) detection — must run BEFORE the "all items need VatRateId"
+        // check below, because OSS items intentionally have VatRateId = null (they use the
+        // destination country's OssVatRate, not the tenant's own VatRate table). See §4.16.
+        await _context.Entry(client).Collection(c => c.Address).LoadAsync(cancellationToken);
+        var ossCountryCode = await ResolveOssCountryCodeAsync(
+            issuer, client, createDto.DocumentType, createDto.OriginalInvoiceId, createDto.ApplyOss, cancellationToken);
+        invoice.OssCountryCode = ossCountryCode;
+
+        // Validate VAT requirements: If issuer is VAT payer, all items must have VatRateId —
+        // UNLESS this is an OSS invoice, which is validated against OssVatRate instead.
+        if (ossCountryCode != null)
+        {
+            await ValidateOssItemRatesAsync(ossCountryCode, createDto.InvoiceItem,
+                await GetOssRateCheckDateAsync(createDto.DocumentType, createDto.OriginalInvoiceId, invoice.TaxableSupplyDate!.Value, cancellationToken),
+                cancellationToken);
+        }
+        else if (issuer.IsVatPayer)
         {
             var itemsWithoutVatRate = createDto.InvoiceItem.Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
             if (itemsWithoutVatRate.Any())
@@ -740,10 +777,36 @@ public class InvoiceService : IInvoiceService
             if (issuer == null)
                 throw new InvalidOperationException($"Issuer with ID {invoice.IssuerId} not found");
 
+            // EU OSS detection — recomputed on every item update (TaxableSupplyDate or the
+            // OSS registration setting may have changed since the invoice was created).
+            // ClientId/DocumentType cannot change after creation (not on UpdateInvoiceDto),
+            // so only the client's address, the OSS setting, or the DUZP can move the result.
+            var client = await _context.Client
+                .Include(c => c.Address)
+                .FirstOrDefaultAsync(c => c.Id == invoice.ClientId, cancellationToken);
+            var wasOss = invoice.OssCountryCode != null;
+            var ossCountryCode = await ResolveOssCountryCodeAsync(
+                issuer, client, invoice.DocumentType, invoice.OriginalInvoiceId,
+                updateDto.ApplyOss ?? wasOss, cancellationToken);
+            invoice.OssCountryCode = ossCountryCode;
+
             // Validate VAT requirements: If issuer is VAT payer, all billable items must have VatRateId
-            // Text rows are excluded — they have no financial data.
-            if (issuer.IsVatPayer)
+            // Text rows are excluded — they have no financial data. OSS invoices are validated
+            // against OssVatRate instead (see CreateInvoiceAsync for the same split).
+            if (ossCountryCode != null)
             {
+                await ValidateOssItemRatesAsync(ossCountryCode, updateDto.InvoiceItem,
+                    await GetOssRateCheckDateAsync(invoice.DocumentType, invoice.OriginalInvoiceId,
+                        invoice.TaxableSupplyDate ?? DateTime.UtcNow, cancellationToken),
+                    cancellationToken);
+            }
+            else if (issuer.IsVatPayer)
+            {
+                // Switching an OSS invoice back to an ordinary CZ invoice: OSS items carry no VatRateId, so give
+                // them the tenant rate with the same percentage (else the default rate) instead of failing below.
+                if (wasOss)
+                    await AssignTenantVatRatesAsync(updateDto.InvoiceItem, invoice.TaxableSupplyDate ?? DateTime.UtcNow, cancellationToken);
+
                 var itemsWithoutVatRate = updateDto.InvoiceItem
                     .Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
                 if (itemsWithoutVatRate.Any())
@@ -1740,7 +1803,148 @@ public class InvoiceService : IInvoiceService
         return copy;
     }
 
+    /// <inheritdoc />
+    public async Task<string?> GetOssCountryCodeAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken cancellationToken = default)
+    {
+        var client = await _context.Client.AsNoTracking()
+            .Include(c => c.Address)
+            .FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
+        var issuer = await _context.Client.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == issuerId, cancellationToken);
+        if (client == null || issuer == null) return null;
+
+        // Credit notes inherit from their original invoice, which the UI does not know about here.
+        return await DetermineOssCountryCodeAsync(issuer, client, documentType, null, cancellationToken);
+    }
+
     // ─── Private Helpers ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Date against which OSS item rates are validated: the invoice's own DUZP, except for a credit note, which
+    /// corrects the ORIGINAL supply and so uses the original's DUZP (a credit note issued after a rate change
+    /// must still be able to repeat the rate of the invoice it corrects).
+    /// </summary>
+    private async Task<DateTime> GetOssRateCheckDateAsync(EDocumentType type, long? originalInvoiceId, DateTime ownDuzp, CancellationToken ct)
+    {
+        if (type != EDocumentType.CreditNote || !originalInvoiceId.HasValue) return ownDuzp;
+        var originalDuzp = await _context.Invoice.AsNoTracking()
+            .Where(i => i.Id == originalInvoiceId.Value)
+            .Select(i => i.TaxableSupplyDate)
+            .FirstOrDefaultAsync(ct);
+        return originalDuzp ?? ownDuzp;
+    }
+
+    /// <summary>
+    /// Gives billable items without a tenant VatRateId a VatRateId: the active rate with the same percentage,
+    /// else the default active rate valid on <paramref name="date"/>. Items stay untouched when no rate exists.
+    /// </summary>
+    private async Task AssignTenantVatRatesAsync(IEnumerable<CreateInvoiceItemDto> items, DateTime date, CancellationToken ct)
+    {
+        var rates = await _context.VatRate.AsNoTracking()
+            .Where(r => r.IsActive && r.ValidFrom <= date && (r.ValidTo == null || r.ValidTo >= date))
+            .ToListAsync(ct);
+        foreach (var item in items.Where(i => !i.IsTextRow && !i.VatRateId.HasValue))
+        {
+            var match = rates.FirstOrDefault(r => r.Rate == item.VatRatePercentage) ?? rates.FirstOrDefault(r => r.IsDefault);
+            if (match != null)
+            {
+                item.VatRateId = match.Id;
+                item.VatRatePercentage = match.Rate;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies the user's OSS opt-in: returns the destination country only when the user asked for OSS
+    /// (<paramref name="applyOss"/>) AND the invoice is eligible. Asking for OSS on an ineligible invoice
+    /// throws — silently issuing a CZ-VAT invoice the user believed to be OSS would be worse. Credit notes
+    /// ignore the flag and inherit from the original invoice.
+    /// </summary>
+    private async Task<string?> ResolveOssCountryCodeAsync(
+        Client issuer, Client? client, EDocumentType documentType, long? originalInvoiceId, bool applyOss, CancellationToken ct)
+    {
+        // No opt-in and not a credit note: nothing to look up (saves the settings query on every ordinary invoice).
+        if (!applyOss && documentType != EDocumentType.CreditNote) return null;
+
+        var eligible = await DetermineOssCountryCodeAsync(issuer, client, documentType, originalInvoiceId, ct);
+        if (documentType == EDocumentType.CreditNote) return eligible;
+        return eligible ?? throw new InvalidOperationException(
+            "OSS cannot be applied to this invoice: it requires an OSS-registered VAT-payer issuer, an Invoice/advance tax receipt " +
+            "and a consumer client (no VAT id) with an address in another EU state.");
+    }
+
+    /// <summary>
+    /// Determines the EU OSS destination country this invoice/credit note is ELIGIBLE for, or null if
+    /// it is not an OSS case. See <see cref="OssDetector"/> for the detection rule and
+    /// DEVGUIDE §4.16 for the full picture.
+    ///
+    /// Credit notes do not run detection themselves — they inherit the OssCountryCode of
+    /// the invoice they correct, so a correction can never land in a different VAT regime
+    /// than the document it corrects.
+    /// </summary>
+    private async Task<string?> DetermineOssCountryCodeAsync(
+        Client issuer, Client? client, EDocumentType documentType, long? originalInvoiceId, CancellationToken ct)
+    {
+        if (documentType == EDocumentType.CreditNote)
+        {
+            if (!originalInvoiceId.HasValue) return null;
+            var original = await _context.Invoice
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == originalInvoiceId.Value, ct);
+            return original?.OssCountryCode;
+        }
+
+        // No master context / resolver (legacy constructor) = OSS not available.
+        if (_masterContext == null || _tenantResolver == null) return null;
+
+        var companyId = _tenantResolver.GetCurrentCompanyId();
+        if (companyId == null) return null;
+
+        var settings = await _masterContext.CompanySystemSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.CompanyId == companyId, ct);
+
+        return OssDetector.DetermineCountryCode(settings?.OssRegistered ?? false, issuer.IsVatPayer, client, documentType);
+    }
+
+    /// <summary>
+    /// Validates that every billable item on an OSS invoice uses a rate that is actually
+    /// active for <paramref name="ossCountryCode"/> on the taxable supply date (DUZP) — the
+    /// legally relevant date, same as VatReportService uses for CZ reporting.
+    ///
+    /// OSS items do not use a tenant VatRateId (that FK points at the tenant's CZ rate
+    /// table, which is irrelevant here) — it is cleared and only VatRatePercentage is used.
+    /// </summary>
+    private async Task ValidateOssItemRatesAsync(
+        string ossCountryCode, IEnumerable<CreateInvoiceItemDto> items, DateTime taxableSupplyDate, CancellationToken ct)
+    {
+        var checkDate = DateOnly.FromDateTime(taxableSupplyDate);
+        var allowedRates = await _masterContext.OssVatRate
+            .AsNoTracking()
+            .Where(r => r.CountryCode == ossCountryCode
+                && r.IsActive
+                && r.ValidFrom <= checkDate
+                && (r.ValidTo == null || r.ValidTo >= checkDate))
+            .Select(r => r.Rate)
+            .ToListAsync(ct);
+
+        foreach (var item in items.Where(i => !i.IsTextRow))
+        {
+            // The tenant VatRate FK is meaningless for an OSS item (it points at the CZ rate table) — drop it
+            // so a client that still sends the CZ VatRateId gets validated on the percentage only.
+            item.VatRateId = null;
+
+            // OSS charges destination VAT; reverse charge / exempt / out-of-scope items are not OSS supplies.
+            if (item.VatRegime != EVatRegime.Standard)
+                throw new InvalidOperationException(
+                    $"Invoice item '{item.Description}' on an OSS invoice ({ossCountryCode}) must use the Standard VAT regime.");
+
+            if (!allowedRates.Any(r => r == Math.Round(item.VatRatePercentage, 2)))
+                throw new InvalidOperationException(
+                    $"VAT rate {item.VatRatePercentage}% is not a valid OSS rate for {ossCountryCode} on " +
+                    $"{checkDate:yyyy-MM-dd}. Allowed rates: {string.Join(", ", allowedRates)}.");
+        }
+    }
 
     /// <summary>
     /// Validates Reverse Charge code consistency for a list of item DTOs.

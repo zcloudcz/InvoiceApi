@@ -283,6 +283,38 @@ public static class ReportingTools
     }
 
     /// <summary>
+    /// Gets the quarterly EU OSS (One-Stop-Shop) report: base and VAT per destination country and rate in EUR.
+    /// </summary>
+    [McpServerTool(Title = "Get OSS report", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Get the quarterly EU OSS (One-Stop-Shop) report: taxable base and VAT per destination EU country " +
+        "and VAT rate, in EUR (non-EUR invoices converted at the ECB rate of the last day of the quarter; " +
+        "credit notes reduce the figures). Covers only invoices issued under OSS (B2C sales to other EU states). " +
+        "Fails with a clear error when the ECB rate cannot be fetched.")]
+    public static async Task<string> GetOssReport(
+        IFakvioApiClient api,
+        [Description("Calendar year, e.g. 2026")] int year,
+        [Description("Calendar quarter 1-4")] int quarter,
+        CancellationToken ct = default)
+    {
+        if (quarter is < 1 or > 4)
+            return JsonSerializer.Serialize(new { error = $"Invalid quarter {quarter}. Use 1-4." }, JsonOptions);
+
+        try
+        {
+            var result = await api.GetOssReportAsync(year, quarter, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Gets overdue received invoices — approved but unpaid expenses past due date.
     /// </summary>
     [McpServerTool(Title = "Get overdue received invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(

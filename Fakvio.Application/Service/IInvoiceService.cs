@@ -139,6 +139,14 @@ public interface IInvoiceService
     /// <returns>List of credit notes</returns>
     Task<List<InvoiceDto>> GetCreditNotesForInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Previews the EU OSS destination country (ISO2) an invoice from <paramref name="issuerId"/> to
+    /// <paramref name="clientId"/> is ELIGIBLE for, or null when it is not an OSS case. Eligibility only — OSS is
+    /// applied when the user opts in (ApplyOss). Lets the UI offer the opt-in and the destination rates before
+    /// saving (the server re-checks on save). See DEVGUIDE §4.16.
+    /// </summary>
+    Task<string?> GetOssCountryCodeAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken cancellationToken = default);
+
     // ─── Bulk Operations ─────────────────────────────────────────────────────
 
     /// <summary>

@@ -546,6 +546,9 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.SWIFT).HasMaxLength(50);
             entity.Property(e => e.PaymentMethod).HasConversion<int?>();
             entity.Property(e => e.Notes).HasMaxLength(5000);
+            // EU OSS destination country (ISO2) — null for ordinary/non-OSS invoices. See §4.16.
+            entity.Property(e => e.OssCountryCode).HasMaxLength(2);
+            entity.HasIndex(e => e.OssCountryCode);
 
             entity.HasOne(e => e.Client).WithMany().HasForeignKey(e => e.ClientId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
             entity.HasOne(e => e.Issuer).WithMany().HasForeignKey(e => e.IssuerId).OnDelete(DeleteBehavior.Restrict).IsRequired(true);

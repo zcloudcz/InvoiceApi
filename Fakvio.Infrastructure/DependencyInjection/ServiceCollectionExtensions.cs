@@ -7,6 +7,7 @@ using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Logging;
 using Fakvio.Infrastructure.Repository;
 using Fakvio.Infrastructure.Service;
+using Fakvio.Infrastructure.Service.AccountingExport;
 using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -151,12 +152,22 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
         services.AddScopedWithLogging<IIsdocExportService, IsdocExportService>();
         services.AddScopedWithLogging<IUblExportService, UblExportService>();
+        services.AddScopedWithLogging<IAccountingExportService, AccountingExportService>();
+        // One IAccountingExporter per accounting system — AccountingExportService picks the
+        // right one by matching its System property, so all three register against the same interface.
+        services.AddScoped<IAccountingExporter, PohodaAccountingExporter>();
+        services.AddScoped<IAccountingExporter, MoneyS3AccountingExporter>();
+        services.AddScoped<IAccountingExporter, AbraFlexiAccountingExporter>();
         services.AddScopedWithLogging<IQrPaymentService, QrPaymentService>();
         services.AddScopedWithLogging<IEmailService, EmailService>();
         services.AddScopedWithLogging<IContentTemplateService, ContentTemplateService>();
         services.AddScopedWithLogging<IDashboardService, DashboardService>();
         services.AddScopedWithLogging<IReceivedInvoiceService, ReceivedInvoiceService>();
         services.AddScopedWithLogging<IVatReportService, VatReportService>();
+        // EU OSS (DEVGUIDE §4.16): rate code table (Master), quarterly report (Tenant) and the ECB rate client it needs.
+        services.AddScopedWithLogging<IOssVatRateService, OssVatRateService>();
+        services.AddScopedWithLogging<IOssReportService, OssReportService>();
+        services.AddHttpClient<IEcbExchangeRateClient, EcbExchangeRateClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
         // Tenant readiness — one place that answers "is this tenant set up well enough to invoice?".

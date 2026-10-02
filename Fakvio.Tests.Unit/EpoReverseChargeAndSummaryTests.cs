@@ -79,12 +79,12 @@ public class EpoReverseChargeAndSummaryTests : IDisposable
 
     /// <summary>Issued invoice with one item; regime/code default to a plain standard item.</summary>
     private void Issued(string number, decimal baseAmount, long clientId = CzCustomerId,
-        EVatRegime regime = EVatRegime.Standard, decimal vatPct = 21m)
+        EVatRegime regime = EVatRegime.Standard, decimal vatPct = 21m, string? ossCountry = null)
     {
         var vat = regime == EVatRegime.Standard ? Math.Round(baseAmount * vatPct / 100m, 2) : 0m;
         _context.Invoice.Add(new Invoice
         {
-            DocumentType = EDocumentType.Invoice, Status = EInvoiceStatus.Completed, DocumentNumber = number,
+            DocumentType = EDocumentType.Invoice, Status = EInvoiceStatus.Completed, DocumentNumber = number, OssCountryCode = ossCountry,
             IssueDate = Duzp, TaxableSupplyDate = Duzp, DueDate = Duzp.AddDays(14),
             ClientId = clientId, IssuerId = IssuerId, Issuer = _context.Client.Find(IssuerId)!, CurrencyId = 1,
             TotalBeforeVat = baseAmount, TotalVat = vat, TotalWithVat = baseAmount + vat,
@@ -435,5 +435,15 @@ public class EpoReverseChargeAndSummaryTests : IDisposable
         var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
             _service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly));
         ex.Message.ShouldContain("REC-DE");
+    }
+
+    [Fact]
+    public async Task SummaryStatement_OssInvoice_IsExcluded()
+    {
+        Issued("INV-OSS", 2_000m, DeCustomerId, EVatRegime.OutOfScope, ossCountry: "DE");
+        Issued("INV-B2B", 1_000m, DeCustomerId, EVatRegime.OutOfScope);
+
+        var row = (await _service.GetSummaryStatementRowsAsync(2026, 3, EVatPeriodType.Monthly)).ShouldHaveSingleItem();
+        row.TotalCzk.ShouldBe(1_000);
     }
 }

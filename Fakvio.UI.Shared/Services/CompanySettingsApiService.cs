@@ -99,6 +99,23 @@ public class CompanySettingsApiService : ApiClientBase
 
     #endregion
 
+    /// <summary>Tenant-scoped EU OSS registration of the current company (company Admin may call it).</summary>
+    public async Task<OssSettingsDto?> GetOssAsync()
+    {
+        try
+        {
+            return await GetAsync<OssSettingsDto>("/api/company-settings/oss");
+        }
+        catch (ApiException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Saves the EU OSS registration (only those two fields are written server-side).</summary>
+    public async Task<OssSettingsDto?> SaveOssAsync(OssSettingsDto dto)
+        => await PutAsync<OssSettingsDto, OssSettingsDto>("/api/company-settings/oss", dto);
+
     #region Tenant Lifecycle
 
     /// <summary>

@@ -2025,6 +2025,41 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Toggle {0}</value></data>
+  <data name="Nav_OssReport" xml:space="preserve"><value>OSS report</value></data>
+  <data name="OssReport_Title" xml:space="preserve"><value>EU OSS report (One-Stop-Shop)</value></data>
+  <data name="OssReport_Info" xml:space="preserve"><value>Quarterly summary of B2C sales to other EU states under OSS: taxable base and VAT per destination country and rate, in EUR. Invoices in other currencies are converted at the ECB rate of the last day of the quarter. A basis for the filing on the tax portal; it is not a DPHDP3/control statement.</value></data>
+  <data name="OssReport_Year" xml:space="preserve"><value>Year</value></data>
+  <data name="OssReport_Quarter" xml:space="preserve"><value>Quarter</value></data>
+  <data name="OssReport_Generate" xml:space="preserve"><value>Show</value></data>
+  <data name="OssReport_DownloadCsv" xml:space="preserve"><value>Download CSV</value></data>
+  <data name="OssReport_DocumentCount" xml:space="preserve"><value>documents in period: {0}</value></data>
+  <data name="OssReport_Country" xml:space="preserve"><value>Consumption country</value></data>
+  <data name="OssReport_Rate" xml:space="preserve"><value>Rate</value></data>
+  <data name="OssReport_BaseEur" xml:space="preserve"><value>Base (EUR)</value></data>
+  <data name="OssReport_VatEur" xml:space="preserve"><value>VAT (EUR)</value></data>
+  <data name="OssReport_Total" xml:space="preserve"><value>Total</value></data>
+  <data name="OssReport_NoData" xml:space="preserve"><value>There are no OSS documents in this quarter.</value></data>
+  <data name="OssReport_EcbNote" xml:space="preserve"><value>Credit notes reduce both base and tax. Rate: ECB reference rate of the last day of the quarter, or of the next publication day when none was published that day (Art. 369h(2) VAT directive).</value></data>
+  <data name="Oss_SettingsTitle" xml:space="preserve"><value>OSS scheme (EU One-Stop-Shop)</value></data>
+  <data name="Oss_SettingsInfoText" xml:space="preserve"><value>If you are registered for OSS, invoices to consumers (clients without a VAT id) in other EU states are issued with the destination country VAT and are excluded from the VAT return and control statement. Fakvio does not monitor the EUR 10,000 threshold.</value></data>
+  <data name="Oss_Registered" xml:space="preserve"><value>I am registered for the OSS scheme</value></data>
+  <data name="Oss_RegisteredSince" xml:space="preserve"><value>Registered since</value></data>
+  <data name="Oss_ApplyToInvoice" xml:space="preserve"><value>OSS regime (destination-country VAT)</value></data>
+  <data name="Oss_ApplyHint" xml:space="preserve"><value>Tick only if the supply falls under OSS (e.g. distance sales of goods, telecommunication, broadcasting or electronic services). General services to consumers (consulting, software development) are taxed in CZ. Destination country VAT of {0} will be used.</value></data>
+  <data name="AccountingExport_Open" xml:space="preserve"><value>Export to accounting</value></data>
+  <data name="AccountingExport_System" xml:space="preserve"><value>Accounting system</value></data>
+  <data name="AccountingExport_From" xml:space="preserve"><value>From</value></data>
+  <data name="AccountingExport_To" xml:space="preserve"><value>To</value></data>
+  <data name="AccountingExport_IncludeIssued" xml:space="preserve"><value>Issued invoices</value></data>
+  <data name="AccountingExport_IncludeReceived" xml:space="preserve"><value>Received invoices</value></data>
+  <data name="AccountingExport_Export" xml:space="preserve"><value>Export</value></data>
+  <data name="AccountingExport_Success" xml:space="preserve"><value>Export downloaded.</value></data>
+  <data name="AccountingExport_Error" xml:space="preserve"><value>The export could not be created. Check the period and try again.</value></data>
+  <data name="EAccountingSystem_Pohoda" xml:space="preserve"><value>POHODA</value></data>
+  <data name="EAccountingSystem_MoneyS3" xml:space="preserve"><value>Money S3</value></data>
+  <data name="EAccountingSystem_AbraFlexi" xml:space="preserve"><value>ABRA Flexi</value></data>
+  <data name="AccountingExport_Note" xml:space="preserve"><value>Documents the target system cannot represent correctly are left out of the file: foreign-currency documents (Money S3, ABRA Flexi), proformas (ABRA Flexi), advance-payment tax receipts and documents with a VAT rate other than 21 / 12 / 0 %. The number of skipped documents is shown after the export.</value></data>
+  <data name="AccountingExport_Skipped" xml:space="preserve"><value>Skipped documents the target system does not support: {0}.</value></data>
   <data name="Nav_Webhooks" xml:space="preserve"><value>Webhooks</value></data>
   <data name="Webhook_Title" xml:space="preserve"><value>Webhooks</value></data>
   <data name="Webhook_Subtitle" xml:space="preserve"><value>Fakvio sends a signed HTTP request to your URL when something happens (invoice created, sent or paid, received invoice, payment). Useful for connecting a shop, accounting software or your own app.</value></data>

@@ -105,6 +105,7 @@ public class NavigateTool : IChatTool
 
         // Taxes and VAT
         new("vat_report", "/vat-report", "VAT report"),
+        new("oss_report", "/oss-report", "EU OSS report"),
         new("vat_rate_list", "/vat-rates", "VAT rate list"),
         new("tax_estimation", "/tax-estimation", "tax estimation"),
         new("tax_year_configs", "/tax-configs", "tax year configuration"),

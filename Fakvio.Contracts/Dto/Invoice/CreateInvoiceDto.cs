@@ -9,6 +9,15 @@ namespace Fakvio.Contracts.Dto.Invoice;
 public class CreateInvoiceDto
 {
     /// <summary>
+    /// Opt-in to the EU OSS (One-Stop-Shop) regime for this invoice (DEVGUIDE §4.16). Honoured only when the
+    /// invoice is eligible (OSS-registered VAT-payer issuer, consumer client in another EU state); asking for it
+    /// on an ineligible invoice is rejected. Default false: general B2C services are taxed in CZ (Art. 45),
+    /// OSS applies to goods distance sales, telecom/broadcasting/electronic services, etc. — only the user knows.
+    /// Ignored for credit notes (they inherit the original invoice's regime).
+    /// </summary>
+    public bool ApplyOss { get; set; }
+
+    /// <summary>
     /// Type of document - Invoice or CreditNote
     /// </summary>
     [Required]
