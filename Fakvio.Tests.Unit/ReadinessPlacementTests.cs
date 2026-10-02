@@ -84,6 +84,13 @@ public class ReadinessPlacementTests : BunitContext, IAsyncLifetime
         AddApiService(sp => new NumberSequenceApiService(sp.GetRequiredService<IHttpClientFactory>(),
             NullLogger<NumberSequenceApiService>.Instance, sp.GetRequiredService<AuthenticationStateProvider>()));
 
+        // The dashboard now also reads the layout preferences and decides on the setup wizard redirect.
+        AddApiService(sp => new UserPreferencesApiService(sp.GetRequiredService<IHttpClientFactory>(),
+            NullLogger<UserPreferencesApiService>.Instance, sp.GetRequiredService<AuthenticationStateProvider>()));
+        AddApiService(sp => new ReadinessApiService(sp.GetRequiredService<IHttpClientFactory>(),
+            NullLogger<ReadinessApiService>.Instance, sp.GetRequiredService<AuthenticationStateProvider>()));
+        Services.AddScoped<UserPreferencesState>();
+
         // Placement, not behaviour — the banner and the heavy editors are stubs.
         ComponentFactories.AddStub<ReadinessBanner>();
         ComponentFactories.AddStub<SetupChecklist>();

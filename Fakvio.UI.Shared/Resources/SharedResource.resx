@@ -516,6 +516,23 @@
   <data name="EPaymentMethod_PayPal" xml:space="preserve"><value>PayPal</value></data>
   <data name="EPaymentMethod_Other" xml:space="preserve"><value>Jiný</value></data>
 
+  <!-- VAT regime enum labels (localized display for EVatRegime, used by generic EnumSelect) -->
+  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standardní</value></data>
+  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Přenesená daňová povinnost</value></data>
+  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Osvobozeno</value></data>
+  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Mimo předmět daně</value></data>
+
+  <!-- Reverse charge (PDP, §92a-92e ZDPH) UI on the invoice item editor -->
+  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>Režim DPH</value></data>
+  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Kód PDP</value></data>
+  <data name="Invoice_ReverseChargeToggle" xml:space="preserve"><value>Přenesená daňová povinnost</value></data>
+  <data name="Invoice_ReverseChargeToggle_Hint" xml:space="preserve"><value>Nastaví u všech položek režim PDP se zvoleným kódem</value></data>
+  <data name="Invoice_ReverseChargeToggle_SelectCode" xml:space="preserve"><value>Vyberte kód předmětu plnění</value></data>
+  <data name="InvoiceItem_VatZeroCustomerPays" xml:space="preserve"><value>DPH 0 %, daň odvede zákazník</value></data>
+  <data name="Invoice_ReverseChargeNote" xml:space="preserve"><value>Daň odvede zákazník. Přenesená daňová povinnost dle §92a zákona č. 235/2004 Sb., o dani z přidané hodnoty.</value></data>
+  <data name="Validation_ReverseChargeCodeRequired" xml:space="preserve"><value>U položky s režimem Přenesená daňová povinnost musí být vybrán kód předmětu plnění.</value></data>
+  <data name="Validation_ReverseChargeCodeNotAllowed" xml:space="preserve"><value>Kód předmětu plnění lze vybrat jen u položky v režimu Přenesená daňová povinnost.</value></data>
+
   <!-- Missing billing title key used in Clients.razor -->
   <data name="Billing_Title" xml:space="preserve"><value>Fakturační nastavení</value></data>
 
@@ -1061,16 +1078,8 @@
   <data name="BankAccount_SelectAccount" xml:space="preserve"><value>Bankovní účet</value></data>
 
   <!-- Billing Settings (Client detail) -->
-  <data name="Billing_Title" xml:space="preserve"><value>Fakturační nastavení</value></data>
-  <data name="Billing_DueDateCalcType" xml:space="preserve"><value>Typ výpočtu splatnosti</value></data>
-  <data name="Billing_DueDays" xml:space="preserve"><value>Počet dnů splatnosti</value></data>
   <data name="Billing_InvoiceNumberPrefix" xml:space="preserve"><value>Prefix čísla faktury</value></data>
   <data name="Billing_InvoiceNumberSuffix" xml:space="preserve"><value>Suffix čísla faktury</value></data>
-  <data name="Billing_CreditNotePrefix" xml:space="preserve"><value>Prefix čísla dobropisu</value></data>
-  <data name="Billing_CreditNoteSuffix" xml:space="preserve"><value>Suffix čísla dobropisu</value></data>
-  <data name="Billing_PaymentMethod" xml:space="preserve"><value>Platební metoda</value></data>
-  <data name="Billing_BankAccount" xml:space="preserve"><value>Bankovní účet</value></data>
-  <data name="Billing_Notes" xml:space="preserve"><value>Poznámky</value></data>
   <data name="Billing_NotConfigured" xml:space="preserve"><value>Fakturační nastavení není nakonfigurováno</value></data>
 
   <!-- AI Chat -->
@@ -1213,7 +1222,6 @@
 
   <!-- Navigation and generic labels for tax estimation -->
   <data name="Nav_TaxEstimation" xml:space="preserve"><value>Odhad daní</value></data>
-  <data name="Label_Description" xml:space="preserve"><value>Popis</value></data>
   <data name="Label_Amount" xml:space="preserve"><value>Částka</value></data>
   <data name="Label_Formula" xml:space="preserve"><value>Vzorec</value></data>
   <data name="TaxConfig_Title" xml:space="preserve"><value>Konfigurace daňových sazeb</value></data>
@@ -1390,7 +1398,6 @@
   <data name="Dashboard_DraftReminders" xml:space="preserve"><value>Koncepty</value></data>
   <data name="Dashboard_SentReminders" xml:space="preserve"><value>Odeslané</value></data>
   <data name="Dashboard_FailedReminders" xml:space="preserve"><value>Chybové</value></data>
-  <data name="Dashboard_OverdueInvoices" xml:space="preserve"><value>Faktury po splatnosti</value></data>
   <data name="Dashboard_TotalOverdueAmount" xml:space="preserve"><value>Celkem dlužná částka</value></data>
   <data name="Dashboard_RemindersLast30Days" xml:space="preserve"><value>Upomínky za 30 dní</value></data>
   <data name="Dashboard_RecentReminders" xml:space="preserve"><value>Poslední upomínky</value></data>
@@ -2018,12 +2025,46 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Aktuální stránka {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Stránka {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Rozbalit nebo sbalit {0}</value></data>
-  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>Režim DPH</value></data>
-  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Kód předmětu plnění (PDP)</value></data>
-  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standardní</value></data>
-  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Přenesená daňová povinnost</value></data>
-  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Osvobozeno</value></data>
-  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Mimo předmět daně</value></data>
+  <data name="DashboardWidget_Kpis" xml:space="preserve"><value>Přehledové dlaždice</value></data>
+  <data name="DashboardWidget_TaxInsurance" xml:space="preserve"><value>Zálohy a daně</value></data>
+  <data name="DashboardWidget_RevenueByMonth" xml:space="preserve"><value>Tržby po měsících</value></data>
+  <data name="DashboardWidget_IncomeVsExpense" xml:space="preserve"><value>Příjmy vs výdaje po měsících</value></data>
+  <data name="DashboardWidget_ReceivablesAging" xml:space="preserve"><value>Neuhrazené pohledávky podle stáří</value></data>
+  <data name="DashboardWidget_InvoicesByStatus" xml:space="preserve"><value>Faktury podle stavu</value></data>
+  <data name="DashboardWidget_TopClients" xml:space="preserve"><value>Top klienti podle tržeb</value></data>
+  <data name="DashboardWidget_Overdue" xml:space="preserve"><value>Faktury po splatnosti</value></data>
+  <data name="DashboardWidget_RecentInvoices" xml:space="preserve"><value>Poslední faktury</value></data>
+  <data name="DashboardWidget_Reminders" xml:space="preserve"><value>Upomínky</value></data>
+  <data name="Dashboard_EditLayout" xml:space="preserve"><value>Upravit nástěnku</value></data>
+  <data name="Dashboard_ResetLayout" xml:space="preserve"><value>Obnovit výchozí</value></data>
+  <data name="Dashboard_MoveUp" xml:space="preserve"><value>Posunout nahoru</value></data>
+  <data name="Dashboard_MoveDown" xml:space="preserve"><value>Posunout dolů</value></data>
+  <data name="Dashboard_RevenueByMonth" xml:space="preserve"><value>Tržby po měsících</value></data>
+  <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Příjmy vs výdaje po měsících</value></data>
+  <data name="Dashboard_Income" xml:space="preserve"><value>Příjmy</value></data>
+  <data name="Dashboard_Expense" xml:space="preserve"><value>Výdaje</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Posledních 12 měsíců, bez DPH, jen faktury v CZK</value></data>
+  <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Neuhrazené pohledávky podle stáří</value></data>
+  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Dny po splatnosti, s DPH, v CZK</value></data>
+  <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Spustit průvodce</value></data>
+  <data name="SetupWizard_Title" xml:space="preserve"><value>Průvodce nastavením</value></data>
+  <data name="SetupWizard_Intro" xml:space="preserve"><value>Pár kroků a můžete vystavit první fakturu. Každý krok jde později změnit v nastavení.</value></data>
+  <data name="SetupWizard_Skip" xml:space="preserve"><value>Přeskočit průvodce</value></data>
+  <data name="SetupWizard_NoIssuer" xml:space="preserve"><value>Firma nebyla nalezena. Dokončete nejdříve registraci firmy.</value></data>
+  <data name="SetupWizard_StepCompany" xml:space="preserve"><value>Firma</value></data>
+  <data name="SetupWizard_StepBank" xml:space="preserve"><value>Banka</value></data>
+  <data name="SetupWizard_StepBilling" xml:space="preserve"><value>Fakturace</value></data>
+  <data name="SetupWizard_StepUsers" xml:space="preserve"><value>Uživatelé (volitelné)</value></data>
+  <data name="SetupWizard_StepDone" xml:space="preserve"><value>Hotovo</value></data>
+  <data name="SetupWizard_LoadFromAres" xml:space="preserve"><value>Načíst z ARES</value></data>
+  <data name="SetupWizard_SaveAndContinue" xml:space="preserve"><value>Uložit a pokračovat</value></data>
+  <data name="SetupWizard_Next" xml:space="preserve"><value>Pokračovat</value></data>
+  <data name="SetupWizard_AddBankAccount" xml:space="preserve"><value>Přidat bankovní účet</value></data>
+  <data name="SetupWizard_SequencesMissing" xml:space="preserve"><value>Chybí číselné řady dokladů. Po uložení se vytvoří výchozí řady pro faktury a dobropisy.</value></data>
+  <data name="SetupWizard_UsersHint" xml:space="preserve"><value>Pozvěte kolegu nebo účetní. Tento krok můžete přeskočit.</value></data>
+  <data name="SetupWizard_AllDone" xml:space="preserve"><value>Vše je nastaveno, můžete vystavovat faktury.</value></data>
+  <data name="SetupWizard_StillMissing" xml:space="preserve"><value>Stále chybí tyto údaje:</value></data>
+  <data name="SetupWizard_GoToDashboard" xml:space="preserve"><value>Přejít na nástěnku</value></data>
   <data name="EpoSummaryPreview" xml:space="preserve"><value>Náhled souhrnného hlášení</value></data>
   <data name="EpoSummaryTitle" xml:space="preserve"><value>Souhrnné hlášení (plnění do EU)</value></data>
   <data name="EpoSummaryEmpty" xml:space="preserve"><value>V období nejsou žádná plnění pro odběratele z EU s DIČ.</value></data>

@@ -76,4 +76,27 @@ public class DashboardDto
     /// Used as a supplementary data point (displayed in tooltip or side table).
     /// </summary>
     public Dictionary<string, int> InvoiceCountByClient { get; set; } = new();
+
+    // ─── New dashboard-widget series (dashboard-onboarding) ───────────────────
+
+    /// <summary>
+    /// "Tržby po měsících" — last 12 months of net revenue (TotalBeforeVat), oldest first.
+    /// Issued invoices (DocumentType.Invoice) count positive, credit notes
+    /// (DocumentType.CreditNote) count negative. CZK only — no currency conversion,
+    /// same simplification the rest of the dashboard already makes.
+    /// Always has exactly 12 entries (months with no activity are 0).
+    /// </summary>
+    public List<MonthlyAmountDto> RevenueByMonth { get; set; } = new();
+
+    /// <summary>
+    /// "Příjmy vs výdaje po měsících" — last 12 months of issued vs. received invoice
+    /// totals (TotalBeforeVat), oldest first. Always has exactly 12 entries.
+    /// </summary>
+    public List<IncomeExpenseMonthDto> IncomeVsExpenseByMonth { get; set; } = new();
+
+    /// <summary>
+    /// "Neuhrazené pohledávky podle stáří" — unpaid issued invoices (Completed /
+    /// PartiallyPaid) bucketed by days since due date.
+    /// </summary>
+    public ReceivablesAgingDto ReceivablesAging { get; set; } = new();
 }

@@ -14,6 +14,7 @@
 @inject ReceivedInvoiceApiService ReceivedInvoiceService
 @inject ClientApiService ClientService
 @inject VatRateApiService VatRateService
+@inject ReverseChargeCodeApiService ReverseChargeCodeService
 @inject CurrencyApiService CurrencyService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -235,7 +236,7 @@ else
                                                  ValueChanged="@((EVatRegime v) => { context.VatRegime = v; if (v != EVatRegime.ReverseCharge) context.ReverseChargeCodeId = null; RecalculateItem(context); })" />
                                 @if (context.VatRegime == EVatRegime.ReverseCharge)
                                 {
-                                    <ReverseChargeCodeSelect @bind-Value="context.ReverseChargeCodeId" Dense="true" Required="true" />
+                                    <ReverseChargeCodeSelect Codes="_rcCodes" @bind-Value="context.ReverseChargeCodeId" Required="true" />
                                 }
                             </MudTd>
                             <MudTd>@context.TotalBeforeVat.ToString("N2")</MudTd>
@@ -320,6 +321,7 @@ else
 
     // Items as editable model
     private List<EditableItem> _items = new();
+    private List<Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto> _rcCodes = new();
 
     // Bumped after a payment match/unmatch so ReceivedInvoicePaymentsPanel reloads.
     private int _paymentsRefreshTrigger;
@@ -337,6 +339,9 @@ else
 
         // Load clients for supplier dropdown
         _clients = (await ClientService.GetAllAsync()) ?? new();
+
+        // Reverse charge codes (kód předmětu plnění) for the per-item dropdown.
+        _rcCodes = await ReverseChargeCodeService.GetAllActiveAsync();
 
         if (_isCreateMode)
         {

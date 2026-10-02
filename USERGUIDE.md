@@ -66,6 +66,31 @@ Pokud byl účet vytvořen, ale odeslání emailu selhalo, zůstane na stránce 
 
 Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
 
+### Úprava nástěnky
+
+Nástěnka se skládá z **widgetů** (dlaždic a grafů). Tlačítkem **Upravit nástěnku** (vpravo nad widgety)
+otevřete dialog, kde u každého widgetu přepínačem zobrazíte nebo skryjete a šipkami nahoru/dolů změníte pořadí.
+**Obnovit výchozí** vrátí původní rozložení. Rozložení se ukládá k vašemu uživatelskému účtu, takže vás
+následuje na každé zařízení. Nové widgety přidané v pozdější verzi se objeví automaticky na konci.
+
+Kromě dlaždic a stávajících grafů jsou k dispozici tři nové grafy (vždy za posledních 12 měsíců, v CZK):
+
+| Graf | Co ukazuje |
+|------|-----------|
+| **Tržby po měsících** | Součet vystavených faktur bez DPH; dobropisy se odečítají |
+| **Příjmy vs výdaje po měsících** | Vystavené faktury proti schváleným/zaplaceným přijatým fakturám (bez DPH) |
+| **Neuhrazené pohledávky podle stáří** | Nezaplacená část faktur podle dnů po splatnosti: 0-30 (včetně dosud nesplatných), 31-60, 61-90, 90+ |
+
+### Průvodce nastavením
+
+Při prvním přihlášení vás aplikace sama zavede do **Průvodce nastavením** (`/setup`), pokud firmě chybí údaje
+o vystavovateli (název, IČ, adresa, DIČ u plátců DPH) nebo bankovní účet. Průvodce má kroky
+**Firma** (s možností načíst údaje z ARES), **Banka**, **Fakturace** (splatnost a výchozí číselné řady),
+**Uživatelé** (volitelná pozvánka kolegy) a **Hotovo**. Každý krok se ukládá hned a stav kroků se počítá
+z aktuální připravenosti firmy, takže průvodce můžete kdykoli opustit a vrátit se.
+Tlačítkem **Přeskočit průvodce** ho přestanete nabízet automaticky; ručně ho spustíte tlačítkem
+**Spustit průvodce** na kartě **Dokončit nastavení**. Automatické přesměrování proběhne nejvýše jednou za relaci.
+
 ### Dokončit nastavení (checklist připravenosti)
 
 Pokud vaší firmě chybí něco, co musí být na daňovém dokladu, uvidíte nahoře na dashboardu
@@ -83,6 +108,8 @@ Položky jsou rozdělené do dvou skupin, každá má vlastní nadpis (a barvu k
 Skupina, ve které nic nechybí, se nezobrazí vůbec.
 
 Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
+
+Na kartě je i tlačítko **Spustit průvodce** (viz [Průvodce nastavením](#průvodce-nastavením)).
 
 **Odložení na později.** Tlačítko **Připomenout později** kartu sbalí na jediný řádek
 „Dokončit nastavení (počet)“. Kliknutím na něj se průvodce kdykoli znovu rozbalí — není to
@@ -718,8 +745,10 @@ Každá položka faktury má DPH regime:
 | **OutOfScope** (Mimo scope) | Plnění, které není předmětem DPH |
 
 **Přenesená daňová povinnost (PDP / Reverse Charge):**
-- Nastavte regime = ReverseCharge
-- Vyberte příslušný kód §92b/c/d/e z číselníku MFČR (pole „Kód přenesené DPH")
+- V editoru položek (platí pro fakturu, dobropis i zálohovou fakturu; jen pro plátce DPH) nastavte ve sloupci „Režim DPH" hodnotu Přenesená daňová povinnost
+- Ve sloupci „Kód PDP" vyberte příslušný kód předmětu plnění z číselníku MFČR (§92a–92e)
+- Chcete-li převést celou fakturu najednou, zapněte přepínač „Přenesená daňová povinnost" nad tabulkou položek a vyberte jeden kód; zapíše se do všech položek (přepínač se sám vypne, pokud pak u některé položky režim změníte)
+- Součty ukazují DPH 0 a u položky text „daň odvede zákazník"; PDF obsahuje povinnou poznámku dle §92a a použité kódy, ISDOC blok LocalReverseCharge
 - Faktura se správně zobrazí v kontrolním hlášení (DPHKH1)
 
 ### Neplátce DPH
@@ -1161,7 +1190,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 71 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 72 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.

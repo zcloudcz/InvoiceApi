@@ -1,33 +1,31 @@
 @*
-    Reverse charge code (kód předmětu plnění PDP) dropdown, filled from the MFČR reference list.
-    Used when an item's VatRegime is ReverseCharge; the code goes to the control statement
-    (DPHKH1 A.1 / B.1, attribute kod_pred_pl).
+    Reusable dropdown for the reverse charge code (kód předmětu plnění, §92a-92e ZDPH).
+    The caller supplies the already loaded code list (see ReverseChargeCodeApiService.GetAllActiveAsync),
+    so several selects on one page share a single API call.
 
-    Usage: <ReverseChargeCodeSelect @bind-Value="item.ReverseChargeCodeId" Dense="true" />
+    Usage:
+      <ReverseChargeCodeSelect Codes="_codes" @bind-Value="item.ReverseChargeCodeId" Required="true" />
 *@
 @using Fakvio.Contracts.Dto.ReverseChargeCode
-@using Fakvio.UI.Shared.Services
-@inject ReverseChargeCodeApiService CodeService
 @inject IStringLocalizer<SharedResource> L
 
-<MudSelect T="long?" Value="Value" ValueChanged="ValueChanged" Clearable="true"
+<MudSelect T="long?" Value="Value" ValueChanged="ValueChanged"
            Label="@(Label ?? L["InvoiceItem_ReverseChargeCode"].Value)"
-           Margin="Margin.Dense" Dense="Dense" Disabled="Disabled" Required="Required">
-    @foreach (var code in _codes)
+           Variant="Variant" Margin="Margin" Dense="Dense" Required="Required" Style="@Style">
+    @foreach (var rc in Codes)
     {
-        <MudSelectItem T="long?" Value="@((long?)code.Id)">@(code.Code) - @(code.NameCs)</MudSelectItem>
+        <MudSelectItem T="long?" Value="@((long?)rc.Id)">@rc.Code - @rc.NameCs</MudSelectItem>
     }
 </MudSelect>
 
 @code {
-    private List<ReverseChargeCodeDto> _codes = [];
-
+    [Parameter] public List<ReverseChargeCodeDto> Codes { get; set; } = new();
     [Parameter] public long? Value { get; set; }
     [Parameter] public EventCallback<long?> ValueChanged { get; set; }
     [Parameter] public string? Label { get; set; }
-    [Parameter] public bool Dense { get; set; }
-    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public Variant Variant { get; set; } = Variant.Text;
+    [Parameter] public Margin Margin { get; set; } = Margin.Dense;
+    [Parameter] public bool Dense { get; set; } = true;
     [Parameter] public bool Required { get; set; }
-
-    protected override async Task OnInitializedAsync() => _codes = await CodeService.GetAllActiveAsync();
 }

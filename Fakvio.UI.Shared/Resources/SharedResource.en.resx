@@ -516,6 +516,23 @@
   <data name="EPaymentMethod_PayPal" xml:space="preserve"><value>PayPal</value></data>
   <data name="EPaymentMethod_Other" xml:space="preserve"><value>Other</value></data>
 
+  <!-- VAT regime enum labels (localized display for EVatRegime, used by generic EnumSelect) -->
+  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standard</value></data>
+  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Reverse charge</value></data>
+  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Exempt</value></data>
+  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Out of scope</value></data>
+
+  <!-- Reverse charge (PDP, §92a-92e ZDPH) UI on the invoice item editor -->
+  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>VAT regime</value></data>
+  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Reverse charge code</value></data>
+  <data name="Invoice_ReverseChargeToggle" xml:space="preserve"><value>Reverse charge</value></data>
+  <data name="Invoice_ReverseChargeToggle_Hint" xml:space="preserve"><value>Sets reverse charge with the chosen code on every item</value></data>
+  <data name="Invoice_ReverseChargeToggle_SelectCode" xml:space="preserve"><value>Select a reverse charge code</value></data>
+  <data name="InvoiceItem_VatZeroCustomerPays" xml:space="preserve"><value>VAT 0 %, customer pays the tax</value></data>
+  <data name="Invoice_ReverseChargeNote" xml:space="preserve"><value>Tax to be paid by the customer. Reverse charge under §92a of Act No. 235/2004 Coll., on value added tax.</value></data>
+  <data name="Validation_ReverseChargeCodeRequired" xml:space="preserve"><value>A reverse charge code is required for an item with the Reverse Charge VAT regime.</value></data>
+  <data name="Validation_ReverseChargeCodeNotAllowed" xml:space="preserve"><value>A reverse charge code can only be set on an item with the Reverse Charge VAT regime.</value></data>
+
   <!-- Missing billing title key used in Clients.razor -->
   <data name="Billing_Title" xml:space="preserve"><value>Billing Settings</value></data>
 
@@ -1061,16 +1078,8 @@
   <data name="BankAccount_SelectAccount" xml:space="preserve"><value>Bank Account</value></data>
 
   <!-- Billing Settings (Client detail) -->
-  <data name="Billing_Title" xml:space="preserve"><value>Billing Settings</value></data>
-  <data name="Billing_DueDateCalcType" xml:space="preserve"><value>Due Date Calculation Type</value></data>
-  <data name="Billing_DueDays" xml:space="preserve"><value>Due Days</value></data>
   <data name="Billing_InvoiceNumberPrefix" xml:space="preserve"><value>Invoice Number Prefix</value></data>
   <data name="Billing_InvoiceNumberSuffix" xml:space="preserve"><value>Invoice Number Suffix</value></data>
-  <data name="Billing_CreditNotePrefix" xml:space="preserve"><value>Credit Note Prefix</value></data>
-  <data name="Billing_CreditNoteSuffix" xml:space="preserve"><value>Credit Note Suffix</value></data>
-  <data name="Billing_PaymentMethod" xml:space="preserve"><value>Payment Method</value></data>
-  <data name="Billing_BankAccount" xml:space="preserve"><value>Bank Account</value></data>
-  <data name="Billing_Notes" xml:space="preserve"><value>Notes</value></data>
   <data name="Billing_NotConfigured" xml:space="preserve"><value>Billing settings not configured</value></data>
 
   <!-- AI Chat -->
@@ -1213,7 +1222,6 @@
 
   <!-- Navigation and generic labels for tax estimation -->
   <data name="Nav_TaxEstimation" xml:space="preserve"><value>Tax Estimation</value></data>
-  <data name="Label_Description" xml:space="preserve"><value>Description</value></data>
   <data name="Label_Amount" xml:space="preserve"><value>Amount</value></data>
   <data name="Label_Formula" xml:space="preserve"><value>Formula</value></data>
   <data name="TaxConfig_Title" xml:space="preserve"><value>Tax Year Configuration</value></data>
@@ -1390,7 +1398,6 @@
   <data name="Dashboard_DraftReminders" xml:space="preserve"><value>Drafts</value></data>
   <data name="Dashboard_SentReminders" xml:space="preserve"><value>Sent</value></data>
   <data name="Dashboard_FailedReminders" xml:space="preserve"><value>Failed</value></data>
-  <data name="Dashboard_OverdueInvoices" xml:space="preserve"><value>Overdue Invoices</value></data>
   <data name="Dashboard_TotalOverdueAmount" xml:space="preserve"><value>Total Overdue Amount</value></data>
   <data name="Dashboard_RemindersLast30Days" xml:space="preserve"><value>Reminders (Last 30 Days)</value></data>
   <data name="Dashboard_RecentReminders" xml:space="preserve"><value>Recent Reminders</value></data>
@@ -2018,12 +2025,46 @@
   <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
   <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
   <data name="MudNavGroup_ToggleExpand" xml:space="preserve"><value>Toggle {0}</value></data>
-  <data name="InvoiceItem_VatRegime" xml:space="preserve"><value>VAT regime</value></data>
-  <data name="InvoiceItem_ReverseChargeCode" xml:space="preserve"><value>Reverse charge code</value></data>
-  <data name="EVatRegime_Standard" xml:space="preserve"><value>Standard</value></data>
-  <data name="EVatRegime_ReverseCharge" xml:space="preserve"><value>Reverse charge</value></data>
-  <data name="EVatRegime_Exempt" xml:space="preserve"><value>Exempt</value></data>
-  <data name="EVatRegime_OutOfScope" xml:space="preserve"><value>Out of scope</value></data>
+  <data name="DashboardWidget_Kpis" xml:space="preserve"><value>Overview tiles</value></data>
+  <data name="DashboardWidget_TaxInsurance" xml:space="preserve"><value>Insurance advances and tax</value></data>
+  <data name="DashboardWidget_RevenueByMonth" xml:space="preserve"><value>Revenue by month</value></data>
+  <data name="DashboardWidget_IncomeVsExpense" xml:space="preserve"><value>Income vs expenses by month</value></data>
+  <data name="DashboardWidget_ReceivablesAging" xml:space="preserve"><value>Unpaid receivables by age</value></data>
+  <data name="DashboardWidget_InvoicesByStatus" xml:space="preserve"><value>Invoices by status</value></data>
+  <data name="DashboardWidget_TopClients" xml:space="preserve"><value>Top clients by revenue</value></data>
+  <data name="DashboardWidget_Overdue" xml:space="preserve"><value>Overdue invoices</value></data>
+  <data name="DashboardWidget_RecentInvoices" xml:space="preserve"><value>Recent invoices</value></data>
+  <data name="DashboardWidget_Reminders" xml:space="preserve"><value>Reminders</value></data>
+  <data name="Dashboard_EditLayout" xml:space="preserve"><value>Customize dashboard</value></data>
+  <data name="Dashboard_ResetLayout" xml:space="preserve"><value>Reset to default</value></data>
+  <data name="Dashboard_MoveUp" xml:space="preserve"><value>Move up</value></data>
+  <data name="Dashboard_MoveDown" xml:space="preserve"><value>Move down</value></data>
+  <data name="Dashboard_RevenueByMonth" xml:space="preserve"><value>Revenue by month</value></data>
+  <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Income vs expenses by month</value></data>
+  <data name="Dashboard_Income" xml:space="preserve"><value>Income</value></data>
+  <data name="Dashboard_Expense" xml:space="preserve"><value>Expenses</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Last 12 months, excl. VAT, CZK invoices only</value></data>
+  <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Unpaid receivables by age</value></data>
+  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Days past due, incl. VAT, in CZK</value></data>
+  <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Start setup wizard</value></data>
+  <data name="SetupWizard_Title" xml:space="preserve"><value>Setup wizard</value></data>
+  <data name="SetupWizard_Intro" xml:space="preserve"><value>A few steps and you can issue your first invoice. You can change every step later in settings.</value></data>
+  <data name="SetupWizard_Skip" xml:space="preserve"><value>Skip wizard</value></data>
+  <data name="SetupWizard_NoIssuer" xml:space="preserve"><value>Company not found. Finish the company registration first.</value></data>
+  <data name="SetupWizard_StepCompany" xml:space="preserve"><value>Company</value></data>
+  <data name="SetupWizard_StepBank" xml:space="preserve"><value>Bank</value></data>
+  <data name="SetupWizard_StepBilling" xml:space="preserve"><value>Invoicing</value></data>
+  <data name="SetupWizard_StepUsers" xml:space="preserve"><value>Users (optional)</value></data>
+  <data name="SetupWizard_StepDone" xml:space="preserve"><value>Done</value></data>
+  <data name="SetupWizard_LoadFromAres" xml:space="preserve"><value>Load from ARES</value></data>
+  <data name="SetupWizard_SaveAndContinue" xml:space="preserve"><value>Save and continue</value></data>
+  <data name="SetupWizard_Next" xml:space="preserve"><value>Continue</value></data>
+  <data name="SetupWizard_AddBankAccount" xml:space="preserve"><value>Add bank account</value></data>
+  <data name="SetupWizard_SequencesMissing" xml:space="preserve"><value>Document number sequences are missing. Default sequences for invoices and credit notes will be created on save.</value></data>
+  <data name="SetupWizard_UsersHint" xml:space="preserve"><value>Invite a colleague or accountant. You can skip this step.</value></data>
+  <data name="SetupWizard_AllDone" xml:space="preserve"><value>Everything is set up, you can start issuing invoices.</value></data>
+  <data name="SetupWizard_StillMissing" xml:space="preserve"><value>These items are still missing:</value></data>
+  <data name="SetupWizard_GoToDashboard" xml:space="preserve"><value>Go to dashboard</value></data>
   <data name="EpoSummaryPreview" xml:space="preserve"><value>Preview summary statement</value></data>
   <data name="EpoSummaryTitle" xml:space="preserve"><value>EU summary statement (supplies to the EU)</value></data>
   <data name="EpoSummaryEmpty" xml:space="preserve"><value>No supplies to EU customers with a VAT id in this period.</value></data>

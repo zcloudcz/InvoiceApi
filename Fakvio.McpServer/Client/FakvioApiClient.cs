@@ -18,6 +18,7 @@ using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
@@ -323,6 +324,12 @@ public class FakvioApiClient : IFakvioApiClient
     {
         var query = date.HasValue ? $"?date={date.Value:O}" : "";
         var result = await GetJsonAsync<List<VatRateDto>>(_http, $"api/vatrate/active{query}", ct);
+        return result ?? [];
+    }
+
+    public async Task<List<ReverseChargeCodeDto>> GetActiveReverseChargeCodesAsync(CancellationToken ct = default)
+    {
+        var result = await GetJsonAsync<List<ReverseChargeCodeDto>>(_http, "api/reversechargecode", ct);
         return result ?? [];
     }
 
