@@ -137,9 +137,9 @@
                         <MudSelect T="decimal" Value="@context.VatRatePercentage"
                                    ValueChanged="@(v => OnOssRateChanged(context, v))"
                                    Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
-                            @foreach (var r in _ossRates)
+                            @foreach (var rate in OssRateChoices())
                             {
-                                <MudSelectItem T="decimal" Value="@r.Rate">@r.Rate.ToString("0.##")% (@OssCountryCode)</MudSelectItem>
+                                <MudSelectItem T="decimal" Value="@rate">@rate.ToString("0.##")% (@OssCountryCode)</MudSelectItem>
                             }
                         </MudSelect>
                     }
@@ -254,26 +254,30 @@
     private List<VatRateDto> _vatRates = new();
     private List<Fakvio.Contracts.Dto.OssVatRate.OssVatRateDto> _ossRates = new();
     private string? _loadedOssCountry;
+    private DateTime? _loadedRateDate;
+
+    /// <summary>
+    /// Taxable supply date (DUZP) of the invoice: OSS rates are offered as valid on that date (a rate that
+    /// changed later must not be offered for an old invoice). Null = today.
+    /// </summary>
+    [Parameter]
+    public DateTime? RateDate { get; set; }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_loadedOssCountry == OssCountryCode) return;
+        if (_loadedOssCountry == OssCountryCode && _loadedRateDate?.Date == RateDate?.Date) return;
         _loadedOssCountry = OssCountryCode;
-        _ossRates = string.IsNullOrEmpty(OssCountryCode) ? new() : await VatRateService.GetOssRatesAsync(OssCountryCode);
-
-        // Items carrying a rate that is not valid for the destination country (e.g. CZ 21 % on a German
-        // invoice) switch to that country's standard rate so the user never submits an invalid rate.
-        var standard = _ossRates.OrderBy(r => r.Category).FirstOrDefault();
-        if (standard == null) return;
-        var changed = false;
-        foreach (var item in Items.Where(i => !i.IsTextRow && !_ossRates.Any(r => r.Rate == i.VatRatePercentage)))
-        {
-            item.VatRateId = null;
-            item.VatRatePercentage = standard.Rate;
-            changed = true;
-        }
-        if (changed) NotifyChanged();
+        _loadedRateDate = RateDate;
+        _ossRates = string.IsNullOrEmpty(OssCountryCode) ? new() : await VatRateService.GetOssRatesAsync(OssCountryCode, RateDate);
+        // Existing items are NEVER rewritten here (an old invoice keeps its rate, e.g. EE 22 %). Only new rows are
+        // pre-filled (AddNewRow); an invalid rate is reported by the server with the list of allowed rates.
     }
+
+    /// <summary>Rates in the OSS dropdown: the valid ones plus whatever the existing items already carry.</summary>
+    private IEnumerable<decimal> OssRateChoices() =>
+        _ossRates.Select(r => r.Rate)
+            .Union(Items.Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage))
+            .OrderBy(r => r);
 
     /// <summary>OSS item: only the percentage matters (the tenant VatRateId must stay empty).</summary>
     private void OnOssRateChanged(CreateInvoiceItemDto item, decimal rate)

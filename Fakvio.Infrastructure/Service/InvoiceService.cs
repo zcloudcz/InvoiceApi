@@ -455,7 +455,9 @@ public class InvoiceService : IInvoiceService
         // UNLESS this is an OSS invoice, which is validated against OssVatRate instead.
         if (ossCountryCode != null)
         {
-            await ValidateOssItemRatesAsync(ossCountryCode, createDto.InvoiceItem, invoice.TaxableSupplyDate!.Value, cancellationToken);
+            await ValidateOssItemRatesAsync(ossCountryCode, createDto.InvoiceItem,
+                await GetOssRateCheckDateAsync(createDto.DocumentType, createDto.OriginalInvoiceId, invoice.TaxableSupplyDate!.Value, cancellationToken),
+                cancellationToken);
         }
         else if (issuer.IsVatPayer)
         {
@@ -782,9 +784,10 @@ public class InvoiceService : IInvoiceService
             var client = await _context.Client
                 .Include(c => c.Address)
                 .FirstOrDefaultAsync(c => c.Id == invoice.ClientId, cancellationToken);
+            var wasOss = invoice.OssCountryCode != null;
             var ossCountryCode = await ResolveOssCountryCodeAsync(
                 issuer, client, invoice.DocumentType, invoice.OriginalInvoiceId,
-                updateDto.ApplyOss ?? (invoice.OssCountryCode != null), cancellationToken);
+                updateDto.ApplyOss ?? wasOss, cancellationToken);
             invoice.OssCountryCode = ossCountryCode;
 
             // Validate VAT requirements: If issuer is VAT payer, all billable items must have VatRateId
@@ -792,10 +795,18 @@ public class InvoiceService : IInvoiceService
             // against OssVatRate instead (see CreateInvoiceAsync for the same split).
             if (ossCountryCode != null)
             {
-                await ValidateOssItemRatesAsync(ossCountryCode, updateDto.InvoiceItem, invoice.TaxableSupplyDate ?? DateTime.UtcNow, cancellationToken);
+                await ValidateOssItemRatesAsync(ossCountryCode, updateDto.InvoiceItem,
+                    await GetOssRateCheckDateAsync(invoice.DocumentType, invoice.OriginalInvoiceId,
+                        invoice.TaxableSupplyDate ?? DateTime.UtcNow, cancellationToken),
+                    cancellationToken);
             }
             else if (issuer.IsVatPayer)
             {
+                // Switching an OSS invoice back to an ordinary CZ invoice: OSS items carry no VatRateId, so give
+                // them the tenant rate with the same percentage (else the default rate) instead of failing below.
+                if (wasOss)
+                    await AssignTenantVatRatesAsync(updateDto.InvoiceItem, invoice.TaxableSupplyDate ?? DateTime.UtcNow, cancellationToken);
+
                 var itemsWithoutVatRate = updateDto.InvoiceItem
                     .Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
                 if (itemsWithoutVatRate.Any())
@@ -1809,6 +1820,41 @@ public class InvoiceService : IInvoiceService
     // ─── Private Helpers ─────────────────────────────────────────────────────
 
     /// <summary>
+    /// Date against which OSS item rates are validated: the invoice's own DUZP, except for a credit note, which
+    /// corrects the ORIGINAL supply and so uses the original's DUZP (a credit note issued after a rate change
+    /// must still be able to repeat the rate of the invoice it corrects).
+    /// </summary>
+    private async Task<DateTime> GetOssRateCheckDateAsync(EDocumentType type, long? originalInvoiceId, DateTime ownDuzp, CancellationToken ct)
+    {
+        if (type != EDocumentType.CreditNote || !originalInvoiceId.HasValue) return ownDuzp;
+        var originalDuzp = await _context.Invoice.AsNoTracking()
+            .Where(i => i.Id == originalInvoiceId.Value)
+            .Select(i => i.TaxableSupplyDate)
+            .FirstOrDefaultAsync(ct);
+        return originalDuzp ?? ownDuzp;
+    }
+
+    /// <summary>
+    /// Gives billable items without a tenant VatRateId a VatRateId: the active rate with the same percentage,
+    /// else the default active rate valid on <paramref name="date"/>. Items stay untouched when no rate exists.
+    /// </summary>
+    private async Task AssignTenantVatRatesAsync(IEnumerable<CreateInvoiceItemDto> items, DateTime date, CancellationToken ct)
+    {
+        var rates = await _context.VatRate.AsNoTracking()
+            .Where(r => r.IsActive && r.ValidFrom <= date && (r.ValidTo == null || r.ValidTo >= date))
+            .ToListAsync(ct);
+        foreach (var item in items.Where(i => !i.IsTextRow && !i.VatRateId.HasValue))
+        {
+            var match = rates.FirstOrDefault(r => r.Rate == item.VatRatePercentage) ?? rates.FirstOrDefault(r => r.IsDefault);
+            if (match != null)
+            {
+                item.VatRateId = match.Id;
+                item.VatRatePercentage = match.Rate;
+            }
+        }
+    }
+
+    /// <summary>
     /// Applies the user's OSS opt-in: returns the destination country only when the user asked for OSS
     /// (<paramref name="applyOss"/>) AND the invoice is eligible. Asking for OSS on an ineligible invoice
     /// throws — silently issuing a CZ-VAT invoice the user believed to be OSS would be worse. Credit notes
@@ -1817,9 +1863,11 @@ public class InvoiceService : IInvoiceService
     private async Task<string?> ResolveOssCountryCodeAsync(
         Client issuer, Client? client, EDocumentType documentType, long? originalInvoiceId, bool applyOss, CancellationToken ct)
     {
+        // No opt-in and not a credit note: nothing to look up (saves the settings query on every ordinary invoice).
+        if (!applyOss && documentType != EDocumentType.CreditNote) return null;
+
         var eligible = await DetermineOssCountryCodeAsync(issuer, client, documentType, originalInvoiceId, ct);
         if (documentType == EDocumentType.CreditNote) return eligible;
-        if (!applyOss) return null;
         return eligible ?? throw new InvalidOperationException(
             "OSS cannot be applied to this invoice: it requires an OSS-registered VAT-payer issuer, an Invoice/advance tax receipt " +
             "and a consumer client (no VAT id) with an address in another EU state.");

@@ -172,7 +172,7 @@ else if (_isCreateMode)
                              Label="@L["Oss_ApplyToInvoice"].Value" />
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">@string.Format(L["Oss_ApplyHint"].Value, _createOssEligible)</MudText>
             }
-            <InvoiceItemEditor Items="_createDto.InvoiceItem" OssCountryCode="@(_createApplyOss ? _createOssEligible : null)"
+            <InvoiceItemEditor Items="_createDto.InvoiceItem" OssCountryCode="@(_createApplyOss ? _createOssEligible : null)" RateDate="_createTaxableSupplyDate"
                                ItemsChanged="@(items => _createDto.InvoiceItem = items)" />
         </MudItem>
 
@@ -394,7 +394,7 @@ else
                                  Label="@L["Oss_ApplyToInvoice"].Value" />
                     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">@string.Format(L["Oss_ApplyHint"].Value, _editOssEligible)</MudText>
                 }
-                <InvoiceItemEditor Items="_editItems" OssCountryCode="@(_editApplyOss ? _editOssEligible : null)"
+                <InvoiceItemEditor Items="_editItems" OssCountryCode="@(_editApplyOss ? _editOssEligible : null)" RateDate="_invoice.TaxableSupplyDate"
                                    ItemsChanged="@(items => _editItems = items)" />
             </MudItem>
 

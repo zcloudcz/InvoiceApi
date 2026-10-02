@@ -73,6 +73,7 @@ public class OssTests : IDisposable
         AddClient(12, "Jan", "CZ");
         AddClient(13, "Bob", "US");
         AddClient(14, "GmbH", "DE", taxNumber: "DE123456789", vatPayer: true);
+        AddClient(15, "Mari", "Estonia");
         _tenant.SaveChanges();
 
         _master.CompanySystemSettings.Add(new CompanySystemSettings
@@ -86,6 +87,8 @@ public class OssTests : IDisposable
         _master.OssVatRate.AddRange(
             new OssVatRate { CountryCode = "DE", Rate = 19m, Category = EOssVatRateCategory.Standard, ValidFrom = validFrom, IsActive = true },
             new OssVatRate { CountryCode = "DE", Rate = 7m, Category = EOssVatRateCategory.Reduced, ValidFrom = validFrom, IsActive = true },
+            new OssVatRate { CountryCode = "EE", Rate = 22m, Category = EOssVatRateCategory.Standard, ValidFrom = new DateOnly(2024, 1, 1), ValidTo = new DateOnly(2025, 6, 30), IsActive = true },
+            new OssVatRate { CountryCode = "EE", Rate = 24m, Category = EOssVatRateCategory.Standard, ValidFrom = new DateOnly(2025, 7, 1), IsActive = true },
             new OssVatRate { CountryCode = "FR", Rate = 20m, Category = EOssVatRateCategory.Standard, ValidFrom = validFrom, IsActive = true });
         _master.SaveChanges();
     }
@@ -101,7 +104,7 @@ public class OssTests : IDisposable
         EDocumentType type = EDocumentType.Invoice, long? original = null, DateTime? duzp = null, bool? applyOss = null) => new()
     {
         // OSS is opt-in; by default the helper opts in for the two eligible consumer clients (10 = DE, 11 = FR).
-        ApplyOss = applyOss ?? clientId is 10 or 11,
+        ApplyOss = applyOss ?? clientId is 10 or 11 or 15,
         DocumentType = type,
         ClientId = clientId,
         IssuerId = 1,
@@ -276,6 +279,52 @@ public class OssTests : IDisposable
         await _tenant.SaveChangesAsync();
 
         await Should.ThrowAsync<InvalidOperationException>(() => _invoices.UpdateInvoiceAsync(created.Id, Upd(19)));
+    }
+
+    // ── rate change between invoice and credit note / later edit ───────────────
+
+    private static readonly DateTime May2025 = new(2025, 5, 10, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Aug2025 = new(2025, 8, 10, 0, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public async Task CreditNote_AfterRateChange_UsesOriginalInvoiceRate()
+    {
+        var original = await _invoices.CreateInvoiceAsync(Dto(15, 22, duzp: May2025)); // EE 22 % valid in May 2025
+
+        // EE moved to 24 % on 2025-07-01; the credit note (August) corrects the May supply, so 22 % must be accepted.
+        var credit = await _invoices.CreateInvoiceAsync(Dto(15, 22, type: EDocumentType.CreditNote, original: original.Id, duzp: Aug2025));
+
+        credit.OssCountryCode.ShouldBe("EE");
+        credit.InvoiceItem.Single().VatRatePercentage.ShouldBe(22m);
+    }
+
+    [Fact]
+    public async Task NewInvoiceAfterRateChange_RejectsOldRate()
+    {
+        await Should.ThrowAsync<InvalidOperationException>(() => _invoices.CreateInvoiceAsync(Dto(15, 22, duzp: Aug2025)));
+        (await _invoices.CreateInvoiceAsync(Dto(15, 24, duzp: Aug2025))).OssCountryCode.ShouldBe("EE");
+    }
+
+    [Fact]
+    public async Task EditingOldInvoice_KeepsItsOwnPeriodRate()
+    {
+        var created = await _invoices.CreateInvoiceAsync(Dto(15, 22, duzp: May2025));
+
+        var edited = await _invoices.UpdateInvoiceAsync(created.Id, Upd(22));
+
+        edited!.InvoiceItem.Single().VatRatePercentage.ShouldBe(22m);
+    }
+
+    [Fact]
+    public async Task Update_OptOut_WithoutVatRateId_AssignsTenantRate()
+    {
+        var created = await _invoices.CreateInvoiceAsync(Dto(10, 19));
+
+        // The OSS items carry no VatRateId; switching back to CZ must not fail on "item without VAT rate".
+        var result = await _invoices.UpdateInvoiceAsync(created.Id, Upd(21, applyOss: false));
+
+        result!.OssCountryCode.ShouldBeNull();
+        result.InvoiceItem.Single().VatRateId.ShouldBe(1);
     }
 
     [Fact]
