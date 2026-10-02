@@ -145,6 +145,7 @@ Kontrolní seznam používá názvy polí odpovídající formulářům. Pokud o
 
 - **Faktury podle stavu** — koláčový (donut) graf: Draft / Issued / Paid / Credited
 - **Top klienti podle obratu** — koláčový graf: top 10 klientů, seřazeni sestupně
+- **Tržby, příjmy a výdaje po měsících a pohledávky po splatnosti** jsou v Kč. Doklady v cizí měně se přepočítají kurzem ČNB uloženým na dokladu; doklad bez kurzu se do těchto grafů nezapočítá.
 
 ### Pojistné zálohy
 
@@ -278,6 +279,8 @@ Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukl
 - Ve stavu Issued/Paid: pouze zobrazení; pro editaci vraťte fakturu do Draft (pokud to systém umožňuje)
 - Unsaved changes guard: při navigaci pryč bez uložení se zobrazí potvrzovací dialog
 
+**Kurz u faktury v cizí měně:** při vystavení faktury v jiné měně než CZK Fakvio samo doplní **kurz České národní banky** platný ke dni zdanitelného plnění (o víkendu nebo svátku poslední vyhlášený) a zobrazí ho v detailu faktury. Na konceptu můžete kurz přepsat vlastním (pole „Kurz“ — Kč za 1 jednotku měny); prázdné pole = použije se kurz ČNB. Použije se vždy poslední vyhlášený kurz ČNB ke dni zdanitelného plnění nebo dříve — kurz se vyhlašuje kolem 14:30, takže u dnešního data před 14:30 platí kurz předchozího pracovního dne (datum kurzu najdete na faktuře). Potřebujete-li jiný kurz, přepište ho na konceptu. Vystavenou fakturu už kurz změnit nejde. Dobropis přebírá kurz původní faktury. Není-li kurz ČNB dostupný, faktura se vystaví i tak, jen bez kurzu.
+
 ### 2.6 Kopírování faktury
 
 - Ikonka kopírování v řádku gridu → vytvoří nový Draft se stejnými daty
@@ -293,6 +296,8 @@ Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukl
 - Soubor se stáhne pojmenovaný `Faktura_{číslo}.pdf`
 
 **Hromadný PDF export:** zaškrtněte faktury → toolbar → PDF → stáhne se ZIP archiv
+
+**Faktura v cizí měně od plátce DPH:** PDF navíc uvádí použitý kurz a **rekapitulaci DPH v korunách** (základ přepočtený kurzem ČNB a z něj vypočtená daň — zákon o DPH vyžaduje částku DPH na dokladu v Kč). U proformy, neplátce DPH, faktury v režimu OSS ani faktury bez kurzu se tento blok netiskne.
 
 ### 2.8 Export ISDOC
 
@@ -353,9 +358,9 @@ Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakuj
 - Export počítá se sazbami DPH platnými od roku 2024 (**21 / 12 / 0 %**). Starší doklady s jinou sazbou
   (např. 10 % nebo 15 %) a doklady s jinou sazbou DPH se do souboru nezahrnou.
 - Do souboru se také nezahrnují doklady, které cílový systém nedokáže správně přijmout: daňové doklady
-  k přijaté platbě (všechny systémy), doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi)
+  k přijaté platbě (všechny systémy), doklady v cizí měně **bez kurzu** (Money S3, ABRA Flexi), proformy (ABRA Flexi)
   a v POHODĚ doklady s číslem delším než 20 znaků. Přijaté dobropisy export nepodporuje (Fakvio je nerozlišuje od běžných přijatých faktur). Po exportu uvidíte, kolik dokladů bylo vynecháno.
-- U cizí měny v POHODĚ Fakvio kurz neexportuje — POHODA použije svůj kurzový lístek k datu dokladu.
+- Doklady v cizí měně se exportují **s kurzem ČNB uloženým na dokladu** (POHODA kurz + množství, Money S3 valuty s kurzem, ABRA Flexi měna a kurz). Doklad v cizí měně bez kurzu (např. vystavený před zavedením kurzů nebo při výpadku ČNB) POHODA převezme bez kurzu a použije svůj lístek, Money S3 a ABRA Flexi ho vynechají.
 - Dobropisy se do Money S3 a ABRA Flexi přenášejí s kladnými částkami (jako dobropis), do POHODY se záporným znaménkem.
 - ABRA Flexi: v cílové firmě musí existovat typy dokladů `FAKTURA` a `DOBROPIS` (výchozí databáze je má).
   Číslo přijaté faktury dodavatele se uloží do pole „číslo dodavatele", interní číslo přidělí Flexi.
@@ -610,6 +615,8 @@ Dvě možnosti:
 2. **Import:** „Import" → `/received-invoices/import?target=ReceivedInvoice` → nahrání souboru
    (PDF, ISDOC, nebo UBL/Peppol BIS XML — viz kap. 18 „Podporované formáty příloh" pro detaily
    o rozpoznání UBL faktur a dobropisů)
+
+**Kurz u přijaté faktury v cizí měně:** při **schválení** se doplní kurz ČNB ke dni zdanitelného plnění; zobrazí se v detailu a použije se v exportu do účetnictví.
 
 ### Stavy přijatých faktur
 
@@ -1282,7 +1289,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 80 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 81 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.

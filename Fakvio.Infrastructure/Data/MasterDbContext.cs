@@ -121,6 +121,9 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     /// </summary>
     public DbSet<OssVatRate> OssVatRate { get; set; }
 
+    /// <summary>Official ČNB daily exchange rates (Master only, DEVGUIDE §4.17).</summary>
+    public DbSet<ExchangeRate> ExchangeRate { get; set; }
+
     /// <summary>
     /// Currencies — master copy used as source for provisioning new tenants.
     /// </summary>
@@ -283,6 +286,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         ConfigureCompanySystemSettings(modelBuilder);
         ConfigureVatRate(modelBuilder);
         ConfigureOssVatRate(modelBuilder);
+        ConfigureExchangeRate(modelBuilder);
         ConfigureCurrency(modelBuilder);
         ConfigureNumberSequenceFormat(modelBuilder);
         ConfigureContentTemplate(modelBuilder);
@@ -909,6 +913,22 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
             entity.Property(e => e.Description)
                 .HasMaxLength(200);
+        });
+    }
+
+    /// <summary>ExchangeRate table (ČNB daily fixing, see Domain.Entities.ExchangeRate).</summary>
+    private void ConfigureExchangeRate(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ExchangeRate>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // One fixing per currency per declaration date — makes the sync an idempotent upsert
+            // and serves the "last fixing on or before date" lookup.
+            entity.HasIndex(e => new { e.CurrencyCode, e.ValidFor }).IsUnique();
+
+            entity.Property(e => e.CurrencyCode).IsRequired().HasMaxLength(3);
+            entity.Property(e => e.Rate).HasPrecision(18, 4);
         });
     }
 

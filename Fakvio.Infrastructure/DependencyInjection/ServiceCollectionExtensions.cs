@@ -173,6 +173,10 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IOssVatRateService, OssVatRateService>();
         services.AddScopedWithLogging<IOssReportService, OssReportService>();
         services.AddHttpClient<IEcbExchangeRateClient, EcbExchangeRateClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
+        // ČNB exchange rates for Czech VAT (DEVGUIDE §4.17): Master cache + on-demand download + daily sync cycle.
+        services.AddHttpClient<ICnbExchangeRateClient, CnbExchangeRateClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+        services.AddScopedWithLogging<IExchangeRateService, ExchangeRateService>();
+        services.AddScoped<IExchangeRateSyncService, ExchangeRateSyncService>();
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
         // Tenant readiness — one place that answers "is this tenant set up well enough to invoice?".

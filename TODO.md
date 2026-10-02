@@ -1270,10 +1270,19 @@ Implemented by parallel agents, each PR reviewed (Fable) and merged into `develo
 
 Follow-ups:
 - [ ] SysAdmin: ověřit sazby `OssVatRate` proti EC TEDB před prvním OSS podáním (EE/LT 9 % sníž. sazby nejisté)
-- [ ] DPHDP3 ř. 1/2 a KH A.4/A.5 nezahrnují dobropisy (pre-existing)
-- [ ] Reminder/Recurring workery — ověřit, že scoped TenantDbContext má nastavené Schema (stejná chyba jako u webhooků)
-- [ ] MasterDbContext UTC normalizer neprovede Unspecified→Utc
+- [x] DPHDP3 ř. 1/2 a KH A.4/A.5 nezahrnují dobropisy — DONE #488
+- [ ] Reminder/Recurring workery — POTVRZENO rozbité (upomínky nikdy neběžely). Oprava v PR #490 ODLOŽENA vlastníkem: před nasazením rozhodnout ochranu proti hromadnému rozeslání starých upomínek (strop stáří / první běh jako koncepty) a systémové vs. firemní SMTP ve workeru
+- [x] MasterDbContext UTC normalizer neprovede Unspecified→Utc — DONE #489 (ValueConverter v obou kontextech)
 - [ ] Šablony/opakované faktury nepodporují OSS; DPP k OSS záloze se vystaví s CZ sazbou
 - [ ] Pořízení zboží/služeb z EU (ř. 3–6) není modelováno; ReverseCharge = jen tuzemské §92a
 - [ ] Zbývající položky z porovnání s MyInvoice: GPC/ABO import, hromadné vystavení, výkazy práce, auto měsíc v klonu, IP allowlist/Turnstile, per-client sazby + kurzy ČNB, granulární role
+
+## Batch 2 (2026-10-02)
+- [x] #493 MCP/chat `update_invoice` + `revert_invoice_to_draft` (koncept upraví; vystavenou jen po výslovném souhlasu; zaplacenou ne)
+- [x] #492 Import výpisů GPC/ABO (dedupe vůči IMAP, párování obou směrů)
+- [x] #491 Posun období v textech (kopie; opakované faktury opt-in per plán)
+- [x] #494 Kurzy ČNB (denní sync, kurz na dokladu, PDF rekap v Kč, EPO/přehled/exporty/nástěnka v Kč)
+- [ ] Hromadné vystavení faktur z existujících (navazuje na #491)
+- [ ] Chat parity: get_exchange_rate, export_vat_epo, get_oss_report, export_accounting
+- [ ] ABRA Flexi: ověřit import reálným souborem (typDokl DOBROPIS, kurz)
 
