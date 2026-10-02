@@ -236,6 +236,14 @@ public interface IFakvioApiClient
     /// <summary>GET /api/vat-report?from=...&amp;to=... — VAT report for period.</summary>
     Task<VatReportDto> GetVatReportAsync(DateTime from, DateTime to, CancellationToken ct = default);
 
+    /// <summary>
+    /// Downloads an EPO XML export as raw bytes. <paramref name="route"/> is the path after
+    /// <c>api/vat-report/</c>: <c>epo/return</c>, <c>epo/control-statement</c> or
+    /// <c>epo/summary-statement</c>.
+    /// </summary>
+    Task<byte[]> ExportVatEpoAsync(string route, int year, int period, string periodType,
+        IEnumerable<string>? goods = null, CancellationToken ct = default);
+
     // ── EU OSS endpoints ─────────────────────────────────────────────────
 
     /// <summary>GET /api/invoice/oss-country — EU OSS destination country (ISO2) an invoice from this issuer to this client is eligible for, or null.</summary>

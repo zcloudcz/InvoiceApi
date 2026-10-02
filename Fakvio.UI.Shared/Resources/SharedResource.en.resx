@@ -1078,16 +1078,8 @@
   <data name="BankAccount_SelectAccount" xml:space="preserve"><value>Bank Account</value></data>
 
   <!-- Billing Settings (Client detail) -->
-  <data name="Billing_Title" xml:space="preserve"><value>Billing Settings</value></data>
-  <data name="Billing_DueDateCalcType" xml:space="preserve"><value>Due Date Calculation Type</value></data>
-  <data name="Billing_DueDays" xml:space="preserve"><value>Due Days</value></data>
   <data name="Billing_InvoiceNumberPrefix" xml:space="preserve"><value>Invoice Number Prefix</value></data>
   <data name="Billing_InvoiceNumberSuffix" xml:space="preserve"><value>Invoice Number Suffix</value></data>
-  <data name="Billing_CreditNotePrefix" xml:space="preserve"><value>Credit Note Prefix</value></data>
-  <data name="Billing_CreditNoteSuffix" xml:space="preserve"><value>Credit Note Suffix</value></data>
-  <data name="Billing_PaymentMethod" xml:space="preserve"><value>Payment Method</value></data>
-  <data name="Billing_BankAccount" xml:space="preserve"><value>Bank Account</value></data>
-  <data name="Billing_Notes" xml:space="preserve"><value>Notes</value></data>
   <data name="Billing_NotConfigured" xml:space="preserve"><value>Billing settings not configured</value></data>
 
   <!-- AI Chat -->
@@ -1230,7 +1222,6 @@
 
   <!-- Navigation and generic labels for tax estimation -->
   <data name="Nav_TaxEstimation" xml:space="preserve"><value>Tax Estimation</value></data>
-  <data name="Label_Description" xml:space="preserve"><value>Description</value></data>
   <data name="Label_Amount" xml:space="preserve"><value>Amount</value></data>
   <data name="Label_Formula" xml:space="preserve"><value>Formula</value></data>
   <data name="TaxConfig_Title" xml:space="preserve"><value>Tax Year Configuration</value></data>
@@ -1407,7 +1398,6 @@
   <data name="Dashboard_DraftReminders" xml:space="preserve"><value>Drafts</value></data>
   <data name="Dashboard_SentReminders" xml:space="preserve"><value>Sent</value></data>
   <data name="Dashboard_FailedReminders" xml:space="preserve"><value>Failed</value></data>
-  <data name="Dashboard_OverdueInvoices" xml:space="preserve"><value>Overdue Invoices</value></data>
   <data name="Dashboard_TotalOverdueAmount" xml:space="preserve"><value>Total Overdue Amount</value></data>
   <data name="Dashboard_RemindersLast30Days" xml:space="preserve"><value>Reminders (Last 30 Days)</value></data>
   <data name="Dashboard_RecentReminders" xml:space="preserve"><value>Recent Reminders</value></data>
@@ -2152,4 +2142,15 @@
   <data name="SetupWizard_AllDone" xml:space="preserve"><value>Everything is set up, you can start issuing invoices.</value></data>
   <data name="SetupWizard_StillMissing" xml:space="preserve"><value>These items are still missing:</value></data>
   <data name="SetupWizard_GoToDashboard" xml:space="preserve"><value>Go to dashboard</value></data>
+  <data name="EpoSummaryPreview" xml:space="preserve"><value>Preview summary statement</value></data>
+  <data name="EpoSummaryTitle" xml:space="preserve"><value>EU summary statement (supplies to the EU)</value></data>
+  <data name="EpoSummaryEmpty" xml:space="preserve"><value>No supplies to EU customers with a VAT id in this period.</value></data>
+  <data name="EpoSummaryCountry" xml:space="preserve"><value>Country</value></data>
+  <data name="EpoSummaryVatId" xml:space="preserve"><value>VAT id</value></data>
+  <data name="EpoSummaryClient" xml:space="preserve"><value>Customer</value></data>
+  <data name="EpoSummaryInvoices" xml:space="preserve"><value>Invoices</value></data>
+  <data name="EpoSummaryTotal" xml:space="preserve"><value>Value</value></data>
+  <data name="EpoSummaryGoods" xml:space="preserve"><value>Goods (else service)</value></data>
+  <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Download EPO – summary statement</value></data>
+  <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Goods (code 0) can only be reported in a monthly summary statement (§102(6) VAT Act). Switch to monthly periods or untick goods.</value></data>
 </root>

@@ -1078,16 +1078,8 @@
   <data name="BankAccount_SelectAccount" xml:space="preserve"><value>Bankovní účet</value></data>
 
   <!-- Billing Settings (Client detail) -->
-  <data name="Billing_Title" xml:space="preserve"><value>Fakturační nastavení</value></data>
-  <data name="Billing_DueDateCalcType" xml:space="preserve"><value>Typ výpočtu splatnosti</value></data>
-  <data name="Billing_DueDays" xml:space="preserve"><value>Počet dnů splatnosti</value></data>
   <data name="Billing_InvoiceNumberPrefix" xml:space="preserve"><value>Prefix čísla faktury</value></data>
   <data name="Billing_InvoiceNumberSuffix" xml:space="preserve"><value>Suffix čísla faktury</value></data>
-  <data name="Billing_CreditNotePrefix" xml:space="preserve"><value>Prefix čísla dobropisu</value></data>
-  <data name="Billing_CreditNoteSuffix" xml:space="preserve"><value>Suffix čísla dobropisu</value></data>
-  <data name="Billing_PaymentMethod" xml:space="preserve"><value>Platební metoda</value></data>
-  <data name="Billing_BankAccount" xml:space="preserve"><value>Bankovní účet</value></data>
-  <data name="Billing_Notes" xml:space="preserve"><value>Poznámky</value></data>
   <data name="Billing_NotConfigured" xml:space="preserve"><value>Fakturační nastavení není nakonfigurováno</value></data>
 
   <!-- AI Chat -->
@@ -1230,7 +1222,6 @@
 
   <!-- Navigation and generic labels for tax estimation -->
   <data name="Nav_TaxEstimation" xml:space="preserve"><value>Odhad daní</value></data>
-  <data name="Label_Description" xml:space="preserve"><value>Popis</value></data>
   <data name="Label_Amount" xml:space="preserve"><value>Částka</value></data>
   <data name="Label_Formula" xml:space="preserve"><value>Vzorec</value></data>
   <data name="TaxConfig_Title" xml:space="preserve"><value>Konfigurace daňových sazeb</value></data>
@@ -1407,7 +1398,6 @@
   <data name="Dashboard_DraftReminders" xml:space="preserve"><value>Koncepty</value></data>
   <data name="Dashboard_SentReminders" xml:space="preserve"><value>Odeslané</value></data>
   <data name="Dashboard_FailedReminders" xml:space="preserve"><value>Chybové</value></data>
-  <data name="Dashboard_OverdueInvoices" xml:space="preserve"><value>Faktury po splatnosti</value></data>
   <data name="Dashboard_TotalOverdueAmount" xml:space="preserve"><value>Celkem dlužná částka</value></data>
   <data name="Dashboard_RemindersLast30Days" xml:space="preserve"><value>Upomínky za 30 dní</value></data>
   <data name="Dashboard_RecentReminders" xml:space="preserve"><value>Poslední upomínky</value></data>
@@ -2152,4 +2142,15 @@
   <data name="SetupWizard_AllDone" xml:space="preserve"><value>Vše je nastaveno, můžete vystavovat faktury.</value></data>
   <data name="SetupWizard_StillMissing" xml:space="preserve"><value>Stále chybí tyto údaje:</value></data>
   <data name="SetupWizard_GoToDashboard" xml:space="preserve"><value>Přejít na nástěnku</value></data>
+  <data name="EpoSummaryPreview" xml:space="preserve"><value>Náhled souhrnného hlášení</value></data>
+  <data name="EpoSummaryTitle" xml:space="preserve"><value>Souhrnné hlášení (plnění do EU)</value></data>
+  <data name="EpoSummaryEmpty" xml:space="preserve"><value>V období nejsou žádná plnění pro odběratele z EU s DIČ.</value></data>
+  <data name="EpoSummaryCountry" xml:space="preserve"><value>Stát</value></data>
+  <data name="EpoSummaryVatId" xml:space="preserve"><value>DIČ</value></data>
+  <data name="EpoSummaryClient" xml:space="preserve"><value>Odběratel</value></data>
+  <data name="EpoSummaryInvoices" xml:space="preserve"><value>Faktur</value></data>
+  <data name="EpoSummaryTotal" xml:space="preserve"><value>Hodnota plnění</value></data>
+  <data name="EpoSummaryGoods" xml:space="preserve"><value>Zboží (jinak služba)</value></data>
+  <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Stáhnout EPO – souhrnné hlášení</value></data>
+  <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Zboží (kód 0) lze v souhrnném hlášení vykázat jen za měsíc (§ 102 odst. 6 ZDPH). Přepněte na měsíční období nebo odškrtněte zboží.</value></data>
 </root>

@@ -52,9 +52,12 @@ public class VatReportApiService : ApiClientBase
     /// <param name="year">Tax year, e.g. 2026.</param>
     /// <param name="period">1–12 for Monthly, 1–4 for Quarterly.</param>
     /// <param name="type">Monthly or Quarterly.</param>
-    public async Task<EpoDownloadResult> DownloadEpoVatReturnAsync(int year, int period, EVatPeriodType type)
+    public async Task<EpoDownloadResult> DownloadEpoVatReturnAsync(
+        int year, int period, EVatPeriodType type, IEnumerable<string>? goodsKeys = null)
     {
-        var url = $"/api/vat-report/epo/return?year={year}&period={period}&type={(int)type}";
+        // goods keys decide whether EU supplies land in row 20 (goods) or 21 (services).
+        var url = $"/api/vat-report/epo/return?year={year}&period={period}&type={(int)type}"
+                  + GoodsQuery(goodsKeys ?? []);
         return await DownloadEpoFileAsync(url, "DPHDP3", year, period, type);
     }
 
@@ -70,6 +73,28 @@ public class VatReportApiService : ApiClientBase
         var url = $"/api/vat-report/epo/control-statement?year={year}&period={period}&type={(int)type}";
         return await DownloadEpoFileAsync(url, "DPHKH1", year, period, type);
     }
+
+    /// <summary>
+    /// Downloads the EPO DPHSHV (EU summary statement) XML. <paramref name="goodsKeys"/> lists
+    /// customers (country prefix + VAT id) to report as goods (code 0) instead of services (3).
+    /// </summary>
+    public async Task<EpoDownloadResult> DownloadEpoSummaryStatementAsync(
+        int year, int period, EVatPeriodType type, IEnumerable<string> goodsKeys)
+    {
+        var url = $"/api/vat-report/epo/summary-statement?year={year}&period={period}&type={(int)type}"
+                  + GoodsQuery(goodsKeys);
+        return await DownloadEpoFileAsync(url, "DPHSHV", year, period, type);
+    }
+
+    /// <summary>Loads the DPHSHV preview rows (EU customers aggregated by country, VAT id and supply code).</summary>
+    public async Task<List<SummaryStatementRowDto>> GetSummaryStatementPreviewAsync(
+        int year, int period, EVatPeriodType type, IEnumerable<string> goodsKeys)
+        => await GetAsync<List<SummaryStatementRowDto>>(
+               $"/api/vat-report/epo/summary-statement/preview?year={year}&period={period}&type={(int)type}"
+               + GoodsQuery(goodsKeys)) ?? [];
+
+    private static string GoodsQuery(IEnumerable<string> goodsKeys)
+        => string.Concat(goodsKeys.Select(k => $"&goods={Uri.EscapeDataString(k)}"));
 
     // =========================================================================
     // Private helpers
