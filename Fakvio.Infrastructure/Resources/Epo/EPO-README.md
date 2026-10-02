@@ -150,6 +150,14 @@ Doporučení: spouštět jen v dedicated integration workflow, ne v každém PR.
 
 ---
 
+## Opravné doklady (dobropisy) v exportech
+
+`CreditNote` dokumenty (§42 ZDPH) vstupují do DPHDP3 (ř. 1/2/25) a DPHKH1 (A.1/A.4/A.5) **záporně** v období vlastního DUZP.
+V A.4 je dobropis pod vlastním `c_evid_dd`; A.4 vs. A.5 se řídí původním dokladem (≥ 10 000 Kč s DIČ → A.4, jinak A.5).
+XSD povolují záporné hodnoty (`xs:decimal` bez `minInclusive`). Ověřuje `EpoControlStatementExportTests` / `EpoVatReturnExportTests`.
+
+---
+
 ## Reference
 
 - [EPO portál Finanční správy](https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces)

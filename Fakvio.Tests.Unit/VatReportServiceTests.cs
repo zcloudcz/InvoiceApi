@@ -190,6 +190,23 @@ public class VatReportServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetReportAsync_CreditNote_ReducesOutputVatRevenueAndIsCounted()
+    {
+        SeedIssuedInvoice(_periodFrom.AddDays(5), EInvoiceStatus.Completed, 1000, 21);
+        // Stored positive (Fakvio does not enforce a sign) — must still reduce the totals.
+        SeedIssuedInvoice(_periodFrom.AddDays(8), EInvoiceStatus.Completed, 400, 21, docType: EDocumentType.CreditNote);
+        // Credit note in another period is not part of this one.
+        SeedIssuedInvoice(_periodTo.AddDays(5), EInvoiceStatus.Completed, 400, 21, docType: EDocumentType.CreditNote);
+
+        var report = await _service.GetReportAsync(_periodFrom, _periodTo);
+
+        report.IssuedInvoiceCount.ShouldBe(2);
+        report.TotalOutputVat.ShouldBe(126m); // (1000 - 400) * 0.21
+        report.TotalRevenue.ShouldBe(600m);
+        report.OutputVat.Single().BaseAmount.ShouldBe(600m);
+    }
+
+    [Fact]
     public async Task GetReportAsync_OutputVat_AggregatesCompletedInvoices()
     {
         // Two completed invoices in period

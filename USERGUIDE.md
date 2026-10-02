@@ -853,6 +853,11 @@ u nichž daň odvádí odběratel (osvobozeno / mimo předmět daně), včetně 
 se zároveň promítne do řádků 20 a 21 přiznání. Zboží (kód 0) lze vykázat jen v měsíčním hlášení. Třístranný
 obchod, přemístění obchodního majetku a zálohové doklady (DPP) zatím nejsou podporovány.
 
+**Dobropisy (opravné daňové doklady):** vystavené dobropisy se do přiznání (řádky 1/2), přehledu DPH i kontrolního
+hlášení promítají záporně v období svého DUZP. V kontrolním hlášení jsou uvedeny pod vlastním číslem dokladu; do oddílu A.4
+patří, pokud byl původní doklad v A.4 (i když je dobropis sám pod 10 000 Kč), jinak do A.5. Přijaté dobropisy Fakvio
+nerozlišuje od běžných přijatých faktur.
+
 **Postup:**
 1. Vyberte rok a typ období (Měsíční / Čtvrtletní)
 2. Vyberte konkrétní měsíc nebo čtvrtletí

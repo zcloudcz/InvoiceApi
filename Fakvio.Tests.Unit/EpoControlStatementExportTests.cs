@@ -180,7 +180,9 @@ public class EpoControlStatementExportTests : IDisposable
         decimal vatPct,
         long clientId = CustomerCzId,
         long currencyId = CzkCurrencyId,
-        string? documentNumber = null)
+        string? documentNumber = null,
+        EDocumentType docType = EDocumentType.Invoice,
+        long? originalInvoiceId = null)
     {
         // Back-calculate base from total-incl-vat and vatPct:
         //   totalWithVat = base * (1 + vatPct/100)  →  base = totalWithVat / (1 + vatPct/100)
@@ -190,7 +192,8 @@ public class EpoControlStatementExportTests : IDisposable
 
         var invoice = new Invoice
         {
-            DocumentType = EDocumentType.Invoice,
+            DocumentType = docType,
+            OriginalInvoiceId = originalInvoiceId,
             Status = status,
             DocumentNumber = documentNumber ?? $"INV-{Guid.NewGuid():N}",
             IssueDate = duzp,
@@ -352,6 +355,46 @@ public class EpoControlStatementExportTests : IDisposable
 
         var (_, errors) = ParseAndValidate(bytes);
         errors.ShouldBeEmpty("Full DPHKH1 with A4/A5/B2/B3 must be XSD-valid.");
+    }
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_CreditNoteOfA4Invoice_GoesToA4NegativeEvenBelowLimit()
+    {
+        // Original (Feb) was A.4 (12 100 incl. VAT); the March credit note of 2 420 is below the limit
+        // but follows the original into A.4 with its own document number and negative amounts.
+        SeedIssuedInvoice(new DateTime(2026, 2, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 12100m, 21m, documentNumber: "INV-ORIG");
+        var originalId = _context.Invoice.Single(i => i.DocumentNumber == "INV-ORIG").Id;
+        SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 2420m, 21m,
+            documentNumber: "CN-1", docType: EDocumentType.CreditNote, originalInvoiceId: originalId);
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var a4 = doc.Descendants("VetaA4").Single();
+        a4.Attribute("c_evid_dd")!.Value.ShouldBe("CN-1");
+        a4.Attribute("zakl_dane1")!.Value.ShouldBe("-2000.00");
+        a4.Attribute("dan1")!.Value.ShouldBe("-420.00");
+        doc.Descendants("VetaA5").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_CreditNoteOfA5Invoice_GoesToA5Aggregate()
+    {
+        // Original 5 000 incl. VAT = A.5 → the (small) credit note is A.5 too and reduces its totals.
+        SeedIssuedInvoice(new DateTime(2026, 3, 5, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 6050m, 21m, documentNumber: "INV-SMALL");
+        var originalId = _context.Invoice.Single(i => i.DocumentNumber == "INV-SMALL").Id;
+        SeedIssuedInvoice(new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), EInvoiceStatus.Completed, 1210m, 21m,
+            documentNumber: "CN-2", docType: EDocumentType.CreditNote, originalInvoiceId: originalId);
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        doc.Descendants("VetaA4").ShouldBeEmpty();
+        var a5 = doc.Descendants("VetaA5").Single();
+        a5.Attribute("zakl_dane1")!.Value.ShouldBe("4000.00"); // 5000 - 1000
+        a5.Attribute("dan1")!.Value.ShouldBe("840.00");
     }
 
     [Fact]

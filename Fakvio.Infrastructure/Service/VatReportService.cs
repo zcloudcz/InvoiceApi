@@ -82,14 +82,16 @@ public class VatReportService : IVatReportService
                 && item.Invoice.TaxableSupplyDate <= toUtc
                 && item.Invoice.Status != EInvoiceStatus.Draft
                 && item.Invoice.Status != EInvoiceStatus.Deleted
-                && item.Invoice.DocumentType == EDocumentType.Invoice
+                && (item.Invoice.DocumentType == EDocumentType.Invoice
+                    || item.Invoice.DocumentType == EDocumentType.CreditNote) // credit notes reduce the tax (§42 ZDPH)
                 && item.Invoice.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .GroupBy(item => item.VatRatePercentage)
             .Select(g => new
             {
                 VatRatePercentage = g.Key,
-                BaseAmount = g.Sum(i => i.TotalBeforeVat),
-                VatAmount = g.Sum(i => i.VatAmount),
+                // Credit note rows are forced negative (Fakvio does not enforce a sign on them).
+                BaseAmount = g.Sum(i => i.Invoice!.DocumentType == EDocumentType.CreditNote ? -Math.Abs(i.TotalBeforeVat) : i.TotalBeforeVat),
+                VatAmount = g.Sum(i => i.Invoice!.DocumentType == EDocumentType.CreditNote ? -Math.Abs(i.VatAmount) : i.VatAmount),
                 ItemCount = g.Count()
             })
             .ToListAsync(ct);
@@ -102,7 +104,7 @@ public class VatReportService : IVatReportService
                 && i.TaxableSupplyDate <= toUtc
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
-                && i.DocumentType == EDocumentType.Invoice
+                && (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                 && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .CountAsync(ct);
 
@@ -114,9 +116,11 @@ public class VatReportService : IVatReportService
                 && i.TaxableSupplyDate <= toUtc
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
-                && i.DocumentType == EDocumentType.Invoice
+                && (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                 && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
-            .SumAsync(i => (decimal?)i.TotalBeforeVat ?? 0, ct);
+            .SumAsync(i => i.DocumentType == EDocumentType.CreditNote
+                ? -Math.Abs((decimal?)i.TotalBeforeVat ?? 0)
+                : (decimal?)i.TotalBeforeVat ?? 0, ct);
 
         // ── Input VAT (from received invoices) ──────────────────────────────
         // Only count Approved or Paid received invoices (not Received/Rejected/Deleted).
@@ -255,7 +259,7 @@ public class VatReportService : IVatReportService
                 && i.TaxableSupplyDate <= toUtc
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
-                && i.DocumentType == EDocumentType.Invoice
+                && (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                 && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .ToListAsync(ct);
 
@@ -290,12 +294,14 @@ public class VatReportService : IVatReportService
             // TaxableSupplyDate is nullable — fall back to today's date if not set
             // (should not happen in practice; invoices without DUZP are excluded by the WHERE clause).
             var duzp = DateOnly.FromDateTime(inv.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+            var isCn = inv.DocumentType == EDocumentType.CreditNote;
 
             foreach (var item in inv.InvoiceItem)
             {
-                // Convert item amounts to CZK (no-op for CZK invoices).
-                var baseCzk = await _currencyService.ConvertToCzkAsync(
-                    item.TotalBeforeVat, currencyCode, duzp, ct);
+                // Convert item amounts to CZK (no-op for CZK invoices). A credit note (opravný daňový
+                // doklad, §42 ZDPH) is reported negatively in the period of its own DUZP.
+                var baseCzk = Signed(await _currencyService.ConvertToCzkAsync(
+                    item.TotalBeforeVat, currencyCode, duzp, ct), isCn);
 
                 // Reverse charge (PDP) items are supplied under §92a–92e ZDPH: the supplier does
                 // not charge VAT (VatAmount == 0, see InvoiceService.CalculateItemVat), so they
@@ -307,8 +313,8 @@ public class VatReportService : IVatReportService
                     continue;
                 }
 
-                var vatCzk = await _currencyService.ConvertToCzkAsync(
-                    item.VatAmount, currencyCode, duzp, ct);
+                var vatCzk = Signed(await _currencyService.ConvertToCzkAsync(
+                    item.VatAmount, currencyCode, duzp, ct), isCn);
 
                 // EPO standard rate bucket: >= 20 % (currently 21 %).
                 // EPO reduced rate bucket:  < 20 % (currently 12 %).
@@ -536,7 +542,7 @@ public class VatReportService : IVatReportService
                 && i.TaxableSupplyDate <= toUtc
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
-                && i.DocumentType == EDocumentType.Invoice
+                && (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                 && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .ToListAsync(ct);
 
@@ -573,12 +579,25 @@ public class VatReportService : IVatReportService
         // c_evid_dd + kod_pred_pl combination).
         var a1Rows = new Dictionary<(string DocNum, string Code), KhA1Row>();
 
+        // Originals of the period's credit notes (they may sit in another period, so they are not in
+        // issuedInvoices) — needed to decide A.4 vs A.5 for the correction.
+        var originalIds = issuedInvoices
+            .Where(i => i.DocumentType == EDocumentType.CreditNote && i.OriginalInvoiceId.HasValue)
+            .Select(i => i.OriginalInvoiceId!.Value).Distinct().ToList();
+        var originals = originalIds.Count == 0
+            ? new Dictionary<long, Invoice>()
+            : await _context.Invoice.AsNoTracking()
+                .Include(i => i.Currency).Include(i => i.InvoiceItem)
+                .Where(i => originalIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, ct);
+
         foreach (var inv in issuedInvoices)
         {
             var currencyCode = inv.Currency?.Code ?? "CZK";
             var duzp = DateOnly.FromDateTime(inv.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
             var dppd   = inv.TaxableSupplyDate!.Value.ToString(EpoDateFormat);
             var docNum = inv.DocumentNumber ?? string.Empty;
+            var isCn = inv.DocumentType == EDocumentType.CreditNote;
 
             // Convert all NON-reverse-charge items to CZK to determine total incl. VAT —
             // reverse charge items never carry billed VAT, so they must not affect the
@@ -588,8 +607,9 @@ public class VatReportService : IVatReportService
 
             foreach (var item in inv.InvoiceItem)
             {
-                var baseCzk = await _currencyService.ConvertToCzkAsync(
-                    item.TotalBeforeVat, currencyCode, duzp, ct);
+                // Credit notes are listed with negative amounts under their own document number.
+                var baseCzk = Signed(await _currencyService.ConvertToCzkAsync(
+                    item.TotalBeforeVat, currencyCode, duzp, ct), isCn);
 
                 if (item.VatRegime == EVatRegime.ReverseCharge)
                 {
@@ -605,15 +625,21 @@ public class VatReportService : IVatReportService
                     continue;
                 }
 
-                var vatCzk = await _currencyService.ConvertToCzkAsync(
-                    item.VatAmount, currencyCode, duzp, ct);
+                var vatCzk = Signed(await _currencyService.ConvertToCzkAsync(
+                    item.VatAmount, currencyCode, duzp, ct), isCn);
                 perItemCzk.Add((baseCzk, vatCzk, item.VatRatePercentage));
                 totalWithVatCzk += baseCzk + vatCzk;
             }
 
             // Determine classification: A.4 requires CZ VAT number AND total >= 10 000 CZK.
+            // A credit note follows the document it corrects (EPO instructions): A.4 when the original
+            // was A.4 (even if the credit note alone is below the limit), A.5 when the original was A.5.
+            // Without a known original the credit note's own absolute total decides.
             var clientTaxNumber = inv.Client?.TaxNumber;
-            if (IsCzVatNumber(clientTaxNumber) && totalWithVatCzk >= 10_000m)
+            var limitTotalCzk = Math.Abs(totalWithVatCzk);
+            if (isCn && inv.OriginalInvoiceId is long origId && originals.TryGetValue(origId, out var orig))
+                limitTotalCzk = await OriginalTotalWithVatCzkAsync(orig, ct);
+            if (IsCzVatNumber(clientTaxNumber) && limitTotalCzk >= 10_000m)
             {
                 // A.4 — individual row. Use numeric part of DIČ (strip "CZ" prefix).
                 var dicOdb = StripCzPrefix(clientTaxNumber!);
@@ -1437,6 +1463,21 @@ public class VatReportService : IVatReportService
     /// Standard rate (≥ 20 %) maps to @zakl_dane1 / @dan1.
     /// Reduced rate (< 20 %) maps to @zakl_dane2 / @dan2.
     /// </summary>
+    /// <summary>Credit notes always reduce the reported value, whatever sign their rows carry.</summary>
+    private static decimal Signed(decimal amount, bool isCreditNote) =>
+        isCreditNote ? -Math.Abs(amount) : amount;
+
+    /// <summary>Total incl. VAT in CZK of a document's non-reverse-charge items (the KH A.4/A.5 limit basis).</summary>
+    private async Task<decimal> OriginalTotalWithVatCzkAsync(Invoice inv, CancellationToken ct)
+    {
+        var currencyCode = inv.Currency?.Code ?? "CZK";
+        var duzp = DateOnly.FromDateTime(inv.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+        var total = 0m;
+        foreach (var item in inv.InvoiceItem.Where(i => i.VatRegime != EVatRegime.ReverseCharge))
+            total += await _currencyService.ConvertToCzkAsync(item.TotalBeforeVat + item.VatAmount, currencyCode, duzp, ct);
+        return Math.Abs(total);
+    }
+
     private static XDocument BuildDphkh1Xml(
         int year, int period, EVatPeriodType type,
         DateTime periodFrom, DateTime periodTo,

@@ -2013,6 +2013,15 @@ Pisemnost
 ```
 RC items never count towards the 10 000 CZK A.4/A.5 / B.2/B.3 threshold.
 
+**Credit notes (opravné daňové doklady, §42 ZDPH):** issued `CreditNote` documents are included in DPHDP3 rows 1/2 (and 25),
+the `/vat-report` summary (`GetReportAsync`: output VAT, revenue, document count) and KH A.1/A.4/A.5 — always **negative**
+(`VatReportService.Signed` forces `-Abs`, because Fakvio does not enforce a sign on credit note rows), in the period of the credit
+note's **own DUZP**. In KH a credit note is listed under its own `c_evid_dd`. A.4 vs A.5 follows the **original** document
+(`OriginalInvoiceId`): original total incl. VAT ≥ 10 000 CZK with CZ DIČ → A.4 (even if the credit note alone is below the limit),
+otherwise A.5; without a known original the credit note's own absolute total decides. OSS documents stay excluded. **Received side:**
+`ReceivedInvoice` has no credit-note flag, so a received credit note is entered as a normal received invoice (negative amounts would
+flow through unchanged) — nothing special is done for B.2/B.3.
+
 **DPHSHV struktura (souhrnné hlášení, `epo/summary-statement`):**
 ```
 Pisemnost
@@ -2027,7 +2036,7 @@ and ReverseCharge items are excluded). The client must be an EU customer other t
 (`VatReportService.TryGetEuVatId`; GR is mapped to `EL`), or, when the VAT number has no letter prefix, the client's address
 country. Totals are summed per item and rounded up. **Limitations:** proformas and advance tax receipts (DPP) are not included;
 the `Exempt` regime cannot distinguish §51 exemptions (e.g. exports), so such items to an EU VAT-id client may land in the SHV / row 21;
-DPHDP3 rows 1/2 and KH A.4/A.5 still exclude credit notes (pre-existing, tracked separately); reverse charge is domestic §92a only
+reverse charge is domestic §92a only
 (a received RC item from a non-CZ supplier fails with an actionable error — EU acquisitions are not modelled yet).
 Supply code `k_pln_eu` defaults to **3** (services); the request parameter `goods=DE123456789` (repeatable, country + VAT id)
 switches a customer to **0** (goods) — it is a request parameter only, nothing is stored (UI: "Goods" checkbox in the
