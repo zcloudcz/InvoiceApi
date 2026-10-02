@@ -826,6 +826,18 @@ public class CompanyController : ControllerBase
             if (dto.EpoAuthorizedPersonName != null) settings.EpoAuthorizedPersonName = dto.EpoAuthorizedPersonName;
             if (dto.EpoDefaultPeriodType.HasValue)   settings.EpoDefaultPeriodType = dto.EpoDefaultPeriodType;
 
+            // EU OSS registration (DEVGUIDE §4.15). Only a Czech VAT payer can be OSS registered —
+            // the issuer record lives in the tenant DB, so that rule is enforced where it can be
+            // read cheaply: the detector (OssDetector) also checks IsVatPayer, and the UI only
+            // offers the toggle to VAT payers.
+            if (dto.OssRegistered.HasValue)
+            {
+                settings.OssRegistered = dto.OssRegistered.Value;
+                settings.OssRegisteredSince = dto.OssRegistered.Value
+                    ? (dto.OssRegisteredSince ?? settings.OssRegisteredSince ?? DateTime.UtcNow.Date)
+                    : null;
+            }
+
             settings.UpdatedAt = DateTime.UtcNow;
 
             await _masterContext.SaveChangesAsync(cancellationToken);
@@ -1125,6 +1137,8 @@ public class CompanyController : ControllerBase
             EpoContactEmail          = settings.EpoContactEmail,
             EpoAuthorizedPersonName  = settings.EpoAuthorizedPersonName,
             EpoDefaultPeriodType     = settings.EpoDefaultPeriodType,
+            OssRegistered            = settings.OssRegistered,
+            OssRegisteredSince       = settings.OssRegisteredSince,
             CreatedAt = settings.CreatedAt,
             UpdatedAt = settings.UpdatedAt
         };

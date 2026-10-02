@@ -275,6 +275,13 @@ public class PdfExportService : IPdfExportService
             html = html.Replace($"{{{{{kvp.Key}}}}}", kvp.Value);
         }
 
+        // EU OSS invoice (DEVGUIDE §4.15): VAT is the destination country's, so the rates are labelled
+        // "DPH <country> x %" and a "Režim OSS" note is added above the totals.
+        var ossCountry = invoice.OssCountryCode;
+        if (ossCountry != null)
+            html = html.Replace(GrandTotalTable,
+                $@"<p style=""margin:8px 0 4px 0; font-style:italic"">{(docLang == "cs" ? "Režim OSS (zvláštní režim jednoho správního místa)." : "OSS scheme (EU One-Stop-Shop special scheme).")}</p>" + GrandTotalTable);
+
         // Build the invoice items table rows dynamically.
         // Columns match the reference design: Description | Unit | VAT% | Quantity | UnitPrice | TotalBeforeVat
         var itemsHtml = "";
@@ -292,7 +299,7 @@ public class PdfExportService : IPdfExportService
                 else
                 {
                     var vatCell = showVatColumn
-                        ? $@"<td style=""text-align:center"">{item.VatRatePercentage:N0} %</td>"
+                        ? $@"<td style=""text-align:center"">{(ossCountry != null ? $"{ossCountry} {item.VatRatePercentage:0.##}" : $"{item.VatRatePercentage:N0}")} %</td>"
                         : "";
                     itemsHtml += $@"<tr>
                         <td>{item.Description}</td>
@@ -326,7 +333,7 @@ public class PdfExportService : IPdfExportService
                 var baseAmount = group.Sum(i => i.TotalBeforeVat);
                 var vatAmount = group.Sum(i => i.VatAmount);
                 vatBreakdownHtml += $@"<tr>
-                    <td style=""text-align:center"">{group.Key:N0} %</td>
+                    <td style=""text-align:center"">{(ossCountry != null ? $"DPH {ossCountry} {group.Key:0.##}" : $"{group.Key:N0}")} %</td>
                     <td style=""text-align:right"">{baseAmount:N0}</td>
                     <td style=""text-align:right"">{vatAmount:N2} {invoice.Currency?.Symbol ?? ""}</td>
                 </tr>";

@@ -6,6 +6,7 @@ using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Contracts.Dto.OssReport;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
@@ -123,6 +124,17 @@ public class InvoiceController : ControllerBase
                 new { message = "Failed to retrieve invoices. Please try again or contact support." });
         }
     }
+
+    /// <summary>
+    /// Previews the EU OSS destination country for a new invoice to the given client
+    /// (null/empty = ordinary invoice). The UI uses it to offer the destination country's VAT rates.
+    /// </summary>
+    [HttpGet("oss-country")]
+    [ProducesResponseType(typeof(OssCountryDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<OssCountryDto>> GetOssCountry(
+        [FromQuery] long clientId, [FromQuery] EDocumentType documentType = EDocumentType.Invoice,
+        CancellationToken cancellationToken = default)
+        => Ok(new OssCountryDto { CountryCode = await _invoiceService.GetOssCountryCodeAsync(clientId, documentType, cancellationToken) });
 
     /// <summary>
     /// Gets paginated, filtered and sorted invoices/credit notes

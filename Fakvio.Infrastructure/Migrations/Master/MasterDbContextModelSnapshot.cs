@@ -698,6 +698,12 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<DateTime?>("OneDriveTokenExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("OssRegistered")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("OssRegisteredSince")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("ProvisionedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1571,6 +1577,63 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         .IsUnique();
 
                     b.ToTable("OAuthRefreshToken");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.OssVatRate", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Category")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CountryCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("Rate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ValidTo")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CountryCode");
+
+                    b.HasIndex("CountryCode", "IsActive");
+
+                    b.HasIndex("CountryCode", "Rate", "ValidFrom")
+                        .IsUnique();
+
+                    b.ToTable("OssVatRate");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.PaymentMatchingSystemSettings", b =>

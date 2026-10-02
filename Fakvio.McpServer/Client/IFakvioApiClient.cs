@@ -9,6 +9,7 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.OssReport;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.RecurringInvoice;
@@ -213,6 +214,14 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/vat-report?from=...&amp;to=... — VAT report for period.</summary>
     Task<VatReportDto> GetVatReportAsync(DateTime from, DateTime to, CancellationToken ct = default);
+
+    // ── EU OSS endpoints ─────────────────────────────────────────────────
+
+    /// <summary>GET /api/invoice/oss-country — EU OSS destination country (ISO2) an invoice to this client would get, or null.</summary>
+    Task<string?> GetOssCountryAsync(long clientId, EDocumentType documentType, CancellationToken ct = default);
+
+    /// <summary>GET /api/oss-report?year=...&amp;quarter=... — quarterly OSS report in EUR.</summary>
+    Task<OssReportDto> GetOssReportAsync(int year, int quarter, CancellationToken ct = default);
 
     // ── Dashboard endpoints ────────────────────────────────────────────
 

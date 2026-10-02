@@ -12,6 +12,7 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.OssReport;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.RecurringInvoice;
@@ -542,6 +543,22 @@ public class FakvioApiClient : IFakvioApiClient
         var response = await _http.GetAsync($"api/vat-report?from={from:O}&to={to:O}", ct);
         await EnsureSuccessAsync(response, ct);
         return (await response.Content.ReadFromJsonAsync<VatReportDto>(JsonOptions, ct))!;
+    }
+
+    // ── EU OSS endpoints ─────────────────────────────────────────────────
+
+    public async Task<string?> GetOssCountryAsync(long clientId, EDocumentType documentType, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/invoice/oss-country?clientId={clientId}&documentType={(int)documentType}", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<OssCountryDto>(JsonOptions, ct))?.CountryCode;
+    }
+
+    public async Task<OssReportDto> GetOssReportAsync(int year, int quarter, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/oss-report?year={year}&quarter={quarter}", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<OssReportDto>(JsonOptions, ct))!;
     }
 
     // ── Tax estimation endpoints ─────────────────────────────────────────

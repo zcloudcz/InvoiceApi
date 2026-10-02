@@ -187,6 +187,12 @@ public class CompanySystemSettingsDto
     /// </summary>
     public EVatPeriodType? EpoDefaultPeriodType { get; set; }
 
+    /// <summary>Is the company registered for the EU OSS (One-Stop-Shop) scheme? See DEVGUIDE §4.15.</summary>
+    public bool OssRegistered { get; set; }
+
+    /// <summary>Date from which the OSS registration is effective. Null while not registered.</summary>
+    public DateTime? OssRegisteredSince { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

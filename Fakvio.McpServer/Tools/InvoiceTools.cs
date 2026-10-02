@@ -176,7 +176,9 @@ public static class InvoiceTools
         "Create a new invoice or credit note (Draft status). Recommended flow: " +
         "find_client / list_clients to get clientId → create_invoice → complete_invoice to issue it. " +
         "For a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
-        "the matching VatRateId active on issueDate is resolved automatically.")]
+        "the matching VatRateId active on issueDate is resolved automatically. For an OSS-registered issuer " +
+        "invoicing a consumer (client without a VAT id) in another EU state, OSS is detected automatically: " +
+        "vatRatePercentage must then be a VAT rate of the client's country (rejected otherwise).")]
     public static async Task<string> CreateInvoice(
         IFakvioApiClient api,
         [Description("The client (customer) ID — find it with list_clients or find_client")] long clientId,
@@ -253,7 +255,11 @@ public static class InvoiceTools
             // A non-VAT-payer issuer has no VAT rates to configure at all (readiness never
             // asks for one), so items are left exactly as the model sent them (same rule as
             // InvoiceService.CreateInvoiceAsync, which only demands VatRateId for VAT payers).
-            if (issuer.IsVatPayer)
+            // EU OSS (DEVGUIDE §4.15): when the invoice falls under OSS the server auto-detects it and
+            // validates vatRatePercentage against the destination country's rates — the CZ rate table
+            // must not be consulted (a German 19 % would be "no matching rate" there).
+            var ossCountry = issuer.IsVatPayer ? await api.GetOssCountryAsync(clientId, parsedDocumentType, ct) : null;
+            if (issuer.IsVatPayer && string.IsNullOrEmpty(ossCountry))
             {
                 var itemsNeedingRate = items.Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
                 if (itemsNeedingRate.Count > 0)

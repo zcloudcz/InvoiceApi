@@ -177,4 +177,13 @@ public class UpdateCompanySystemSettingsDto
     /// Pre-fills the period type selector in the UI.
     /// </summary>
     public EVatPeriodType? EpoDefaultPeriodType { get; set; }
+
+    /// <summary>
+    /// EU OSS registration flag. Null = keep the current value (partial update).
+    /// Only meaningful for VAT payers (the UI only offers it to them).
+    /// </summary>
+    public bool? OssRegistered { get; set; }
+
+    /// <summary>OSS registration effective date. Ignored (cleared) when OssRegistered is false.</summary>
+    public DateTime? OssRegisteredSince { get; set; }
 }

@@ -156,6 +156,10 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IDashboardService, DashboardService>();
         services.AddScopedWithLogging<IReceivedInvoiceService, ReceivedInvoiceService>();
         services.AddScopedWithLogging<IVatReportService, VatReportService>();
+        // EU OSS (DEVGUIDE §4.15): rate code table (Master), quarterly report (Tenant) and the ECB rate client it needs.
+        services.AddScopedWithLogging<IOssVatRateService, OssVatRateService>();
+        services.AddScopedWithLogging<IOssReportService, OssReportService>();
+        services.AddHttpClient<IEcbExchangeRateClient, EcbExchangeRateClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
         // Tenant readiness — one place that answers "is this tenant set up well enough to invoice?".
