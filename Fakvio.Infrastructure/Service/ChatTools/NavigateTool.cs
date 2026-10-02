@@ -116,12 +116,14 @@ public class NavigateTool : IChatTool
         // Company and user settings
         new("dashboard", "/", "dashboard"),
         new("my_company", "/my-company", "my company page"),
+        new("setup_wizard", "/setup", "guided setup wizard (company, bank, invoicing)"),
         new("number_sequences", "/number-sequences", "number sequence settings"),
         new("feedback", "/feedback", "my feedback reports"),
         new("preferences", "/preferences", "user preferences"),
         new("two_factor_settings", "/profile/two-factor", "two-factor authentication settings"),
         new("notifications", "/notifications", "notification list"),
-        new("integrations", "/settings/integrations", "integrations and API keys for AI clients")
+        new("integrations", "/settings/integrations", "integrations and API keys for AI clients"),
+        new("webhooks", "/settings/webhooks", "outbound webhooks (admin only)")
     ];
 
     /// <summary>Lookup built once from <see cref="Routes"/> — the switch below is a dictionary hit.</summary>

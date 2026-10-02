@@ -90,8 +90,9 @@ else if (_isCreateMode)
                                          ShowProgressIndicator="true" Class="mb-3" />
                         @if (_originalSearchFailed) { <MudAlert Severity="Severity.Error">@L["Common_LoadFailed"]</MudAlert> }
                     }
-                    @* Currency selector *@
-                    <MudSelect @bind-Value="_createDto.CurrencyId" Label="@L["Template_Currency"].Value" Required="true" Class="mb-3">
+                    @* Currency selector — ValueChanged (not @bind-Value) so a currency change can
+                       re-pick a matching bank account; see OnCreateCurrencyChanged. *@
+                    <MudSelect T="long" Value="_createDto.CurrencyId" ValueChanged="@((long id) => OnCreateCurrencyChanged(id))" Label="@L["Template_Currency"].Value" Required="true" Class="mb-3">
                         @foreach (var currency in _currencies)
                         {
                             <MudSelectItem Value="@currency.Id">@currency.Code - @currency.Name</MudSelectItem>
@@ -899,6 +900,11 @@ else
     private List<BankAccountDto> _issuerBankAccounts = new();
     private long? _selectedBankAccountId;
 
+    // True once the user has explicitly picked a bank account in the CREATE form (vs. the
+    // auto-selected default). While false, changing the invoice currency is allowed to
+    // re-pick a currency-matching account; once true, the user's choice is never overridden.
+    private bool _bankAccountManuallySelectedInCreate;
+
     // Document number preview — shows what the next auto-generated number will be
     private string? _documentNumberPreview;
 
@@ -1155,6 +1161,7 @@ else
         var defaultAccount = _issuerBankAccounts.FirstOrDefault(a => a.IsDefault)
                              ?? _issuerBankAccounts.FirstOrDefault();
         _selectedBankAccountId = defaultAccount?.Id;
+        _bankAccountManuallySelectedInCreate = false;
 
         _createDto = new CreateInvoiceDto
         {
@@ -1210,7 +1217,17 @@ else
             // Auto-select the default bank account from the issuer's 1:N BankAccount collection
             var defaultAccount = _issuerBankAccounts.FirstOrDefault(a => a.IsDefault)
                                  ?? _issuerBankAccounts.FirstOrDefault();
-            _selectedBankAccountId = defaultAccount?.Id;
+            // A template-supplied account is a deliberate choice: a later currency change must not replace it.
+            _bankAccountManuallySelectedInCreate = !string.IsNullOrEmpty(template.BankAccountNumber);
+
+            // Template's own account wins over the issuer's default — but AccountNumber, IBAN
+            // and SWIFT must all come from the SAME source. Mixing e.g. the template's account
+            // number with the default account's IBAN (the previous bug) can point an invoice at
+            // an inconsistent combination of payment details.
+            var hasTemplateAccount = !string.IsNullOrEmpty(template.BankAccountNumber);
+            _selectedBankAccountId = hasTemplateAccount
+                ? _issuerBankAccounts.FirstOrDefault(a => a.AccountNumber == template.BankAccountNumber)?.Id
+                : defaultAccount?.Id;
 
             _createDto = new CreateInvoiceDto
             {
@@ -1226,27 +1243,16 @@ else
                 // generated DocumentNumber. Carrying template.VariableSymbol over would clash
                 // with the source invoice the template was created from.
                 VariableSymbol = null,
-                // Template bank account takes priority; if template has none, fall back to issuer's default
-                BankAccountNumber = template.BankAccountNumber ?? defaultAccount?.AccountNumber,
-                IBAN = defaultAccount?.IBAN,
-                SWIFT = defaultAccount?.SWIFT,
+                // Template bank account takes priority (all 3 fields from the template itself);
+                // if template has none, fall back to issuer's default (all 3 from that account).
+                BankAccountNumber = hasTemplateAccount ? template.BankAccountNumber : defaultAccount?.AccountNumber,
+                IBAN = hasTemplateAccount ? template.IBAN : defaultAccount?.IBAN,
+                SWIFT = hasTemplateAccount ? template.SWIFT : defaultAccount?.SWIFT,
                 Notes = template.Notes,
                 NumberSequenceId = template.NumberSequenceId,
                 // Copy invoice items from template
                 // Copy invoice items from template — preserve IsTextRow for text-only rows
-                InvoiceItem = template.InvoiceItem.Select(item => new CreateInvoiceItemDto
-                {
-                    OrderIndex = item.OrderIndex,
-                    IsTextRow = item.IsTextRow,
-                    Description = item.Description,
-                    Quantity = item.Quantity,
-                    Unit = item.Unit,
-                    UnitPrice = item.UnitPrice,
-                    VatRateId = item.VatRateId,
-                    VatRatePercentage = item.VatRatePercentage,
-                    ProductCode = item.ProductCode,
-                    Notes = item.Notes
-                }).ToList()
+                InvoiceItem = template.InvoiceItem.Select(Fakvio.UI.Shared.Models.InvoiceItemEditMapper.ToEditDto).ToList()
             };
 
             // If client is selected, auto-fill billing params from client settings too
@@ -1416,6 +1422,9 @@ else
     private void OnBankAccountSelected(BankAccountDto? account)
     {
         _isDirty = true;
+        // Any explicit pick (including clearing the selection) is "manual" from here on —
+        // OnCreateCurrencyChanged must stop re-picking an account for the user.
+        _bankAccountManuallySelectedInCreate = true;
         if (account != null)
         {
             _selectedBankAccountId = account.Id;
@@ -1430,6 +1439,35 @@ else
             _createDto.IBAN = null;
             _createDto.SWIFT = null;
         }
+    }
+
+    /// <summary>
+    /// Handles currency changes in CREATE mode. When the user hasn't manually picked a bank
+    /// account yet, re-picks one matching the new currency (IsDefault match first, then any
+    /// match, then falls back to the previous selection) — same preference order as the
+    /// server-side resolver in InvoiceService.ApplyBankAccountDefaultsAsync.
+    /// </summary>
+    private void OnCreateCurrencyChanged(long currencyId)
+    {
+        _isDirty = true;
+        _createDto.CurrencyId = currencyId;
+
+        if (_bankAccountManuallySelectedInCreate)
+            return;
+
+        var currencyCode = _currencies.FirstOrDefault(c => c.Id == currencyId)?.Code;
+        if (string.IsNullOrEmpty(currencyCode))
+            return;
+
+        var match = _issuerBankAccounts.FirstOrDefault(a => a.IsDefault && a.CurrencyCode == currencyCode)
+                    ?? _issuerBankAccounts.FirstOrDefault(a => a.CurrencyCode == currencyCode);
+        if (match == null)
+            return; // No account for this currency — leave the current selection as-is.
+
+        _selectedBankAccountId = match.Id;
+        _createDto.BankAccountNumber = match.AccountNumber;
+        _createDto.IBAN = match.IBAN;
+        _createDto.SWIFT = match.SWIFT;
     }
 
     /// <summary>
@@ -1531,6 +1569,29 @@ else
     /// Validates and saves a new invoice via POST /api/invoice.
     /// On success, navigates to the newly created invoice's detail page.
     /// </summary>
+    /// <summary>
+    /// Client-side mirror of InvoiceService.ValidateReverseChargeCodes (server messages are not localized):
+    /// a Reverse Charge item needs a code, any other regime must not carry one. Shows a localized snackbar.
+    /// </summary>
+    private bool ValidateReverseCharge(IEnumerable<CreateInvoiceItemDto> items)
+    {
+        foreach (var item in items.Where(i => !i.IsTextRow))
+        {
+            var isRc = item.VatRegime == EVatRegime.ReverseCharge;
+            if (isRc && !item.ReverseChargeCodeId.HasValue)
+            {
+                Snackbar.Add(L["Validation_ReverseChargeCodeRequired"].Value, Severity.Warning);
+                return false;
+            }
+            if (!isRc && item.ReverseChargeCodeId.HasValue)
+            {
+                Snackbar.Add(L["Validation_ReverseChargeCodeNotAllowed"].Value, Severity.Warning);
+                return false;
+            }
+        }
+        return true;
+    }
+
     private async Task SaveNewInvoice()
     {
         if (_saving) return;
@@ -1556,6 +1617,8 @@ else
                 Snackbar.Add(L["Invoice_AddAtLeastOneItem"].Value, Severity.Warning);
                 return;
             }
+
+            if (!ValidateReverseCharge(_createDto.InvoiceItem)) return;
 
             if (_createDto.DocumentType == EDocumentType.CreditNote && !_createDto.OriginalInvoiceId.HasValue)
             {
@@ -1639,19 +1702,7 @@ else
         // Copy items for editing
         // Map existing items to editable DTOs — IsTextRow must be preserved
         // so the InvoiceItemEditor renders text rows correctly (italic, colspan).
-        _editItems = _invoice.InvoiceItem.Select(i => new CreateInvoiceItemDto
-        {
-            OrderIndex = i.OrderIndex,
-            IsTextRow = i.IsTextRow,
-            Description = i.Description,
-            Quantity = i.Quantity,
-            Unit = i.Unit,
-            UnitPrice = i.UnitPrice,
-            VatRateId = i.VatRateId,
-            VatRatePercentage = i.VatRatePercentage,
-            ProductCode = i.ProductCode,
-            Notes = i.Notes
-        }).ToList();
+        _editItems = _invoice.InvoiceItem.Select(Fakvio.UI.Shared.Models.InvoiceItemEditMapper.ToEditDto).ToList();
 
         _isEditing = true;
         _isDirty = true; // Entering edit mode means the user intends to change something
@@ -1683,6 +1734,8 @@ else
                 Snackbar.Add(L["Invoice_AddAtLeastOneItem"].Value, Severity.Warning);
                 return;
             }
+
+            if (!ValidateReverseCharge(_editItems)) return;
 
             _editDto.IssueDate = _editIssueDate;
             _editDto.DueDate = _editDueDate;
@@ -2090,6 +2143,8 @@ else
             Snackbar.Add(L["IssueFinalInvoice_AddAtLeastOneItem"].Value, Severity.Warning);
             return;
         }
+
+        if (!ValidateReverseCharge(_issueFinalItems)) return;
 
         _issuingFinalInvoice = true;
         try

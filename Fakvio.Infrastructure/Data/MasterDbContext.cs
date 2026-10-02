@@ -319,6 +319,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.Property(e => e.DefaultGridPageSize).HasDefaultValue(10);
+            entity.Property(e => e.DashboardLayoutJson).HasColumnType("text");
         });
     }
 

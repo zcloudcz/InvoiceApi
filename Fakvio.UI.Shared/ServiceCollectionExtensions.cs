@@ -89,6 +89,7 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<FileAttachmentApiService>();
         services.AddApiClient<ReminderApiService>();
         services.AddApiClient<RecurringInvoiceApiService>();
+        services.AddApiClient<WebhookApiService>();
 
         // Personal API keys for AI clients (MCP) — page /settings/integrations.
         services.AddApiClient<ApiKeyApiService>();

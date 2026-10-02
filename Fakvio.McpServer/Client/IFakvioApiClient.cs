@@ -15,6 +15,7 @@ using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
@@ -68,6 +69,12 @@ public interface IFakvioApiClient
 
     /// <summary>POST /api/invoice — create a new invoice or credit note.</summary>
     Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto dto, CancellationToken ct = default);
+
+    /// <summary>
+    /// PUT /api/invoice/{id} — update an existing invoice (Draft or Completed only). Used by
+    /// set_invoice_bank_account to change the bank account via UpdateInvoiceDto.BankAccountId.
+    /// </summary>
+    Task<InvoiceDto?> UpdateInvoiceAsync(long id, UpdateInvoiceDto dto, CancellationToken ct = default);
 
     /// <summary>POST /api/invoice/{id}/complete — issue a draft invoice (generates doc number).</summary>
     Task<InvoiceDto> CompleteInvoiceAsync(long id, CancellationToken ct = default);
@@ -136,6 +143,11 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/vatrate/active?date= — VAT rates valid at the given date (null = today).</summary>
     Task<List<VatRateDto>> GetActiveVatRatesAsync(DateTime? date = null, CancellationToken ct = default);
+
+    // ── Reverse charge code endpoints (§92a-92e ZDPH, PDP) ────────────────
+
+    /// <summary>GET /api/reversechargecode — active reverse charge codes, sorted by Code.</summary>
+    Task<List<ReverseChargeCodeDto>> GetActiveReverseChargeCodesAsync(CancellationToken ct = default);
 
     // ── Number sequence endpoints ───────────────────────────────────────
 
