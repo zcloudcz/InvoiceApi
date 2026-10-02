@@ -12,15 +12,18 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.OssReport;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
+using Fakvio.Contracts.Dto.Vies;
 using Fakvio.Domain.Enums;
 
 namespace Fakvio.McpServer.Client;
@@ -174,6 +177,17 @@ public class FakvioApiClient : IFakvioApiClient
         return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
     }
 
+    public async Task<InvoiceDto?> UpdateInvoiceAsync(long id, UpdateInvoiceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"api/invoice/{id}", dto, JsonOptions, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct);
+    }
+
     public async Task<InvoiceDto> CompleteInvoiceAsync(long id, CancellationToken ct = default)
     {
         // POST with empty body — the API only needs the invoice ID in the URL
@@ -187,6 +201,27 @@ public class FakvioApiClient : IFakvioApiClient
         var response = await _http.PostAsync($"api/invoice/{id}/mark-paid", null, ct);
         await EnsureSuccessAsync(response, ct);
         return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<InvoiceDto> IssueFinalInvoiceAsync(long proformaId, IssueFinalInvoiceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"api/invoice/{proformaId}/issue-final", dto, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<InvoiceDto> IssueTaxReceiptAsync(long proformaId, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"api/invoice/{proformaId}/issue-tax-receipt", null, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<decimal> GetRemainingAdvanceAsync(long proformaId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/invoice/{proformaId}/remaining-advance", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<decimal>(JsonOptions, ct);
     }
 
     public async Task DeleteInvoiceAsync(long id, CancellationToken ct = default)
@@ -231,6 +266,22 @@ public class FakvioApiClient : IFakvioApiClient
         var response = await _http.GetAsync($"api/invoice/{id}/ubl", ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    /// <summary>
+    /// Downloads the accounting export XML as raw bytes from POST /api/accounting-export/{system}
+    /// ("Export do účetnictví" — Pohoda / Money S3 / ABRA Flexi).
+    /// </summary>
+    public async Task<(byte[] Content, int SkippedCount)> ExportAccountingAsync(
+        Fakvio.Domain.Enums.EAccountingSystem system,
+        DateTime from, DateTime to, bool includeIssued, bool includeReceived,
+        CancellationToken ct = default)
+    {
+        var body = new { From = from, To = to, IncludeIssued = includeIssued, IncludeReceived = includeReceived };
+        var response = await _http.PostAsJsonAsync($"api/accounting-export/{system}", body, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        var skipped = response.Headers.TryGetValues("X-Export-Skipped", out var v) && int.TryParse(v.FirstOrDefault(), out var n) ? n : 0;
+        return (await response.Content.ReadAsByteArrayAsync(ct), skipped);
     }
 
     // ── Client endpoints ───────────────────────────────────────────────
@@ -289,6 +340,13 @@ public class FakvioApiClient : IFakvioApiClient
         return await response.Content.ReadFromJsonAsync<ClientDto>(JsonOptions, ct);
     }
 
+    public async Task<ViesVerificationResult> VerifyVatViesAsync(string vatId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/vies/{Uri.EscapeDataString(vatId)}", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<ViesVerificationResult>(JsonOptions, ct))!;
+    }
+
     public async Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto dto, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync($"api/client/{clientId}/bank-account", dto, JsonOptions, ct);
@@ -312,6 +370,12 @@ public class FakvioApiClient : IFakvioApiClient
     {
         var query = date.HasValue ? $"?date={date.Value:O}" : "";
         var result = await GetJsonAsync<List<VatRateDto>>(_http, $"api/vatrate/active{query}", ct);
+        return result ?? [];
+    }
+
+    public async Task<List<ReverseChargeCodeDto>> GetActiveReverseChargeCodesAsync(CancellationToken ct = default)
+    {
+        var result = await GetJsonAsync<List<ReverseChargeCodeDto>>(_http, "api/reversechargecode", ct);
         return result ?? [];
     }
 
@@ -542,6 +606,34 @@ public class FakvioApiClient : IFakvioApiClient
         var response = await _http.GetAsync($"api/vat-report?from={from:O}&to={to:O}", ct);
         await EnsureSuccessAsync(response, ct);
         return (await response.Content.ReadFromJsonAsync<VatReportDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<byte[]> ExportVatEpoAsync(string route, int year, int period, string periodType,
+        IEnumerable<string>? goods = null, CancellationToken ct = default)
+    {
+        var url = $"api/vat-report/{route}?year={year}&period={period}&type={Uri.EscapeDataString(periodType)}";
+        foreach (var g in goods ?? [])
+            url += $"&goods={Uri.EscapeDataString(g)}";
+
+        var response = await _http.GetAsync(url, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    // ── EU OSS endpoints ─────────────────────────────────────────────────
+
+    public async Task<string?> GetOssCountryAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/invoice/oss-country?clientId={clientId}&issuerId={issuerId}&documentType={(int)documentType}", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<OssCountryDto>(JsonOptions, ct))?.CountryCode;
+    }
+
+    public async Task<OssReportDto> GetOssReportAsync(int year, int quarter, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/oss-report?year={year}&quarter={quarter}", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<OssReportDto>(JsonOptions, ct))!;
     }
 
     // ── Tax estimation endpoints ─────────────────────────────────────────

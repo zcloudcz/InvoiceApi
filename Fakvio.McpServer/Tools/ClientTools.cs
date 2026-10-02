@@ -196,13 +196,44 @@ public static class ClientTools
     }
 
     /// <summary>
+    /// Verifies an EU VAT identification number (DIČ) against VIES.
+    /// Works for any EU member state, unlike LookupAres which is Czech-only (IČO).
+    /// </summary>
+    [McpServerTool(Title = "Verify VAT ID in VIES", ReadOnly = true, Idempotent = true, OpenWorld = true), Description(
+        "Verify an EU VAT identification number (DIČ) against VIES (EU VAT registry). " +
+        "Returns whether the number is currently registered, plus name/address when the " +
+        "member state releases them. Use for any EU country — LookupAres is Czech IČO only.")]
+    public static async Task<string> VerifyVatVies(
+        IFakvioApiClient api,
+        [Description("EU VAT ID including the 2-letter country prefix, e.g. 'CZ12345678'")] string vatId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await api.VerifyVatViesAsync(vatId, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Gets the authenticated user's own company (issuer).
     /// This is the company that appears as the sender on invoices.
     /// </summary>
     [McpServerTool(Title = "Get my company", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get the authenticated user's own company (issuer). " +
         "This is the entity that appears as the sender/creator on invoices. " +
-        "Useful for getting issuerId when creating invoices.")]
+        "Useful for getting issuerId when creating invoices. " +
+        "The response's bankAccount list has each account's id, isDefault and currencyCode — " +
+        "use one of those ids as bankAccountId in create_invoice / create_invoice_from_template / " +
+        "set_invoice_bank_account. There is no separate list_bank_accounts tool, this is it.")]
     public static async Task<string> GetIssuer(
         IFakvioApiClient api,
         CancellationToken ct = default)

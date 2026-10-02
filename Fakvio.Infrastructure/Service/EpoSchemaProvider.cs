@@ -106,6 +106,8 @@ public sealed class EpoSchemaProvider : IEpoSchemaProvider
             EEpoFormType.VatReturn      => "dphdp3_epo2.xsd",
             // VAT control statement — "Kontrolní hlášení DPH" (DPHKH1)
             EEpoFormType.ControlStatement => "dphkh1_epo2.xsd",
+            // EU VAT summary statement — "Souhrnné hlášení" (DPHSHV)
+            EEpoFormType.SummaryStatement => "dphshv_epo2.xsd",
 
             // Guard against future enum values added without a corresponding XSD.
             _ => throw new NotSupportedException(

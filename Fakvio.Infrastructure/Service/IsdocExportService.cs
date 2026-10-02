@@ -52,6 +52,7 @@ public class IsdocExportService : IIsdocExportService
             .Where(i => i.Status != EInvoiceStatus.Deleted)
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem)
+                .ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.Issuer)
                 .ThenInclude(c => c!.Address)
             .Include(i => i.Issuer)

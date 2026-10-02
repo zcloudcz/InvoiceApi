@@ -459,7 +459,7 @@ public class InvoiceImportServiceTests
     public async Task ConfirmImportAsync_IssuedInvoice_CreatesInvoice()
     {
         // Arrange
-        _invoiceService.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+        _invoiceService.CreateImportedInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto { Id = 100, DocumentNumber = "FV2026001" });
 
         var request = new ConfirmInvoiceImportRequest
@@ -529,7 +529,7 @@ public class InvoiceImportServiceTests
         _clientService.CreateClientAsync(Arg.Any<CreateClientDto>(), Arg.Any<CancellationToken>())
             .Returns(new ClientDto { Id = 50, RegistrationNumber = "55555555", CompanyName = "New Client" });
 
-        _invoiceService.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+        _invoiceService.CreateImportedInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto { Id = 101, DocumentNumber = "FV002" });
 
         var request = new ConfirmInvoiceImportRequest
@@ -591,7 +591,7 @@ public class InvoiceImportServiceTests
     public async Task ConfirmImportAsync_ServiceThrows_ReturnsFailed()
     {
         // Arrange: invoice creation throws
-        _invoiceService.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+        _invoiceService.CreateImportedInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
             .Returns<InvoiceDto>(x => throw new InvalidOperationException("Duplicate VS"));
 
         var request = new ConfirmInvoiceImportRequest

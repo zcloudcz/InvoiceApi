@@ -317,6 +317,22 @@ public class InvoiceServiceReverseChargeTests : IDisposable
         ex.Message.ShouldContain("Standard");
     }
 
+    /// <summary>An undefined numeric VatRegime (e.g. from a JSON client) is rejected up front.</summary>
+    [Fact]
+    public async Task CreateInvoice_UndefinedVatRegime_ThrowsValidationError()
+    {
+        var dto = BuildInvoiceHeader();
+        dto.InvoiceItem = new List<CreateInvoiceItemDto>
+        {
+            new() { OrderIndex = 1, Description = "Bad", Quantity = 1, Unit = "pcs", UnitPrice = 1,
+                    VatRateId = VatRate21Id, VatRegime = (EVatRegime)7 }
+        };
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() => _service.CreateInvoiceAsync(dto));
+
+        ex.Message.ShouldContain("VatRegime");
+    }
+
     // ─── Exempt and OutOfScope items ─────────────────────────────────────────
 
     /// <summary>
@@ -449,5 +465,35 @@ public class InvoiceServiceReverseChargeTests : IDisposable
         item.VatRegime.ShouldBe(EVatRegime.Standard);
         item.VatAmount.ShouldBe(168m);           // 800 × 21% = 168
         item.InformationalVatAmount.ShouldBe(0m);
+    }
+
+    // ─── Non-VAT-payer issuer + ReverseCharge item ────────────────────────────
+
+    /// <summary>
+    /// A non-VAT-payer issuer can never use reverse charge (PDP is a VAT-payer-only regime —
+    /// there is no VAT for the buyer to self-assess). <see cref="NonVatPayerItems.StripVat"/>
+    /// silently downgrades the item to Standard and clears the code, the same way it already
+    /// strips VatRateId/VatRatePercentage for every other item — one rule, not a separate
+    /// rejection path. The UI must additionally never offer the PDP toggle to a non-VAT-payer
+    /// issuer (see InvoiceDetail.razor), but the backend guard is this test's subject.
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoice_NonVatPayerIssuer_ReverseChargeItemDowngradedToStandard()
+    {
+        // Arrange — non-VAT-payer issuer, item requests ReverseCharge with a valid code
+        var dto = BuildInvoiceHeader(issuerId: NonVatIssuerId);
+        dto.InvoiceItem = new List<CreateInvoiceItemDto> { ReverseChargeItem(orderIndex: 1) };
+
+        // Act
+        var result = await _service.CreateInvoiceAsync(dto);
+
+        // Assert — regime downgraded, code cleared, no VAT anywhere (same as every other item
+        // on a non-VAT-payer invoice)
+        var item = result.InvoiceItem.Single();
+        item.VatRegime.ShouldBe(EVatRegime.Standard);
+        item.ReverseChargeCodeId.ShouldBeNull();
+        item.VatAmount.ShouldBe(0m);
+        item.InformationalVatAmount.ShouldBe(0m);
+        result.TotalVat.ShouldBe(0m);
     }
 }

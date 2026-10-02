@@ -360,4 +360,61 @@ public class EpoApiEndpointTests : IClassFixture<FakvioFactory>
     // (own FakvioFactory instance) because this shared factory's TenantDbContext can
     // only have one "first active issuer" — a requirement at odds with testing IsVatPayer=false
     // while other tests in this class need IsVatPayer=true.
+
+    // =========================================================================
+    // 7. DPHSHV (EU summary statement)
+    // =========================================================================
+
+    [Fact]
+    public async Task EpoSummaryStatement_Unauthenticated_Returns401()
+    {
+        var client = _factory.CreateClient();
+
+        (await client.GetAsync("/api/vat-report/epo/summary-statement?year=2026&period=3&type=Monthly"))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await client.GetAsync("/api/vat-report/epo/summary-statement/preview?year=2026&period=3&type=Monthly"))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task EpoSummaryStatementPreview_NoEuInvoices_ReturnsEmptyList()
+    {
+        SeedTenantWithEpoSettings(TestCompanyId, includeEpoSettings: true);
+        var client = _factory.CreateClient();
+        AuthHelper.SetAuthToken(client, (await AuthHelper.LoginAsSysAdminAsync(client)).Token);
+        AuthHelper.SetImpersonation(client, TestCompanyId);
+
+        var response = await client.GetAsync("/api/vat-report/epo/summary-statement/preview?year=2026&period=3&type=Monthly&goods=DE123456789");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetArrayLength().ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task EpoSummaryStatement_NothingToReport_Returns400WithCode()
+    {
+        SeedTenantWithEpoSettings(TestCompanyId, includeEpoSettings: true);
+        var client = _factory.CreateClient();
+        AuthHelper.SetAuthToken(client, (await AuthHelper.LoginAsSysAdminAsync(client)).Token);
+        AuthHelper.SetImpersonation(client, TestCompanyId);
+
+        var response = await client.GetAsync("/api/vat-report/epo/summary-statement?year=2026&period=3&type=Monthly");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement
+            .GetProperty("code").GetString().ShouldBe("CONFIGURATION_ERROR");
+    }
+
+    [Fact]
+    public async Task EpoSummaryStatement_InvalidPeriod_Returns400()
+    {
+        SeedTenantWithEpoSettings(TestCompanyId, includeEpoSettings: true);
+        var client = _factory.CreateClient();
+        AuthHelper.SetAuthToken(client, (await AuthHelper.LoginAsSysAdminAsync(client)).Token);
+        AuthHelper.SetImpersonation(client, TestCompanyId);
+
+        var response = await client.GetAsync("/api/vat-report/epo/summary-statement?year=2026&period=13&type=Monthly");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
 }

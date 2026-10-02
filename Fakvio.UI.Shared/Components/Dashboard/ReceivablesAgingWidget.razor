@@ -1,0 +1,32 @@
+@using Fakvio.Contracts.Dto.Dashboard
+@inject IStringLocalizer<SharedResource> L
+
+<MudCard Elevation="2" Class="rounded-lg">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">@L["Dashboard_ReceivablesAging"]</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Dashboard_ReceivablesAgingHint"]</MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudChart ChartType="ChartType.Bar"
+                  ChartSeries="@_series"
+                  XAxisLabels="@_labels"
+                  Width="100%" Height="300px"
+                  ChartOptions="@DashboardCharts.Options" />
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter, EditorRequired] public DashboardDto Dashboard { get; set; } = new();
+
+    // Buckets are days past due: the first one also holds invoices that are not yet due.
+    private static readonly string[] _labels = ["0-30", "31-60", "61-90", "90+"];
+    private List<ChartSeries> _series = new();
+
+    protected override void OnParametersSet()
+    {
+        var a = Dashboard.ReceivablesAging;
+        _series = [new ChartSeries { Name = L["Dashboard_ReceivablesAging"].Value, Data = [(double)a.Bucket0To30, (double)a.Bucket31To60, (double)a.Bucket61To90, (double)a.BucketOver90] }];
+    }
+}

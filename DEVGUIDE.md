@@ -465,7 +465,7 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 4. `app.UseTenantContext()` (řádek 180) — z `CompanyId` claimu resolvuje schema name a nastaví na scoped `TenantDbContext`.
 
 **TenantContextMiddleware** (`Fakvio.API/Middleware/TenantContextMiddleware.cs`):
-- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/api-key`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`. **Skip** tenant kontroly.
+- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/api-key`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`, `/api/oss-vat-rate`, `/api/vies`. **Skip** tenant kontroly.
 - Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků). Patří sem **jen dual-context číselníky** (`/api/currency`, `/api/vatrate`, `/api/contenttemplate`, `/api/numbersequence/formats`), jejichž service umí sáhnout do Master i Tenant DB.
 - **Tenant-only číselník do žádného z těch dvou seznamů nepatří.** Např. `/api/reversechargecode` (issue #46) čte přes `ReverseChargeCodeService` výhradně `TenantDbContext`, takže potřebuje normální tenant resolution — data jsou sice statutární (MFČR), ale fyzicky leží v tenant schématu. Bez `X-Company-Id` proto SysAdmin tyto řádky nevidí; až #49 přidá SysAdmin CRUD, bude nutné vědomě rozhodnout, zda service překlopit na dual-context.
 - Řádek 126: `await factory.ResolveSchemaAsync(companyId)` — jediný zdroj pravdy.
@@ -641,6 +641,25 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
 | Mark paid | `POST /api/invoice/{id}/mark-paid` | Status=Paid, PaidAt=now. Endpoint je `/mark-paid`, ne `/mark-as-paid`. |
 | Send email | `POST /api/invoice/{id}/send-email` | Viz §4.2. |
 
+**Záloha → platba → DPP → vyúčtování (Proforma):**
+- Každá cesta, která zvýší `PaidAmount` proformy (ruční `mark-paid` vč. MCP `mark_invoice_paid` a bulk, ruční/auto/potvrzené
+  párování bankovní platby v `PaymentMatchingService`), volá jedinou metodu `InvoiceService.TryAutoIssueTaxReceiptAsync`.
+  Ta (jen pro vystavovatele = plátce DPH s `Client.AutoIssueTaxReceiptForAdvance = true`, default zapnuto; přepínač v
+  *Moje firma*) vystaví a rovnou dokončí DPP přes `IssueTaxReceiptForPaidProformaAsync` — částka = nově přijatá platba
+  (DUZP = datum platby, položky rozpočtené po sazbách DPH stejně jako odpočet na vyúčtování, `SplitAmountByVatRate`).
+  Chyby jen loguje (platba se nikdy nevrací zpět). **Žádný automatický e-mail.**
+- Idempotence: DPP se vždy ořízne na `PaidAmount − Σ existujících DPP`, takže opakované zpracování téže platby nic nezdvojí.
+  Ruční `mark-paid` nově synchronizuje i `PaidAmount = TotalWithVat`.
+- `POST /api/invoice/{proformaId}/issue-tax-receipt` = ruční cesta (vypnuté auto-vystavení, MCP/chat `issue_tax_receipt`);
+  vyúčtování: `POST .../issue-final`, zbývající záloha: `GET .../remaining-advance`.
+- Storno párování platby (`UnmatchAsync`) ani vrácení faktury na nezaplacenou už vystavené DPP **neruší** — opravu daňového dokladu je nutné udělat ručně (dobropis).
+- Souběh: vystavení běží v transakci s `pg_advisory_xact_lock(proformaId)` (jen PostgreSQL); selže-li dokončení DPP, rozpracovaný Draft se smaže, aby neblokoval další vystavení.
+- Zaokrouhlení: DPP nikdy nepřekročí přijatou částku (některé částky nejdou jedním řádkem trefit na halíř, např. 100,00 při 21 % → 99,99); zbytek pod 1 Kč se nekryje. Řádky se dělí podle (sazba, režim DPH) — u přenesené daňové povinnosti vznikne DPP bez DPH.
+- OSS: Proforma není nikdy OSS (`OssDetector`) a OSS je opt-in (`ApplyOss`), takže automatické DPP zůstává běžné DPP s tuzemskými sazbami proformy a na OSS neselhává.
+- Ručně vytvořený DPP nesmí přesáhnout přijatou a dosud nepokrytou zálohu (`CreateInvoiceAsync`).
+- `ImapPollService` (platební e-maily) nastaví schéma na DI-scoped `TenantDbContext` a sdílí ho matcher i `IInvoiceService`.
+- Sloupec `Client.AutoIssueTaxReceiptForAdvance` → migrace `AddClientAutoIssueTaxReceipt` v Master i Tenant (entita `Client` je v obou).
+
 **Variable Symbol** (CZ banking):
 - Max **10 číslic**, jen digits.
 - Auto-fill z document number: `new string(docNumber.Where(char.IsDigit).Take(10).ToArray())`.
@@ -683,9 +702,32 @@ optionally `ReverseChargeCodeId` (FK to `ReverseChargeCode` lookup, nullable).
 1. `VatRegime == ReverseCharge` → `ReverseChargeCodeId` must not be null.
 2. `VatRegime != ReverseCharge` → `ReverseChargeCodeId` must be null.
 
-**EPO reporting** (A.1 / B.1 in DPHKH1):
-- PDP section is **TODO** — will be filled when VatReport populates A.1/B.1 from ReverseCharge items.
-- `VatRegime` and `ReverseChargeCodeId` on `InvoiceItem` are the data source for that future work.
+**EPO reporting** (DPH return + control statement): see §4.11 — `VatRegime` and
+`ReverseChargeCodeId` on `InvoiceItem` (issued) and `ReceivedInvoiceItem` (received) feed DPHDP3
+rows 10/11/25/43/44 and DPHKH1 sections A.1/B.1.
+
+**Received invoices** mirror the issued side (migration `AddReceivedInvoiceItemVatRegime`):
+`ReceivedInvoiceItem.VatRegime` + `ReverseChargeCodeId`. For `ReverseCharge` the supplier bills no VAT, so
+`VatAmount == 0` and `TotalWithVat == TotalBeforeVat` (we pay only the base); the self-assessed tax
+(base x rate) is stored in `InformationalVatAmount` (`ReceivedInvoiceService.CalculateItemVat`).
+UI: `VatRegimeSelect` + `ReverseChargeCodeSelect` in `ReceivedInvoiceDetail.razor`; MCP `create_received_invoice`
+accepts `vatRegime` / `reverseChargeCodeId` per item (the DTO is passed through).
+
+**UI**: `InvoiceItemEditor` uses the reusable `VatRegimeSelect` (wraps `EnumSelect<EVatRegime>`) and
+`ReverseChargeCodeSelect` (code list supplied by the caller) from `Fakvio.UI.Shared/Components/Shared/`; the
+invoice-level "reverse charge" switch is UI-only (loops over items, no persisted field) and re-syncs when per-row
+regimes change. Edit mode / create-from-template project stored items via `InvoiceItemEditMapper.ToEditDto`, which
+must copy `VatRegime` + `ReverseChargeCodeId` (otherwise a re-save silently bills 21 % VAT).
+`ValidateReverseChargeCodes` also rejects undefined numeric `VatRegime` values (JSON clients); the localized
+messages live in the UI (`ValidateReverseCharge` in `InvoiceDetail`), server messages stay English.
+
+**PDF** (`PdfExportService`): the mandatory §92a note + used codes are rendered **in code** (inserted before the
+grand-total table), not via a `{{Placeholder}}`, so user-customized content templates need no edit. RC items get
+an asterisk on the rate and their own recap line grouped by rate.
+
+**ISDOC** (`IsdocMapper`): RC lines carry `ClassifiedTaxCategory/LocalReverseCharge` (code + quantity), their
+`UnitPriceTaxInclusive` equals the net unit price, and TaxSubTotals are grouped by `(rate, isReverseCharge)` with
+`LocalReverseChargeFlag` on the RC sub-totals.
 
 **Calculation helper**: `InvoiceService.CalculateItemVat(InvoiceItem item)` — called from both
 `CreateInvoiceAsync` and `UpdateInvoiceAsync` for DRY calculation (issue #45, §9 KISS/DRY rule).
@@ -1158,6 +1200,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | Tool | Třída | Entita | Operace | Klíčové parametry |
 |------|-------|--------|---------|--------------------|
 | `ares_lookup` | `AresLookupTool` | ARES (Czech registry) | Read (external API) | `registration_number` (IČO) |
+| `verify_vat_vies` | `VerifyVatViesTool` | VIES (EU VAT registry) | Read (external API) | `vat_id` (DIČ vč. prefixu země) |
 | `create_client` | `CreateClientTool` | Client | Create | `registration_number` (IČO) — data z ARES |
 | `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
 | `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
@@ -1193,6 +1236,9 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `get_invoice` | `GetInvoiceTool` | Invoice (vydaná) | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, platební údaje |
 | `complete_invoice` | `CompleteInvoiceTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Draft |
 | `mark_invoice_paid` | `MarkInvoicePaidTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Completed |
+| `issue_final_invoice` | `IssueFinalInvoiceTool` | Proforma → Invoice | **Write** (confirm) | `id` nebo `document_number` + `deduction_amount?`; vytvoří Draft se zkopírovanými položkami a odpočtem zálohy |
+| `issue_tax_receipt` | `IssueTaxReceiptTool` | Proforma → DPP | **Write** (confirm) | `id` nebo `document_number`; jen plátce DPH, idempotentní |
+| `get_remaining_advance` | `GetRemainingAdvanceTool` | Proforma | Read | `id` nebo `document_number`; zbývající nezúčtovaná záloha |
 | `send_invoice_email` | `SendInvoiceEmailTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number` + `recipient_email` |
 | `delete_invoice` | `DeleteInvoiceTool` | Invoice (vydaná) | **Destructive** (confirm) | `id` nebo `document_number`; jen Draft (soft delete) |
 | `list_number_sequences` | `ListNumberSequencesTool` | NumberSequence | Read (list) | `document_type`, `include_inactive`; vypíše i **formáty číslování** s ID pro create |
@@ -1204,7 +1250,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
-MCP `ReportingTools` má šest metod, chat tools jen tři (`GetDashboard` a `GetVatReport` mají
+MCP `ReportingTools` má sedm metod, chat tools jen tři (`GetDashboard` a `GetVatReport` mají
 1:1 protějšek). Zbylé **čtyři nejsou mezera** — jejich schopnost už pokrývá jiný tool:
 
 | MCP metoda | Chat ekvivalent |
@@ -1506,8 +1552,8 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 69 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 53 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+a **MCP server** (`[McpServerTool]`, 78 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1521,24 +1567,30 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 
 | MCP tool | Operace | Chat ekvivalent | Stav | Doplní |
 |----------|---------|-----------------|------|--------|
-| **Klienti** (`ClientTools`, 6) |
+| **Klienti** (`ClientTools`, 7) |
 | `LookupAres` | Read (ARES) | `ares_lookup` | ✅ | |
+| `VerifyVatVies` | Read (VIES) | `verify_vat_vies` | ✅ | |
 | `CreateClient` | Create | `create_client` | ✅ | |
 | `ListClients` | Read | `list_clients` | ✅ | |
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
-| **Vydané faktury** (`InvoiceTools`, 11) |
-| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
+| **Vydané faktury** (`InvoiceTools`, 16) |
+| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné, `bankAccountId` volitelné; chat `bank_account_id`) | `create_invoice` | ✅ | |
+| `SetInvoiceBankAccount` | **Write** (změní bankovní účet Draft/Completed faktury přes `UpdateInvoiceDto.BankAccountId`) | — | ❌ | chat nemá tool pro úpravu faktury |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
 | `GetInvoice` | Read | `get_invoice` (`id`) | ✅ | |
 | `FindInvoiceByNumber` | Read | `get_invoice` (`document_number`) | ✅ | |
 | `CompleteInvoice` | **Write** | `complete_invoice` (confirm) | ✅ | |
 | `MarkInvoicePaid` | **Write** | `mark_invoice_paid` (confirm) | ✅ | |
+| `IssueFinalInvoice` | **Write** (Draft vyúčtování, `deductionAmount?`) | `issue_final_invoice` (confirm) | ✅ | |
+| `IssueTaxReceipt` | **Write** (DPP) | `issue_tax_receipt` (confirm) | ✅ | |
+| `GetRemainingAdvance` | Read | `get_remaining_advance` | ✅ | |
 | `SendInvoiceEmail` | **Write** (odešle e-mail) | `send_invoice_email` (confirm) | ✅ | |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
 | `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
+| `ExportAccounting` | Read → download | — | ❌ | export do účetnictví (§4.15) je zatím jen MCP a UI |
 | `DeleteInvoice` | **Destructive** | `delete_invoice` (confirm, jen Draft) | ✅ | |
 | **Přijaté faktury** (`ReceivedInvoiceTools`, 7) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
@@ -1548,23 +1600,26 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `MarkReceivedInvoicePaid` | **Write** | `mark_received_invoice_paid` (+ `paid_at`, MCP neumí) | ✅ | |
 | `DeleteReceivedInvoice` | **Destructive** | `delete_received_invoice` | ✅ | |
 | `UploadReceivedInvoiceAttachment` | **Write** (upload) | `attach_file` (`entity_name=ReceivedInvoice`) | ✅ | |
-| **Reporting** (`ReportingTools`, 6) |
+| **Reporting** (`ReportingTools`, 8) |
 | `GetDashboard` | Read | `get_dashboard` | ✅ | |
 | `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |
 | `GetClientInvoices` | Read | `list_invoices` + `client_name` | ✅ | |
 | `GetInvoicesByDateRange` | Read | `list_invoices` + `issue_date_from/to` | ✅ | |
 | `GetVatReport` | Read | `get_vat_report` | ✅ | |
 | `GetOverdueReceivedInvoices` | Read | `list_received_invoices` + `overdue=true` | ✅ | |
+| `ExportVatEpo` | Read → download | — | ❌ | zatím bez tasku |
+| `GetOssReport` | Read | — | ❌ | zatím bez tasku (§4.16) |
 | **Daně** (`TaxTools`, 5) |
 | `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
 | **Šablony** (`TemplateTools`, 3) |
 | `ListTemplates` | Read | `list_invoice_templates` | ✅ | |
 | `GetTemplate` | Read | `get_invoice_template` | ✅ | |
-| `CreateInvoiceFromTemplate` | Create | — | ❌ | zatím bez tasku |
+| `CreateInvoiceFromTemplate` | Create (`bankAccountId` volitelné) | — | ❌ | zatím bez tasku |
 | **Readiness** (`ReadinessTools`, 1) |
 | `GetReadiness` | Read | `get_readiness` | ✅ | |
-| **Číselníky** (`CodeListTools`, 1) |
+| **Číselníky** (`CodeListTools`, 2) |
 | `ListCurrencies` | Read | — | ❌ | zatím bez tasku |
+| `ListReverseChargeCodes` | Read | — | ❌ | kódy PDP (§92a-92e ZDPH) jen pro `create_invoice`; dropdown v UI jde přímo přes `ReverseChargeCodeApiService`, chat tool zatím žádný nemá |
 | **Nastavení** (`SettingsTools`, 6) |
 | `ListNumberSequences` | Read | `list_number_sequences` | ✅ | |
 | `ListVatRates` | Read | `list_vat_rates` | ✅ | |
@@ -1607,12 +1662,12 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 69 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 27 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
-šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
-(7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
+**Součty:** 78 MCP toolů, 53 chat toolů. Chat pokrývá 46 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 32 mezer: EPO export DPH (1 — `ExportVatEpo`, zatím bez tasku), úprava bankovního účtu faktury (1 — `SetInvoiceBankAccount`), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
+šablony (1 — `CreateInvoiceFromTemplate`), číselníky (2 — `ListCurrencies`, `ListReverseChargeCodes`), opakované faktury
+(7 — celý `RecurringTools`, zatím bez tasku), export do účetnictví (1 — `ExportAccounting`, §4.15), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
-zatím nepokrývají).
+zatím nepokrývají), OSS hlášení (1 — `GetOssReport`, §4.16).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1695,7 +1750,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **69 tools**: 11 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **78 tools** (bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 16 invoice + 7 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -1915,7 +1970,7 @@ v `README.md` tamtéž) + hand-crafted XXE/entity-bomb/oversize testy. `InvoiceE
 **DB změna: žádná** — F1.10 je bezmigrační (jediná plánovaná DB změna fáze 1, `Client.PeppolId`,
 patří do F1.8).
 
-### 4.11 EPO XML export (DPHDP3 + DPHKH1)
+### 4.11 EPO XML export (DPHDP3 + DPHKH1 + DPHSHV)
 
 Česká daňová přiznání ve formátu EPO Finanční správy ČR.
 
@@ -1923,10 +1978,10 @@ patří do F1.8).
 
 | Vrstva | Kde | Co dělá |
 |--------|-----|---------|
-| Interface | `Fakvio.Application/Service/IVatReportService.cs` | `ExportEpoVatReturnAsync` + `ExportEpoControlStatementAsync` |
+| Interface | `Fakvio.Application/Service/IVatReportService.cs` | `ExportEpoVatReturnAsync` + `ExportEpoControlStatementAsync` + `GetSummaryStatementRowsAsync` / `ExportEpoSummaryStatementAsync` |
 | Implementace | `Fakvio.Infrastructure/Service/VatReportService.cs` | Agregace dokladů, DPHDP3 / DPHKH1 XML stavba, XSD validace |
-| XSD schémata | `Fakvio.Infrastructure/Resources/Epo/{rok}/` | `dphdp3_epo2.xsd` a `dphkh1_epo2.xsd` — copy-to-output |
-| API endpoint | `Fakvio.API/Controller/VatReportController.cs` | `GET /api/vat-report/epo/return` a `epo/control-statement` |
+| XSD schémata | `Fakvio.Infrastructure/Resources/Epo/{rok}/` | `dphdp3_epo2.xsd`, `dphkh1_epo2.xsd`, `dphshv_epo2.xsd` — copy-to-output |
+| API endpoint | `Fakvio.API/Controller/VatReportController.cs` | `GET /api/vat-report/epo/return`, `epo/control-statement`, `epo/summary-statement` (+ `/preview` JSON) |
 | EPO README | `Fakvio.Infrastructure/Resources/Epo/EPO-README.md` | Roční update postup, sandbox doc |
 
 **DPHDP3 struktura:**
@@ -1935,9 +1990,13 @@ Pisemnost
   DPHDP3
     VetaD   — period metadata (rok, mesic/ctvrt, dapdph_forma)
     VetaP   — taxpayer (dic, c_ufo, c_pracufo, typ_ds)
-    Veta1?  — output VAT rows (standard + reduced)
-    Veta4?  — input VAT rows + row 51 total
+    Veta1?  — output VAT rows (standard + reduced) + rows 10/11 (reverse charge RECEIVED: rez_pren23/dan_rpren23, rez_pren5/dan_rpren5)
+    Veta2?  — row 25 (reverse charge SUPPLIED: pln_rez_pren, base only)
+    Veta4?  — input VAT rows + rows 43/44 (od_zdp23/nar_zdp23, od_zdp5/nar_zdp5 — deduction of the self-assessed tax) + row 51 total
 ```
+Reverse charge (PDP, §92a ZDPH): supplied items (`InvoiceItem.VatRegime == ReverseCharge`) are excluded from the
+standard/reduced rows and go to row 25. Received items use `InformationalVatAmount` and are reported twice
+(output rows 10/11 and deduction rows 43/44) — net liability zero. Row 51 includes rows 43/44.
 
 **DPHKH1 struktura:**
 ```
@@ -1945,11 +2004,39 @@ Pisemnost
   DPHKH1
     VetaD   — period metadata (rok, mesic/ctvrt, khdph_forma)
     VetaP   — taxpayer
+    VetaA1* — reverse charge SUPPLIED: dic_odb, c_evid_dd, duzp, zakl_dane1 (base), kod_pred_pl — one row per (document, code)
     VetaA4* — output invoices ≥ 10 000 CZK incl. VAT with CZ DIČ
     VetaA5? — aggregate of all other output invoices
+    VetaB1* — reverse charge RECEIVED: dic_dod, c_evid_dd, duzp, zakl_dane1/dan1 + zakl_dane2/dan2 (self-assessed tax), kod_pred_pl
     VetaB2* — input invoices ≥ 10 000 CZK incl. VAT with CZ DIČ
     VetaB3? — aggregate of all other input invoices
 ```
+RC items never count towards the 10 000 CZK A.4/A.5 / B.2/B.3 threshold.
+
+**DPHSHV struktura (souhrnné hlášení, `epo/summary-statement`):**
+```
+Pisemnost
+  DPHSHV
+    VetaD   — rok, mesic/ctvrt, shvies_forma=R, dokument=SHV
+    VetaP   — taxpayer (shared with the other forms)
+    VetaR*  — one row per (k_stat, c_vat, k_pln_eu): pln_pocet (invoices), pln_hodnota (CZK, rounded UP)
+```
+Source = items of issued, non-draft, non-deleted **invoices and credit notes** (credit notes negative, in the period of their
+own DUZP, counted in `pln_pocet`) where the customer pays the tax (regime Exempt / OutOfScope, VAT 0 — Standard items with CZ VAT
+and ReverseCharge items are excluded). The client must be an EU customer other than CZ: `TaxNumber` with an EU prefix
+(`VatReportService.TryGetEuVatId`; GR is mapped to `EL`), or, when the VAT number has no letter prefix, the client's address
+country. Totals are summed per item and rounded up. **Limitations:** proformas and advance tax receipts (DPP) are not included;
+the `Exempt` regime cannot distinguish §51 exemptions (e.g. exports), so such items to an EU VAT-id client may land in the SHV / row 21;
+DPHDP3 rows 1/2 and KH A.4/A.5 still exclude credit notes (pre-existing, tracked separately); reverse charge is domestic §92a only
+(a received RC item from a non-CZ supplier fails with an actionable error — EU acquisitions are not modelled yet).
+Supply code `k_pln_eu` defaults to **3** (services); the request parameter `goods=DE123456789` (repeatable, country + VAT id)
+switches a customer to **0** (goods) — it is a request parameter only, nothing is stored (UI: "Goods" checkbox in the
+preview table on `/vat-report`). Codes 1 (transfer) and 2 (triangulation) are not supported. A **quarterly** statement with any goods row is rejected (400
+`CONFIGURATION_ERROR`, §102(6) ZDPH — goods require monthly filing); the UI warns and disables the download.
+The same aggregation feeds DPHDP3 `Veta2`: row 20 `dod_zb` (code 0 total) and row 21 `pln_sluzby` (code 3 total), so the return
+reconciles with the summary statement; `epo/return` therefore accepts the same `goods` parameter. Control statement A.1/B.1
+require the counterparty's CZ DIČ (otherwise `InvalidOperationException` naming the document); reverse charge items need a rate > 0. Nothing to report -> 400
+`CONFIGURATION_ERROR`. MCP: `export_vat_epo(kind=return|control|summary, year, period, periodType, goodsVatIds)`.
 
 **EPO header settings:**
 Načítány z `CompanySystemSettings` (master DB): `EpoTaxOfficeCode` (c_ufo), `EpoTaxOfficeBranchCode` (c_pracufo), `EpoContactPhone`, `EpoContactEmail`, `EpoAuthorizedPersonName`.
@@ -2117,6 +2204,9 @@ normální položka reportu (200), s `issuerId` je to 404.
 | Checklist | `Fakvio.UI.Shared/Components/Shared/SetupChecklist.razor` | Karta „Dokončit nastavení" na dashboardu. Stejné dělení jako banner — položky **seskupené podle závažnosti** pod klíči `Readiness_BlockingTitle` / `Readiness_WarningTitle`, barva ikony nadpis jen opakuje. Severita nesmí být nesená jen barvou (odečítač obrazovky z barvy nepřečte nic, červená vs oranžová je navíc nejhorší dvojice pro barvosleposti) — a report z `TenantReadinessService` není řazený, seskupení tedy drží i pořadí. Bez parametrů → stačí `OnInitializedAsync`, **žádný re-fetch guard** (není co znovu spouštět). Odložení = `bool` v localStorage pod klíčem `setupChecklistDeferred` přes `ILocalStorageService`, čtení v `try/catch` (precedens `GridStateService.LoadAsync`) — sbalí kartu na jedno tlačítko, nesmaže ji. **Dokončenost se neukládá nikdy**, počítá se z reportu, takže nemůže zastarat |
 | Zapojení | `Home.razor` → `SetupChecklist` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` → `ReadinessBanner` (jen stav Draft, `IssuerId` dokladu) | Na dashboardu je checklist nástupcem banneru (#210 nahradil i statickou „Quick Start" osu) — **dvě komponenty se stejným reportem na jedné stránce nikdy**. Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync`, tam se odkládat nedá |
 
+**Průvodce nastavením `/setup`** (`SetupWizard.razor`, MudStepper: Firma → Banka → Fakturace → Uživatelé → Hotovo).
+Každý krok ukládá přes stávající API (`ClientApiService.UpdateAsync` — pozor, adresy i bankovní účty se na API **nahrazují celé**, proto wizard posílá i stávající záznamy; `NumberSequenceApiService` pro chybějící výchozí řady; `BankAccountDialog` a `InviteCompanyMemberDialog` jsou znovupoužité). Hotovost kroků se **neukládá**, počítá ji `SetupWizardPolicy.CompanyStepDone/BankStepDone/BillingStepDone` z `ReadinessReportDto` (kódy `ISSUER_*`, `NUMBER_SEQUENCE_MISSING`). Auto-redirect řeší `Home.razor` (jen ne-SysAdmin, max. 1× za relaci přes `UserPreferencesState.SetupWizardRedirectHandled`): `SetupWizardPolicy.ShouldRedirect` = blokující `ISSUER_*` issue **a** `UserPreferences.SetupWizardDismissedAt == null`. „Přeskočit" (a „Přejít na nástěnku" s nedokončeným setupem) nastaví `SetupWizardDismissedAt`. `SetupChecklist` má tlačítko „Spustit průvodce" → `/setup`.
+
 **UI konzument — konverzační onboarding** (issue #214). Druhá polovina je serverová
 (`AiSystemPrompt.OnboardingInstructions`, §4.7).
 
@@ -2248,6 +2338,183 @@ syntetická data.
 - **Fáze 2 (zatím neimplementováno):** import historie vydaných faktur z CSV — čeká na rozhodnutí
   ownera a reálné exporty (viz Story N6, tasky N6.5/N6.6).
 
+### 4.15 Export do účetnictví (POHODA / Money S3 / ABRA Flexi)
+
+Jeden XML soubor se **vydanými i přijatými** doklady za období, ve formátu cílového účetního systému.
+
+- **Endpoint:** `POST api/accounting-export/{system}` (`AccountingExportController`), `system` =
+  `Pohoda` | `MoneyS3` | `AbraFlexi` (`EAccountingSystem`). Tělo `AccountingExportRequestDto`
+  `{from, to, includeIssued, includeReceived, invoiceIds?}`; `invoiceIds` přebíjí datum jen u vydaných.
+  Jen `[Authorize]` — tenant řeší `TenantContextMiddleware`, role User i Admin (účetní) projdou
+  (read-only export, stejně jako ISDOC/UBL). Obě volby `false` → 400.
+- **Vrstvy:** `IAccountingExportService` (`AccountingExportService`) načte doklady z `TenantDbContext`
+  (vydané bez `Draft`/`Deleted`, přijaté bez `Deleted`/`Rejected`; filtr podle `IssueDate`, `to` včetně
+  celého dne) a deleguje na `IAccountingExporter` — jedna čistá implementace na systém v
+  `Infrastructure/Service/AccountingExport/` (`PohodaAccountingExporter`, `MoneyS3AccountingExporter`,
+  `AbraFlexiAccountingExporter`, společné helpery v `AccountingExportCommon`). Nový systém = nová
+  hodnota enumu + nový exporter registrovaný v DI.
+- **UI:** `AccountingExportDialog.razor` otevřený tlačítkem „Export do účetnictví" na `Invoices.razor`
+  a `ReceivedInvoices.razor` (klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (base64 XML jako
+  `ExportInvoiceIsdoc`).
+- **Mapování:** číslo dokladu, VS, data (vystavení / DUZP / splatnost), partner (IČO, DIČ, adresa),
+  způsob úhrady (jen Pohoda), položky (popis, množství, MJ, cena, sazba DPH), rozpad DPH. Dobropis má ve Fakvio
+  záporné položky: **Pohoda** je dostane beze změny (`issuedCreditNotice`), **Money S3** (`Dobropis=1`) a
+  **ABRA Flexi** (`typDokl code:DOBROPIS`) chtějí kladné částky, takže se znaménko otáčí. Pohoda je v kódování
+  Windows-1250 (`CodePagesEncodingProvider`), ostatní UTF-8. Přijatá faktura: Pohoda `numberKHDPH` + `symVar`
+  (vlastní číslo přidělí Pohoda), Money `PrijatDokl`, Flexi `cisDosle` (interní `kod` přidělí Flexi).
+- **Ověření proti oficiálním definicím (testy):** Pohoda — oficiální XSD Stormware (version 2), Money S3 —
+  oficiální XSD „XML přenosy" od Seyforu; obojí je vložené v `Fakvio.Tests.Unit/Schemas/` (viz `README.md`
+  s původem) a výstup se jím validuje. ABRA Flexi XSD nepublikuje — testy kontrolují každý element proti
+  snapshotu katalogu evidencí z `demo.flexibee.eu/.../properties` (`Schemas/AbraFlexi/catalog.txt`).
+- **Co se záměrně nevyváží (`IAccountingExporter.CanExport`):** exportér nepřijme doklad, který by cílový systém
+  zobrazil špatně; doklad se do souboru nedostane a API vrací hlavičky `X-Export-Exported`, `X-Export-Skipped`
+  (+ `X-Export-Skipped-Documents`, max. 50 čísel), UI ukáže varování a MCP vrací `skippedDocuments`.
+  - **Sazby DPH:** mapují se jen sazby platné od 2024 — 21 / 12 / 0 %. Doklady s jinou sazbou (10 % a 15 %
+    před 2024, slovenské sazby…) se přeskakují; „třetí sazba" Pohody se nemapuje.
+  - **Daňový doklad k přijaté platbě (DPP):** přeskakuje se ve všech systémech.
+  - **Proforma:** Pohoda `issuedProformaInvoice`, Money `Druh=F`, Flexi se přeskakuje (typy záloh jsou ve Flexi
+    nastavení firmy).
+  - **Cizí měna:** Fakvio neukládá kurz. Pohoda dostane `foreignCurrency` **bez** `rate`/`amount` (Pohoda použije
+    svůj kurzový lístek k datu dokladu); Money S3 a Flexi cizoměnové doklady přeskakují.
+  - **Délky:** Pohoda se ořezává na limity schématu (text hlavičky 240, položky 90, PSČ 15); Money vyžaduje
+    plné číslo jde vždy do `EvCisDokl`, `Doklad` (max. 10 znaků) se zapíše jen když se vejde, jinak číslo přidělí Money; Pohoda `numberRequested` max. 20 znaků (delší číslo → přeskočeno), Flexi `kod` ≤ 20; ostatní texty se ořezávají podle schématu.
+- **Známé mezery:**
+  - Flexi: `typDokl` používá kódy výchozí databáze (`FAKTURA`, `DOBROPIS`) — firma s přejmenovanými typy
+    musí typ po importu upravit; jednotka `mj` se posílá jen pro běžné kódy (KS, HOD, M, KG, L, KM), jinak se
+    vynechá; partner jde jako ploché `nazFirmy/ulice/mesto/psc/ic/dic` (adresář se nezakládá); součty
+    (`sum*`) počítá Flexi sám.
+  - Přijaté faktury nemají příznak dobropisu → exportují se jako běžný přijatý doklad (přijatý dobropis proto systémy neumí rozlišit).
+  - Znaménko dobropisu: Fakvio dobropis ukládá jako záporné položky (součty jsou záporné); exportéry s tím počítají — Pohoda
+    znaménko přenáší, Money S3 a Flexi ho převádějí na kladné částky.
+  - Pohoda: chybí-li vystavovateli IČO, export skončí chybou 400 (stejně jako chybějící vystavovatel).
+- **Limity požadavku:** `from <= to`, období max. 366 dní, max. 5000 `invoiceIds` → jinak 400.
+- **Testy:** `AccountingExporterTests` (unit, všechny tři exportéry), `AccountingExportEndpointTests` (integration).
+
+---
+
+### 4.15 Webhooky (odchozí události)
+
+Tenant (Admin / SysAdmin) si na `Nastavení → Webhooky` (`/settings/webhooks`) zaregistruje HTTPS URL; Fakvio na ni
+při události pošle podepsaný `POST`. Architektonicky jde o **transakční outbox + stateless dispatcher** (§6).
+
+**Entity (Tenant DB, migrace `AddWebhooks`):**
+- `WebhookSubscription` — `Url`, `Description`, `Events` (seznam názvů uložený jako text oddělený čárkami), `SecretEncrypted`
+  (Data Protection přes `ICredentialProtector`, stejně jako SMTP/IMAP hesla — §2.6), `IsActive`.
+- `WebhookDelivery` — outbox: `SubscriptionId`, `EventId`, `EventType`, `PayloadJson`, `Status` (`Pending`/`Succeeded`/`Failed`),
+  `Attempts`, `NextAttemptAt`, `LastStatusCode`, `LastError` (max 2000 znaků), `DeliveredAt`. Řádky ve stavu Succeeded/Failed
+  starší 30 dní maže dispatcher v každém cyklu.
+
+**Události v1** (`WebhookEventCatalog` v `Fakvio.Contracts` — jediný seznam pro validaci i UI): `invoice.created`, `invoice.sent`,
+`invoice.paid`, `invoice.cancelled` (= smazání/storno konceptu, `InvoiceService.DeleteInvoiceAsync`), `received_invoice.created`,
+`payment.received`. Tlačítko „Otestovat" posílá synchronně speciální událost `ping` (není v katalogu, nelze ji odebírat).
+
+**Publikace** — `IWebhookPublisher` se volá z jediné service metody každého přechodu, vždy **po** `SaveChanges` byznys změny:
+
+| Událost | Místo volání |
+|---------|--------------|
+| `invoice.created` | `InvoiceService.CreateInvoiceAsync` |
+| `invoice.sent` | `EmailService.SendInvoiceEmailAsync` |
+| `invoice.paid` | `InvoiceService.MarkAsPaidAsync`; `PaymentMatchingService` (ruční / potvrzené / automatické spárování, jen při přechodu na Paid) |
+| `invoice.cancelled` | `InvoiceService.DeleteInvoiceAsync` |
+| `received_invoice.created` | `ReceivedInvoiceService.CreateAsync` (pokrývá i import e-mailem) |
+| `payment.received` | `PaymentMatchingService` (příchozí platba spárovaná s vydanou fakturou; payload `{invoice, amount, matchedAt}`) |
+
+Publisher **nikdy nevyhodí výjimku** do byznys toku (loguje a spolkne) a bez odpovídajících aktivních subscription je
+no-op za jeden dotaz. Závislost je v konstruktorech služeb nepovinná (`IWebhookPublisher? = null`), aby ručně konstruované
+instance (testy, `ImapPollService`) fungovaly beze změny. Payload: `{ id, type, createdAt, companyId, data }`, kde `data` je
+`WebhookDocumentSummaryDto` (id, number, type, status, clientName, clientIco, total, currency, dueDate, paidAt).
+`companyId` se čte z názvu schématu (`tenant_42` → 42), takže funguje i v background jobech.
+
+**Dispatch** — `IWebhookDispatchService.RunCycleAsync` (stateless, jedna iterace pro aktuální tenant) + `WebhookWorker`
+(každou minutu, všechny aktivní provisioned tenanty, advisory lock — §6.3). Zpracuje max. 100 splatných `Pending` řádků za cyklus.
+Úspěch = HTTP 2xx. Timeout 10 s, bez přesměrování, odpověď se čte max. 4 KB (jen aby šlo spojení znovu použít).
+Backoff po neúspěchu: **1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 24 h**; po 8. neúspěšném pokusu `Failed`. Redeliver
+(`POST api/webhooks/deliveries/{id}/redeliver`) vrátí řádek do `Pending` s `Attempts = 0`. Žádný Functions projekt v repu
+neexistuje, takže worker běží jen v API.
+
+**Podpis** — hlavičky `Fakvio-Webhook-Id` (= `EventId`, pro deduplikaci), `Fakvio-Webhook-Timestamp` (Unix sekundy),
+`Fakvio-Webhook-Signature: v1=<hex HMAC-SHA256(secret, "{timestamp}.{body}")>` (`WebhookSigner`). Secret = 32 náhodných bajtů
+(base64), v plaintextu se vrací **jen** v odpovědi na create a rotate (`WebhookSubscriptionCreatedDto`), čtecí DTO ho nemá.
+
+**SSRF (bezpečnostně kritické)** — `WebhookUrlGuard`:
+1. při uložení: jen `https://` (`http://localhost` jen v Development);
+2. při připojení: `SocketsHttpHandler.ConnectCallback` sám přeloží hostname a **zkontroluje přeloženou IP** těsně před otevřením
+   socketu (jediné místo, které je odolné proti DNS rebindingu), a připojí se přímo na tuto IP. Blokuje loopback, RFC1918, link-local
+   (včetně `169.254.169.254`), `0.0.0.0/8`, multicast + rezervované (`>= 224.0.0.0`), CGNAT `100.64.0.0/10`, IPv6 ULA `fc00::/7`,
+   IPv6 link-local/site-local/multicast a IPv4-mapped IPv6. Loopback povoluje jen `WebhookUrlGuard.AllowLoopback` (nastavuje
+   `Program.cs` v Development);
+3. `AllowAutoRedirect = false` — přesměrování by obešlo kontrolu.
+
+Pojmenovaný `HttpClient` `WebhookDispatch` (DI v `ServiceCollectionExtensions`) používá dispatcher i test endpoint.
+
+**API** (`WebhookController`, `[Authorize(Roles = "Admin,SysAdmin")]`; API klíč se řídí `ApiKeyRequestGuard` — GET = read scope):
+`GET/POST api/webhooks`, `GET/PUT/DELETE api/webhooks/{id}`, `POST api/webhooks/{id}/rotate-secret`, `POST api/webhooks/{id}/test`,
+`GET api/webhooks/{id}/deliveries` (posledních 200), `POST api/webhooks/deliveries/{id}/redeliver`. Chyby validace → 400 `{ message }`.
+
+**UI** — `Fakvio.UI.Shared/Components/Pages/Webhooks.razor` (FakvioGrid, dialog s checkboxy událostí, jednorázové zobrazení secretu
+jako u API klíčů na `Integrations.razor`, test, log doručení s redeliver). Texty `Webhook_*` v `SharedResource*.resx`, route je
+v `NavigateTool.Routes` (`webhooks`). Webhooky **nemají** chat/MCP tool (paritní tabulka §4.7 se nemění).
+
+**Testy:** `Fakvio.Tests.Unit/WebhookTests.cs` (podpis, SSRF tabulka + `ConnectCallback`, retry schedule, publisher, platba → události,
+dispatcher s fake handlerem, retence, izolace tenantů), `Fakvio.Tests.Integration/WebhookEndpointTests.cs`.
+
+**Rozšíření:** nová událost = konstanta + položka v `WebhookEventCatalog.All`, klíč `Webhook_Event_<název_s_podtržítky>` v obou resx
+a volání `IWebhookPublisher` z místa přechodu (po SaveChanges).
+
+---
+
+### 4.16 EU OSS — prodej spotřebitelům v jiných státech EU (One-Stop-Shop)
+
+Plátce DPH registrovaný v režimu OSS ("zvláštní režim jednoho správního místa — režim Unie") účtuje při
+B2C prodeji do jiného státu EU **DPH cílové země** a odvádí ji čtvrtletně jedním podáním přes CZ portál.
+
+**Způsobilost a opt-in.** `OssDetector` (čistá funkce; volá ji `InvoiceService.DetermineOssCountryCodeAsync`) zjišťuje jen **způsobilost**
+(+ zemi). OSS se na faktuře uplatní **jen na výslovnou volbu uživatele**: `CreateInvoiceDto.ApplyOss` / `UpdateInvoiceDto.ApplyOss` (null = ponechat),
+`ResolveOssCountryCodeAsync` nastaví `OssCountryCode` jen když `ApplyOss` a faktura je způsobilá; `ApplyOss` na nezpůsobilé faktuře = chyba.
+Důvod: obecné B2C **služby** (poradenství, vývoj software — čl. 45) se zdaňují v ČR, OSS patří jen k dálkovému prodeji zboží, telekomunikačním/
+vysílacím/elektronickým službám apod. — to ví jen uživatel. UI: checkbox „Režim OSS" (výchozí nezaškrtnutý) se ukáže, když preview
+`GET api/invoice/oss-country?clientId&issuerId&documentType` vrátí způsobilost (preview bere vydavatele z faktury, ne „prvního issuera").
+Způsobilá faktura = **všechno** z:
+vydavatel má `CompanySystemSettings.OssRegistered` (Master) a `IsVatPayer`; doklad je `Invoice`
+nebo `TaxReceiptForAdvance` (proforma nic nezakládá, dobropis **dědí** `OssCountryCode` původní faktury);
+klient je spotřebitel (bez DIČ a `IsVatPayer=false`); země primární adresy klienta je jiný stát EU než CZ
+(`EuCountries`, `UblCodes.CountryToIso2`). Výsledek se uloží do `Invoice.OssCountryCode` (ISO2, nullable,
+Tenant migrace `AddInvoiceOssCountryCode`). Klient ho nikdy neposílá přímo — počítá se na serveru z `ApplyOss` a při každém update znovu (přepnutí ApplyOss, změna adresy klienta, DUZP).
+Starý konstruktor `InvoiceService` bez Master kontextu je `internal` (jen testy, OSS vypnuté).
+
+**Sazby:** číselník `OssVatRate` (CountryCode, Rate, Category, Description, ValidFrom, ValidTo, IsActive) je
+**jen v Master DB, bez tenant kopie** (statutární data, tenant je nemá co upravovat — odchylka od dual-context
+`VatRate`, viz §11.2). Seed: standardní + hlavní snížená sazba 26 států (migrace `AddOssVatRate`, surové
+idempotentní SQL `ON CONFLICT (CountryCode, Rate, ValidFrom) DO NOTHING`, bez natvrdo zadaných Id; zdroje a datum v komentáři migrace —
+TEDB nešlo stáhnout, ověřeno proti sekundárním zdrojům k 1. 1. 2026; s historií `ValidFrom/ValidTo` jen u EE, FI, RO, SK, LT, ostatní od 2021-07-01;
+**SysAdmin ať před prvním podáním ověří**; chybějící sazby
+(super-snížené, parking) se doplní přes `POST /api/oss-vat-rate`). `/api/oss-vat-rate` je v `MasterOnlyPaths`;
+čtení (`GET country/{cc}`) pro každého přihlášeného, zápis jen SysAdmin.
+`ValidateOssItemRatesAsync` při DUZP ověří, že každá položka má sazbu platnou pro cílovou zemi
+(`VatRateId` se u OSS položek zahazuje, `VatRegime` musí být Standard). UI (`InvoiceItemEditor`,
+parametr `OssCountryCode`) nabízí sazby cílové země; country preview dává `GET /api/invoice/oss-country`.
+MCP `create_invoice` při OSS nehledá CZ `VatRateId`, jen pošle `vatRatePercentage` a server ho ověří.
+
+**PDF:** u OSS faktury `PdfExportService.ReplacePlaceholders` označí sazby "DPH {země} x %" a přidá poznámku
+"Režim OSS".
+
+**Vyloučení z CZ DPH:** `VatReportService` filtruje `OssCountryCode == null` ve všech místech, kde čte vydané
+faktury (přehled, DPHDP3, DPHKH1) — OSS není české DPH.
+
+**Hlášení** (`GET /api/oss-report?year&quarter`, `/csv`; `OssReportService`): součet základu a DPH per
+(země, sazba) za čtvrtletí podle DUZP, dobropisy odečítají (`-Abs`), ne-EUR doklady se přepočtou kurzem **ECB
+posledního dne čtvrtletí** (`EcbExchangeRateClient`, `IHttpClientFactory`, `IMemoryCache`, při víkendu/svátku
+**následující** den publikace do 10 dní — čl. 369h odst. 2 směrnice / §110zb ZDPH; nikdy dřívější den). Dosud nezveřejněný nebo nedostupný kurz (čtvrtletí skončilo o víkendu a další fixing ještě není) = `EcbRateUnavailableException` → HTTP 502
+`ECB_RATE_UNAVAILABLE` (nikdy tiché 1:1 ani záměna za dřívější den; chyba se necachuje). Výstup JSON + CSV; XML neexistuje (pro OSS není v repu XSD).
+UI `/oss-report` (`OssReport.razor`), MCP `get_oss_report`, chat tool zatím ne.
+
+**Nastavení:** sekce `OssSettingsSection` na `/my-company` (jen plátce DPH, role Admin/SysAdmin). Čte/ukládá přes tenant-scoped
+`GET/PUT api/company-settings/oss` (`CompanySettingsController`, `[Authorize(Roles="Admin,SysAdmin")]`, firma **vždy z `ITenantResolver`**, nikdy z route;
+zapisuje jen `OssRegistered/OssRegisteredSince`, datum normalizuje na UTC). SysAdmin-only `PUT api/company/{id}/settings` pro OSS nepoužívat.
+
+**Známé limity:** šablony faktur, opakované faktury a kopie faktury OSS **nikdy neuplatní** (nesou jen CZ sazby a `ApplyOss` se z nich nepřenáší) — OSS fakturu je nutné vystavit ručně (nebo upravit koncept a zaškrtnout volbu); dobropis OSS faktury regime zdědí a sazby se u něj ověřují k DUZP **původní** faktury (`GetOssRateCheckDateAsync`), takže dobropis po změně sazby projde; při přepnutí OSS → běžná faktura dostanou položky tenantovu sazbu (`AssignTenantVatRatesAsync`). Fakvio **neověřuje místo plnění** (zboží vs. služba, čl. 45/58 směrnice) — proto je OSS opt-in; nehlídá se roční limit 10 000 EUR (pod ním může mikropodnik uplatnit CZ DPH místo OSS) —
+registrace v OSS je dobrovolné rozhodnutí uživatele; `OssRegisteredSince` je jen informační (nehradluje detekci).
+
 ---
 
 ## 5. Datová vrstva
@@ -2340,6 +2607,8 @@ Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 | Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | `ReminderWorker` v Infrastructure | daily 06:00 UTC, per-tenant | `0x46414B56494F524DL` ("FAKVIORM") |
 | Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | dle `PollIntervalMinutes` (default 30 min) | `0x46414B56494F5059L` |
 | Recurring invoices | `IRecurringInvoiceService.RunCycleAsync` | `RecurringInvoiceWorker` v Infrastructure | hodinově, per-tenant | `0x46414B56494F5249L` ("FAKVIORI") |
+| Webhooky (odchozí doručení + retry) | `IWebhookDispatchService.RunCycleAsync` | `WebhookWorker` v Infrastructure | každou 1 min, per-tenant | `0x46414B56494F5748L` ("FAKVIOWH") |
+| Vystavení DPP k proformě | `InvoiceService.IssueTaxReceiptForPaidProformaAsync` | — (volá se z plateb) | — | `pg_advisory_xact_lock` — klíč = `proformaId` (dynamický, jen PostgreSQL) |
 
 ### 6.4 Když přidáš novou periodickou úlohu
 
@@ -2599,6 +2868,12 @@ Pravidla:
 - Balíček: `Markdig` (v `Fakvio.UI.Shared`), čistě managed, funguje v browser-wasm.
 
 ---
+
+### 7.13 Dashboard widgety (modulární nástěnka)
+
+Tenantová nástěnka (`Home.razor`) se skládá z widgetů v `Components/Dashboard/`. Seznam widgetů je **statický registr** `DashboardWidgetRegistry.All` (`Fakvio.UI.Shared/Models/DashboardLayout.cs`): `Id` (stabilní, nikdy nepřejmenovávat), klíč názvu, výchozí viditelnost, šířka (sloupce `md` 1-12). Uživatelské rozložení je `[{id, visible, order}]` v `UserPreferences.DashboardLayoutJson` (Master DB, `api/user-preferences`); `DashboardLayoutMerger.Merge` ho slije s registrem — neznámá id se ignorují, u duplicit vyhrává první, nové widgety se přidají na konec s výchozí viditelností. SysAdmin pohled (bez impersonace) se nemění.
+
+**Jak přidat widget:** (1) komponenta v `Components/Dashboard/` s parametrem `Dashboard` (`DashboardDto`) nebo vlastními daty, (2) řádek v `DashboardWidgetRegistry.All`, (3) `case` v `@switch` v `Home.razor`, (4) klíč `DashboardWidget_<Id>` do obou `.resx`, (5) pokud potřebuje data, rozšířit `DashboardDto` + `DashboardService` (jeden seskupený dotaz, žádné N+1, tenant-scoped) a test v `DashboardServiceTests`. Série `RevenueByMonth`, `IncomeVsExpenseByMonth`, `ReceivablesAging` jsou vždy 12 měsíců/4 koše (měsíce bez aktivity = 0), částky bez DPH v CZK, dobropisy záporně.
 
 ## 8. Tests
 
@@ -3106,6 +3381,9 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 
 ### 11.2 "Přidávám nový code-table"
 
+> Třetí varianta vedle Master/Tenant/dual-context: **jen Master bez tenant kopie** — statutární data, která tenant
+> neupravuje (vzor `OssVatRate`, §4.16). Cesta jde do `MasterOnlyPaths`, čtení pro každého uživatele, zápis SysAdmin.
+
 ```
 1. Master nebo tenant?
    ├─ Globální (sdílená napříč firmami, např. Currency, VatRate default) → Master DB
@@ -3336,7 +3614,7 @@ On relational storage, invitation issue/accept, membership update/revoke and leg
 
 `UserCompanyMembershipDialog` is opened from the SysAdmin Users grid. Saving one row refreshes only that row so other unsaved membership edits remain. Deactivation names the company in its confirmation. Legacy account/default fields are compatibility metadata, not authority to recreate or overwrite an existing membership.
 
-MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 69 tools; update every published count and parity row whenever discovery changes.
+MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 72 tools; update every published count and parity row whenever discovery changes.
 
 ### Document forms and server-backed lists
 
@@ -3357,3 +3635,8 @@ The API-key reveal prevents another creation until the current secret is acknowl
 `ReadinessIssueText` maps missing field identifiers to localized names, and `ReadinessFixLink` checks whether a server-supplied editor route is permitted before offering navigation. `FakvioMudLocalizer`, registered through shared UI services, supplies MudBlazor grid labels in the active language. Keep CZ/EN resources synchronized and preserve accessible names for icon-only controls.
 
 Regression coverage includes `ClientContactEditorTests`, `DocumentUxRegressionTests`, `AccountUxRecoveryTests`, shared localization/readiness tests and membership API/MCP tests. PostgreSQL concurrency tests remain necessary for invitation/revocation ordering. Targeted suites have run during implementation; final combined validation and deployment are separate gates, and this branch is not deployed.
+
+### QR platba SEPA (EPC) a ověření DIČ ve VIES
+
+- **EPC QR:** `EpcQrBuilder` (`Fakvio.Application/QrPayment`) staví payload dle EPC069-12 (BCD/002/UTF-8/SCT, název ≤70, IBAN bez mezer, `EUR`+částka, remittance ≤140, max 331 B, ECC M). Routing v `QrPaymentService.BuildIbanPaymentQrContent`: měna EUR **a** IBAN → EPC, jinak beze změny SPD / Paylibo / SIND. Částka mimo 0,01–999 999 999,99 vyhodí výjimku (PDF QR je non-critical, `/qr` endpoint vrátí chybu).
+- **VIES:** `IViesService` / `ViesService` (typed HttpClient, timeout 10 s, `IMemoryCache` 24 h jen pro `Valid`). REST `POST ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number`; VIES vrací HTTP 200 i pro neplatné číslo, výpadek členského státu (`MS_UNAVAILABLE`, `TIMEOUT`…) se mapuje na `EViesCheckStatus.Unavailable` (nikdy ne na „neplatné DIČ"). `GR` se normalizuje na `EL`. Endpoint `GET api/vies/{vatId}` `[Authorize]`; MCP `verify_vat_vies`, chat `verify_vat_vies`.

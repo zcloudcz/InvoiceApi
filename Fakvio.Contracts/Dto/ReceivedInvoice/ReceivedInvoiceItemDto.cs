@@ -1,3 +1,5 @@
+using Fakvio.Domain.Enums;
+
 namespace Fakvio.Contracts.Dto.ReceivedInvoice;
 
 /// <summary>
@@ -16,6 +18,24 @@ public class ReceivedInvoiceItemDto
     public decimal TotalBeforeVat { get; set; }
     public decimal VatAmount { get; set; }
     public decimal TotalWithVat { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime for this line item. Default Standard — backward-compatible.
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
+
+    /// <summary>
+    /// FK to ReverseChargeCode lookup. Set when VatRegime == ReverseCharge.
+    /// </summary>
+    public long? ReverseChargeCodeId { get; set; }
+
+    /// <summary>
+    /// Self-assessed VAT (base * rate) for ReverseCharge items — see
+    /// <see cref="Fakvio.Domain.Entities.ReceivedInvoiceItem.InformationalVatAmount"/>.
+    /// Always 0 for Standard/Exempt/OutOfScope items.
+    /// </summary>
+    public decimal InformationalVatAmount { get; set; }
+
     public string? ProductCode { get; set; }
     public string? Notes { get; set; }
 }
@@ -40,6 +60,20 @@ public class CreateReceivedInvoiceItemDto
     /// VAT rate percentage — used if VatRateId is not provided.
     /// </summary>
     public decimal VatRatePercentage { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime for this line item. Default Standard — backward-compatible
+    /// with all existing received-invoice creation flows.
+    /// Set to ReverseCharge when WE must self-assess the VAT (§92a ZDPH); in that case
+    /// ReverseChargeCodeId must also be set.
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
+
+    /// <summary>
+    /// FK to ReverseChargeCode lookup. Required when VatRegime == ReverseCharge,
+    /// must be null for Standard/Exempt/OutOfScope.
+    /// </summary>
+    public long? ReverseChargeCodeId { get; set; }
 
     public string? ProductCode { get; set; }
     public string? Notes { get; set; }

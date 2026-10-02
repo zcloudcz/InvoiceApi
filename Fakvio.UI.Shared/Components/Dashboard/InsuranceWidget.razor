@@ -1,0 +1,61 @@
+@using Fakvio.Contracts.Dto.Dashboard
+@using Fakvio.Contracts.Dto.Invoice
+@using Fakvio.Domain.Enums
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+@using Fakvio.Contracts.Dto.Tax
+
+@if (Insurance != null)
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="6">
+            <MudCard Elevation="2" Class="rounded-lg">
+                <MudCardContent>
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Large"
+                                 Color="@(Insurance.DaysUntilPayment <= 5 ? Color.Error : Color.Info)" />
+                        @if (Insurance.DaysUntilPayment <= 0)
+                        {
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small">@L["Dashboard_InsuranceOverdue"]</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="@(Insurance.DaysUntilPayment <= 5 ? Color.Warning : Color.Info)" Size="Size.Small">
+                                @string.Format(L["Dashboard_InsuranceDueIn"].Value, Insurance.DaysUntilPayment)
+                            </MudChip>
+                        }
+                    </div>
+                    <MudText Typo="Typo.h6" GutterBottom="true">
+                        @Insurance.NextPaymentDate.ToShortDateString()
+                    </MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_InsuranceNextDate"]</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="6">
+            @* Navigates to tax estimation page — previously on the removed "Celkem měsíčně" tile. *@
+            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/tax-estimation"))">
+                <MudCardContent>
+                    @* Icon inherited from the removed duplicate tile to preserve visual identity. *@
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Tertiary" Size="Size.Large" />
+                        <MudChip T="string" Color="Color.Tertiary" Size="Size.Small">@DateTime.Today.Year</MudChip>
+                    </div>
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Dashboard_InsuranceAdvance"]</MudText>
+                    <div class="d-flex justify-space-between mb-1">
+                        <MudText>@L["Dashboard_InsuranceSocial"]</MudText>
+                        <MudText><strong>@Insurance.MonthlySocial.ToString("N0") @Insurance.CurrencyCode</strong></MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText>@L["Dashboard_InsuranceHealth"]</MudText>
+                        <MudText><strong>@Insurance.MonthlyHealth.ToString("N0") @Insurance.CurrencyCode</strong></MudText>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public InsuranceAdvanceDto? Insurance { get; set; }
+}

@@ -226,6 +226,95 @@ public static class ReportingTools
     }
 
     /// <summary>
+    /// Exports an EPO XML filing (VAT return, control statement or EU summary statement)
+    /// for one period, returned as a base64 file like the other export tools.
+    /// </summary>
+    [McpServerTool(Title = "Export VAT filing for EPO", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Export an XML filing for the Czech tax portal EPO for one period. kind: " +
+        "'return' = DPHDP3 VAT return (Priznani k DPH), 'control' = DPHKH1 control statement (Kontrolni hlaseni), " +
+        "'summary' = DPHSHV EU summary statement (Souhrnne hlaseni, supplies to EU VAT payers). " +
+        "Returns the XML as a base64-encoded string. Requires a VAT-payer company with EPO tax office settings. " +
+        "For 'return' and 'summary', supplies to EU customers default to services (return row 21 / summary code 3); pass goodsVatIds " +
+        "to report those customers as goods (row 20 / code 0). A quarterly summary cannot contain goods (monthly filing required).")]
+    public static async Task<string> ExportVatEpo(
+        IFakvioApiClient api,
+        [Description("Filing kind: 'return', 'control' or 'summary'")] string kind,
+        [Description("Tax year, e.g. 2026")] int year,
+        [Description("Period number: 1-12 for monthly, 1-4 for quarterly")] int period,
+        [Description("'Monthly' (default) or 'Quarterly'")] string periodType = "Monthly",
+        [Description("Return/summary only: customer VAT ids (country prefix + number, e.g. 'DE123456789') to report as goods instead of services")] string[]? goodsVatIds = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var (route, prefix) = kind?.Trim().ToLowerInvariant() switch
+            {
+                "return"  => ("epo/return", "DPHDP3"),
+                "control" => ("epo/control-statement", "DPHKH1"),
+                "summary" => ("epo/summary-statement", "DPHSHV"),
+                _ => (null, null)
+            };
+            if (route is null)
+                return JsonSerializer.Serialize(new { error = $"Invalid kind '{kind}'. Use 'return', 'control' or 'summary'." }, JsonOptions);
+
+            if (!Enum.TryParse<EVatPeriodType>(periodType, ignoreCase: true, out var parsedType))
+                return JsonSerializer.Serialize(new { error = $"Invalid periodType '{periodType}'. Use 'Monthly' or 'Quarterly'." }, JsonOptions);
+
+            var bytes = await api.ExportVatEpoAsync(route, year, period, parsedType.ToString(), goodsVatIds, ct);
+            var part = parsedType == EVatPeriodType.Monthly ? $"M{period:D2}" : $"Q{period}";
+
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                fileName = $"{prefix}_{year}_{part}.xml",
+                mimeType = "application/xml",
+                sizeBytes = bytes.Length,
+                base64Content = Convert.ToBase64String(bytes)
+            }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Gets the quarterly EU OSS (One-Stop-Shop) report: base and VAT per destination country and rate in EUR.
+    /// </summary>
+    [McpServerTool(Title = "Get OSS report", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Get the quarterly EU OSS (One-Stop-Shop) report: taxable base and VAT per destination EU country " +
+        "and VAT rate, in EUR (non-EUR invoices converted at the ECB rate of the last day of the quarter; " +
+        "credit notes reduce the figures). Covers only invoices issued under OSS (B2C sales to other EU states). " +
+        "Fails with a clear error when the ECB rate cannot be fetched.")]
+    public static async Task<string> GetOssReport(
+        IFakvioApiClient api,
+        [Description("Calendar year, e.g. 2026")] int year,
+        [Description("Calendar quarter 1-4")] int quarter,
+        CancellationToken ct = default)
+    {
+        if (quarter is < 1 or > 4)
+            return JsonSerializer.Serialize(new { error = $"Invalid quarter {quarter}. Use 1-4." }, JsonOptions);
+
+        try
+        {
+            var result = await api.GetOssReportAsync(year, quarter, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Gets overdue received invoices — approved but unpaid expenses past due date.
     /// </summary>
     [McpServerTool(Title = "Get overdue received invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
