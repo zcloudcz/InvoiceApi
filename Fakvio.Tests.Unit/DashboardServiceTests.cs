@@ -322,4 +322,148 @@ public class DashboardServiceTests : IDisposable
         result.InvoiceCountByClient.ShouldNotBeNull();
         result.InvoiceCountByClient.ShouldBeEmpty();
     }
+
+    // ─── New widget series (dashboard-onboarding) ──────────────────────────────
+
+    /// <summary>
+    /// Helper mirroring <see cref="AddInvoice"/> but with the extra knobs the new series
+    /// need: explicit document type, issue date and paid amount.
+    /// </summary>
+    private Invoice AddInvoiceFull(long clientId, long issuerId, EInvoiceStatus status,
+        EDocumentType documentType, DateTime issueDate, decimal totalWithVat = 1000,
+        decimal paidAmount = 0, DateTime? dueDate = null)
+    {
+        var currency = _context.Currency.FirstOrDefault();
+        if (currency == null)
+        {
+            currency = new Currency { Code = "CZK", Symbol = "Kč", Name = "Czech Koruna", IsActive = true };
+            _context.Currency.Add(currency);
+            _context.SaveChanges();
+        }
+
+        var invoice = new Invoice
+        {
+            DocumentType = documentType,
+            Status = status,
+            DocumentNumber = $"INV{Guid.NewGuid().ToString()[..6]}",
+            IssueDate = issueDate,
+            DueDate = dueDate ?? issueDate.AddDays(14),
+            ClientId = clientId,
+            IssuerId = issuerId,
+            CurrencyId = currency.Id,
+            TotalWithVat = totalWithVat,
+            TotalBeforeVat = totalWithVat * 0.8264m,
+            TotalVat = totalWithVat * 0.1736m,
+            PaidAmount = paidAmount,
+            InvoiceItem = new List<InvoiceItem>()
+        };
+        _context.Invoice.Add(invoice);
+        _context.SaveChanges();
+        return invoice;
+    }
+
+    private ReceivedInvoice AddReceivedInvoice(long supplierId, EReceivedInvoiceStatus status,
+        DateTime issueDate, decimal totalBeforeVat)
+    {
+        var received = new ReceivedInvoice
+        {
+            Status = status,
+            SupplierId = supplierId,
+            IssueDate = issueDate,
+            TotalBeforeVat = totalBeforeVat,
+            TotalWithVat = totalBeforeVat * 1.21m
+        };
+        _context.ReceivedInvoice.Add(received);
+        _context.SaveChanges();
+        return received;
+    }
+
+    /// <summary>
+    /// RevenueByMonth always has exactly 12 entries, oldest first, even with no data.
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardAsync_RevenueByMonth_EmptyDatabase_Returns12ZeroMonths()
+    {
+        var result = await _service.GetDashboardAsync();
+
+        result.RevenueByMonth.Count.ShouldBe(12);
+        result.RevenueByMonth.ShouldAllBe(m => m.Amount == 0);
+        // Oldest first: the last entry is the current month.
+        result.RevenueByMonth[^1].Month.ShouldBe(DateTime.UtcNow.ToString("yyyy-MM"));
+    }
+
+    /// <summary>
+    /// A credit note in the same month as an invoice subtracts from that month's revenue
+    /// (net-of-credit-notes rule), while documents outside Completed/Paid/PartiallyPaid
+    /// (e.g. Draft) are ignored.
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardAsync_RevenueByMonth_SubtractsCreditNotesFromSameMonth()
+    {
+        var issuer = AddClient("Issuer", isIssuer: true);
+        var client = AddClient("Client");
+        var thisMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 15, 0, 0, 0, DateTimeKind.Utc);
+
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.Completed, EDocumentType.Invoice, thisMonth, totalWithVat: 1210); // TotalBeforeVat ~999.9
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.Completed, EDocumentType.CreditNote, thisMonth, totalWithVat: 242); // ~200.0 subtracted
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.Draft, EDocumentType.Invoice, thisMonth, totalWithVat: 5000); // ignored (Draft)
+
+        var result = await _service.GetDashboardAsync();
+
+        var currentMonth = result.RevenueByMonth[^1];
+        currentMonth.Amount.ShouldBe(999.944m - 199.9888m, tolerance: 0.01m);
+    }
+
+    /// <summary>
+    /// IncomeVsExpenseByMonth pairs issued-invoice income with received-invoice expense
+    /// for the same month; a Rejected received invoice is excluded.
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardAsync_IncomeVsExpenseByMonth_PairsIssuedAndReceivedTotals()
+    {
+        var issuer = AddClient("Issuer", isIssuer: true);
+        var client = AddClient("Client");
+        var supplier = AddClient("Supplier");
+        var thisMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 10, 0, 0, 0, DateTimeKind.Utc);
+
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.Paid, EDocumentType.Invoice, thisMonth, totalWithVat: 1210);
+        AddReceivedInvoice(supplier.Id, EReceivedInvoiceStatus.Approved, thisMonth, totalBeforeVat: 300);
+        AddReceivedInvoice(supplier.Id, EReceivedInvoiceStatus.Rejected, thisMonth, totalBeforeVat: 9999); // excluded
+
+        var result = await _service.GetDashboardAsync();
+
+        var currentMonth = result.IncomeVsExpenseByMonth[^1];
+        currentMonth.Income.ShouldBe(999.944m, tolerance: 0.01m);
+        currentMonth.Expense.ShouldBe(300m);
+    }
+
+    /// <summary>
+    /// ReceivablesAging buckets the remaining (TotalWithVat - PaidAmount) by days since
+    /// DueDate, and skips invoices that are already fully paid off (remaining &lt;= 0).
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardAsync_ReceivablesAging_BucketsByDaysSinceDueDate()
+    {
+        var issuer = AddClient("Issuer", isIssuer: true);
+        var client = AddClient("Client");
+        var now = DateTime.UtcNow;
+
+        // 0-30: due in 10 days (not yet due)
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.Completed, EDocumentType.Invoice, now.AddDays(-5), totalWithVat: 1000, dueDate: now.AddDays(10));
+        // 31-60: 45 days overdue
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.Completed, EDocumentType.Invoice, now.AddDays(-50), totalWithVat: 2000, dueDate: now.AddDays(-45));
+        // 61-90: 70 days overdue, partially paid — only the remainder counts
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.PartiallyPaid, EDocumentType.Invoice, now.AddDays(-75), totalWithVat: 3000, paidAmount: 1000, dueDate: now.AddDays(-70));
+        // 90+: 120 days overdue
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.Completed, EDocumentType.Invoice, now.AddDays(-125), totalWithVat: 4000, dueDate: now.AddDays(-120));
+        // Fully paid off (remaining <= 0) — must not appear anywhere despite being overdue
+        AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.PartiallyPaid, EDocumentType.Invoice, now.AddDays(-100), totalWithVat: 500, paidAmount: 500, dueDate: now.AddDays(-95));
+
+        var result = await _service.GetDashboardAsync();
+
+        result.ReceivablesAging.Bucket0To30.ShouldBe(1000);
+        result.ReceivablesAging.Bucket31To60.ShouldBe(2000);
+        result.ReceivablesAging.Bucket61To90.ShouldBe(2000); // 3000 - 1000 paid
+        result.ReceivablesAging.BucketOver90.ShouldBe(4000);
+    }
 }

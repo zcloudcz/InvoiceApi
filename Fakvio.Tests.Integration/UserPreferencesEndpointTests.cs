@@ -69,6 +69,27 @@ public class UserPreferencesEndpointTests : IClassFixture<FakvioFactory>
     }
 
     [Fact]
+    public async Task Put_ThenGet_RoundTripsDashboardLayoutAndWizardDismissal()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var dismissedAt = new DateTime(2026, 10, 2, 8, 0, 0, DateTimeKind.Utc);
+
+        var putResponse = await client.PutAsJsonAsync("/api/user-preferences", new UserPreferencesDto
+        {
+            DefaultGridPageSize = 25,
+            DashboardLayout = [new() { Id = "recentInvoices", Visible = false, Order = 3 }],
+            SetupWizardDismissedAt = dismissedAt
+        });
+        putResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var dto = await (await client.GetAsync("/api/user-preferences")).Content.ReadFromJsonAsync<UserPreferencesDto>();
+        dto!.DashboardLayout.ShouldNotBeNull();
+        dto.DashboardLayout!.Single().Id.ShouldBe("recentInvoices");
+        dto.DashboardLayout!.Single().Visible.ShouldBeFalse();
+        dto.SetupWizardDismissedAt.ShouldBe(dismissedAt);
+    }
+
+    [Fact]
     public async Task Get_Unauthenticated_Returns401()
     {
         var client = _factory.CreateClient();

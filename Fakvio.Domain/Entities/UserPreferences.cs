@@ -29,4 +29,22 @@ public class UserPreferences : BaseEntity
     /// Must be one of the pager options (10/25/50/100) — validated in the service.
     /// </summary>
     public int DefaultGridPageSize { get; set; } = 10;
+
+    /// <summary>
+    /// Serialized JSON of the dashboard widget layout (list of {id, visible, order}),
+    /// see <c>DashboardLayoutMerger</c> in Fakvio.UI.Shared. Null = user never customized
+    /// the dashboard, so the registry defaults apply. Stored as raw JSON (not a owned
+    /// collection) because the shape is UI-owned and versioned by the UI, not the DB —
+    /// an unknown widget id from an older/newer client is simply ignored on merge.
+    /// </summary>
+    public string? DashboardLayoutJson { get; set; }
+
+    /// <summary>
+    /// UTC timestamp when the user dismissed the first-run setup wizard auto-redirect
+    /// (/setup). Null = never dismissed, so the redirect decision only depends on
+    /// readiness. Set once the user explicitly skips/closes the wizard from the dashboard
+    /// redirect — finishing the wizard does not need this, because a finished tenant no
+    /// longer has blocking readiness issues and the redirect condition is false anyway.
+    /// </summary>
+    public DateTime? SetupWizardDismissedAt { get; set; }
 }

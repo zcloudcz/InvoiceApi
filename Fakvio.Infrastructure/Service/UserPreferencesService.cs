@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.User;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
@@ -58,6 +60,10 @@ public class UserPreferencesService : IUserPreferencesService
         }
 
         entity.DefaultGridPageSize = dto.DefaultGridPageSize;
+        entity.DashboardLayoutJson = dto.DashboardLayout is null
+            ? null
+            : JsonSerializer.Serialize(dto.DashboardLayout);
+        entity.SetupWizardDismissedAt = dto.SetupWizardDismissedAt;
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("User {UserId} preferences updated (grid page size {PageSize})",
@@ -68,6 +74,24 @@ public class UserPreferencesService : IUserPreferencesService
 
     private static UserPreferencesDto MapToDto(UserPreferences entity) => new()
     {
-        DefaultGridPageSize = entity.DefaultGridPageSize
+        DefaultGridPageSize = entity.DefaultGridPageSize,
+        DashboardLayout = string.IsNullOrWhiteSpace(entity.DashboardLayoutJson)
+            ? null
+            // A corrupt/old-shape JSON value must not take the dashboard down — same
+            // "decoration, never crash the host page" reasoning as ReadinessApiService.
+            : TryDeserializeLayout(entity.DashboardLayoutJson),
+        SetupWizardDismissedAt = entity.SetupWizardDismissedAt
     };
+
+    private static List<DashboardWidgetLayoutItemDto>? TryDeserializeLayout(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<DashboardWidgetLayoutItemDto>>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
