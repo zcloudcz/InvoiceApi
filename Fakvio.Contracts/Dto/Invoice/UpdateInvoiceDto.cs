@@ -49,6 +49,14 @@ public class UpdateInvoiceDto
     public string? SpecificSymbol { get; set; }
 
     /// <summary>
+    /// Optional reference to one of the issuer's bank accounts (BankAccount.Id).
+    /// When set, the server loads that account and copies its AccountNumber/IBAN/SWIFT onto the
+    /// invoice, overriding any explicit BankAccountNumber/IBAN/SWIFT also sent below. The account
+    /// must belong to the invoice's issuer — otherwise the request fails with 400.
+    /// </summary>
+    public long? BankAccountId { get; set; }
+
+    /// <summary>
     /// Bank account number
     /// </summary>
     [StringLength(100)]

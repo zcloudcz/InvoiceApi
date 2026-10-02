@@ -11,7 +11,7 @@ namespace Fakvio.Infrastructure.Service;
 /// <summary>
 /// Quarterly EU OSS report. Reads OSS invoices (OssCountryCode != null) of the current tenant,
 /// groups them per country + VAT rate and converts to EUR at the ECB rate of the last day of
-/// the quarter. See DEVGUIDE §4.15.
+/// the quarter. See DEVGUIDE §4.16.
 /// </summary>
 public class OssReportService : IOssReportService
 {

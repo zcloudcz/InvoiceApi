@@ -19,6 +19,7 @@ using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
@@ -175,6 +176,17 @@ public class FakvioApiClient : IFakvioApiClient
         return (await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct))!;
     }
 
+    public async Task<InvoiceDto?> UpdateInvoiceAsync(long id, UpdateInvoiceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"api/invoice/{id}", dto, JsonOptions, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct);
+    }
+
     public async Task<InvoiceDto> CompleteInvoiceAsync(long id, CancellationToken ct = default)
     {
         // POST with empty body — the API only needs the invoice ID in the URL
@@ -313,6 +325,12 @@ public class FakvioApiClient : IFakvioApiClient
     {
         var query = date.HasValue ? $"?date={date.Value:O}" : "";
         var result = await GetJsonAsync<List<VatRateDto>>(_http, $"api/vatrate/active{query}", ct);
+        return result ?? [];
+    }
+
+    public async Task<List<ReverseChargeCodeDto>> GetActiveReverseChargeCodesAsync(CancellationToken ct = default)
+    {
+        var result = await GetJsonAsync<List<ReverseChargeCodeDto>>(_http, "api/reversechargecode", ct);
         return result ?? [];
     }
 

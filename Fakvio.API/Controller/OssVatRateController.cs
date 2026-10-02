@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Fakvio.API.Controller;
 
 /// <summary>
-/// EU OSS VAT rate code table (Master DB only — see DEVGUIDE §4.15 and §11.2).
+/// EU OSS VAT rate code table (Master DB only — see DEVGUIDE §4.16 and §11.2).
 /// Reading is open to every authenticated user (the invoice item editor offers these rates);
 /// writing is SysAdmin only because it is statutory reference data shared by all tenants.
 /// The path is in TenantContextMiddleware.MasterOnlyPaths — no tenant context needed.

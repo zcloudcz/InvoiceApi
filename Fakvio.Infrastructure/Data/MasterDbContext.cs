@@ -116,7 +116,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
     /// <summary>
     /// EU OSS (One-Stop-Shop) VAT rate code table — statutory reference data for the 26
-    /// EU member states other than CZ. Master DB ONLY, no tenant copy (see DEVGUIDE §4.15
+    /// EU member states other than CZ. Master DB ONLY, no tenant copy (see DEVGUIDE §4.16
     /// and Domain.Entities.OssVatRate doc comment) — every tenant reads the same rows.
     /// </summary>
     public DbSet<OssVatRate> OssVatRate { get; set; }
@@ -327,6 +327,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.Property(e => e.DefaultGridPageSize).HasDefaultValue(10);
+            entity.Property(e => e.DashboardLayoutJson).HasColumnType("text");
         });
     }
 

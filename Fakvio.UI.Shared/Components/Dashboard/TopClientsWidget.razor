@@ -1,0 +1,24 @@
+@using Fakvio.Contracts.Dto.Dashboard
+@inject IStringLocalizer<SharedResource> L
+
+@if (Dashboard.InvoiceTotalByClient.Count > 0)
+{
+    <MudCard Elevation="2" Class="rounded-lg">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">@L["Dashboard_TopClientsByRevenue"]</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent Style="min-height: 300px;">
+            <MudChart ChartType="ChartType.Donut"
+                      InputData="@(Dashboard.InvoiceTotalByClient.Values.Select(v => (double)v).ToArray())"
+                      InputLabels="@(Dashboard.InvoiceTotalByClient.Select(kvp => $"{kvp.Key} ({kvp.Value:N0})").ToArray())"
+                      Width="300px" Height="300px"
+                      ChartOptions="@DashboardCharts.Options" />
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    [Parameter, EditorRequired] public DashboardDto Dashboard { get; set; } = new();
+}

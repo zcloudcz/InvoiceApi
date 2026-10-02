@@ -5,7 +5,7 @@ namespace Fakvio.UI.Shared.Services;
 
 /// <summary>
 /// Client for the EU OSS quarterly report endpoints (rates live in VatRateApiService, the country preview in FakvioService).
-/// See DEVGUIDE §4.15.
+/// See DEVGUIDE §4.16.
 /// </summary>
 public class OssApiService : ApiClientBase
 {

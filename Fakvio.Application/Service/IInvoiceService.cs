@@ -60,6 +60,13 @@ public interface IInvoiceService
     Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Same as <see cref="CreateInvoiceAsync"/> but for importing historical documents (PDF/e-mail/chat
+    /// import): the issuer's default bank account is NOT back-filled when the document has none.
+    /// An explicit BankAccountId is still honoured.
+    /// </summary>
+    Task<InvoiceDto> CreateImportedInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Updates an existing invoice
     /// Only allowed in Draft or Completed status
     /// Cannot change document type or document number once completed
@@ -136,7 +143,7 @@ public interface IInvoiceService
     /// Previews the EU OSS destination country (ISO2) an invoice from <paramref name="issuerId"/> to
     /// <paramref name="clientId"/> is ELIGIBLE for, or null when it is not an OSS case. Eligibility only — OSS is
     /// applied when the user opts in (ApplyOss). Lets the UI offer the opt-in and the destination rates before
-    /// saving (the server re-checks on save). See DEVGUIDE §4.15.
+    /// saving (the server re-checks on save). See DEVGUIDE §4.16.
     /// </summary>
     Task<string?> GetOssCountryCodeAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken cancellationToken = default);
 

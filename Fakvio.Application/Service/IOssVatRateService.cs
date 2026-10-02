@@ -4,7 +4,7 @@ namespace Fakvio.Application.Service;
 
 /// <summary>
 /// Reads/maintains the EU OSS (One-Stop-Shop) VAT rate code table (Master DB, no tenant
-/// copy — see DEVGUIDE §4.15 / §11.2). Any authenticated tenant user can read (the invoice
+/// copy — see DEVGUIDE §4.16 / §11.2). Any authenticated tenant user can read (the invoice
 /// item editor needs it); only SysAdmin can write (it is statutory data, not per-tenant).
 /// </summary>
 public interface IOssVatRateService

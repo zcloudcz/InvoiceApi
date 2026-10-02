@@ -501,6 +501,11 @@ public class InvoiceTemplateService : IInvoiceTemplateService
             OriginalInvoiceId = createDto.OriginalInvoiceId,
             ConstantSymbol = template.ConstantSymbol,
             SpecificSymbol = template.SpecificSymbol,
+            // Caller's explicit override (validated against the template's issuer by
+            // InvoiceService.ApplyBankAccountDefaultsAsync) wins over the template's own account.
+            // When both are null, InvoiceService.CreateInvoiceAsync auto-fills from the issuer's
+            // default/currency-matching account — this is also how recurring invoices get one.
+            BankAccountId = createDto.BankAccountId,
             BankAccountNumber = template.BankAccountNumber,
             IBAN = template.IBAN,
             SWIFT = template.SWIFT,

@@ -1,3 +1,4 @@
+using System.Net.Http;
 using AresService;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.AiProviders;
@@ -156,7 +157,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IDashboardService, DashboardService>();
         services.AddScopedWithLogging<IReceivedInvoiceService, ReceivedInvoiceService>();
         services.AddScopedWithLogging<IVatReportService, VatReportService>();
-        // EU OSS (DEVGUIDE §4.15): rate code table (Master), quarterly report (Tenant) and the ECB rate client it needs.
+        // EU OSS (DEVGUIDE §4.16): rate code table (Master), quarterly report (Tenant) and the ECB rate client it needs.
         services.AddScopedWithLogging<IOssVatRateService, OssVatRateService>();
         services.AddScopedWithLogging<IOssReportService, OssReportService>();
         services.AddHttpClient<IEcbExchangeRateClient, EcbExchangeRateClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
@@ -190,6 +191,33 @@ public static class ServiceCollectionExtensions
 
         // Recurring invoices — schedule CRUD + generation cycle (RecurringInvoiceWorker calls RunCycleAsync).
         services.AddScopedWithLogging<IRecurringInvoiceService, RecurringInvoiceService>();
+
+        // ── Outbound Webhooks (DEVGUIDE §4.15) ───────────────────────────────────
+        // Publisher — enqueues WebhookDelivery rows from business-event call sites
+        // (InvoiceService, ReceivedInvoiceService, EmailService, PaymentMatchingService).
+        services.AddScopedWithLogging<IWebhookPublisher, WebhookPublisher>();
+        services.AddScopedWithLogging<IWebhookSubscriptionService, WebhookSubscriptionService>();
+        // Dispatcher — stateless cycle shared by WebhookWorker (BackgroundService) and tests.
+        services.AddScopedWithLogging<IWebhookDispatchService, WebhookDispatchService>();
+
+        // Named HttpClient with the SSRF guard wired into the connection layer itself
+        // (DEVGUIDE §4.15 — security-critical: ConnectCallback validates the RESOLVED IP at
+        // connect time, which is what actually prevents DNS-rebinding bypasses). No redirects
+        // are followed (a redirect could point at a blocked address after the initial check
+        // passed), and the handler is shared across all tenants' deliveries.
+        services.AddHttpClient(WebhookDispatchService.HttpClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(15); // Outer guard; the per-send linked CTS below is the real 10s budget.
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                // A proxy (HTTP_PROXY env vars) would make the PROXY resolve/connect, bypassing
+                // ConnectCallback and its IP validation entirely — never use one.
+                UseProxy = false,
+                ConnectCallback = WebhookUrlGuard.ConnectCallback,
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            });
 
         // Tax estimation — calculates income tax, social/health insurance for CZ/SK self-employed.
         services.AddScopedWithLogging<ITaxEstimationService, TaxEstimationService>();

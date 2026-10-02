@@ -29,7 +29,7 @@ public class FakvioService : ApiClientBase
 
     /// <summary>
     /// EU OSS destination country (ISO2) an invoice from this issuer to this client is ELIGIBLE for, or null
-    /// (drives the opt-in checkbox; the server re-checks on save — DEVGUIDE §4.15).
+    /// (drives the opt-in checkbox; the server re-checks on save — DEVGUIDE §4.16).
     /// </summary>
     public async Task<string?> GetOssCountryAsync(long clientId, long issuerId, EDocumentType documentType)
     {

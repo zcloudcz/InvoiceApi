@@ -229,7 +229,7 @@ public class Invoice : BaseEntity
     /// When set:
     /// - Item VAT rates must come from <see cref="OssVatRate"/> for this country, not the
     ///   tenant's own <see cref="VatRate"/> table (see InvoiceService.DetermineOssCountryCodeAsync
-    ///   / ValidateOssItemRatesAsync, and DEVGUIDE §4.15).
+    ///   / ValidateOssItemRatesAsync, and DEVGUIDE §4.16).
     /// - The PDF shows "DPH {CountryCode} x %" instead of "DPH x %" plus a "Režim OSS" note.
     /// - The invoice is EXCLUDED from the Czech DPHDP3/DPHKH1 EPO report (it is not CZ VAT) —
     ///   see VatReportService, which filters on this column.

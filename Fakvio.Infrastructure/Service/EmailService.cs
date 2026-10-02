@@ -39,6 +39,7 @@ public class EmailService : IEmailService
     private readonly ITenantResolver _tenantResolver;
     private readonly IConfiguration _configuration;
     private readonly ILogger<EmailService> _logger;
+    private readonly IWebhookPublisher? _webhookPublisher;
 
     /// <summary>
     /// Internal record to hold resolved SMTP configuration from any tier.
@@ -65,7 +66,8 @@ public class EmailService : IEmailService
         ICredentialProtector credentialProtector,
         ITenantResolver tenantResolver,
         IConfiguration configuration,
-        ILogger<EmailService> logger)
+        ILogger<EmailService> logger,
+        IWebhookPublisher? webhookPublisher = null)
     {
         _context = context;
         _masterContext = masterContext;
@@ -78,6 +80,7 @@ public class EmailService : IEmailService
         _tenantResolver = tenantResolver;
         _configuration = configuration;
         _logger = logger;
+        _webhookPublisher = webhookPublisher;
     }
 
     /// <inheritdoc />
@@ -199,6 +202,10 @@ public class EmailService : IEmailService
         invoice.IsSentByEmail = true;
         invoice.LastSentByEmailAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
+
+        // "invoice.sent" webhook — never throws (see IWebhookPublisher).
+        if (_webhookPublisher != null)
+            await _webhookPublisher.PublishInvoiceEventAsync(Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceSent, invoiceId, ct);
 
         var attachmentCount = ublBytes != null ? 3 : 2;
         var attachmentNames = ublBytes != null

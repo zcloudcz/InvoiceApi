@@ -363,7 +363,7 @@ public class CompanySystemSettings : BaseEntity
     // ("zvláštní režim jednoho správního místa — režim Unie"). When true, B2C
     // sales to consumers in other EU member states are detected as OSS invoices
     // (see Fakvio.Infrastructure.Service.Oss.OssDetector) and must charge the
-    // destination country's VAT rate instead of CZ VAT — see DEVGUIDE §4.15.
+    // destination country's VAT rate instead of CZ VAT — see DEVGUIDE §4.16.
 
     /// <summary>
     /// Is this company registered for the EU OSS scheme? Only meaningful for VAT

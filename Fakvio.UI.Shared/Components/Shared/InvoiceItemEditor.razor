@@ -1,10 +1,14 @@
 @using Fakvio.Contracts.Dto.Invoice
 @using Fakvio.Contracts.Dto.VatRate
+@using Fakvio.Contracts.Dto.ReverseChargeCode
+@using Fakvio.Domain.Enums
 @using Fakvio.UI.Shared.Services
 @* Use the typed VatRateApiService instead of raw HttpClient — it handles BaseAddress, auth, and logging *@
 @inject VatRateApiService VatRateService
 @* Issuer lookup — a non-VAT payer gets no VAT column, no VAT totals and 0 % on every row *@
 @inject ClientApiService ClientService
+@* Reverse charge code lookup (§92a-92e ZDPH) — only relevant for a VAT payer issuer *@
+@inject ReverseChargeCodeApiService ReverseChargeCodeService
 @inject ISnackbar Snackbar
 @* Localization service for multi-language support *@
 @inject IStringLocalizer<SharedResource> L
@@ -24,6 +28,27 @@
     </MudStack>
 </div>
 
+@* Reverse charge bulk toggle (§92a ZDPH) — only offered to a VAT payer issuer. UI-only helper:
+   it just loops over the existing items and sets VatRegime/ReverseChargeCodeId on each one,
+   no extra entity/column is added for it. *@
+@if (_isVatPayer)
+{
+    <MudPaper Class="pa-3 mb-3" Outlined="true">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Wrap="Wrap.Wrap">
+            <MudSwitch T="bool" Value="@_reverseChargeToggleOn" ValueChanged="OnReverseChargeToggleChanged"
+                       Color="Color.Primary" Label="@L["Invoice_ReverseChargeToggle"].Value" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Invoice_ReverseChargeToggle_Hint"]</MudText>
+            @if (_reverseChargeToggleOn)
+            {
+                <ReverseChargeCodeSelect Codes="_reverseChargeCodes" Value="@_bulkReverseChargeCodeId"
+                                         ValueChanged="OnBulkReverseChargeCodeChanged"
+                                         Label="@L["Invoice_ReverseChargeToggle_SelectCode"].Value"
+                                         Variant="Variant.Text" Style="min-width: 260px;" />
+            }
+        </MudStack>
+    </MudPaper>
+}
+
 <MudTable T="CreateInvoiceItemDto" Items="@Items" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
     <HeaderContent>
         <MudTh Style="width: 60px;">@L["InvoiceItem_Order"]</MudTh>
@@ -35,6 +60,8 @@
         @if (_isVatPayer)
         {
             <MudTh Style="width: 140px;">@L["InvoiceItem_VatRate"]</MudTh>
+            <MudTh Style="width: 160px;">@L["InvoiceItem_VatRegime"]</MudTh>
+            <MudTh Style="width: 200px;">@L["InvoiceItem_ReverseChargeCode"]</MudTh>
         }
         <MudTh Style="width: 100px;">@L["InvoiceItem_Total"]</MudTh>
         <MudTh Style="width: 50px;"></MudTh>
@@ -50,7 +77,7 @@
                                  HideSpinButtons="true" Style="width: 50px;" />
             </MudTd>
             <MudTd></MudTd>
-            <MudTd colspan="@(_isVatPayer ? 5 : 4)">
+            <MudTd colspan="@(_isVatPayer ? 7 : 4)">
                 <MudTextField T="string" Value="@context.Description"
                               ValueChanged="@(v => { context.Description = v; NotifyChanged(); })"
                               Variant="Variant.Text" Margin="Margin.Dense"
@@ -127,6 +154,21 @@
                             }
                         </MudSelect>
                     }
+                    @if (context.VatRegime == EVatRegime.ReverseCharge)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@L["InvoiceItem_VatZeroCustomerPays"]</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    <VatRegimeSelect Value="@context.VatRegime" ValueChanged="@(v => OnVatRegimeChanged(context, v))" />
+                </MudTd>
+                <MudTd>
+                    @if (context.VatRegime == EVatRegime.ReverseCharge)
+                    {
+                        <ReverseChargeCodeSelect Codes="_reverseChargeCodes" Value="@context.ReverseChargeCodeId"
+                                                 ValueChanged="@(v => { context.ReverseChargeCodeId = v; NotifyChanged(); })"
+                                                 Required="true" />
+                    }
                 </MudTd>
             }
             <MudTd>
@@ -180,6 +222,12 @@
             <MudItem xs="4">
                 <MudText Typo="Typo.h6" Align="Align.Right"><strong>@CalculateTotalWithVatAll().ToString("N2")</strong></MudText>
             </MudItem>
+            @if (HasReverseChargeItems())
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@L["Invoice_ReverseChargeNote"]</MudAlert>
+                </MudItem>
+            }
             }
         </MudGrid>
     </MudPaper>
@@ -197,7 +245,7 @@
     public EventCallback<List<CreateInvoiceItemDto>> ItemsChanged { get; set; }
 
     /// <summary>
-    /// ISO2 destination country when the invoice is an EU OSS invoice (see DEVGUIDE §4.15); the VAT column
+    /// ISO2 destination country when the invoice is an EU OSS invoice (see DEVGUIDE §4.16); the VAT column
     /// then offers that country's OSS rates. Null/empty = ordinary invoice with the tenant's CZ rates.
     /// </summary>
     [Parameter]
@@ -236,6 +284,19 @@
     }
 
     /// <summary>
+    /// Reverse charge codes (kódy předmětu plnění PDP), loaded only for a VAT payer issuer —
+    /// a non-payer can never use Reverse Charge (§92a ZDPH applies to VAT payers only).
+    /// </summary>
+    private List<ReverseChargeCodeDto> _reverseChargeCodes = new();
+
+    /// <summary>
+    /// State of the bulk "Přenesená daňová povinnost" toggle above the grid. UI-only helper —
+    /// it just writes VatRegime/ReverseChargeCodeId on every item, no extra field is persisted.
+    /// </summary>
+    private bool _reverseChargeToggleOn;
+    private long? _bulkReverseChargeCodeId;
+
+    /// <summary>
     /// Whether the issuing company is a VAT payer. Defaults to true until the issuer is
     /// loaded — if the lookup fails the server still strips VAT for a non-payer, so the
     /// worst case is a VAT column shown for nothing, never VAT charged.
@@ -246,12 +307,39 @@
     {
         await LoadVatRates();
         await LoadIssuerVatStatus();
+        if (_isVatPayer)
+        {
+            await LoadReverseChargeCodes();
+            SyncReverseChargeToggleFromItems();
+        }
+    }
+
+    /// <summary>
+    /// When editing an existing invoice whose items were already all set to the same
+    /// ReverseCharge code (e.g. via this very toggle, or a prior edit), reflect that in the
+    /// toggle UI instead of showing it off and the per-item selects on independently.
+    /// </summary>
+    private void SyncReverseChargeToggleFromItems()
+    {
+        var billable = Items.Where(i => !i.IsTextRow).ToList();
+        if (billable.Count == 0)
+        {
+            return;
+        }
+
+        var codeIds = billable.Select(i => i.VatRegime == EVatRegime.ReverseCharge ? i.ReverseChargeCodeId : null).ToList();
+        var allSame = billable.All(i => i.VatRegime == EVatRegime.ReverseCharge) && codeIds.Distinct().Count() == 1;
+        // Also switches the toggle OFF when a per-row change broke the "all items share one code" state.
+        _reverseChargeToggleOn = allSame;
+        _bulkReverseChargeCodeId = allSame ? codeIds[0] : null;
     }
 
     /// <summary>
     /// Reads the issuer's VAT status. For a non-VAT payer, rows loaded from an existing
     /// invoice or template are reset to 0 % so the on-screen totals match what the server
-    /// will store (it ignores VAT for non-payers).
+    /// will store (it ignores VAT for non-payers). Reverse charge is a VAT-payer-only regime
+    /// (same rule as NonVatPayerItems.StripVat on the server), so it is stripped back to
+    /// Standard as well.
     /// </summary>
     private async Task LoadIssuerVatStatus()
     {
@@ -266,14 +354,36 @@
             return;
         }
 
-        if (!_isVatPayer && Items.Any(i => i.VatRateId.HasValue || i.VatRatePercentage != 0))
+        if (!_isVatPayer && Items.Any(i => i.VatRateId.HasValue || i.VatRatePercentage != 0 || i.VatRegime == EVatRegime.ReverseCharge))
         {
             foreach (var item in Items)
             {
                 item.VatRateId = null;
                 item.VatRatePercentage = 0;
+                if (item.VatRegime == EVatRegime.ReverseCharge)
+                {
+                    item.VatRegime = EVatRegime.Standard;
+                }
+                item.ReverseChargeCodeId = null;
             }
             NotifyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Loads active reverse charge codes for the per-item dropdown and the bulk toggle.
+    /// Empty list on error — the select just shows no options, same graceful degradation
+    /// pattern as LoadVatRates.
+    /// </summary>
+    private async Task LoadReverseChargeCodes()
+    {
+        try
+        {
+            _reverseChargeCodes = await ReverseChargeCodeService.GetAllActiveAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
     }
 
@@ -363,10 +473,65 @@
     }
 
     /// <summary>
+    /// Updates VatRegime on a single row. Switching away from ReverseCharge clears the
+    /// reverse charge code (mirrors the server-side rule in InvoiceService.ValidateReverseChargeCodes:
+    /// a non-ReverseCharge item must not carry a code).
+    /// </summary>
+    private void OnVatRegimeChanged(CreateInvoiceItemDto item, EVatRegime regime)
+    {
+        item.VatRegime = regime;
+        if (regime != EVatRegime.ReverseCharge)
+        {
+            item.ReverseChargeCodeId = null;
+        }
+        NotifyChanged();
+    }
+
+    /// <summary>
+    /// Toggles "Přenesená daňová povinnost" for the whole invoice. Turning it on requires a
+    /// code to be picked first (applied once selected, see OnBulkReverseChargeCodeChanged).
+    /// Turning it off resets every item back to Standard VAT.
+    /// </summary>
+    private void OnReverseChargeToggleChanged(bool value)
+    {
+        _reverseChargeToggleOn = value;
+        if (!value)
+        {
+            _bulkReverseChargeCodeId = null;
+            foreach (var item in Items.Where(i => !i.IsTextRow))
+            {
+                item.VatRegime = EVatRegime.Standard;
+                item.ReverseChargeCodeId = null;
+            }
+            NotifyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Applies the chosen reverse charge code to every billable item as soon as it is picked.
+    /// </summary>
+    private void OnBulkReverseChargeCodeChanged(long? codeId)
+    {
+        _bulkReverseChargeCodeId = codeId;
+        if (!codeId.HasValue)
+        {
+            return;
+        }
+
+        foreach (var item in Items.Where(i => !i.IsTextRow))
+        {
+            item.VatRegime = EVatRegime.ReverseCharge;
+            item.ReverseChargeCodeId = codeId;
+        }
+        NotifyChanged();
+    }
+
+    /// <summary>
     /// Notifies the parent component that items have changed
     /// </summary>
     private void NotifyChanged()
     {
+        if (_isVatPayer) SyncReverseChargeToggleFromItems();
         ItemsChanged.InvokeAsync(Items);
     }
 
@@ -377,13 +542,24 @@
         return Items.Where(i => !i.IsTextRow).Sum(i => i.Quantity * i.UnitPrice);
     }
 
+    /// <summary>
+    /// Sums VAT for Standard items only — mirrors InvoiceService.CalculateItemVat:
+    /// ReverseCharge/Exempt/OutOfScope items bill 0 VAT, so the preview must match what
+    /// the server actually stores.
+    /// </summary>
     private decimal CalculateTotalVat()
     {
-        return Items.Where(i => !i.IsTextRow).Sum(i => i.Quantity * i.UnitPrice * i.VatRatePercentage / 100);
+        return Items.Where(i => !i.IsTextRow && i.VatRegime == EVatRegime.Standard)
+            .Sum(i => i.Quantity * i.UnitPrice * i.VatRatePercentage / 100);
     }
 
     private decimal CalculateTotalWithVatAll()
     {
         return CalculateTotalBeforeVat() + CalculateTotalVat();
+    }
+
+    private bool HasReverseChargeItems()
+    {
+        return Items.Any(i => !i.IsTextRow && i.VatRegime == EVatRegime.ReverseCharge);
     }
 }

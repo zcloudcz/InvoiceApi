@@ -355,7 +355,7 @@ public class ImportInvoiceTool : IChatTool
             InvoiceItem = items
         };
 
-        var invoice = await _invoiceService.CreateInvoiceAsync(dto, ct);
+        var invoice = await _invoiceService.CreateImportedInvoiceAsync(dto, ct);
         _logger.LogInformation("Imported issued invoice {Id} ({DocNum})", invoice.Id, invoice.DocumentNumber);
 
         return ChatToolResult.SuccessWithAction(

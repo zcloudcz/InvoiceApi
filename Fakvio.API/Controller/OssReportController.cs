@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Fakvio.API.Controller;
 
 /// <summary>
-/// Quarterly EU OSS (One-Stop-Shop) report for the current tenant — see DEVGUIDE §4.15.
+/// Quarterly EU OSS (One-Stop-Shop) report for the current tenant — see DEVGUIDE §4.16.
 /// Tenant-scoped (standard tenant resolution), any authenticated tenant user may read it
 /// (same as /api/vat-report).
 /// </summary>

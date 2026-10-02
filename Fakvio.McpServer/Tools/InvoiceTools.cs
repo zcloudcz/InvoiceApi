@@ -178,14 +178,20 @@ public static class InvoiceTools
         "For a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
         "the matching VatRateId active on issueDate is resolved automatically. EU OSS is opt-in (applyOss=true) for an " +
         "OSS-registered issuer invoicing a consumer (client without a VAT id) in another EU state: vatRatePercentage " +
-        "must then be a VAT rate of the client's country (rejected otherwise).")]
+        "must then be a VAT rate of the client's country (rejected otherwise). " +
+        "Bank account: when bankAccountId is omitted and the payment method is (or defaults to) " +
+        "BankTransfer, the server automatically fills in one of the issuer's bank accounts " +
+        "(currency-matching default first) — you don't need to set one for a normal invoice.")]
     public static async Task<string> CreateInvoice(
         IFakvioApiClient api,
         [Description("The client (customer) ID — find it with list_clients or find_client")] long clientId,
         [Description(
             "Line items. Each needs description, quantity, unit, unitPrice and (for a VAT-paying " +
             "issuer) vatRatePercentage (e.g. 21); vatRateId is resolved automatically from the " +
-            "percentage, do not set it. Use isTextRow=true for a note-only line.")]
+            "percentage, do not set it. Use isTextRow=true for a note-only line. " +
+            "For a reverse charge item (PDP, §92a-92e ZDPH): set vatRegime to 'ReverseCharge' and " +
+            "reverseChargeCodeId to the Id of a code from list_reverse_charge_codes — required " +
+            "together, and only for ReverseCharge items.")]
         List<CreateInvoiceItemDto> items,
         [Description("'Invoice' or 'CreditNote' (default 'Invoice')")] string documentType = "Invoice",
         [Description("ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit for CZK.")] string? currency = null,
@@ -200,6 +206,10 @@ public static class InvoiceTools
             "Apply the EU OSS regime (destination-country VAT). Default false. Set true only for supplies that really fall " +
             "under OSS (goods distance sales, telecom/broadcasting/electronic services, ...) — general B2C services such as " +
             "consulting are taxed in CZ. Requires an OSS-registered VAT-payer issuer and a consumer client in another EU state.")] bool applyOss = false,
+        [Description(
+            "Optional: one of the issuer's bank accounts (BankAccount.Id, see the bankAccount " +
+            "list in get_issuer) to use instead of the automatic default. Must belong to the issuer.")]
+        long? bankAccountId = null,
         CancellationToken ct = default)
     {
         // ── Validate the model's own input BEFORE any API call ──────────────
@@ -259,7 +269,7 @@ public static class InvoiceTools
             // A non-VAT-payer issuer has no VAT rates to configure at all (readiness never
             // asks for one), so items are left exactly as the model sent them (same rule as
             // InvoiceService.CreateInvoiceAsync, which only demands VatRateId for VAT payers).
-            // EU OSS (DEVGUIDE §4.15): when the invoice falls under OSS the server auto-detects it and
+            // EU OSS (DEVGUIDE §4.16): when the invoice falls under OSS the server auto-detects it and
             // validates vatRatePercentage against the destination country's rates — the CZ rate table
             // must not be consulted (a German 19 % would be "no matching rate" there).
             var ossCountry = applyOss ? await api.GetOssCountryAsync(clientId, issuer.Id, parsedDocumentType, ct) : null;
@@ -317,6 +327,7 @@ public static class InvoiceTools
                 Notes = notes,
                 OriginalInvoiceId = originalInvoiceId,
                 ApplyOss = applyOss,
+                BankAccountId = bankAccountId,
                 InvoiceItem = items
             };
 
@@ -628,6 +639,41 @@ public static class InvoiceTools
         {
             await api.DeleteInvoiceAsync(invoiceId, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} deleted." }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Changes the bank account shown on an existing invoice. Thin wrapper around
+    /// PUT /api/invoice/{id} (UpdateInvoiceDto.BankAccountId) — reuses the same status guard as
+    /// any other invoice update (Draft/Completed only, not Paid/Creditnoted).
+    /// </summary>
+    [McpServerTool(Title = "Set invoice bank account", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Change the bank account on an existing invoice to one of the issuer's accounts " +
+        "(see the bankAccount list in get_issuer for ids). Only works on Draft or Completed " +
+        "invoices — Paid and Creditnoted invoices cannot be changed.")]
+    public static async Task<string> SetInvoiceBankAccount(
+        IFakvioApiClient api,
+        [Description("The invoice ID to update")] long invoiceId,
+        [Description("The issuer's bank account ID to use (see get_issuer's bankAccount list)")] long bankAccountId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var dto = new UpdateInvoiceDto { BankAccountId = bankAccountId };
+            var result = await api.UpdateInvoiceAsync(invoiceId, dto, ct);
+
+            if (result is null)
+                return Error($"Invoice with ID {invoiceId} not found.");
+
+            return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

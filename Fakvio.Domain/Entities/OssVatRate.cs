@@ -14,7 +14,7 @@ namespace Fakvio.Domain.Entities;
 ///
 /// Lives ONLY in the Master database (no per-tenant copy, unlike VatRate/Currency/
 /// NumberSequenceFormat/ContentTemplate in TenantProvisioningService step 5) — see
-/// DEVGUIDE §11.2 and §4.15: this is read-only shared reference data that every tenant
+/// DEVGUIDE §11.2 and §4.16: this is read-only shared reference data that every tenant
 /// reads identically, there is nothing for a tenant to "customize" the way it customizes
 /// its own VatRate rows, so a tenant copy would just be a second place to keep in sync.
 ///

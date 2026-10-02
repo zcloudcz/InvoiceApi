@@ -16,7 +16,7 @@ using Shouldly;
 namespace Fakvio.Tests.Unit;
 
 /// <summary>
-/// EU OSS (One-Stop-Shop, DEVGUIDE §4.15): detection matrix, destination rate validation,
+/// EU OSS (One-Stop-Shop, DEVGUIDE §4.16): detection matrix, destination rate validation,
 /// quarterly report aggregation + ECB conversion, exclusion from the CZ VAT report.
 /// </summary>
 public class OssTests : IDisposable

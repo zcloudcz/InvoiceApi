@@ -83,7 +83,7 @@ public class VatReportService : IVatReportService
                 && item.Invoice.Status != EInvoiceStatus.Draft
                 && item.Invoice.Status != EInvoiceStatus.Deleted
                 && item.Invoice.DocumentType == EDocumentType.Invoice
-                && item.Invoice.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.15)
+                && item.Invoice.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .GroupBy(item => item.VatRatePercentage)
             .Select(g => new
             {
@@ -103,7 +103,7 @@ public class VatReportService : IVatReportService
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
                 && i.DocumentType == EDocumentType.Invoice
-                && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.15)
+                && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .CountAsync(ct);
 
         // Total revenue (before VAT) from issued invoices
@@ -115,7 +115,7 @@ public class VatReportService : IVatReportService
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
                 && i.DocumentType == EDocumentType.Invoice
-                && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.15)
+                && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .SumAsync(i => (decimal?)i.TotalBeforeVat ?? 0, ct);
 
         // ── Input VAT (from received invoices) ──────────────────────────────
@@ -255,7 +255,7 @@ public class VatReportService : IVatReportService
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
                 && i.DocumentType == EDocumentType.Invoice
-                && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.15)
+                && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .ToListAsync(ct);
 
         // ── 5. Load received invoices for the period ─────────────────────────
@@ -471,7 +471,7 @@ public class VatReportService : IVatReportService
                 && i.Status != EInvoiceStatus.Draft
                 && i.Status != EInvoiceStatus.Deleted
                 && i.DocumentType == EDocumentType.Invoice
-                && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.15)
+                && i.OssCountryCode == null) // OSS invoices are not CZ VAT (DEVGUIDE §4.16)
             .ToListAsync(ct);
 
         // ── 5. Load received invoices with supplier navigation ───────────────

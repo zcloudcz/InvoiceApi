@@ -3,7 +3,7 @@ namespace Fakvio.Contracts.Dto.OssReport;
 /// <summary>
 /// Quarterly EU OSS (One-Stop-Shop) report: taxable base and VAT per destination country
 /// and VAT rate, always in EUR (the OSS return is filed in EUR whatever the invoice currency).
-/// Credit notes reduce the figures. See DEVGUIDE §4.15.
+/// Credit notes reduce the figures. See DEVGUIDE §4.16.
 /// </summary>
 public class OssReportDto
 {

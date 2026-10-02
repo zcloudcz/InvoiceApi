@@ -22,6 +22,7 @@
 12. [Odesílání testovacího emailu](#12-odesílání-testovacího-emailu)
 13. [Diagnostika nasazení (health endpoint)](#13-diagnostika-nasazení-health-endpoint)
 14. [Prostředí (test vs produkce)](#14-prostředí-test-vs-produkce)
+15. [Webhooky (odchozí doručování)](#15-webhooky-odchozí-doručování)
 
 ---
 
@@ -212,7 +213,7 @@ se k sekci dostane po zvolení firmy v přepínači impersonace.
 **Firma:** sekce „Režim OSS" na `/my-company` (jen plátci DPH) — příznak registrace a datum; leží na
 `CompanySystemSettings` (master DB). Ukládá ji administrátor firmy (tenant-scoped `PUT api/company-settings/oss`), SysAdmin po impersonaci.
 Registrovaná firma vystavuje faktury spotřebitelům v jiných státech EU s DPH cílové země; tyto faktury se
-nezahrnují do DPHDP3/KH (podrobně DEVGUIDE §4.15). Limit 10 000 EUR se nehlídá.
+nezahrnují do DPHDP3/KH (podrobně DEVGUIDE §4.16). Limit 10 000 EUR se nehlídá.
 
 **Číselník sazeb `OssVatRate` (master DB, společný pro všechny firmy):** migrace `AddOssVatRate` nasype standardní
 a hlavní sníženou sazbu 26 států EU (zdroj EK/TEDB, stav 2026-10-02, **ověřeno proti sekundárním zdrojům, TEDB nešlo stáhnout**; historie sazeb (`ValidFrom/ValidTo`) jen u EE, FI, RO, SK, LT, ostatní od 2021-07-01). **Před prvním reálným
@@ -1135,6 +1136,26 @@ federated credential. Mění se jen tehdy, když se mění samotná app registra
 
 ---
 
+## 15. Webhooky (odchozí doručování)
+
+Tenanti (role Účetní/Admin) si v `Nastavení → Webhooky` registrují URL, na které Fakvio posílá podepsané HTTP požadavky při událostech
+(faktura vytvořena/odeslána/zaplacena/smazána, přijatá faktura, platba). Pro SysAdmina je důležité:
+
+- **Provoz:** doručování řídí `WebhookWorker` v API (každou minutu, všechny aktivní tenanty, cross-instance advisory lock
+  `FAKVIOWH`). Nevyžaduje žádné nastavení ani konfiguraci; vyžaduje běžící API s *Always On*.
+- **Bezpečnost (SSRF):** povoleny jsou jen `https://` URL; při připojení se kontroluje přeložená IP adresa a blokují se privátní, loopback,
+  link-local (včetně cloud metadata `169.254.169.254`), CGNAT, multicast a IPv6 ULA adresy. Přesměrování se nesledují. Tenant tak nemůže
+  přes webhook skenovat interní síť Azure. Výjimka pro `http://localhost` platí jen v Development prostředí.
+- **Tajemství:** podpisový klíč každého webhooku je v DB šifrovaný Data Protection (stejný mechanismus jako SMTP/IMAP hesla — viz §9, takže
+  platí poznámka o perzistenci klíčů); v UI ani v logu se nikdy znovu nezobrazí, jen při vytvoření a rotaci.
+- **Retence:** záznamy o doručení (stav Doručeno/Selhalo) se po 30 dnech automaticky mažou; čekající doručení se nemažou.
+- **Diagnostika:** při potížích tenanta se podívejte do okna **Doručení** po impersonaci firmy (`Nastavení → Webhooky`): sloupce HTTP kód
+  a Chyba ukazují důvod (timeout 10 s, odmítnutá adresa, TLS chyba, HTTP 4xx/5xx). Selhání jednoho tenanta ostatní neovlivní.
+- **Opakování:** 1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 24 h, poté stav Selhalo; ručně lze znovu odeslat tlačítkem v logu doručení.
+- Správu webhooků (`/api/webhooks`) smí provádět jen Admin firmy a SysAdmin (při impersonaci); běžný uživatel dostane 403.
+
+---
+
 ## Rychlá reference — SysAdmin navigace
 
 | Co chcete udělat | Kde |
@@ -1149,6 +1170,7 @@ federated credential. Mění se jen tehdy, když se mění samotná app registra
 | Měny | `/currencies` |
 | DPH sazby (systémové) | `/vat-rates` |
 | Číselné řady (systémové) | `/number-sequences` |
+| Webhooky tenanta (po impersonaci) | `/settings/webhooks` |
 | Daňové konfigurace (OSVČ) | `/tax-configs` |
 | Test emailu | `/send-email` |
 | Dashboard SysAdmin | `/` (bez impersonace) |

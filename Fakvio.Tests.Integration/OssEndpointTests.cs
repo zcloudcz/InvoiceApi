@@ -18,7 +18,7 @@ using Shouldly;
 namespace Fakvio.Tests.Integration;
 
 /// <summary>
-/// EU OSS endpoints (DEVGUIDE §4.15): /api/oss-report (tenant-scoped) and /api/oss-vat-rate (master-only code table).
+/// EU OSS endpoints (DEVGUIDE §4.16): /api/oss-report (tenant-scoped) and /api/oss-vat-rate (master-only code table).
 /// </summary>
 public class OssEndpointTests : IClassFixture<FakvioFactory>
 {

@@ -1,0 +1,31 @@
+@using Fakvio.Contracts.Dto.Dashboard
+@inject IStringLocalizer<SharedResource> L
+
+<MudCard Elevation="2" Class="rounded-lg">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">@L["Dashboard_RevenueByMonth"]</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Dashboard_MonthlyChartHint"]</MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudChart ChartType="ChartType.Bar"
+                  ChartSeries="@_series"
+                  XAxisLabels="@_labels"
+                  Width="100%" Height="300px"
+                  ChartOptions="@DashboardCharts.Options" />
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter, EditorRequired] public DashboardDto Dashboard { get; set; } = new();
+
+    private List<ChartSeries> _series = new();
+    private string[] _labels = [];
+
+    protected override void OnParametersSet()
+    {
+        _labels = DashboardMonths.Labels(Dashboard.RevenueByMonth.Select(m => m.Month));
+        _series = [new ChartSeries { Name = L["Dashboard_RevenueByMonth"].Value, Data = Dashboard.RevenueByMonth.Select(m => (double)m.Amount).ToArray() }];
+    }
+}

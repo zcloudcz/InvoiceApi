@@ -687,6 +687,22 @@ optionally `ReverseChargeCodeId` (FK to `ReverseChargeCode` lookup, nullable).
 - PDP section is **TODO** — will be filled when VatReport populates A.1/B.1 from ReverseCharge items.
 - `VatRegime` and `ReverseChargeCodeId` on `InvoiceItem` are the data source for that future work.
 
+**UI**: `InvoiceItemEditor` uses the reusable `VatRegimeSelect` (wraps `EnumSelect<EVatRegime>`) and
+`ReverseChargeCodeSelect` (code list supplied by the caller) from `Fakvio.UI.Shared/Components/Shared/`; the
+invoice-level "reverse charge" switch is UI-only (loops over items, no persisted field) and re-syncs when per-row
+regimes change. Edit mode / create-from-template project stored items via `InvoiceItemEditMapper.ToEditDto`, which
+must copy `VatRegime` + `ReverseChargeCodeId` (otherwise a re-save silently bills 21 % VAT).
+`ValidateReverseChargeCodes` also rejects undefined numeric `VatRegime` values (JSON clients); the localized
+messages live in the UI (`ValidateReverseCharge` in `InvoiceDetail`), server messages stay English.
+
+**PDF** (`PdfExportService`): the mandatory §92a note + used codes are rendered **in code** (inserted before the
+grand-total table), not via a `{{Placeholder}}`, so user-customized content templates need no edit. RC items get
+an asterisk on the rate and their own recap line grouped by rate.
+
+**ISDOC** (`IsdocMapper`): RC lines carry `ClassifiedTaxCategory/LocalReverseCharge` (code + quantity), their
+`UnitPriceTaxInclusive` equals the net unit price, and TaxSubTotals are grouped by `(rate, isReverseCharge)` with
+`LocalReverseChargeFlag` on the RC sub-totals.
+
 **Calculation helper**: `InvoiceService.CalculateItemVat(InvoiceItem item)` — called from both
 `CreateInvoiceAsync` and `UpdateInvoiceAsync` for DRY calculation (issue #45, §9 KISS/DRY rule).
 
@@ -1507,7 +1523,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 70 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 72 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1528,8 +1544,9 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
-| **Vydané faktury** (`InvoiceTools`, 11) |
-| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
+| **Vydané faktury** (`InvoiceTools`, 12) |
+| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné, `bankAccountId` volitelné; chat `bank_account_id`) | `create_invoice` | ✅ | |
+| `SetInvoiceBankAccount` | **Write** (změní bankovní účet Draft/Completed faktury přes `UpdateInvoiceDto.BankAccountId`) | — | ❌ | chat nemá tool pro úpravu faktury |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
 | `GetInvoice` | Read | `get_invoice` (`id`) | ✅ | |
@@ -1555,17 +1572,18 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetInvoicesByDateRange` | Read | `list_invoices` + `issue_date_from/to` | ✅ | |
 | `GetVatReport` | Read | `get_vat_report` | ✅ | |
 | `GetOverdueReceivedInvoices` | Read | `list_received_invoices` + `overdue=true` | ✅ | |
-| `GetOssReport` | Read | — | ❌ | zatím bez tasku (§4.15) |
+| `GetOssReport` | Read | — | ❌ | zatím bez tasku (§4.16) |
 | **Daně** (`TaxTools`, 5) |
 | `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
 | **Šablony** (`TemplateTools`, 3) |
 | `ListTemplates` | Read | `list_invoice_templates` | ✅ | |
 | `GetTemplate` | Read | `get_invoice_template` | ✅ | |
-| `CreateInvoiceFromTemplate` | Create | — | ❌ | zatím bez tasku |
+| `CreateInvoiceFromTemplate` | Create (`bankAccountId` volitelné) | — | ❌ | zatím bez tasku |
 | **Readiness** (`ReadinessTools`, 1) |
 | `GetReadiness` | Read | `get_readiness` | ✅ | |
-| **Číselníky** (`CodeListTools`, 1) |
+| **Číselníky** (`CodeListTools`, 2) |
 | `ListCurrencies` | Read | — | ❌ | zatím bez tasku |
+| `ListReverseChargeCodes` | Read | — | ❌ | kódy PDP (§92a-92e ZDPH) jen pro `create_invoice`; dropdown v UI jde přímo přes `ReverseChargeCodeApiService`, chat tool zatím žádný nemá |
 | **Nastavení** (`SettingsTools`, 6) |
 | `ListNumberSequences` | Read | `list_number_sequences` | ✅ | |
 | `ListVatRates` | Read | `list_vat_rates` | ✅ | |
@@ -1608,12 +1626,12 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 70 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 28 mezer: firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
-šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`), opakované faktury
+**Součty:** 72 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 30 mezer: úprava bankovního účtu faktury (1 — `SetInvoiceBankAccount`), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
+šablony (1 — `CreateInvoiceFromTemplate`), číselníky (2 — `ListCurrencies`, `ListReverseChargeCodes`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
-zatím nepokrývají), OSS hlášení (1 — `GetOssReport`, §4.15).
+zatím nepokrývají), OSS hlášení (1 — `GetOssReport`, §4.16).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1696,7 +1714,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **70 tools**: 11 invoice + 6 client + 7 received invoice + 7 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **72 tools** (bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 12 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -2118,6 +2136,9 @@ normální položka reportu (200), s `issuerId` je to 404.
 | Checklist | `Fakvio.UI.Shared/Components/Shared/SetupChecklist.razor` | Karta „Dokončit nastavení" na dashboardu. Stejné dělení jako banner — položky **seskupené podle závažnosti** pod klíči `Readiness_BlockingTitle` / `Readiness_WarningTitle`, barva ikony nadpis jen opakuje. Severita nesmí být nesená jen barvou (odečítač obrazovky z barvy nepřečte nic, červená vs oranžová je navíc nejhorší dvojice pro barvosleposti) — a report z `TenantReadinessService` není řazený, seskupení tedy drží i pořadí. Bez parametrů → stačí `OnInitializedAsync`, **žádný re-fetch guard** (není co znovu spouštět). Odložení = `bool` v localStorage pod klíčem `setupChecklistDeferred` přes `ILocalStorageService`, čtení v `try/catch` (precedens `GridStateService.LoadAsync`) — sbalí kartu na jedno tlačítko, nesmaže ji. **Dokončenost se neukládá nikdy**, počítá se z reportu, takže nemůže zastarat |
 | Zapojení | `Home.razor` → `SetupChecklist` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` → `ReadinessBanner` (jen stav Draft, `IssuerId` dokladu) | Na dashboardu je checklist nástupcem banneru (#210 nahradil i statickou „Quick Start" osu) — **dvě komponenty se stejným reportem na jedné stránce nikdy**. Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync`, tam se odkládat nedá |
 
+**Průvodce nastavením `/setup`** (`SetupWizard.razor`, MudStepper: Firma → Banka → Fakturace → Uživatelé → Hotovo).
+Každý krok ukládá přes stávající API (`ClientApiService.UpdateAsync` — pozor, adresy i bankovní účty se na API **nahrazují celé**, proto wizard posílá i stávající záznamy; `NumberSequenceApiService` pro chybějící výchozí řady; `BankAccountDialog` a `InviteCompanyMemberDialog` jsou znovupoužité). Hotovost kroků se **neukládá**, počítá ji `SetupWizardPolicy.CompanyStepDone/BankStepDone/BillingStepDone` z `ReadinessReportDto` (kódy `ISSUER_*`, `NUMBER_SEQUENCE_MISSING`). Auto-redirect řeší `Home.razor` (jen ne-SysAdmin, max. 1× za relaci přes `UserPreferencesState.SetupWizardRedirectHandled`): `SetupWizardPolicy.ShouldRedirect` = blokující `ISSUER_*` issue **a** `UserPreferences.SetupWizardDismissedAt == null`. „Přeskočit" (a „Přejít na nástěnku" s nedokončeným setupem) nastaví `SetupWizardDismissedAt`. `SetupChecklist` má tlačítko „Spustit průvodce" → `/setup`.
+
 **UI konzument — konverzační onboarding** (issue #214). Druhá polovina je serverová
 (`AiSystemPrompt.OnboardingInstructions`, §4.7).
 
@@ -2251,7 +2272,78 @@ syntetická data.
 
 ---
 
-### 4.15 EU OSS — prodej spotřebitelům v jiných státech EU (One-Stop-Shop)
+### 4.15 Webhooky (odchozí události)
+
+Tenant (Admin / SysAdmin) si na `Nastavení → Webhooky` (`/settings/webhooks`) zaregistruje HTTPS URL; Fakvio na ni
+při události pošle podepsaný `POST`. Architektonicky jde o **transakční outbox + stateless dispatcher** (§6).
+
+**Entity (Tenant DB, migrace `AddWebhooks`):**
+- `WebhookSubscription` — `Url`, `Description`, `Events` (seznam názvů uložený jako text oddělený čárkami), `SecretEncrypted`
+  (Data Protection přes `ICredentialProtector`, stejně jako SMTP/IMAP hesla — §2.6), `IsActive`.
+- `WebhookDelivery` — outbox: `SubscriptionId`, `EventId`, `EventType`, `PayloadJson`, `Status` (`Pending`/`Succeeded`/`Failed`),
+  `Attempts`, `NextAttemptAt`, `LastStatusCode`, `LastError` (max 2000 znaků), `DeliveredAt`. Řádky ve stavu Succeeded/Failed
+  starší 30 dní maže dispatcher v každém cyklu.
+
+**Události v1** (`WebhookEventCatalog` v `Fakvio.Contracts` — jediný seznam pro validaci i UI): `invoice.created`, `invoice.sent`,
+`invoice.paid`, `invoice.cancelled` (= smazání/storno konceptu, `InvoiceService.DeleteInvoiceAsync`), `received_invoice.created`,
+`payment.received`. Tlačítko „Otestovat" posílá synchronně speciální událost `ping` (není v katalogu, nelze ji odebírat).
+
+**Publikace** — `IWebhookPublisher` se volá z jediné service metody každého přechodu, vždy **po** `SaveChanges` byznys změny:
+
+| Událost | Místo volání |
+|---------|--------------|
+| `invoice.created` | `InvoiceService.CreateInvoiceAsync` |
+| `invoice.sent` | `EmailService.SendInvoiceEmailAsync` |
+| `invoice.paid` | `InvoiceService.MarkAsPaidAsync`; `PaymentMatchingService` (ruční / potvrzené / automatické spárování, jen při přechodu na Paid) |
+| `invoice.cancelled` | `InvoiceService.DeleteInvoiceAsync` |
+| `received_invoice.created` | `ReceivedInvoiceService.CreateAsync` (pokrývá i import e-mailem) |
+| `payment.received` | `PaymentMatchingService` (příchozí platba spárovaná s vydanou fakturou; payload `{invoice, amount, matchedAt}`) |
+
+Publisher **nikdy nevyhodí výjimku** do byznys toku (loguje a spolkne) a bez odpovídajících aktivních subscription je
+no-op za jeden dotaz. Závislost je v konstruktorech služeb nepovinná (`IWebhookPublisher? = null`), aby ručně konstruované
+instance (testy, `ImapPollService`) fungovaly beze změny. Payload: `{ id, type, createdAt, companyId, data }`, kde `data` je
+`WebhookDocumentSummaryDto` (id, number, type, status, clientName, clientIco, total, currency, dueDate, paidAt).
+`companyId` se čte z názvu schématu (`tenant_42` → 42), takže funguje i v background jobech.
+
+**Dispatch** — `IWebhookDispatchService.RunCycleAsync` (stateless, jedna iterace pro aktuální tenant) + `WebhookWorker`
+(každou minutu, všechny aktivní provisioned tenanty, advisory lock — §6.3). Zpracuje max. 100 splatných `Pending` řádků za cyklus.
+Úspěch = HTTP 2xx. Timeout 10 s, bez přesměrování, odpověď se čte max. 4 KB (jen aby šlo spojení znovu použít).
+Backoff po neúspěchu: **1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 24 h**; po 8. neúspěšném pokusu `Failed`. Redeliver
+(`POST api/webhooks/deliveries/{id}/redeliver`) vrátí řádek do `Pending` s `Attempts = 0`. Žádný Functions projekt v repu
+neexistuje, takže worker běží jen v API.
+
+**Podpis** — hlavičky `Fakvio-Webhook-Id` (= `EventId`, pro deduplikaci), `Fakvio-Webhook-Timestamp` (Unix sekundy),
+`Fakvio-Webhook-Signature: v1=<hex HMAC-SHA256(secret, "{timestamp}.{body}")>` (`WebhookSigner`). Secret = 32 náhodných bajtů
+(base64), v plaintextu se vrací **jen** v odpovědi na create a rotate (`WebhookSubscriptionCreatedDto`), čtecí DTO ho nemá.
+
+**SSRF (bezpečnostně kritické)** — `WebhookUrlGuard`:
+1. při uložení: jen `https://` (`http://localhost` jen v Development);
+2. při připojení: `SocketsHttpHandler.ConnectCallback` sám přeloží hostname a **zkontroluje přeloženou IP** těsně před otevřením
+   socketu (jediné místo, které je odolné proti DNS rebindingu), a připojí se přímo na tuto IP. Blokuje loopback, RFC1918, link-local
+   (včetně `169.254.169.254`), `0.0.0.0/8`, multicast + rezervované (`>= 224.0.0.0`), CGNAT `100.64.0.0/10`, IPv6 ULA `fc00::/7`,
+   IPv6 link-local/site-local/multicast a IPv4-mapped IPv6. Loopback povoluje jen `WebhookUrlGuard.AllowLoopback` (nastavuje
+   `Program.cs` v Development);
+3. `AllowAutoRedirect = false` — přesměrování by obešlo kontrolu.
+
+Pojmenovaný `HttpClient` `WebhookDispatch` (DI v `ServiceCollectionExtensions`) používá dispatcher i test endpoint.
+
+**API** (`WebhookController`, `[Authorize(Roles = "Admin,SysAdmin")]`; API klíč se řídí `ApiKeyRequestGuard` — GET = read scope):
+`GET/POST api/webhooks`, `GET/PUT/DELETE api/webhooks/{id}`, `POST api/webhooks/{id}/rotate-secret`, `POST api/webhooks/{id}/test`,
+`GET api/webhooks/{id}/deliveries` (posledních 200), `POST api/webhooks/deliveries/{id}/redeliver`. Chyby validace → 400 `{ message }`.
+
+**UI** — `Fakvio.UI.Shared/Components/Pages/Webhooks.razor` (FakvioGrid, dialog s checkboxy událostí, jednorázové zobrazení secretu
+jako u API klíčů na `Integrations.razor`, test, log doručení s redeliver). Texty `Webhook_*` v `SharedResource*.resx`, route je
+v `NavigateTool.Routes` (`webhooks`). Webhooky **nemají** chat/MCP tool (paritní tabulka §4.7 se nemění).
+
+**Testy:** `Fakvio.Tests.Unit/WebhookTests.cs` (podpis, SSRF tabulka + `ConnectCallback`, retry schedule, publisher, platba → události,
+dispatcher s fake handlerem, retence, izolace tenantů), `Fakvio.Tests.Integration/WebhookEndpointTests.cs`.
+
+**Rozšíření:** nová událost = konstanta + položka v `WebhookEventCatalog.All`, klíč `Webhook_Event_<název_s_podtržítky>` v obou resx
+a volání `IWebhookPublisher` z místa přechodu (po SaveChanges).
+
+---
+
+### 4.16 EU OSS — prodej spotřebitelům v jiných státech EU (One-Stop-Shop)
 
 Plátce DPH registrovaný v režimu OSS ("zvláštní režim jednoho správního místa — režim Unie") účtuje při
 B2C prodeji do jiného státu EU **DPH cílové země** a odvádí ji čtvrtletně jedním podáním přes CZ portál.
@@ -2395,6 +2487,7 @@ Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 | Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | `ReminderWorker` v Infrastructure | daily 06:00 UTC, per-tenant | `0x46414B56494F524DL` ("FAKVIORM") |
 | Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | dle `PollIntervalMinutes` (default 30 min) | `0x46414B56494F5059L` |
 | Recurring invoices | `IRecurringInvoiceService.RunCycleAsync` | `RecurringInvoiceWorker` v Infrastructure | hodinově, per-tenant | `0x46414B56494F5249L` ("FAKVIORI") |
+| Webhooky (odchozí doručení + retry) | `IWebhookDispatchService.RunCycleAsync` | `WebhookWorker` v Infrastructure | každou 1 min, per-tenant | `0x46414B56494F5748L` ("FAKVIOWH") |
 
 ### 6.4 Když přidáš novou periodickou úlohu
 
@@ -2654,6 +2747,12 @@ Pravidla:
 - Balíček: `Markdig` (v `Fakvio.UI.Shared`), čistě managed, funguje v browser-wasm.
 
 ---
+
+### 7.13 Dashboard widgety (modulární nástěnka)
+
+Tenantová nástěnka (`Home.razor`) se skládá z widgetů v `Components/Dashboard/`. Seznam widgetů je **statický registr** `DashboardWidgetRegistry.All` (`Fakvio.UI.Shared/Models/DashboardLayout.cs`): `Id` (stabilní, nikdy nepřejmenovávat), klíč názvu, výchozí viditelnost, šířka (sloupce `md` 1-12). Uživatelské rozložení je `[{id, visible, order}]` v `UserPreferences.DashboardLayoutJson` (Master DB, `api/user-preferences`); `DashboardLayoutMerger.Merge` ho slije s registrem — neznámá id se ignorují, u duplicit vyhrává první, nové widgety se přidají na konec s výchozí viditelností. SysAdmin pohled (bez impersonace) se nemění.
+
+**Jak přidat widget:** (1) komponenta v `Components/Dashboard/` s parametrem `Dashboard` (`DashboardDto`) nebo vlastními daty, (2) řádek v `DashboardWidgetRegistry.All`, (3) `case` v `@switch` v `Home.razor`, (4) klíč `DashboardWidget_<Id>` do obou `.resx`, (5) pokud potřebuje data, rozšířit `DashboardDto` + `DashboardService` (jeden seskupený dotaz, žádné N+1, tenant-scoped) a test v `DashboardServiceTests`. Série `RevenueByMonth`, `IncomeVsExpenseByMonth`, `ReceivablesAging` jsou vždy 12 měsíců/4 koše (měsíce bez aktivity = 0), částky bez DPH v CZK, dobropisy záporně.
 
 ## 8. Tests
 
@@ -3162,7 +3261,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 ### 11.2 "Přidávám nový code-table"
 
 > Třetí varianta vedle Master/Tenant/dual-context: **jen Master bez tenant kopie** — statutární data, která tenant
-> neupravuje (vzor `OssVatRate`, §4.15). Cesta jde do `MasterOnlyPaths`, čtení pro každého uživatele, zápis SysAdmin.
+> neupravuje (vzor `OssVatRate`, §4.16). Cesta jde do `MasterOnlyPaths`, čtení pro každého uživatele, zápis SysAdmin.
 
 ```
 1. Master nebo tenant?
@@ -3394,7 +3493,7 @@ On relational storage, invitation issue/accept, membership update/revoke and leg
 
 `UserCompanyMembershipDialog` is opened from the SysAdmin Users grid. Saving one row refreshes only that row so other unsaved membership edits remain. Deactivation names the company in its confirmation. Legacy account/default fields are compatibility metadata, not authority to recreate or overwrite an existing membership.
 
-MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 69 tools; update every published count and parity row whenever discovery changes.
+MCP `CompanyTools` adds `list_user_company_memberships(userId)` and `update_user_company_membership(userId, targetCompanyId, membership)`. These tools forward to the same API; listing requires read scope and update requires write scope. `targetCompanyId` identifies the membership being edited and is distinct from the reserved per-call `companyId` credential context. The update tool is destructive and idempotent. Discovery now exposes 71 tools; update every published count and parity row whenever discovery changes.
 
 ### Document forms and server-backed lists
 
