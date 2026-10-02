@@ -21,6 +21,14 @@ public class UpdateReceivedInvoiceDto
     public string? VariableSymbol { get; set; }
 
     public long? CurrencyId { get; set; }
+
+    /// <summary>
+    /// Manual CZK-per-one-unit exchange rate for a non-CZK document (optional; must be &gt; 0).
+    /// Normally omitted — the ČNB rate for the DUZP is assigned when the document is issued/approved.
+    /// Allowed only while the document is still a draft / not yet approved.
+    /// </summary>
+    [Range(typeof(decimal), "0.00000001", "1000000")]
+    public decimal? ExchangeRate { get; set; }
     public EPaymentMethod? PaymentMethod { get; set; }
 
     [StringLength(100)]

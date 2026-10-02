@@ -212,15 +212,15 @@ public class DashboardService : IDashboardService
         var raw = await invoiceQuery
             .Where(i => (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                         && (i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.Paid || i.Status == EInvoiceStatus.PartiallyPaid)
-                        && i.Currency.Code == "CZK"
+                        && (i.Currency.Code == "CZK" || i.ExchangeRate != null)
                         && i.IssueDate >= from && i.IssueDate < toExclusive)
             .GroupBy(i => new { i.IssueDate!.Value.Year, i.IssueDate.Value.Month })
             .Select(g => new
             {
                 g.Key.Year,
                 g.Key.Month,
-                InvoiceTotal = g.Where(x => x.DocumentType == EDocumentType.Invoice).Sum(x => (decimal?)x.TotalBeforeVat) ?? 0m,
-                CreditNoteTotal = g.Where(x => x.DocumentType == EDocumentType.CreditNote).Sum(x => (decimal?)x.TotalBeforeVat) ?? 0m
+                InvoiceTotal = g.Where(x => x.DocumentType == EDocumentType.Invoice).Sum(x => (decimal?)(x.TotalBeforeVat * (x.ExchangeRate ?? 1m))) ?? 0m,
+                CreditNoteTotal = g.Where(x => x.DocumentType == EDocumentType.CreditNote).Sum(x => (decimal?)(x.TotalBeforeVat * (x.ExchangeRate ?? 1m))) ?? 0m
             })
             .ToListAsync(ct);
 
@@ -248,15 +248,15 @@ public class DashboardService : IDashboardService
         var income = await invoiceQuery
             .Where(i => (i.DocumentType == EDocumentType.Invoice || i.DocumentType == EDocumentType.CreditNote)
                         && (i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.Paid || i.Status == EInvoiceStatus.PartiallyPaid)
-                        && i.Currency.Code == "CZK"
+                        && (i.Currency.Code == "CZK" || i.ExchangeRate != null)
                         && i.IssueDate >= from && i.IssueDate < toExclusive)
             .GroupBy(i => new { i.IssueDate!.Value.Year, i.IssueDate.Value.Month })
             .Select(g => new
             {
                 g.Key.Year,
                 g.Key.Month,
-                InvoiceTotal = g.Where(x => x.DocumentType == EDocumentType.Invoice).Sum(x => (decimal?)x.TotalBeforeVat) ?? 0m,
-                CreditNoteTotal = g.Where(x => x.DocumentType == EDocumentType.CreditNote).Sum(x => (decimal?)x.TotalBeforeVat) ?? 0m
+                InvoiceTotal = g.Where(x => x.DocumentType == EDocumentType.Invoice).Sum(x => (decimal?)(x.TotalBeforeVat * (x.ExchangeRate ?? 1m))) ?? 0m,
+                CreditNoteTotal = g.Where(x => x.DocumentType == EDocumentType.CreditNote).Sum(x => (decimal?)(x.TotalBeforeVat * (x.ExchangeRate ?? 1m))) ?? 0m
             })
             .ToDictionaryAsync(x => (x.Year, x.Month), ct);
 
@@ -267,10 +267,10 @@ public class DashboardService : IDashboardService
         var expense = await _context.ReceivedInvoice
             .AsNoTracking()
             .Where(r => (r.Status == EReceivedInvoiceStatus.Approved || r.Status == EReceivedInvoiceStatus.Paid)
-                        && r.Currency.Code == "CZK"
+                        && (r.Currency.Code == "CZK" || r.ExchangeRate != null)
                         && r.IssueDate >= from && r.IssueDate < toExclusive)
             .GroupBy(r => new { r.IssueDate!.Value.Year, r.IssueDate.Value.Month })
-            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.TotalBeforeVat) })
+            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.TotalBeforeVat * (x.ExchangeRate ?? 1m)) })
             .ToDictionaryAsync(x => (x.Year, x.Month), ct);
 
         return months.Select(m =>
@@ -302,14 +302,14 @@ public class DashboardService : IDashboardService
         var unpaid = await invoiceQuery
             .Where(i => i.DocumentType == EDocumentType.Invoice
                         && (i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.PartiallyPaid)
-                        && i.Currency.Code == "CZK")
-            .Select(i => new { i.DueDate, i.TotalWithVat, i.PaidAmount })
+                        && (i.Currency.Code == "CZK" || i.ExchangeRate != null))
+            .Select(i => new { i.DueDate, i.TotalWithVat, i.PaidAmount, Rate = i.ExchangeRate ?? 1m })
             .ToListAsync(ct);
 
         var aging = new ReceivablesAgingDto();
         foreach (var inv in unpaid)
         {
-            var remaining = inv.TotalWithVat - inv.PaidAmount;
+            var remaining = (inv.TotalWithVat - inv.PaidAmount) * inv.Rate; // foreign currency: converted by the ČNB rate on the invoice
             if (remaining <= 0) continue;
 
             // DueDate is nullable on the entity; treat a missing due date as "not yet due"

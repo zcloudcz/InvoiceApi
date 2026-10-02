@@ -551,6 +551,8 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.Notes).HasMaxLength(5000);
             // EU OSS destination country (ISO2) — null for ordinary/non-OSS invoices. See §4.16.
             entity.Property(e => e.OssCountryCode).HasMaxLength(2);
+            // CZK per one unit of the document currency (ČNB). 8 decimals: HUF/JPY are per-100 on ČNB, so per-unit is small.
+            entity.Property(e => e.ExchangeRate).HasPrecision(18, 8);
             entity.HasIndex(e => e.OssCountryCode);
 
             entity.HasOne(e => e.Client).WithMany().HasForeignKey(e => e.ClientId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
@@ -734,6 +736,8 @@ public class TenantDbContext : DbContext
 
             entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
             entity.Property(e => e.TotalVat).HasPrecision(18, 2);
+            // CZK per one unit of the document currency (ČNB), see Invoice.ExchangeRate.
+            entity.Property(e => e.ExchangeRate).HasPrecision(18, 8);
             entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
 
             // Supplier is a Client record — Restrict to prevent accidental deletion of supplier with invoices.

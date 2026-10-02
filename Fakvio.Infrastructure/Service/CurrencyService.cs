@@ -23,13 +23,16 @@ public class CurrencyService : ICurrencyService
 {
     private readonly MasterDbContext _masterContext;
     private readonly ILogger<CurrencyService> _logger;
+    private readonly IExchangeRateService? _exchangeRateService; // optional: without it ConvertToCzkAsync cannot convert
 
     public CurrencyService(
         TenantDbContext tenantContext,
         MasterDbContext masterContext,
         ITenantResolver tenantResolver,
-        ILogger<CurrencyService> logger)
+        ILogger<CurrencyService> logger,
+        IExchangeRateService? exchangeRateService = null)
     {
+        _exchangeRateService = exchangeRateService;
         _masterContext = masterContext;
         // tenantContext and tenantResolver kept in constructor signature for DI compatibility
         // but no longer used — currencies are global, all reads/writes go through master context.
@@ -197,14 +200,12 @@ public class CurrencyService : ICurrencyService
     /// <summary>
     /// Converts an amount in <paramref name="currencyCode"/> to CZK.
     ///
-    /// Current implementation: returns <paramref name="amount"/> unchanged for CZK;
-    /// for foreign currencies it logs a warning and returns the amount as-is until
-    /// issue #36 (ČNB exchange-rate integration) provides a persisted rate table.
-    ///
-    /// Once #36 is merged, this method should look up the ČNB rate for <paramref name="date"/>
-    /// from the ExchangeRate table and multiply accordingly.
+    /// CZK: returned unchanged. Foreign currency: multiplied by the ČNB rate valid on <paramref name="date"/>
+    /// (<see cref="IExchangeRateService"/>, DEVGUIDE §4.17) and rounded to 2 decimals. When no rate can be
+    /// obtained (ČNB down and nothing cached) it logs a warning and returns the amount as-is — the same
+    /// "visible in logs" fallback as before the rate table existed.
     /// </summary>
-    public Task<decimal> ConvertToCzkAsync(
+    public async Task<decimal> ConvertToCzkAsync(
         decimal amount,
         string currencyCode,
         DateOnly date,
@@ -212,17 +213,19 @@ public class CurrencyService : ICurrencyService
     {
         // CZK → no conversion needed.
         if (string.Equals(currencyCode, "CZK", StringComparison.OrdinalIgnoreCase))
-            return Task.FromResult(amount);
+            return amount;
 
-        // Non-CZK: #36 (ČNB rate table) is not yet merged.
-        // Return the amount unchanged and warn so the gap is visible in logs.
+        var rate = _exchangeRateService == null
+            ? null
+            : await _exchangeRateService.GetRateAsync(currencyCode, date, cancellationToken);
+        if (rate != null)
+            return Math.Round(amount * rate.RatePerUnit, 2, MidpointRounding.AwayFromZero);
+
         _logger.LogWarning(
-            "ConvertToCzkAsync: no ČNB rate table available yet (issue #36). " +
-            "Returning {Amount} {Currency} as-is. " +
-            "EPO amounts for non-CZK invoices will be incorrect until #36 is integrated.",
-            amount, currencyCode);
-
-        return Task.FromResult(amount);
+            "ConvertToCzkAsync: no ČNB rate for {Currency} on {Date}. Returning {Amount} as-is — " +
+            "EPO amounts for this non-CZK document will be incorrect.",
+            currencyCode, date, amount);
+        return amount;
     }
 
     /// <summary>

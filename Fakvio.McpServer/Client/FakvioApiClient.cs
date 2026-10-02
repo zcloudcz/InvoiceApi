@@ -636,6 +636,15 @@ public class FakvioApiClient : IFakvioApiClient
         return (await response.Content.ReadFromJsonAsync<OssReportDto>(JsonOptions, ct))!;
     }
 
+    public async Task<Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto?> GetExchangeRateAsync(string currency, DateOnly? date, CancellationToken ct = default)
+    {
+        var query = $"currency={Uri.EscapeDataString(currency)}" + (date.HasValue ? $"&date={date.Value:yyyy-MM-dd}" : "");
+        var response = await _http.GetAsync($"api/exchange-rate?{query}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto>(JsonOptions, ct);
+    }
+
     // ── Tax estimation endpoints ─────────────────────────────────────────
 
     public async Task<TaxEstimationResult> EstimateTaxAsync(
