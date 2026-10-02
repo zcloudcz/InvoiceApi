@@ -13,7 +13,8 @@ namespace Fakvio.Tests.Integration;
 
 /// <summary>
 /// POST /api/invoice without any bank data must pick the issuer's default account;
-/// a BankAccountId of another company must be rejected with 400.
+/// a BankAccountId of another company must be rejected with 400. Also covers PUT /api/invoice/{id}
+/// (partial update, items replacement) and revert-to-draft used by the MCP update_invoice flow.
 /// </summary>
 public class InvoiceBankAccountEndpointTests : IClassFixture<FakvioFactory>
 {
@@ -155,6 +156,58 @@ public class InvoiceBankAccountEndpointTests : IClassFixture<FakvioFactory>
         var client = await AuthClientAsync();
 
         var response = await client.PostAsJsonAsync("/api/invoice", dto);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdateInvoice_Put_IsPartial_AndReplacesItemsOnlyWhenProvided()
+    {
+        var client = await AuthClientAsync();
+        var created = await (await client.PostAsJsonAsync("/api/invoice", Dto())).Content.ReadFromJsonAsync<InvoiceDto>();
+
+        // Only notes: items, dates and bank data stay untouched.
+        var notesOnly = await client.PutAsJsonAsync($"/api/invoice/{created!.Id}", new UpdateInvoiceDto { Notes = "hello" });
+        notesOnly.StatusCode.ShouldBe(HttpStatusCode.OK, await notesOnly.Content.ReadAsStringAsync());
+        var afterNotes = (await notesOnly.Content.ReadFromJsonAsync<InvoiceDto>())!;
+        afterNotes.Notes.ShouldBe("hello");
+        afterNotes.InvoiceItem.Count.ShouldBe(1);
+        afterNotes.TotalWithVat.ShouldBe(created.TotalWithVat);
+        afterNotes.BankAccountNumber.ShouldBe(created.BankAccountNumber);
+
+        // items provided: the whole list is replaced and totals recomputed.
+        var replaced = await client.PutAsJsonAsync($"/api/invoice/{created.Id}", new UpdateInvoiceDto
+        {
+            InvoiceItem =
+            [
+                new() { OrderIndex = 1, Description = "a", Quantity = 2, Unit = "pcs", UnitPrice = 50 },
+                new() { OrderIndex = 2, Description = "b", Quantity = 1, Unit = "pcs", UnitPrice = 30 }
+            ]
+        });
+        replaced.StatusCode.ShouldBe(HttpStatusCode.OK, await replaced.Content.ReadAsStringAsync());
+        var afterItems = (await replaced.Content.ReadFromJsonAsync<InvoiceDto>())!;
+        afterItems.InvoiceItem.Count.ShouldBe(2);
+        afterItems.TotalWithVat.ShouldBe(130m);
+        afterItems.Notes.ShouldBe("hello");
+    }
+
+    [Fact]
+    public async Task UpdateInvoice_Put_UnknownInvoice_Returns404()
+    {
+        var client = await AuthClientAsync();
+
+        var response = await client.PutAsJsonAsync("/api/invoice/987654321", new UpdateInvoiceDto { Notes = "x" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task RevertToDraft_OnDraft_Returns400()
+    {
+        var client = await AuthClientAsync();
+        var created = await (await client.PostAsJsonAsync("/api/invoice", Dto())).Content.ReadFromJsonAsync<InvoiceDto>();
+
+        var response = await client.PostAsync($"/api/invoice/{created!.Id}/revert-to-draft", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
