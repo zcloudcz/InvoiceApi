@@ -13,7 +13,9 @@ Fakvio.Infrastructure/Resources/Epo/
 ├── EPO-README.md          ← tento soubor
 └── 2026/
     ├── dphdp3_epo2.xsd    ← schéma DPHDP3 (přiznání k DPH), rok 2026
-    └── dphkh1_epo2.xsd    ← schéma DPHKH1 (kontrolní hlášení), rok 2026
+    ├── dphkh1_epo2.xsd    ← schéma DPHKH1 (kontrolní hlášení), rok 2026
+    └── dphshv_epo2.xsd    ← schéma DPHSHV (souhrnné hlášení), rok 2026
+                             (stahuje se z https://adisspr.mfcr.cz/adis/jepo/schema/dphshv_epo2.xsd)
 
 Fakvio.Tests.Unit/Resources/Epo/
 └── 2026/
@@ -22,7 +24,7 @@ Fakvio.Tests.Unit/Resources/Epo/
         └── DPHKH1_sample_2026.xml   ← syntetický vzorek kontrolního hlášení
 ```
 
-Šablona pro nový rok: `{rok}/dphdp3_epo2.xsd` a `{rok}/dphkh1_epo2.xsd`.
+Šablona pro nový rok: `{rok}/dphdp3_epo2.xsd`, `{rok}/dphkh1_epo2.xsd` a `{rok}/dphshv_epo2.xsd`.
 
 ---
 

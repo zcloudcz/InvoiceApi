@@ -1,0 +1,67 @@
+@*
+    OssSettingsSection.razor — EU OSS (One-Stop-Shop) registration of the company, stored on
+    CompanySystemSettings (OssRegistered + OssRegisteredSince), saved through the tenant-scoped
+    api/company-settings/oss endpoint (company Admin allowed). Shown only to VAT payers.
+
+    Like EpoSettingsSection it is service-free: it renders the inputs and hands an OssSettingsDto
+    to the host page (MyCompany.razor), which persists it.
+    See DEVGUIDE §4.16.
+*@
+@using Fakvio.Contracts.Dto.CompanySettings
+@inject IStringLocalizer<SharedResource> L
+
+<MudText Typo="Typo.h6" Class="mb-2">@L["Oss_SettingsTitle"]</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@L["Oss_SettingsInfoText"]</MudText>
+
+@if (Loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudSwitch T="bool" @bind-Value="_registered" Color="Color.Primary" Label="@L["Oss_Registered"].Value" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudDatePicker @bind-Date="_since" Label="@L["Oss_RegisteredSince"].Value" Disabled="!_registered" />
+        </MudItem>
+    </MudGrid>
+
+    <div class="d-flex gap-2 mt-3">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                   OnClick="SaveAsync" Disabled="Saving">
+            @L["Btn_Save"]
+        </MudButton>
+    </div>
+}
+
+@code {
+    [Parameter] public OssSettingsDto? Settings { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public bool Saving { get; set; }
+
+    /// <summary>Raised on Save with the OSS fields.</summary>
+    [Parameter] public EventCallback<OssSettingsDto> OnSave { get; set; }
+
+    private bool _registered;
+    private DateTime? _since;
+
+    // Re-fill only when a new settings instance arrives — otherwise every re-render would
+    // overwrite what the user is typing (same guard as EpoSettingsSection).
+    private OssSettingsDto? _loadedFrom;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_loadedFrom, Settings)) return;
+        _loadedFrom = Settings;
+        _registered = Settings?.OssRegistered ?? false;
+        _since = Settings?.OssRegisteredSince;
+    }
+
+    private Task SaveAsync() => OnSave.InvokeAsync(new OssSettingsDto
+    {
+        OssRegistered = _registered,
+        OssRegisteredSince = _registered ? _since : null
+    });
+}

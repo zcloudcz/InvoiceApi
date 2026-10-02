@@ -369,4 +369,23 @@ public class AutoTaxReceiptForProformaTests : IDisposable
 
         await Should.ThrowAsync<InvalidOperationException>(() => _service.UpdateInvoiceAsync(receipt.Id, tooMuch));
     }
+
+    [Fact]
+    public async Task EuConsumerProforma_AutoReceiptIsIssued_AsRegularCzDpp_WithoutThrowing()
+    {
+        // OSS is opt-in (ApplyOss) and a Proforma is never OSS (OssDetector), so the auto DPP keeps the
+        // proforma's own VAT rates and must not trip the OSS eligibility check for an EU consumer.
+        _context.Client.Find(10L)!.Address.Add(new Address
+        {
+            AddressType = EAddressType.Primary, IsPrimary = true, Street = "Str 1", City = "Berlin", PostalCode = "10115", Country = "DE"
+        });
+        _context.SaveChanges();
+        var proforma = AddProforma();
+
+        await _service.MarkAsPaidAsync(proforma.Id);
+
+        var receipt = (await Receipts(proforma.Id)).Single();
+        receipt.OssCountryCode.ShouldBeNull();
+        receipt.Status.ShouldBe(EInvoiceStatus.Completed);
+    }
 }

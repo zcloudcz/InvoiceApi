@@ -26,7 +26,7 @@ namespace Fakvio.Tests.Unit;
 ///   5. Status exclusion — Draft/Deleted invoices must not appear.
 ///   6. FX conversion — EUR invoices are converted to CZK before classification.
 ///   7. Consistency — A.4 + A.5 totals match GetReportAsync output VAT.
-///   8. A.1 / B.1 — must be absent (empty, pending story #4).
+///   8. A.1 / B.1 — absent when there are no reverse charge items.
 /// </summary>
 public class EpoControlStatementExportTests : IDisposable
 {
@@ -709,7 +709,7 @@ public class EpoControlStatementExportTests : IDisposable
     [Fact]
     public async Task ExportEpoControlStatementAsync_VetaA1AndB1_AreAbsent()
     {
-        // A.1 and B.1 (PDP) are intentionally empty pending story #4.
+        // Without reverse charge items A.1 and B.1 stay empty (see EpoReverseChargeAndSummaryTests for the filled case).
         // They must not appear in the output at all.
         var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
         SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 15_000m, 21m, CustomerCzId, documentNumber: "INV-X");
@@ -717,8 +717,8 @@ public class EpoControlStatementExportTests : IDisposable
         var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
         var (doc, _) = ParseAndValidate(bytes);
 
-        doc.Descendants("VetaA1").ShouldBeEmpty("VetaA1 (PDP) must be absent — pending story #4.");
-        doc.Descendants("VetaB1").ShouldBeEmpty("VetaB1 (PDP) must be absent — pending story #4.");
+        doc.Descendants("VetaA1").ShouldBeEmpty("VetaA1 (PDP) must be absent without RC items.");
+        doc.Descendants("VetaB1").ShouldBeEmpty("VetaB1 (PDP) must be absent without RC items.");
     }
 
     // =========================================================================

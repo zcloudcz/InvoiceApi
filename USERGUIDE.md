@@ -21,6 +21,7 @@
 10. [Nastavení firmy](#10-nastavení-firmy)
 11. [DPH sazby a režimy](#11-dph-sazby-a-režimy)
 12. [Přehled DPH + EPO export](#12-přehled-dph--epo-export)
+    - [12a. Prodej spotřebitelům v EU — režim OSS](#12a-prodej-spotřebitelům-v-eu--režim-oss)
 13. [AI asistent](#13-ai-asistent)
 14. [Upomínky (Dunning)](#14-upomínky-dunning)
 15. [Párování plateb](#15-párování-plateb)
@@ -334,6 +335,31 @@ přidá i UBL XML. Když se e-faktura nedá vygenerovat (viz problémy výše), 
 vynechá — email se vždy odešle. **Pozor:** poslat e-fakturu jinak než přes Peppol síť
 (např. e-mailem) je u slovenského plátce DPH legální jen se souhlasem příjemce.
 
+### 2.8b Export do účetnictví (POHODA / Money S3 / ABRA Flexi)
+
+Na stránce **Faktury** (i **Přijaté faktury**) klikněte na „Export do účetnictví". Vyberte účetní systém,
+období a zda chcete vydané, přijaté, nebo obojí, a klikněte na „Exportovat" — stáhne se jeden XML soubor.
+Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakují.
+
+**Jak soubor načíst:**
+
+- **POHODA:** Soubor → Datová komunikace → XML import → vyberte stažený soubor a spusťte import.
+- **Money S3:** Soubor → Import dat → XML (MoneyData) → vyberte stažený soubor.
+- **ABRA Flexi:** Nástroje → Import → XML (winstrom), nebo soubor odešlete na REST API.
+
+**Co vědět:**
+
+- Export počítá se sazbami DPH platnými od roku 2024 (**21 / 12 / 0 %**). Starší doklady s jinou sazbou
+  (např. 10 % nebo 15 %) a doklady s jinou sazbou DPH se do souboru nezahrnou.
+- Do souboru se také nezahrnují doklady, které cílový systém nedokáže správně přijmout: daňové doklady
+  k přijaté platbě (všechny systémy), doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi)
+  a v POHODĚ doklady s číslem delším než 20 znaků. Přijaté dobropisy export nepodporuje (Fakvio je nerozlišuje od běžných přijatých faktur). Po exportu uvidíte, kolik dokladů bylo vynecháno.
+- U cizí měny v POHODĚ Fakvio kurz neexportuje — POHODA použije svůj kurzový lístek k datu dokladu.
+- Dobropisy se do Money S3 a ABRA Flexi přenášejí s kladnými částkami (jako dobropis), do POHODY se záporným znaménkem.
+- ABRA Flexi: v cílové firmě musí existovat typy dokladů `FAKTURA` a `DOBROPIS` (výchozí databáze je má).
+  Číslo přijaté faktury dodavatele se uloží do pole „číslo dodavatele", interní číslo přidělí Flexi.
+- Doporučujeme nejdřív naimportovat jeden doklad na zkoušku. Před exportem musí mít vaše firma vyplněné IČO.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"
@@ -616,6 +642,11 @@ fakturace — import do Pohody, Money S3, Helios apod.):
   „Stáhnout ISDOC" → stáhne se jeden ZIP s `.isdoc` soubory pojmenovanými
   podle čísel dokladů.
 
+### Export do účetnictví
+
+Tlačítko „Export do účetnictví" nad seznamem přijatých faktur stáhne XML pro POHODA / Money S3 / ABRA Flexi
+(předvybrané jsou přijaté faktury). Postup importu viz [2.8b](#28b-export-do-účetnictví-pohoda--money-s3--abra-flexi).
+
 ### Přehled DPH z přijatých faktur
 
 Data z přijatých faktur se projevují v přehledu DPH (sekce Vstupní DPH) na stránce `/vat-report`.
@@ -714,6 +745,7 @@ Nová faktura (včetně té vytvořené přes AI nebo z opakování) dostane ban
 - Kontaktní telefon, kontaktní e-mail a jméno oprávněné osoby jsou volitelné (uložený kontaktní
   e-mail zatím nejde vymazat, jen přepsat jiným)
 - Sekce má vlastní tlačítko „Uložit" — ukládá se nezávisle na tlačítku „Upravit" nahoře
+- **Režim OSS (jen plátci DPH):** přepínač „Jsem registrován(a) v režimu OSS" a datum registrace — viz [§12a](#12a-prodej-spotřebitelům-v-eu--režim-oss)
 - **Známé omezení:** uložení dnes projde jen správci systému. U role Admin skončí chybou —
   než bude opraveno, požádejte o vyplnění správce systému.
 
@@ -799,12 +831,26 @@ upravit a uložit — DPH se vynuluje. U vystavené faktury vystavte dobropis a 
 
 **Dostupné pouze pro plátce DPH.**
 
-Sekce „EPO Export" umožňuje stáhnout dva soubory pro portál EPO MFČR:
+Sekce „EPO Export" umožňuje stáhnout soubory pro portál EPO MFČR:
 
 | Soubor | Typ | Obsah |
 |--------|-----|-------|
 | DPHDP3 | XML | Daňové přiznání k DPH |
 | DPHKH1 | XML | Kontrolní hlášení DPH |
+| DPHSHV | XML | Souhrnné hlášení (plnění do jiných států EU) |
+
+**Přenesená daňová povinnost (PDP):** u položky vydané i přijaté faktury nastavte „Režim DPH" na
+„Přenesená daňová povinnost" a vyberte kód předmětu plnění. Vydané plnění se vykáže v řádku 25 přiznání
+a v oddílu A.1 kontrolního hlášení; přijaté plnění si doúčtujete sami (řádky 10/11 a nárok na odpočet
+43/44, oddíl B.1) – dodavatel na faktuře DPH neúčtuje. Podporována je jen tuzemská PDP (§ 92a); pořízení zboží
+či služeb z EU zatím v modelu není – přijatá položka s PDP od dodavatele bez českého DIČ vyvolá chybu.
+
+**Souhrnné hlášení:** zahrnuje vydané faktury odběratelům z EU (jiný stát než ČR) s DIČ. Tlačítkem
+„Náhled souhrnného hlášení" zobrazíte řádky za stát a DIČ; plnění se standardně vykazují jako služby
+(kód 3), zaškrtnutím „Zboží" u odběratele je vykážete jako dodání zboží (kód 0). Zahrnuta jsou jen plnění,
+u nichž daň odvádí odběratel (osvobozeno / mimo předmět daně), včetně dobropisů (záporně). Souhrnné hlášení
+se zároveň promítne do řádků 20 a 21 přiznání. Zboží (kód 0) lze vykázat jen v měsíčním hlášení. Třístranný
+obchod, přemístění obchodního majetku a zálohové doklady (DPP) zatím nejsou podporovány.
 
 **Postup:**
 1. Vyberte rok a typ období (Měsíční / Čtvrtletní)
@@ -821,6 +867,35 @@ místo staženého souboru se zobrazí upozornění se seznamem chybějících p
   přenese na `/my-company` do sekce „Nastavení EPO" (viz [§10](#10-nastavení-firmy)).
 - **Nemáte roli Admin** — sekce nastavení je pro vás skrytá, takže upozornění místo odkazu
   napíše, že pole musí doplnit administrátor firmy.
+
+---
+
+## 12a. Prodej spotřebitelům v EU — režim OSS
+
+Pokud jste plátce DPH a jste registrováni v režimu **OSS** (jedno správní místo), při prodeji
+spotřebitelům v jiných státech EU účtujete **DPH cílové země** a odvádíte ho čtvrtletně jedním podáním.
+
+**Nastavení:** na `/my-company` sekce „Režim OSS" (jen plátci DPH): zapněte „Jsem registrován(a) v režimu OSS"
+a vyplňte datum registrace. Uložit ji může administrátor firmy.
+
+**Fakturace:** OSS se na faktuře uplatňuje **jen když to sami zvolíte**. Když jste v OSS registrováni, klient je **bez DIČ**
+a jeho adresa je v **jiném státě EU** než ČR, ve formuláři faktury se objeví zaškrtávátko „Režim OSS (DPH země odběratele)"
+(výchozí je nezaškrtnuto). Zaškrtněte ho jen u plnění, které do OSS opravdu patří — typicky **dodání zboží na dálku** a telekomunikační,
+vysílací a elektronické služby. **Běžné služby spotřebitelům (poradenství, vývoj software apod.) se zdaňují v ČR** a OSS se pro ně nepoužívá.
+Po zaškrtnutí vybíráte sazby DPH země klienta (např. 19 % pro Německo); jiná sazba se neuloží. PDF ukáže „DPH DE 19 %" a poznámku „Režim OSS". Klient s DIČ (firma) se fakturuje jako dosud.
+Dobropis převezme režim původní faktury.
+
+**Hlášení OSS:** stránka `/oss-report` (menu Fakturace → Hlášení OSS) — vyberte rok a čtvrtletí, zobrazí se základ
+a DPH za každou zemi a sazbu v EUR; tlačítko „Stáhnout CSV". Faktury v jiné měně se přepočtou kurzem ECB k poslednímu
+dni čtvrtletí (nevyšel-li ten den kurz, k nejbližšímu dalšímu dni zveřejnění); když kurz nejde stáhnout, zobrazí se chyba (zkuste to později). Výsledek použijte jako podklad
+pro podání OSS na portálu Finanční správy.
+
+**Důležité:**
+- OSS faktury se **nezahrnují** do přiznání DPH (DPHDP3) ani kontrolního hlášení (DPHKH1) — nejsou českým DPH.
+- OSS se **nepřenáší** do šablon faktur, opakovaných faktur ani kopií — takové faktury vzniknou jako běžné; OSS fakturu vystavte ručně.
+- Fakvio **neověřuje, zda plnění do OSS patří** (zboží vs. služba) — odpovědnost je na vás.
+- Fakvio **nehlídá limit 10 000 EUR** ročně (pod ním lze uplatnit české DPH) — registraci do OSS si řešíte sami.
+- Přes AI (kapitola 20) lze OSS hlášení načíst nástrojem `get_oss_report`.
 
 ---
 
@@ -1189,7 +1264,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 74 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 77 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.

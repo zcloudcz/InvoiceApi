@@ -64,6 +64,13 @@ public class InvoiceDto
     /// </summary>
     public decimal PaidAmount { get; set; }
 
+    /// <summary>
+    /// ISO2 destination country when this is an EU OSS invoice (B2C sale to a consumer
+    /// in another EU state by an OSS-registered issuer). Null for ordinary invoices.
+    /// Computed server-side — read-only, see Invoice.OssCountryCode and DEVGUIDE §4.16.
+    /// </summary>
+    public string? OssCountryCode { get; set; }
+
     public List<InvoiceItemDto> InvoiceItem { get; set; } = new();
 
     public DateTime CreatedAt { get; set; }

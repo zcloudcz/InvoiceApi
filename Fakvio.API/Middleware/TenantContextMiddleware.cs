@@ -46,6 +46,7 @@ public class TenantContextMiddleware
         "/api/sysadmin/feedback",    // Global inbox must work without tenant impersonation.
         "/api/logs",                 // Application logs — master DB, SysAdmin only
         "/api/twofactor",            // 2FA setup/verify — operates on master DB User table
+        "/api/oss-vat-rate",         // EU OSS rate code table — Master DB only (DEVGUIDE §4.16), readable by any user
         "/api/cloud-storage",        // Cloud storage settings — stored in master DB CompanySystemSettings
         "/api/email",                // SysAdmin email — uses system SMTP, no tenant needed
         "/api/sysadmin/payment-matching", // Payment matching IMAP/poll config — master DB, SysAdmin only

@@ -9,6 +9,7 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.OssReport;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.RecurringInvoice;
@@ -110,6 +111,15 @@ public interface IFakvioApiClient
     /// FakvioApiException (ADR 0002, F1.7).
     /// </summary>
     Task<byte[]> ExportInvoiceUblAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// POST /api/accounting-export/{system} — "Export do účetnictví". Generates one XML file
+    /// with issued and/or received invoices for a date range, formatted for Pohoda/MoneyS3/AbraFlexi.
+    /// </summary>
+    Task<(byte[] Content, int SkippedCount)> ExportAccountingAsync(
+        Fakvio.Domain.Enums.EAccountingSystem system,
+        DateTime from, DateTime to, bool includeIssued, bool includeReceived,
+        CancellationToken ct = default);
 
     // ── Client endpoints ───────────────────────────────────────────────
 
@@ -234,6 +244,22 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/vat-report?from=...&amp;to=... — VAT report for period.</summary>
     Task<VatReportDto> GetVatReportAsync(DateTime from, DateTime to, CancellationToken ct = default);
+
+    /// <summary>
+    /// Downloads an EPO XML export as raw bytes. <paramref name="route"/> is the path after
+    /// <c>api/vat-report/</c>: <c>epo/return</c>, <c>epo/control-statement</c> or
+    /// <c>epo/summary-statement</c>.
+    /// </summary>
+    Task<byte[]> ExportVatEpoAsync(string route, int year, int period, string periodType,
+        IEnumerable<string>? goods = null, CancellationToken ct = default);
+
+    // ── EU OSS endpoints ─────────────────────────────────────────────────
+
+    /// <summary>GET /api/invoice/oss-country — EU OSS destination country (ISO2) an invoice from this issuer to this client is eligible for, or null.</summary>
+    Task<string?> GetOssCountryAsync(long clientId, long issuerId, EDocumentType documentType, CancellationToken ct = default);
+
+    /// <summary>GET /api/oss-report?year=...&amp;quarter=... — quarterly OSS report in EUR.</summary>
+    Task<OssReportDto> GetOssReportAsync(int year, int quarter, CancellationToken ct = default);
 
     // ── Dashboard endpoints ────────────────────────────────────────────
 

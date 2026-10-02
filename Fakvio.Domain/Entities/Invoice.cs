@@ -220,6 +220,26 @@ public class Invoice : BaseEntity
     /// </summary>
     public decimal PaidAmount { get; set; }
 
+    /// <summary>
+    /// ISO 3166-1 alpha-2 country code of the client's EU member state when this invoice
+    /// falls under the EU OSS (One-Stop-Shop) special scheme — i.e. the issuer is OSS
+    /// registered and this is a B2C sale (client has no VAT id) to a consumer in another
+    /// EU state. Null for ordinary domestic/CZ invoices and for B2B/reverse-charge sales.
+    ///
+    /// When set:
+    /// - Item VAT rates must come from <see cref="OssVatRate"/> for this country, not the
+    ///   tenant's own <see cref="VatRate"/> table (see InvoiceService.DetermineOssCountryCodeAsync
+    ///   / ValidateOssItemRatesAsync, and DEVGUIDE §4.16).
+    /// - The PDF shows "DPH {CountryCode} x %" instead of "DPH x %" plus a "Režim OSS" note.
+    /// - The invoice is EXCLUDED from the Czech DPHDP3/DPHKH1 EPO report (it is not CZ VAT) —
+    ///   see VatReportService, which filters on this column.
+    /// - It IS included in the quarterly OSS report (OssReportService).
+    ///
+    /// Computed automatically by InvoiceService at create/update time — never set directly
+    /// by the client (UI/MCP never send it).
+    /// </summary>
+    public string? OssCountryCode { get; set; }
+
     // Navigation properties
 
     /// <summary>

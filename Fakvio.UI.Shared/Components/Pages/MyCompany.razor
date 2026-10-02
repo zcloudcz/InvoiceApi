@@ -654,6 +654,21 @@ else
         </Authorized>
     </AuthorizeView>
 
+    @* ─── EU OSS registration (Admin/SysAdmin, VAT payers only) ─────────────── *@
+    @if (_company.IsVatPayer)
+    {
+        <AuthorizeView Roles="Admin,SysAdmin">
+            <Authorized>
+                <MudPaper Elevation="2" Class="pa-4 mb-4 mt-4">
+                    <OssSettingsSection Settings="_ossSettings"
+                                        Loading="_ossLoading"
+                                        Saving="_ossSaving"
+                                        OnSave="SaveOssSettings" />
+                </MudPaper>
+            </Authorized>
+        </AuthorizeView>
+    }
+
     @* ─── Invoice Email Mailbox (Admin/SysAdmin) ─────────────────────────── *@
     <AuthorizeView Roles="Admin,SysAdmin">
         <Authorized>
@@ -711,6 +726,11 @@ else
     // EpoSettingsSection; the page only owns the persistence flag.
     private bool _epoSaving = false;
 
+    // EU OSS registration — tenant-scoped endpoint (api/company-settings/oss), usable by company Admins.
+    private Fakvio.Contracts.Dto.CompanySettings.OssSettingsDto? _ossSettings;
+    private bool _ossLoading = true;
+    private bool _ossSaving = false;
+
     // AI Assistant settings form fields (Admin-only section)
     private bool _aiLoading = true;
     private bool _aiSaving = false;
@@ -736,6 +756,7 @@ else
     {
         await LoadCompany();
         await LoadSmtpSettings();
+        await LoadOssSettings();
         await LoadAiSettings();
         await LoadCloudStorageStatus();
     }
@@ -1311,6 +1332,39 @@ else
         finally
         {
             _aiSaving = false;
+        }
+    }
+
+    private async Task LoadOssSettings()
+    {
+        _ossLoading = true;
+        _ossSettings = await SettingsService.GetOssAsync();
+        _ossLoading = false;
+    }
+
+    private async Task SaveOssSettings(Fakvio.Contracts.Dto.CompanySettings.OssSettingsDto dto)
+    {
+        _ossSaving = true;
+        try
+        {
+            var result = await SettingsService.SaveOssAsync(dto);
+            if (result != null)
+            {
+                _ossSettings = result;
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _ossSaving = false;
         }
     }
 

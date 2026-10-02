@@ -549,6 +549,9 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.SWIFT).HasMaxLength(50);
             entity.Property(e => e.PaymentMethod).HasConversion<int?>();
             entity.Property(e => e.Notes).HasMaxLength(5000);
+            // EU OSS destination country (ISO2) — null for ordinary/non-OSS invoices. See §4.16.
+            entity.Property(e => e.OssCountryCode).HasMaxLength(2);
+            entity.HasIndex(e => e.OssCountryCode);
 
             entity.HasOne(e => e.Client).WithMany().HasForeignKey(e => e.ClientId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
             entity.HasOne(e => e.Issuer).WithMany().HasForeignKey(e => e.IssuerId).OnDelete(DeleteBehavior.Restrict).IsRequired(true);
@@ -771,12 +774,26 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
             entity.Property(e => e.VatAmount).HasPrecision(18, 2);
             entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
+            entity.Property(e => e.InformationalVatAmount).HasPrecision(18, 2);
             entity.Property(e => e.ProductCode).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(1000);
+
+            // VatRegime: same convention as InvoiceItem — integer column, NOT NULL, default 0 (Standard).
+            entity.Property(e => e.VatRegime)
+                .HasConversion<int>()
+                .HasDefaultValue(EVatRegime.Standard)
+                .IsRequired();
 
             entity.HasOne(e => e.VatRate)
                 .WithMany()
                 .HasForeignKey(e => e.VatRateId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ReverseChargeCode is a reference data lookup (číselník) — Restrict delete,
+            // same reasoning as InvoiceItem: historical received invoices must stay intact.
+            entity.HasOne(e => e.ReverseChargeCode)
+                .WithMany()
+                .HasForeignKey(e => e.ReverseChargeCodeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

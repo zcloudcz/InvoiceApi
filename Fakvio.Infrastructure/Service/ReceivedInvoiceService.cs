@@ -223,6 +223,8 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         if (supplier is null)
             throw new InvalidOperationException($"Supplier with ID {dto.SupplierId} not found or inactive.");
 
+        ValidateReverseChargeCodes(dto.Items);
+
         // Create entity
         var entity = new ReceivedInvoice
         {
@@ -262,7 +264,6 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
             }
 
             var itemTotalBeforeVat = itemDto.Quantity * itemDto.UnitPrice;
-            var itemVatAmount = itemTotalBeforeVat * (vatPercentage / 100m);
 
             var item = new ReceivedInvoiceItem
             {
@@ -274,15 +275,16 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
                 VatRateId = itemDto.VatRateId,
                 VatRatePercentage = vatPercentage,
                 TotalBeforeVat = itemTotalBeforeVat,
-                VatAmount = itemVatAmount,
-                TotalWithVat = itemTotalBeforeVat + itemVatAmount,
+                VatRegime = itemDto.VatRegime,
+                ReverseChargeCodeId = itemDto.ReverseChargeCodeId,
                 ProductCode = itemDto.ProductCode,
                 Notes = itemDto.Notes
             };
+            CalculateItemVat(item);
 
             entity.Items.Add(item);
             totalBeforeVat += itemTotalBeforeVat;
-            totalVat += itemVatAmount;
+            totalVat += item.VatAmount;
         }
 
         entity.TotalBeforeVat = totalBeforeVat;
@@ -338,6 +340,8 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         // If items provided, replace all existing items
         if (dto.Items is not null)
         {
+            ValidateReverseChargeCodes(dto.Items);
+
             // Remove old items
             _context.ReceivedInvoiceItem.RemoveRange(entity.Items);
 
@@ -360,7 +364,6 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
                 }
 
                 var itemTotalBeforeVat = itemDto.Quantity * itemDto.UnitPrice;
-                var itemVatAmount = itemTotalBeforeVat * (vatPercentage / 100m);
 
                 var item = new ReceivedInvoiceItem
                 {
@@ -373,15 +376,16 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
                     VatRateId = itemDto.VatRateId,
                     VatRatePercentage = vatPercentage,
                     TotalBeforeVat = itemTotalBeforeVat,
-                    VatAmount = itemVatAmount,
-                    TotalWithVat = itemTotalBeforeVat + itemVatAmount,
+                    VatRegime = itemDto.VatRegime,
+                    ReverseChargeCodeId = itemDto.ReverseChargeCodeId,
                     ProductCode = itemDto.ProductCode,
                     Notes = itemDto.Notes
                 };
+                CalculateItemVat(item);
 
                 _context.ReceivedInvoiceItem.Add(item);
                 totalBeforeVat += itemTotalBeforeVat;
-                totalVat += itemVatAmount;
+                totalVat += item.VatAmount;
             }
 
             entity.TotalBeforeVat = totalBeforeVat;
@@ -462,5 +466,85 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 
         _logger.LogInformation("Soft-deleted received invoice ID {Id}", id);
         return true;
+    }
+
+    // ─── Private Helpers — Reverse Charge (mirrors InvoiceService) ─────────────
+
+    /// <summary>
+    /// Validates Reverse Charge code consistency for a list of item DTOs.
+    /// Same rules as InvoiceService.ValidateReverseChargeCodes (issue epo-vat-reporting):
+    /// 1. VatRegime == ReverseCharge requires ReverseChargeCodeId to be set.
+    /// 2. Any other regime requires ReverseChargeCodeId to be null.
+    /// </summary>
+    private static void ValidateReverseChargeCodes(IEnumerable<CreateReceivedInvoiceItemDto> items)
+    {
+        foreach (var item in items)
+        {
+            // JSON clients (MCP/API) can send an undefined numeric enum value; reject it up front.
+            if (!Enum.IsDefined(item.VatRegime))
+                throw new InvalidOperationException(
+                    $"Received invoice item '{item.Description}' has an invalid VatRegime value '{(int)item.VatRegime}'.");
+
+            if (item.VatRegime == EVatRegime.ReverseCharge && !item.ReverseChargeCodeId.HasValue)
+                throw new InvalidOperationException(
+                    $"Received invoice item '{item.Description}' has VatRegime=ReverseCharge but no ReverseChargeCodeId. " +
+                    "A reverse charge code (kód předmětu plnění) is required for PDP items.");
+
+            if (item.VatRegime != EVatRegime.ReverseCharge && item.ReverseChargeCodeId.HasValue)
+                throw new InvalidOperationException(
+                    $"Received invoice item '{item.Description}' has ReverseChargeCodeId set but VatRegime={item.VatRegime}. " +
+                    "ReverseChargeCodeId must only be set for ReverseCharge items.");
+        }
+    }
+
+    /// <summary>
+    /// Calculates VatAmount, InformationalVatAmount, and TotalWithVat for a received invoice
+    /// item, applying the correct logic per the item's VatRegime.
+    ///
+    /// Unlike the issued-invoice side, "VatAmount" here is money WE actually owe to the
+    /// supplier — for ReverseCharge it stays 0 because the supplier's invoice itself does
+    /// not bill VAT. InformationalVatAmount instead holds the self-assessed amount we must
+    /// declare as both output tax (we owe it) and input tax (we may deduct it) — see
+    /// VatReportService rows 10/11 and 43/44 of DPHDP3.
+    ///
+    /// TotalBeforeVat must be set on the item before calling this method.
+    /// </summary>
+    private static void CalculateItemVat(ReceivedInvoiceItem item)
+    {
+        switch (item.VatRegime)
+        {
+            case EVatRegime.Standard:
+                item.VatAmount = Math.Round(
+                    item.TotalBeforeVat * (item.VatRatePercentage / 100m),
+                    2, MidpointRounding.AwayFromZero);
+                item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
+                item.InformationalVatAmount = 0;
+                break;
+
+            case EVatRegime.ReverseCharge:
+                // PDP: supplier billed 0 VAT — WE self-assess it (§92a ZDPH). A 0 % rate would
+                // silently drop the supply from the VAT filings, so reject it.
+                if (item.VatRatePercentage <= 0m)
+                    throw new InvalidOperationException(
+                        $"Received invoice item '{item.Description}' uses reverse charge, so it needs the VAT rate that applies " +
+                        "in the Czech Republic (VatRatePercentage > 0).");
+                item.VatAmount = 0;
+                item.TotalWithVat = item.TotalBeforeVat;
+                item.InformationalVatAmount = Math.Round(
+                    item.TotalBeforeVat * (item.VatRatePercentage / 100m),
+                    2, MidpointRounding.AwayFromZero);
+                break;
+
+            case EVatRegime.Exempt:
+            case EVatRegime.OutOfScope:
+                item.VatAmount = 0;
+                item.TotalWithVat = item.TotalBeforeVat;
+                item.InformationalVatAmount = 0;
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(item.VatRegime),
+                    item.VatRegime, "Unhandled VatRegime value in CalculateItemVat.");
+        }
     }
 }
