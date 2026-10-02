@@ -58,7 +58,7 @@ public class PdfExportService : IPdfExportService
             .Include(i => i.Client).ThenInclude(c => c!.Contact)
             .Include(i => i.Issuer).ThenInclude(c => c.Address)
             .Include(i => i.Issuer).ThenInclude(c => c.Contact)
-            .Include(i => i.InvoiceItem)
+            .Include(i => i.InvoiceItem).ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.Currency)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
@@ -291,8 +291,13 @@ public class PdfExportService : IPdfExportService
                 }
                 else
                 {
+                    // Reverse charge items bill 0 VAT — mark the rate cell with an asterisk so the
+                    // reader is pointed at the mandatory note below (§92a ZDPH, "daň odvede zákazník").
+                    var isReverseCharge = item.VatRegime == EVatRegime.ReverseCharge;
                     var vatCell = showVatColumn
-                        ? $@"<td style=""text-align:center"">{item.VatRatePercentage:N0} %</td>"
+                        ? isReverseCharge
+                            ? $@"<td style=""text-align:center"">{item.VatRatePercentage:N0} % *</td>"
+                            : $@"<td style=""text-align:center"">{item.VatRatePercentage:N0} %</td>"
                         : "";
                     itemsHtml += $@"<tr>
                         <td>{item.Description}</td>
@@ -312,12 +317,16 @@ public class PdfExportService : IPdfExportService
         // Build the VAT breakdown (recapitulation) table rows.
         // Groups invoice items by VAT rate and shows the base + VAT amount for each rate.
         var vatBreakdownHtml = "";
+        // Items under reverse charge bill 0 VAT and must NOT be lumped into a regular-rate group
+        // (that would misleadingly read as a genuine 0% rate). They get their own recap line(s)
+        // further down, grouped by nominal rate, labelled "daň odvede zákazník" instead of an amount.
+        var hasReverseCharge = invoice.InvoiceItem?.Any(i => !i.IsTextRow && i.VatRegime == EVatRegime.ReverseCharge) ?? false;
         if (invoice.InvoiceItem != null)
         {
             // Exclude text rows — they have no financial data (VatRatePercentage = 0)
             // and would create a spurious "0%" line in the VAT recapitulation.
             var vatGroups = invoice.InvoiceItem
-                .Where(i => !i.IsTextRow)
+                .Where(i => !i.IsTextRow && i.VatRegime != EVatRegime.ReverseCharge)
                 .GroupBy(i => i.VatRatePercentage)
                 .OrderByDescending(g => g.Key);
 
@@ -331,8 +340,37 @@ public class PdfExportService : IPdfExportService
                     <td style=""text-align:right"">{vatAmount:N2} {invoice.Currency?.Symbol ?? ""}</td>
                 </tr>";
             }
+
+            if (hasReverseCharge)
+            {
+                var rcGroups = invoice.InvoiceItem
+                    .Where(i => !i.IsTextRow && i.VatRegime == EVatRegime.ReverseCharge)
+                    .GroupBy(i => i.VatRatePercentage)
+                    .OrderByDescending(g => g.Key);
+
+                foreach (var group in rcGroups)
+                {
+                    var baseAmount = group.Sum(i => i.TotalBeforeVat);
+                    var rcLabel = docLang == "cs" ? "daň odvede zákazník *" : "customer self-assesses VAT *";
+                    vatBreakdownHtml += $@"<tr>
+                        <td style=""text-align:center"">{group.Key:N0} % (PDP)</td>
+                        <td style=""text-align:right"">{baseAmount:N0}</td>
+                        <td style=""text-align:right; font-style:italic"">{rcLabel}</td>
+                    </tr>";
+                }
+            }
         }
         html = html.Replace("{{VatBreakdown}}", vatBreakdownHtml);
+
+        // Mandatory reverse-charge note (§92a ZDPH): the document must state that the customer
+        // self-assesses VAT, and list the reverse charge code(s) used so the buyer can match them
+        // to the VAT control statement (kontrolní hlášení B.1). Rendered directly in code — same
+        // "insert before the grand-total table" approach as StripVatFromTemplate's non-payer note —
+        // so existing/custom ContentTemplate rows never need a {{Placeholder}} edit to pick it up.
+        if (hasReverseCharge)
+        {
+            html = html.Replace(GrandTotalTable, BuildReverseChargeNote(invoice, docLang) + GrandTotalTable);
+        }
 
         // Replace the QR code placeholder with an inline base64 image.
         // If QR code generation failed or no base64 data, remove the entire QR section.
@@ -386,6 +424,42 @@ public class PdfExportService : IPdfExportService
         html = html.Replace(GrandTotalTable,
             $@"<p style=""margin:8px 0 4px 0; font-style:italic"">{note}</p>" + GrandTotalTable);
         return html;
+    }
+
+    /// <summary>
+    /// Builds the mandatory reverse-charge note (§92a zákona č. 235/2004 Sb.) shown on documents
+    /// that contain at least one PDP item: states the customer self-assesses VAT, and lists every
+    /// distinct reverse-charge code used (kód předmětu plnění) so the buyer can match it against
+    /// the control statement (kontrolní hlášení B.1). Printing the code is good practice, not a
+    /// strict legal requirement, but it is already selected on the item so there is no reason to omit it.
+    /// </summary>
+    private static string BuildReverseChargeNote(Domain.Entities.Invoice invoice, string language)
+    {
+        var codes = invoice.InvoiceItem!
+            .Where(i => !i.IsTextRow && i.VatRegime == EVatRegime.ReverseCharge && i.ReverseChargeCode != null)
+            .Select(i => i.ReverseChargeCode!)
+            .DistinctBy(c => c.Id)
+            .OrderBy(c => c.Code)
+            .ToList();
+
+        if (language == "cs")
+        {
+            var codeLines = string.Join("", codes.Select(c =>
+                $@"<li>kód předmětu plnění {c.Code} – {c.NameCs} ({c.ParagraphRef})</li>"));
+            return $@"<p style=""margin:8px 0 4px 0; font-style:italic"">
+                Přenesená daňová povinnost dle §92a zákona č. 235/2004 Sb., o dani z přidané hodnoty —
+                daň odvede zákazník.
+                {(codeLines.Length > 0 ? $"<ul style=\"margin:4px 0 0 18px; padding:0\">{codeLines}</ul>" : "")}
+            </p>";
+        }
+
+        var codeLinesEn = string.Join("", codes.Select(c =>
+            $@"<li>supply code {c.Code} – {c.NameEn ?? c.NameCs} ({c.ParagraphRef})</li>"));
+        return $@"<p style=""margin:8px 0 4px 0; font-style:italic"">
+            Reverse charge under §92a of Act No. 235/2004 Coll., on value added tax —
+            VAT to be self-assessed by the customer.
+            {(codeLinesEn.Length > 0 ? $"<ul style=\"margin:4px 0 0 18px; padding:0\">{codeLinesEn}</ul>" : "")}
+        </p>";
     }
 
     /// <summary>

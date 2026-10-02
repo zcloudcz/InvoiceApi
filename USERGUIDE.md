@@ -745,8 +745,10 @@ Každá položka faktury má DPH regime:
 | **OutOfScope** (Mimo scope) | Plnění, které není předmětem DPH |
 
 **Přenesená daňová povinnost (PDP / Reverse Charge):**
-- Nastavte regime = ReverseCharge
-- Vyberte příslušný kód §92b/c/d/e z číselníku MFČR (pole „Kód přenesené DPH")
+- V editoru položek (platí pro fakturu, dobropis i zálohovou fakturu; jen pro plátce DPH) nastavte ve sloupci „Režim DPH" hodnotu Přenesená daňová povinnost
+- Ve sloupci „Kód PDP" vyberte příslušný kód předmětu plnění z číselníku MFČR (§92a–92e)
+- Chcete-li převést celou fakturu najednou, zapněte přepínač „Přenesená daňová povinnost" nad tabulkou položek a vyberte jeden kód; zapíše se do všech položek (přepínač se sám vypne, pokud pak u některé položky režim změníte)
+- Součty ukazují DPH 0 a u položky text „daň odvede zákazník"; PDF obsahuje povinnou poznámku dle §92a a použité kódy, ISDOC blok LocalReverseCharge
 - Faktura se správně zobrazí v kontrolním hlášení (DPHKH1)
 
 ### Neplátce DPH
@@ -1175,7 +1177,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 70 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 71 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
