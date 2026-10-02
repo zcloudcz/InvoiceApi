@@ -655,6 +655,7 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
 - Storno párování platby (`UnmatchAsync`) ani vrácení faktury na nezaplacenou už vystavené DPP **neruší** — opravu daňového dokladu je nutné udělat ručně (dobropis).
 - Souběh: vystavení běží v transakci s `pg_advisory_xact_lock(proformaId)` (jen PostgreSQL); selže-li dokončení DPP, rozpracovaný Draft se smaže, aby neblokoval další vystavení.
 - Zaokrouhlení: DPP nikdy nepřekročí přijatou částku (některé částky nejdou jedním řádkem trefit na halíř, např. 100,00 při 21 % → 99,99); zbytek pod 1 Kč se nekryje. Řádky se dělí podle (sazba, režim DPH) — u přenesené daňové povinnosti vznikne DPP bez DPH.
+- OSS: Proforma není nikdy OSS (`OssDetector`) a OSS je opt-in (`ApplyOss`), takže automatické DPP zůstává běžné DPP s tuzemskými sazbami proformy a na OSS neselhává.
 - Ručně vytvořený DPP nesmí přesáhnout přijatou a dosud nepokrytou zálohu (`CreateInvoiceAsync`).
 - `ImapPollService` (platební e-maily) nastaví schéma na DI-scoped `TenantDbContext` a sdílí ho matcher i `IInvoiceService`.
 - Sloupec `Client.AutoIssueTaxReceiptForAdvance` → migrace `AddClientAutoIssueTaxReceipt` v Master i Tenant (entita `Client` je v obou).
