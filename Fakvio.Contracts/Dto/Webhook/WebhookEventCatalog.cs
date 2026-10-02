@@ -1,7 +1,7 @@
 namespace Fakvio.Contracts.Dto.Webhook;
 
 /// <summary>
-/// Event name constants for outbound webhooks (v1 catalog, DEVGUIDE §4.x Webhooks).
+/// Event name constants for outbound webhooks (v1 catalog, DEVGUIDE §4.15 Webhooks).
 /// Shared between the publisher (Infrastructure), the subscription CRUD validation (API),
 /// and the UI event-picker checkboxes — keep this the single list of valid event names.
 /// </summary>

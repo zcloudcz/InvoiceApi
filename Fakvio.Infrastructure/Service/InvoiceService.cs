@@ -556,7 +556,7 @@ public class InvoiceService : IInvoiceService
         _logger.LogInformation("Created {DocumentType} with ID {Id}, DocumentNumber {DocumentNumber}",
             invoice.DocumentType, invoice.Id, invoice.DocumentNumber);
 
-        // "invoice.created" webhook (DEVGUIDE §4.x) — fire-and-forget from the caller's point of
+        // "invoice.created" webhook (DEVGUIDE §4.15) — fire-and-forget from the caller's point of
         // view: PublishInvoiceEventAsync never throws, a missing/failed webhook must not fail
         // invoice creation.
         if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(

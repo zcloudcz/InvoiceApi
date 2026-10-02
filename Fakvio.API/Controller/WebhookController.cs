@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Fakvio.API.Controller;
 
 /// <summary>
-/// Outbound webhook subscriptions (DEVGUIDE §4.14). Admin (company owner) or SysAdmin only —
+/// Outbound webhook subscriptions (DEVGUIDE §4.15). Admin (company owner) or SysAdmin only —
 /// a webhook receives invoice data and a secret, so ordinary users and accountants must not
 /// manage them. GET endpoints work with a read-only API key; POST/PUT/DELETE need write scope
 /// (enforced by ApiKeyRequestGuard, see DEVGUIDE §2.9-2.10).

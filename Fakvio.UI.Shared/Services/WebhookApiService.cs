@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 
 namespace Fakvio.UI.Shared.Services;
 
-/// <summary>API client for outbound webhook subscriptions (WebhookController, DEVGUIDE §4.14).</summary>
+/// <summary>API client for outbound webhook subscriptions (WebhookController, DEVGUIDE §4.15).</summary>
 public class WebhookApiService : ApiClientBase
 {
     public WebhookApiService(

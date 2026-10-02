@@ -4,7 +4,7 @@ using System.Text;
 namespace Fakvio.Infrastructure.Service;
 
 /// <summary>
-/// HMAC-SHA256 signing for outbound webhooks (DEVGUIDE §4.x Webhooks).
+/// HMAC-SHA256 signing for outbound webhooks (DEVGUIDE §4.15 Webhooks).
 /// Signature format matches the Stripe/GitHub convention the USERGUIDE documents for
 /// integrators: <c>v1=&lt;hex HMAC-SHA256(secret, "{timestamp}.{body}")&gt;</c>.
 /// Including the timestamp in the signed string lets a receiver reject stale/replayed

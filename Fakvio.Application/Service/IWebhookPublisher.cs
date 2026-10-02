@@ -1,7 +1,7 @@
 namespace Fakvio.Application.Service;
 
 /// <summary>
-/// Enqueues outbound webhook deliveries for a business event (DEVGUIDE §4.x Webhooks).
+/// Enqueues outbound webhook deliveries for a business event (DEVGUIDE §4.15 Webhooks).
 ///
 /// Called from the single service method that performs each state transition (invoice created,
 /// marked paid, deleted, ...) — see the call sites in InvoiceService, ReceivedInvoiceService,

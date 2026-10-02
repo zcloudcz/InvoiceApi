@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace Fakvio.Infrastructure.Service;
 
 /// <summary>
-/// CRUD + test/redeliver for webhook subscriptions (DEVGUIDE §4.x Webhooks).
+/// CRUD + test/redeliver for webhook subscriptions (DEVGUIDE §4.15 Webhooks).
 /// Secrets are encrypted at rest with <see cref="ICredentialProtector"/> — same pattern as
 /// SMTP/IMAP passwords (DEVGUIDE §2.6) — and only ever returned in plaintext right after
 /// Create/Rotate.
@@ -204,6 +204,9 @@ public class WebhookSubscriptionService : IWebhookSubscriptionService
 
     private static List<string> ValidateEvents(List<string> events)
     {
+        if (events.Count == 0)
+            throw new InvalidOperationException("Select at least one webhook event.");
+
         var invalid = events.Where(e => !WebhookEventCatalog.All.Contains(e)).ToList();
         if (invalid.Count > 0)
             throw new InvalidOperationException($"Unknown webhook event(s): {string.Join(", ", invalid)}");

@@ -6,7 +6,7 @@ namespace Fakvio.Domain.Entities;
 /// <summary>
 /// One outbound delivery attempt chain for a single business event sent to a single
 /// <see cref="WebhookSubscription"/> — the transactional outbox row for webhooks
-/// (DEVGUIDE §4.x). Created by <c>IWebhookPublisher</c> in the same DbContext/SaveChanges
+/// (DEVGUIDE §4.15). Created by <c>IWebhookPublisher</c> in the same DbContext/SaveChanges
 /// as the business change where feasible, then picked up and retried by
 /// <c>IWebhookDispatchService.RunCycleAsync</c> until it succeeds or exhausts retries.
 ///

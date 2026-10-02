@@ -13,7 +13,7 @@ public class WebhookDispatchService : IWebhookDispatchService
     public const string HttpClientName = "WebhookDispatch";
 
     /// <summary>
-    /// Retry schedule (DEVGUIDE §4.x Webhooks): delay before each successive attempt.
+    /// Retry schedule (DEVGUIDE §4.15 Webhooks): delay before each successive attempt.
     /// Index 0 = delay before the 2nd attempt (the 1st happens as soon as the event is enqueued).
     /// After the last entry is exhausted (8 total attempts), the delivery is marked Failed.
     /// </summary>
@@ -175,10 +175,17 @@ public class WebhookDispatchService : IWebhookDispatchService
     {
         var cutoff = DateTime.UtcNow - RetentionPeriod;
 
-        // ExecuteDeleteAsync — no need to load rows into memory for a bulk retention sweep.
-        await _context.WebhookDelivery
+        // Bounded batch per cycle (the cycle runs every minute, so a big backlog drains quickly);
+        // plain Remove instead of ExecuteDelete keeps this testable with the in-memory provider.
+        var expired = await _context.WebhookDelivery
             .Where(d => d.CreatedAt < cutoff &&
                         (d.Status == EWebhookDeliveryStatus.Succeeded || d.Status == EWebhookDeliveryStatus.Failed))
-            .ExecuteDeleteAsync(ct);
+            .Take(1000)
+            .ToListAsync(ct);
+
+        if (expired.Count == 0) return;
+
+        _context.WebhookDelivery.RemoveRange(expired);
+        await _context.SaveChangesAsync(ct);
     }
 }

@@ -261,7 +261,7 @@ public class TenantDbContext : DbContext
 
     // ─── Webhooks ───────────────────────────────────────────────────────────────
 
-    /// <summary>Per-tenant outbound webhook subscriptions (DEVGUIDE §4.x Webhooks).</summary>
+    /// <summary>Per-tenant outbound webhook subscriptions (DEVGUIDE §4.15 Webhooks).</summary>
     public DbSet<WebhookSubscription> WebhookSubscription { get; set; }
 
     /// <summary>Delivery attempts/outbox for outbound webhooks.</summary>

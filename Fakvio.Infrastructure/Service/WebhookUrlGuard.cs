@@ -6,7 +6,7 @@ using Microsoft.Extensions.Hosting;
 namespace Fakvio.Infrastructure.Service;
 
 /// <summary>
-/// SSRF protection for outbound webhook URLs (DEVGUIDE §4.x Webhooks — security-critical).
+/// SSRF protection for outbound webhook URLs (DEVGUIDE §4.15 Webhooks — security-critical).
 ///
 /// A tenant-supplied URL is attacker-controlled input: without this guard a malicious or
 /// compromised tenant could point a webhook at an internal service, the cloud metadata

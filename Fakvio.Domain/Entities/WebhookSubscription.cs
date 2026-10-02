@@ -4,7 +4,7 @@ namespace Fakvio.Domain.Entities;
 
 /// <summary>
 /// Per-tenant outbound webhook subscription — a URL the tenant wants notified on business
-/// events (invoice paid, received invoice created, ...). See DEVGUIDE §4.x Webhooks.
+/// events (invoice paid, received invoice created, ...). See DEVGUIDE §4.15 Webhooks.
 ///
 /// Security:
 ///   - <see cref="SecretEncrypted"/> is encrypted at rest with <c>ICredentialProtector</c>,

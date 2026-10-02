@@ -188,7 +188,7 @@ public static class ServiceCollectionExtensions
         // Recurring invoices — schedule CRUD + generation cycle (RecurringInvoiceWorker calls RunCycleAsync).
         services.AddScopedWithLogging<IRecurringInvoiceService, RecurringInvoiceService>();
 
-        // ── Outbound Webhooks (DEVGUIDE §4.x) ───────────────────────────────────
+        // ── Outbound Webhooks (DEVGUIDE §4.15) ───────────────────────────────────
         // Publisher — enqueues WebhookDelivery rows from business-event call sites
         // (InvoiceService, ReceivedInvoiceService, EmailService, PaymentMatchingService).
         services.AddScopedWithLogging<IWebhookPublisher, WebhookPublisher>();
@@ -197,7 +197,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IWebhookDispatchService, WebhookDispatchService>();
 
         // Named HttpClient with the SSRF guard wired into the connection layer itself
-        // (DEVGUIDE §4.x — security-critical: ConnectCallback validates the RESOLVED IP at
+        // (DEVGUIDE §4.15 — security-critical: ConnectCallback validates the RESOLVED IP at
         // connect time, which is what actually prevents DNS-rebinding bypasses). No redirects
         // are followed (a redirect could point at a blocked address after the initial check
         // passed), and the handler is shared across all tenants' deliveries.

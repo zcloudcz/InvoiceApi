@@ -1,7 +1,7 @@
 namespace Fakvio.Domain.Enums;
 
 /// <summary>
-/// Lifecycle status of a single outbound webhook delivery attempt chain (DEVGUIDE §4.x Webhooks).
+/// Lifecycle status of a single outbound webhook delivery attempt chain (DEVGUIDE §4.15 Webhooks).
 /// One <c>WebhookDelivery</c> row represents one business event sent to one subscription — it is
 /// retried with backoff (see <c>WebhookDispatchService</c>) and ends in either Succeeded or Failed.
 /// </summary>

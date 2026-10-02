@@ -44,7 +44,7 @@ builder.Services.AddHostedService<LogFlushService>();
 builder.Services.AddHostedService<LogCleanupService>();
 builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddHostedService<RecurringInvoiceWorker>();
-// WebhookWorker: sends/retries outbound webhook deliveries every minute (DEVGUIDE §4.x).
+// WebhookWorker: sends/retries outbound webhook deliveries every minute (DEVGUIDE §4.15).
 builder.Services.AddHostedService<WebhookWorker>();
 // OAuthCleanupService: sweeps expired OAuth rows every hour (ADR 0001, §4.3). Registered
 // unconditionally — with McpOAuth:Enabled=false there is simply nothing for it to delete.
