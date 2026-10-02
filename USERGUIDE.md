@@ -661,6 +661,8 @@ Správa informací o vaší firmě (vydavatele faktur).
 Základní informace, primární adresu i bankovní účet jde nastavit i přes AI (kapitola 20) —
 `update_my_company` a `add_bank_account`.
 
+Nová faktura (včetně té vytvořené přes AI nebo z opakování) dostane bankovní účet automaticky: nejdřív výchozí účet v měně faktury, potom jakýkoli účet v této měně, jinak výchozí účet. V editoru faktury ho můžete změnit; po změně měny se účet přepne jen pokud jste žádný ručně nevybrali.
+
 **Email pro příjem faktur:**
 - Aktivace unikátní emailové adresy pro automatický příjem faktur — viz [§18](#18-příjem-faktur-emailem)
 

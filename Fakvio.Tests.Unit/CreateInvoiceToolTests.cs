@@ -126,6 +126,23 @@ public class CreateInvoiceToolTests
             _reverseChargeCodeService, logger);
     }
 
+    [Fact]
+    public async Task CreateInvoice_NonNumericBankAccountId_FailsWithoutCreating()
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": 1, "unit_price": 100}]""",
+            ["bank_account_id"] = "abc"
+        };
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeFalse();
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
     // ─── Successful Creation Tests ──────────────────────────────────────
 
     [Fact]

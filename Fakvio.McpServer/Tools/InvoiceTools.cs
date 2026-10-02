@@ -176,7 +176,10 @@ public static class InvoiceTools
         "Create a new invoice or credit note (Draft status). Recommended flow: " +
         "find_client / list_clients to get clientId → create_invoice → complete_invoice to issue it. " +
         "For a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
-        "the matching VatRateId active on issueDate is resolved automatically.")]
+        "the matching VatRateId active on issueDate is resolved automatically. " +
+        "Bank account: when bankAccountId is omitted and the payment method is (or defaults to) " +
+        "BankTransfer, the server automatically fills in one of the issuer's bank accounts " +
+        "(currency-matching default first) — you don't need to set one for a normal invoice.")]
     public static async Task<string> CreateInvoice(
         IFakvioApiClient api,
         [Description("The client (customer) ID — find it with list_clients or find_client")] long clientId,
@@ -197,6 +200,10 @@ public static class InvoiceTools
         [Description("Payment method: BankTransfer, Cash, CreditCard, PayPal, Other. Omit for the client's default.")] string? paymentMethod = null,
         [Description("Optional notes on the invoice")] string? notes = null,
         [Description("For a credit note (documentType='CreditNote'): the ID of the invoice it corrects")] long? originalInvoiceId = null,
+        [Description(
+            "Optional: one of the issuer's bank accounts (BankAccount.Id, see the bankAccount " +
+            "list in get_issuer) to use instead of the automatic default. Must belong to the issuer.")]
+        long? bankAccountId = null,
         CancellationToken ct = default)
     {
         // ── Validate the model's own input BEFORE any API call ──────────────
@@ -306,6 +313,7 @@ public static class InvoiceTools
                 PaymentMethod = parsedPaymentMethod,
                 Notes = notes,
                 OriginalInvoiceId = originalInvoiceId,
+                BankAccountId = bankAccountId,
                 InvoiceItem = items
             };
 
@@ -617,6 +625,41 @@ public static class InvoiceTools
         {
             await api.DeleteInvoiceAsync(invoiceId, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} deleted." }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Changes the bank account shown on an existing invoice. Thin wrapper around
+    /// PUT /api/invoice/{id} (UpdateInvoiceDto.BankAccountId) — reuses the same status guard as
+    /// any other invoice update (Draft/Completed only, not Paid/Creditnoted).
+    /// </summary>
+    [McpServerTool(Title = "Set invoice bank account", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Change the bank account on an existing invoice to one of the issuer's accounts " +
+        "(see the bankAccount list in get_issuer for ids). Only works on Draft or Completed " +
+        "invoices — Paid and Creditnoted invoices cannot be changed.")]
+    public static async Task<string> SetInvoiceBankAccount(
+        IFakvioApiClient api,
+        [Description("The invoice ID to update")] long invoiceId,
+        [Description("The issuer's bank account ID to use (see get_issuer's bankAccount list)")] long bankAccountId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var dto = new UpdateInvoiceDto { BankAccountId = bankAccountId };
+            var result = await api.UpdateInvoiceAsync(invoiceId, dto, ct);
+
+            if (result is null)
+                return Error($"Invoice with ID {invoiceId} not found.");
+
+            return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

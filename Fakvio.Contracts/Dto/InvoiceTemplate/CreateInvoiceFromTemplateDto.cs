@@ -55,6 +55,13 @@ public class CreateInvoiceFromTemplateDto
     public long? OriginalInvoiceId { get; set; }
 
     /// <summary>
+    /// Optional override for the template's bank account — a BankAccount.Id belonging to the
+    /// template's issuer. When set, wins over the template's own BankAccountNumber/IBAN/SWIFT.
+    /// Validated the same way as CreateInvoiceDto.BankAccountId (400 if it belongs to another issuer).
+    /// </summary>
+    public long? BankAccountId { get; set; }
+
+    /// <summary>
     /// Should the invoice be automatically completed (not Draft)?
     /// If false, invoice is created in Draft status
     /// If true, invoice is created and immediately completed (assigned document number)
