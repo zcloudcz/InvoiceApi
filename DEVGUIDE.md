@@ -536,8 +536,19 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
 
 ### 4.2 Email + PDF (faktura odchází zákazníkovi)
 
-`Fakvio.Infrastructure/Service/EmailService.cs:79-153` `SendInvoiceEmailAsync`:
+`Fakvio.Infrastructure/Service/EmailService.cs` `SendInvoiceEmailAsync`:
 
+0. **Přizpůsobení + extra přílohy** (`POST /api/invoice/{id}/send-email`, MCP `send_invoice_email`):
+   `SendInvoiceEmailDto` nese `Subject`, `Message`, `Attachments` (`EmailAttachmentDto`: `FileName` + `ContentBase64`,
+   žádný klientský content-type). Controller nejdřív zavolá `EmailAttachmentValidator.ValidateAndDecode`
+   (Application; max 5 souborů, 10 MB po dekódování — délka base64 se kontroluje PŘED dekódováním, whitelist přípon
+   `pdf isdoc xml txt csv png jpg jpeg xlsx docx zip`, jen holé jméno souboru bez cesty/řídicích znaků, ≤ 255 znaků;
+   porušení = `ArgumentException` → 400, nic se neodešle) a pak předá `SendInvoiceEmailOptions` jako **poslední** volitelný
+   parametr `SendInvoiceEmailAsync(..., ct, options)` (ostatní volající — recurring, chat tool, bulk — zůstávají beze změny).
+   `EmailService.ApplyCustomization`: neprázdný `Subject` nahradí předmět ze šablony (CR/LF pryč), `Message` se
+   `HtmlEncode`-uje, `\n` → `<br>` a vloží se jako `<p>` PŘED tělo šablony (nikdy raw HTML). Extra přílohy se přidají za
+   PDF/ISDOC/UBL, MIME type odvodí `MimeTypes.GetMimeType` z přípony. Logují se jen jména a velikosti, nikdy obsah.
+   Limit request body: na API ani MCP hostu se `MaxRequestBodySize` nenastavuje (výchozí Kestrel 30 MB), 10 MB dekódovaně ≈ 13,4 MB JSON se vejde.
 1. Load invoice s navigation properties (Items, Client, Company).
 2. **PDF**: `IPdfExportService.ExportInvoiceAsync` →
    - Resolve template: explicit ID → default per (DocumentType + ClientLanguage) → built-in fallback HTML (`PdfExportService.cs:76-115`).
@@ -1604,7 +1615,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `IssueFinalInvoice` | **Write** (Draft vyúčtování, `deductionAmount?`) | `issue_final_invoice` (confirm) | ✅ | |
 | `IssueTaxReceipt` | **Write** (DPP) | `issue_tax_receipt` (confirm) | ✅ | |
 | `GetRemainingAdvance` | Read | `get_remaining_advance` | ✅ | |
-| `SendInvoiceEmail` | **Write** (odešle e-mail) | `send_invoice_email` (confirm) | ✅ | |
+| `SendInvoiceEmail` | **Write** (odešle e-mail; PDF + ISDOC vždy, UBL pro SK/Peppol; volitelně `subject`, `message`, `attachments[]` base64 — limity viz §4.2) | `send_invoice_email` (confirm) | ✅ | chat tool zatím nepřijímá `attachments`; schéma `attachments` hlídá `ToolDiscoveryTests` (#500) |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
 | `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
 | `ExportAccounting` | Read → download | — | ❌ | export do účetnictví (§4.15) je zatím jen MCP a UI |
