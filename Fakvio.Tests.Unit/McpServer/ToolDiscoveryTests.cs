@@ -167,6 +167,41 @@ public class ToolDiscoveryTests
     }
 
     /// <summary>
+    /// <c>send_invoice_email</c> takes an array of attachment objects. Pin the generated schema to a
+    /// simple shape (array whose items are objects with <c>fileName</c> + <c>contentBase64</c>) so a
+    /// future DTO change cannot hand ChatGPT's strict <c>tools/list</c> validator something exotic
+    /// (see #500). The numeric-constraint test above already covers the maxLength values inside.
+    /// </summary>
+    [Fact]
+    public void SendInvoiceEmail_AttachmentsSchema_IsArrayOfFileNameAndContentBase64Objects()
+    {
+        var tool = DiscoverTools().Single(t => t.ProtocolTool.Name == "send_invoice_email");
+        var schema = tool.ProtocolTool.InputSchema;
+
+        var attachments = schema.GetProperty("properties").GetProperty("attachments");
+
+        // Nullable types may be emitted as "array" or ["array","null"] - both are valid JSON Schema.
+        static List<string?> TypesOf(JsonElement element)
+        {
+            var type = element.GetProperty("type");
+            return type.ValueKind == JsonValueKind.Array
+                ? type.EnumerateArray().Select(t => t.GetString()).ToList()
+                : [type.GetString()];
+        }
+
+        TypesOf(attachments).ShouldContain("array");
+
+        var items = attachments.GetProperty("items");
+        TypesOf(items).ShouldContain("object");
+        var itemProperties = items.GetProperty("properties").EnumerateObject().Select(p => p.Name).Order().ToList();
+        itemProperties.ShouldBe(["contentBase64", "fileName"]);
+
+        // Optional parameter: the AI client must still be able to omit it.
+        SchemaRequiredNames(tool).ShouldNotContain("attachments");
+        SchemaRequiredNames(tool).ShouldBe(["invoiceId", "recipientEmail"]);
+    }
+
+    /// <summary>
     /// Yields every numeric-keyword value anywhere inside <paramref name="schema"/>, with its JSON path.
     /// </summary>
     private static IEnumerable<(string Path, JsonElement Value)> NumericConstraints(JsonElement schema, string path)

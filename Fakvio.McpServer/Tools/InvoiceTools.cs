@@ -531,18 +531,25 @@ public static class InvoiceTools
     }
 
     /// <summary>
-    /// Sends an invoice via email with a PDF attachment.
-    /// The API generates the PDF from the content template and attaches it.
+    /// Sends an invoice via email. The API generates PDF + ISDOC (and UBL for SK / Peppol buyers)
+    /// and attaches them; the caller may add a custom subject, message and extra files.
     /// </summary>
     [McpServerTool(Title = "Send invoice by email", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true), Description(
-        "Send an invoice via email with PDF attachment. " +
-        "The system generates the PDF automatically and attaches it to the email.")]
+        "Send an invoice via email. The system generates the attachments automatically: " +
+        "PDF and ISDOC (Czech e-invoice XML) are ALWAYS attached, and a UBL XML is added for Slovak / Peppol buyers. " +
+        "You can pass a custom subject and a plain-text message (shown above the template text), " +
+        "and extra attachments as base64 (max 5 files, 10 MB total, allowed types: " +
+        "pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip). Invalid attachments are rejected and nothing is sent.")]
     public static async Task<string> SendInvoiceEmail(
         IFakvioApiClient api,
         [Description("The invoice ID to send")] long invoiceId,
         [Description("Recipient email address")] string recipientEmail,
-        [Description("Optional custom email subject")] string? subject = null,
-        [Description("Optional custom message in the email body")] string? message = null,
+        [Description("Optional custom email subject (replaces the template subject)")] string? subject = null,
+        [Description("Optional custom plain-text message, shown above the template email body (HTML is not interpreted)")] string? message = null,
+        [Description("Optional extra attachments in addition to the generated PDF/ISDOC/UBL. " +
+                     "Each item: fileName (e.g. 'contract.pdf', no path) and contentBase64 (standard base64 of the file). " +
+                     "Max 5 files, 10 MB decoded in total; allowed extensions: pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip.")]
+        EmailAttachmentDto[]? attachments = null,
         CancellationToken ct = default)
     {
         try
@@ -551,7 +558,8 @@ public static class InvoiceTools
             {
                 RecipientEmail = recipientEmail,
                 Subject = subject,
-                Message = message
+                Message = message,
+                Attachments = attachments?.ToList()
             };
 
             await api.SendInvoiceEmailAsync(invoiceId, dto, ct);

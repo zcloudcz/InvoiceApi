@@ -992,4 +992,91 @@ public class EmailServiceTests : IDisposable
         // Assert — Subject
         message.Subject.ShouldBe("Faktura INV2025001");
     }
+
+    // ─── Extra attachments + custom subject / message (MCP send_invoice_email) ───
+
+    /// <summary>
+    /// Extra attachments are appended after PDF / ISDOC with the right names, count and
+    /// extension-derived content types.
+    /// </summary>
+    [Fact]
+    public void BuildInvoiceMessage_WithExtraAttachments_AppendsThemWithDerivedContentTypes()
+    {
+        var message = EmailService.BuildInvoiceMessage(
+            senderName: "TestApp",
+            senderEmail: "invoices@test.com",
+            to: "client@example.com",
+            subject: "Invoice",
+            htmlBody: "<p>Body</p>",
+            pdfBytes: [1],
+            pdfFileName: "Invoice_1.pdf",
+            isdocBytes: [2],
+            isdocFileName: "Invoice_1.isdoc",
+            extraAttachments:
+            [
+                new OutgoingEmailAttachment("contract.docx", [3]),
+                new OutgoingEmailAttachment("photo.png", [4]),
+                new OutgoingEmailAttachment("notes.txt", [5])
+            ]);
+
+        var attachments = (message.Body as MimeKit.Multipart)!
+            .OfType<MimeKit.MimePart>()
+            .Where(p => p.IsAttachment)
+            .ToList();
+
+        attachments.Select(a => a.FileName).ShouldBe(
+            ["Invoice_1.pdf", "Invoice_1.isdoc", "contract.docx", "photo.png", "notes.txt"]);
+        attachments.Single(a => a.FileName == "contract.docx").ContentType.MimeType
+            .ShouldBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        attachments.Single(a => a.FileName == "photo.png").ContentType.MimeType.ShouldBe("image/png");
+        attachments.Single(a => a.FileName == "notes.txt").ContentType.MimeType.ShouldBe("text/plain");
+    }
+
+    /// <summary>A custom message must be HTML-encoded (never injected raw) and prepended to the template body.</summary>
+    [Fact]
+    public void ApplyCustomization_Message_IsHtmlEncodedAndPrepended()
+    {
+        var (_, body) = EmailService.ApplyCustomization(
+            "Template subject", "<p>Template body</p>",
+            new SendInvoiceEmailOptions(Message: "Hi <script>alert(1)</script>\r\nSecond line"));
+
+        body.ShouldNotContain("<script>");
+        body.ShouldStartWith("<p>Hi &lt;script&gt;alert(1)&lt;/script&gt;<br>Second line</p>");
+        body.ShouldEndWith("<p>Template body</p>");
+    }
+
+    /// <summary>A non-blank subject replaces the template subject; CR/LF are stripped (header injection).</summary>
+    [Fact]
+    public void ApplyCustomization_Subject_ReplacesTemplateSubjectAndStripsLineBreaks()
+    {
+        var (subject, _) = EmailService.ApplyCustomization(
+            "Template subject", "<p>Body</p>",
+            new SendInvoiceEmailOptions(Subject: "  Custom\r\nBcc: evil@x.cz  "));
+
+        subject.ShouldNotContain("\r");
+        subject.ShouldNotContain("\n");
+        subject.ShouldBe("Custom  Bcc: evil@x.cz");
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", "")]
+    [InlineData("   ", "  \n ")]
+    public void ApplyCustomization_BlankValues_FallBackToTemplate(string? subject, string? message)
+    {
+        var (resultSubject, resultBody) = EmailService.ApplyCustomization(
+            "Template subject", "<p>Template body</p>", new SendInvoiceEmailOptions(subject, message));
+
+        resultSubject.ShouldBe("Template subject");
+        resultBody.ShouldBe("<p>Template body</p>");
+    }
+
+    [Fact]
+    public void ApplyCustomization_NullOptions_KeepsTemplate()
+    {
+        var (subject, body) = EmailService.ApplyCustomization("S", "B", null);
+
+        subject.ShouldBe("S");
+        body.ShouldBe("B");
+    }
 }
