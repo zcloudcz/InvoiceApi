@@ -372,6 +372,7 @@ Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakuj
 - Zadejte emailovou adresu příjemce (předvyplněna z nastavení klienta)
 - Klikněte „Odeslat"
 - Po odeslání se v řádku zobrazí ikonka zelené obálky s datem
+- V příloze je vždy PDF a ISDOC faktury (u slovenských a Peppol odběratelů i UBL XML). Vlastní předmět, zprávu a další přílohy umí přidat zatím jen AI klient přes MCP (§20.6) a API.
 
 **Hromadné odeslání:** zaškrtněte faktury → toolbar → Email → odešle se na výchozí email každého klienta
 
@@ -1439,6 +1440,8 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“, „Změň splatnost konceptu FAK-2026-002 na 30. 6.“
+
+**Odeslání faktury emailem přes AI.** Příjemci vždy dorazí **PDF i ISDOC** faktury (u slovenských a Peppol odběratelů navíc UBL XML). AI může zadat i vlastní **předmět** emailu (nahradí předmět ze šablony) a vlastní **zprávu** (prostý text, zobrazí se nad textem ze šablony; HTML se nevykonává, jen se zobrazí jako text). Navíc lze přiložit **další soubory**: nejvýše 5, dohromady do 10 MB, jen typy `pdf`, `isdoc`, `xml`, `txt`, `csv`, `png`, `jpg`, `jpeg`, `xlsx`, `docx`, `zip`. Nepovolený typ, příliš velký soubor nebo vadný soubor se odmítne srozumitelnou chybou a email se **neodešle**.
 
 **Úprava faktury.** AI upraví jen **koncept**; změní jen to, co jste zadali (při změně položek nahradí všechny řádky celým novým seznamem). Už **vystavenou** fakturu sama nezmění: nejdřív se vás zeptá, zda ji smí vrátit na koncept — vystavený doklad se tím stane konceptem, po úpravě ho musíte znovu vystavit a pokud už byl odeslán emailem, poslat klientovi znovu. Zaplacenou nebo dobropisovanou fakturu upravit nejde; opravíte ji dobropisem a novou fakturou.
 
