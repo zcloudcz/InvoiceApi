@@ -1,5 +1,14 @@
 # Fakvio TODO
 
+## MCP send_invoice_email: custom subject/message + extra attachments (branch `feature/mcp-email-attachments`)
+
+- [x] Fix bug: `InvoiceController.SendInvoiceEmail` dropped `Subject` / `Message`; now passed via `SendInvoiceEmailOptions` (trailing optional param, other callers unchanged).
+- [x] `EmailAttachmentDto` + `EmailAttachmentValidator` (max 5 files, 10 MB, base64 length checked before decoding, extension whitelist, no path/control chars) -> 400.
+- [x] `EmailService`: subject override, HTML-encoded message prepended, extra attachments with extension-derived MIME type, log names only.
+- [x] MCP tool: truthful description (PDF + ISDOC always, UBL for SK/Peppol), `attachments` parameter, schema test.
+- [x] Unit tests (validator, controller regression, message builder, customization, MCP payload/schema); USERGUIDE + DEVGUIDE updated.
+- [ ] Draft PR / merge (not pushed). Out of scope: Blazor SendEmail upload UI, per-client ISDOC/UBL opt-out, MCP nuget publish.
+
 ## UX audit remediation (2026-10-01)
 
 - [x] Correct all 20 ranked audit findings and related contact, deletion, error-state and mobile-context observations on `codex/ux-audit-fixes`.

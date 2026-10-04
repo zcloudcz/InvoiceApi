@@ -236,7 +236,8 @@ public class FakvioApiClientTests : IDisposable
         {
             RecipientEmail = "test@example.com",
             Subject = "Your Invoice",
-            Message = "Please find attached"
+            Message = "Please find attached",
+            Attachments = [new EmailAttachmentDto { FileName = "note.txt", ContentBase64 = "AQID" }]
         };
         _handler.SetupResponse(HttpStatusCode.OK);
 
@@ -246,6 +247,13 @@ public class FakvioApiClientTests : IDisposable
         // Assert
         _handler.LastRequestUri?.ToString().ShouldContain("api/invoice/3/send-email");
         _handler.LastRequestMethod.ShouldBe(HttpMethod.Post);
+
+        // The extra attachment must travel in the JSON body (camelCase, base64 content untouched).
+        using var body = JsonDocument.Parse(_handler.LastRequestBody!);
+        body.RootElement.GetProperty("subject").GetString().ShouldBe("Your Invoice");
+        var attachment = body.RootElement.GetProperty("attachments").EnumerateArray().Single();
+        attachment.GetProperty("fileName").GetString().ShouldBe("note.txt");
+        attachment.GetProperty("contentBase64").GetString().ShouldBe("AQID");
     }
 
     // ── Client tests ───────────────────────────────────────────────────

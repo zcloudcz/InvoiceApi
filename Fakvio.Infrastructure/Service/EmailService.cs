@@ -84,7 +84,8 @@ public class EmailService : IEmailService
     }
 
     /// <inheritdoc />
-    public async Task SendInvoiceEmailAsync(long invoiceId, string recipientEmail, CancellationToken ct = default)
+    public async Task SendInvoiceEmailAsync(long invoiceId, string recipientEmail, CancellationToken ct = default,
+        SendInvoiceEmailOptions? options = null)
     {
         _logger.LogInformation("Sending invoice {InvoiceId} via email to {Email}", invoiceId, recipientEmail);
 
@@ -158,10 +159,16 @@ public class EmailService : IEmailService
             }
         }
 
+        // Extra files chosen by the caller (already validated at the API boundary). Only names and
+        // sizes are ever logged - never the content.
+        var extraAttachments = options?.Attachments ?? [];
+
         _logger.LogInformation(
-            "Invoice {InvoiceId} attachments prepared: PDF={PdfFile} ({PdfBytes} B), ISDOC={IsdocFile} ({IsdocBytes} B){UblInfo}",
+            "Invoice {InvoiceId} attachments prepared: PDF={PdfFile} ({PdfBytes} B), ISDOC={IsdocFile} ({IsdocBytes} B){UblInfo}, extra={ExtraCount} [{ExtraNames}]",
             invoiceId, pdfFileName, pdfBytes.Length, isdocFileName, isdocBytes.Length,
-            ublBytes != null ? $", UBL={ublFileName} ({ublBytes.Length} B)" : "");
+            ublBytes != null ? $", UBL={ublFileName} ({ublBytes.Length} B)" : "",
+            extraAttachments.Count,
+            string.Join(", ", extraAttachments.Select(a => $"{a.FileName} ({a.Content.Length} B)")));
 
         // Build placeholders dictionary for template substitution
         var placeholders = new Dictionary<string, string>
@@ -185,9 +192,12 @@ public class EmailService : IEmailService
         var clientLanguage = invoice.Client?.Language ?? "cs";
 
         // Try to render from the default content template for the client's language, fall back to simple HTML
-        var (subject, htmlBody) = await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
+        var (templateSubject, templateBody) = await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
 
-        // Build and send the email with PDF + ISDOC (+ UBL when applicable, F1.9).
+        // Let the caller's custom subject / message override or extend the template output.
+        var (subject, htmlBody) = ApplyCustomization(templateSubject, templateBody, options);
+
+        // Build and send the email with PDF + ISDOC (+ UBL when applicable, F1.9) + extra files.
         // We call the internal builder directly instead of SendEmailAsync because
         // the public SendEmailAsync signature supports only one optional attachment
         // and we don't want to break that public interface (per issue #16 analysis).
@@ -196,7 +206,8 @@ public class EmailService : IEmailService
             pdfBytes, pdfFileName,
             isdocBytes, isdocFileName,
             ublBytes, ublFileName,
-            ct);
+            ct,
+            extraAttachments);
 
         // Mark the invoice as sent by email in the database
         invoice.IsSentByEmail = true;
@@ -207,10 +218,12 @@ public class EmailService : IEmailService
         if (_webhookPublisher != null)
             await _webhookPublisher.PublishInvoiceEventAsync(Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceSent, invoiceId, ct);
 
-        var attachmentCount = ublBytes != null ? 3 : 2;
-        var attachmentNames = ublBytes != null
-            ? $"{pdfFileName}, {isdocFileName}, {ublFileName}"
-            : $"{pdfFileName}, {isdocFileName}";
+        var sentNames = new List<string> { pdfFileName, isdocFileName };
+        if (ublBytes != null)
+            sentNames.Add(ublFileName!);
+        sentNames.AddRange(extraAttachments.Select(a => a.FileName));
+        var attachmentCount = sentNames.Count;
+        var attachmentNames = string.Join(", ", sentNames);
         _logger.LogInformation(
             "Invoice {InvoiceId} email sent successfully to {Email} with {AttachmentCount} attachments: {Attachments}",
             invoiceId, recipientEmail, attachmentCount, attachmentNames);
@@ -232,12 +245,14 @@ public class EmailService : IEmailService
     /// <param name="ublBytes">Raw UBL XML bytes to attach, or null to skip the attachment.</param>
     /// <param name="ublFileName">Filename for the UBL attachment; required when <paramref name="ublBytes"/> is set.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="extraAttachments">Caller-supplied extra files appended after PDF / ISDOC / UBL, or null for none.</param>
     internal async Task SendInvoiceMessageAsync(
         string to, string subject, string htmlBody,
         byte[] pdfBytes, string pdfFileName,
         byte[] isdocBytes, string isdocFileName,
         byte[]? ublBytes = null, string? ublFileName = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IReadOnlyList<OutgoingEmailAttachment>? extraAttachments = null)
     {
         // Resolve SMTP settings using the 3-tier priority chain
         var smtp = await ResolveSmtpSettingsAsync(ct);
@@ -248,7 +263,8 @@ public class EmailService : IEmailService
             to, subject, htmlBody,
             pdfBytes, pdfFileName,
             isdocBytes, isdocFileName,
-            ublBytes, ublFileName);
+            ublBytes, ublFileName,
+            extraAttachments);
 
         // Connect and send using MailKit
         await SendViaSMTPAsync(smtp, message, ct);
@@ -271,12 +287,14 @@ public class EmailService : IEmailService
     /// <param name="isdocFileName">Filename for the ISDOC (e.g. "Invoice_INV2025001.isdoc").</param>
     /// <param name="ublBytes">Raw UBL XML bytes to attach, or null to skip the attachment.</param>
     /// <param name="ublFileName">Filename for the UBL attachment; required when <paramref name="ublBytes"/> is set.</param>
+    /// <param name="extraAttachments">Caller-supplied extra files appended after PDF / ISDOC / UBL, or null for none.</param>
     internal static MimeMessage BuildInvoiceMessage(
         string senderName, string senderEmail,
         string to, string subject, string htmlBody,
         byte[] pdfBytes, string pdfFileName,
         byte[] isdocBytes, string isdocFileName,
-        byte[]? ublBytes = null, string? ublFileName = null)
+        byte[]? ublBytes = null, string? ublFileName = null,
+        IReadOnlyList<OutgoingEmailAttachment>? extraAttachments = null)
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(senderName, senderEmail));
@@ -297,8 +315,48 @@ public class EmailService : IEmailService
         if (ublBytes != null && ublFileName != null)
             bodyBuilder.Attachments.Add(ublFileName, ublBytes, ContentType.Parse("application/xml"));
 
+        // Caller-supplied extra files. The content type is derived from the file extension by
+        // MimeKit (the extension was whitelisted by EmailAttachmentValidator) - we never trust a
+        // client-supplied MIME type.
+        if (extraAttachments != null)
+        {
+            foreach (var extra in extraAttachments)
+                bodyBuilder.Attachments.Add(extra.FileName, extra.Content, ContentType.Parse(MimeTypes.GetMimeType(extra.FileName)));
+        }
+
         message.Body = bodyBuilder.ToMessageBody();
         return message;
+    }
+
+    /// <summary>
+    /// Applies the caller's optional subject / message on top of the rendered template.
+    /// Extracted as a static method so it can be unit-tested without SMTP or a database.
+    /// </summary>
+    /// <remarks>
+    /// Junior note on the message: it is plain text from an untrusted caller, so it is HTML-encoded
+    /// (a "&lt;script&gt;" becomes harmless text) and only then are line breaks turned into
+    /// &lt;br&gt; - the one piece of HTML we add ourselves.
+    /// </remarks>
+    internal static (string Subject, string HtmlBody) ApplyCustomization(
+        string templateSubject, string templateBody, SendInvoiceEmailOptions? options)
+    {
+        var subject = templateSubject;
+        var htmlBody = templateBody;
+
+        if (!string.IsNullOrWhiteSpace(options?.Subject))
+        {
+            // CR/LF in a subject would let a caller inject extra mail headers.
+            subject = options.Subject.Replace("\r", " ").Replace("\n", " ").Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(options?.Message))
+        {
+            var encoded = System.Net.WebUtility.HtmlEncode(options.Message.Trim())
+                .Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "<br>");
+            htmlBody = $"<p>{encoded}</p>{templateBody}";
+        }
+
+        return (subject, htmlBody);
     }
 
     /// <inheritdoc />

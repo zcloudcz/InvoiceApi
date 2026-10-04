@@ -1008,11 +1008,11 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
-    /// Sends the specified invoice as an email with PDF attachment.
-    /// Generates the PDF, attaches it to an email, and sends it via SMTP.
+    /// Sends the specified invoice as an email. PDF and ISDOC are always attached (plus UBL XML
+    /// for Slovak / Peppol-reachable buyers), followed by any extra attachments from the request.
     /// </summary>
     /// <param name="id">Invoice ID to send</param>
-    /// <param name="dto">Email recipient and optional subject/message</param>
+    /// <param name="dto">Email recipient and optional subject/message/extra attachments</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Success confirmation</returns>
     /// <response code="200">Email sent successfully</response>
@@ -1029,9 +1029,23 @@ public class InvoiceController : ControllerBase
     {
         _logger.LogInformation("POST /api/invoice/{Id}/send-email to {Email}", id, dto.RecipientEmail);
 
+        // Validate + decode the extra attachments first (trust boundary): on any violation nothing is sent.
+        IReadOnlyList<OutgoingEmailAttachment> attachments;
         try
         {
-            await _emailService.SendInvoiceEmailAsync(id, dto.RecipientEmail, cancellationToken);
+            attachments = EmailAttachmentValidator.ValidateAndDecode(dto.Attachments);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning("Rejected attachments for invoice {Id} email: {Message}", id, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+
+        try
+        {
+            // Subject / Message / Attachments used to be dropped here - they must reach the email.
+            var options = new SendInvoiceEmailOptions(dto.Subject, dto.Message, attachments);
+            await _emailService.SendInvoiceEmailAsync(id, dto.RecipientEmail, cancellationToken, options);
 
             _logger.LogInformation("Invoice {Id} sent via email to {Email}", id, dto.RecipientEmail);
             return Ok(new { message = $"Invoice email sent to {dto.RecipientEmail}" });

@@ -544,6 +544,39 @@ public class InvoiceToolsTests
     }
 
     [Fact]
+    public async Task SendInvoiceEmail_ForwardsSubjectMessageAndAttachmentsToApi()
+    {
+        // Arrange
+        SendInvoiceEmailDto? sent = null;
+        _api.SendInvoiceEmailAsync(3, Arg.Do<SendInvoiceEmailDto>(d => sent = d), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        var attachments = new[] { new EmailAttachmentDto { FileName = "note.txt", ContentBase64 = "AQID" } };
+
+        // Act
+        await InvoiceTools.SendInvoiceEmail(_api, 3, "test@example.com", "Subject", "Body", attachments);
+
+        // Assert
+        sent.ShouldNotBeNull();
+        sent.Subject.ShouldBe("Subject");
+        sent.Message.ShouldBe("Body");
+        sent.Attachments.ShouldNotBeNull();
+        sent.Attachments.Single().FileName.ShouldBe("note.txt");
+    }
+
+    [Fact]
+    public async Task SendInvoiceEmail_WithoutAttachments_SendsNullAttachments()
+    {
+        SendInvoiceEmailDto? sent = null;
+        _api.SendInvoiceEmailAsync(3, Arg.Do<SendInvoiceEmailDto>(d => sent = d), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        await InvoiceTools.SendInvoiceEmail(_api, 3, "test@example.com");
+
+        sent.ShouldNotBeNull();
+        sent.Attachments.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task DeleteInvoice_ReturnsSuccessMessage()
     {
         // Arrange

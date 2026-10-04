@@ -7,13 +7,18 @@ namespace Fakvio.Application.Service;
 public interface IEmailService
 {
     /// <summary>
-    /// Sends the specified invoice as an email with a PDF attachment.
-    /// Generates the PDF using IPdfExportService, then sends it via SMTP.
+    /// Sends the specified invoice as an email. The PDF and ISDOC are always attached, plus a
+    /// UBL XML for Slovak / Peppol-reachable buyers, plus any extra files from <paramref name="options"/>.
     /// </summary>
     /// <param name="invoiceId">The ID of the invoice to send.</param>
     /// <param name="recipientEmail">The recipient's email address.</param>
     /// <param name="ct">Cancellation token for async operation.</param>
-    Task SendInvoiceEmailAsync(long invoiceId, string recipientEmail, CancellationToken ct = default);
+    /// <param name="options">
+    /// Optional custom subject / message / extra attachments; null keeps the template defaults.
+    /// Kept as the LAST parameter so existing callers that pass <paramref name="ct"/> positionally compile unchanged.
+    /// </param>
+    Task SendInvoiceEmailAsync(long invoiceId, string recipientEmail, CancellationToken ct = default,
+        SendInvoiceEmailOptions? options = null);
 
     /// <summary>
     /// Sends a generic email with optional attachment.
