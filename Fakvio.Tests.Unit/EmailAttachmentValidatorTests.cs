@@ -133,6 +133,14 @@ public class EmailAttachmentValidatorTests
     }
 
     [Fact]
+    public void ValidateAndDecode_RightToLeftOverrideInName_Throws()
+    {
+        // U+202E would make "x‮fdp.zip" render as "xpiz.pdf" and disguise the real extension.
+        Should.Throw<ArgumentException>(() => EmailAttachmentValidator.ValidateAndDecode([File("x‮fdp.zip")]))
+            .Message.ShouldContain("control");
+    }
+
+    [Fact]
     public void ValidateAndDecode_FileNameLongerThan255_Throws()
     {
         var name = new string('a', 252) + ".pdf"; // 256 chars

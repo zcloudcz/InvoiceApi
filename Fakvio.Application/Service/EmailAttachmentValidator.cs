@@ -108,8 +108,11 @@ public static class EmailAttachmentValidator
         if (fileName.Length > MaxFileNameLength)
             throw new ArgumentException($"Attachment file name is longer than {MaxFileNameLength} characters.");
 
-        // Control characters (CR/LF would enable header injection in the MIME part).
-        if (fileName.Any(char.IsControl))
+        // Control characters (CR/LF would enable header injection in the MIME part) and invisible
+        // Unicode format characters (e.g. U+202E right-to-left override, which makes "x‮fdp.zip"
+        // display as "xpiz.pdf" in a mail client and hides the real extension from the recipient).
+        if (fileName.Any(c => char.IsControl(c)
+                || System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format))
             throw new ArgumentException("Attachment file name contains control characters.");
 
         // Path traversal: the name must be a bare file name. Path.GetFileName only knows the
