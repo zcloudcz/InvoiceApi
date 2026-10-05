@@ -1,4 +1,4 @@
-using Fakvio.Contracts.Common;
+﻿using Fakvio.Contracts.Common;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Application.Common.Helpers;
 using Fakvio.Application.Exceptions;
@@ -870,7 +870,7 @@ public class EmailService : IEmailService
 
         // Fallback — build a simple HTML email inline
         _logger.LogInformation("No content template found for type {Type}, using fallback HTML", templateType);
-        return BuildFallbackEmail(templateType, placeholders);
+        return BuildFallbackEmail(templateType, placeholders, language);
     }
 
     /// <summary>
@@ -898,16 +898,30 @@ public class EmailService : IEmailService
 
     /// <summary>
     /// Builds a simple fallback email when no content template is configured for the given type.
+    /// Czech is the default; English is used only when <paramref name="language"/> is "en" — the same rule as the
+    /// seeded templates, so a client sees the same language whether or not a template row exists.
     /// </summary>
-    private static (string Subject, string HtmlBody) BuildFallbackEmail(
+    internal static (string Subject, string HtmlBody) BuildFallbackEmail(
         EContentTemplateType templateType,
-        Dictionary<string, string> placeholders)
+        Dictionary<string, string> placeholders,
+        string language)
     {
         var get = (string key) => placeholders.TryGetValue(key, out var v) ? v : "";
+        var czech = !string.Equals(language, "en", StringComparison.OrdinalIgnoreCase);
 
         return templateType switch
         {
-            EContentTemplateType.InvoiceEmail or EContentTemplateType.CreditNoteEmail => (
+            EContentTemplateType.InvoiceEmail => czech ? (
+                Subject: $"Faktura {get("InvoiceNumber")} od {get("CompanyName")}",
+                HtmlBody: $"""
+                    <h2>Faktura {get("InvoiceNumber")}</h2>
+                    <p>V příloze naleznete fakturu.</p>
+                    <p><strong>Celkem k úhradě:</strong> {get("TotalWithVat")} {get("CurrencyCode")}</p>
+                    <p><strong>Datum splatnosti:</strong> {get("DueDate")}</p>
+                    <br/>
+                    <p>Děkujeme za spolupráci.</p>
+                    """
+            ) : (
                 Subject: $"Invoice {get("InvoiceNumber")} from {get("CompanyName")}",
                 HtmlBody: $"""
                     <h2>Invoice {get("InvoiceNumber")}</h2>
@@ -918,7 +932,37 @@ public class EmailService : IEmailService
                     <p>Thank you for your business.</p>
                     """
             ),
-            EContentTemplateType.AdvanceInvoiceEmail => (
+            EContentTemplateType.CreditNoteEmail => czech ? (
+                Subject: $"Dobropis {get("InvoiceNumber")} od {get("CompanyName")}",
+                HtmlBody: $"""
+                    <h2>Dobropis {get("InvoiceNumber")}</h2>
+                    <p>V příloze naleznete dobropis.</p>
+                    <p><strong>Celkem:</strong> {get("TotalWithVat")} {get("CurrencyCode")}</p>
+                    <br/>
+                    <p>Děkujeme za spolupráci.</p>
+                    """
+            ) : (
+                Subject: $"Credit note {get("InvoiceNumber")} from {get("CompanyName")}",
+                HtmlBody: $"""
+                    <h2>Credit Note {get("InvoiceNumber")}</h2>
+                    <p>Please find the attached credit note.</p>
+                    <p><strong>Total:</strong> {get("TotalWithVat")} {get("CurrencyCode")}</p>
+                    <br/>
+                    <p>Thank you for your business.</p>
+                    """
+            ),
+            EContentTemplateType.AdvanceInvoiceEmail => czech ? (
+                Subject: $"Zálohová faktura {get("InvoiceNumber")} od {get("CompanyName")}",
+                HtmlBody: $"""
+                    <h2>Zálohová faktura {get("InvoiceNumber")}</h2>
+                    <p>V příloze naleznete zálohovou fakturu.</p>
+                    <p><strong>Částka k úhradě:</strong> {get("TotalWithVat")} {get("CurrencyCode")}</p>
+                    <p><strong>Datum splatnosti:</strong> {get("DueDate")}</p>
+                    <br/>
+                    <p>Upozorňujeme, že zálohová faktura není daňovým dokladem. Daňový doklad Vám bude vystaven po přijetí platby.</p>
+                    <p>Děkujeme.</p>
+                    """
+            ) : (
                 Subject: $"Advance invoice {get("InvoiceNumber")} from {get("CompanyName")}",
                 HtmlBody: $"""
                     <h2>Advance Invoice {get("InvoiceNumber")}</h2>
@@ -930,7 +974,16 @@ public class EmailService : IEmailService
                     <p>Thank you for your business.</p>
                     """
             ),
-            EContentTemplateType.TaxReceiptForAdvanceEmail => (
+            EContentTemplateType.TaxReceiptForAdvanceEmail => czech ? (
+                Subject: $"Daňový doklad o přijaté platbě {get("InvoiceNumber")} od {get("CompanyName")}",
+                HtmlBody: $"""
+                    <h2>Daňový doklad o přijaté platbě {get("InvoiceNumber")}</h2>
+                    <p>V příloze naleznete daňový doklad o přijaté záloze.</p>
+                    <p><strong>Uhrazená částka:</strong> {get("TotalWithVat")} {get("CurrencyCode")}</p>
+                    <br/>
+                    <p>Děkujeme za platbu.</p>
+                    """
+            ) : (
                 Subject: $"Tax receipt for advance {get("InvoiceNumber")} from {get("CompanyName")}",
                 HtmlBody: $"""
                     <h2>Tax Receipt for Advance Payment {get("InvoiceNumber")}</h2>
@@ -940,7 +993,18 @@ public class EmailService : IEmailService
                     <p>Thank you for your payment.</p>
                     """
             ),
-            EContentTemplateType.InvitationEmail => (
+            EContentTemplateType.InvitationEmail => czech ? (
+                Subject: $"Pozvánka do {get("AppName")} – nastavte si heslo",
+                HtmlBody: $"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2>Vítejte v {get("AppName")}</h2>
+                    <p>Dobrý den, <strong>{get("FullName")}</strong>,</p>
+                    <p>Heslo si nastavíte kliknutím na odkaz níže:</p>
+                    <p><a href="{get("InvitationLink")}">Nastavit heslo</a></p>
+                    <p>Odkaz je platný 48 hodin.</p>
+                    </div>
+                    """
+            ) : (
                 Subject: $"Invitation to {get("AppName")} — Set your password",
                 HtmlBody: $"""
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -952,7 +1016,16 @@ public class EmailService : IEmailService
                     </div>
                     """
             ),
-            EContentTemplateType.ReminderEmail => (
+            EContentTemplateType.ReminderEmail => czech ? (
+                Subject: $"Upomínka – faktura {get("InvoiceNumber")} po splatnosti",
+                HtmlBody: $"""
+                    <h2>Upomínka k úhradě</h2>
+                    <p>Faktura <strong>{get("InvoiceNumber")}</strong> je po splatnosti.</p>
+                    <p><strong>Celkem k úhradě:</strong> {get("TotalWithVat")} {get("CurrencyCode")}</p>
+                    <p><strong>Datum splatnosti:</strong> {get("DueDate")}</p>
+                    <p>Prosíme o úhradu v nejbližším možném termínu.</p>
+                    """
+            ) : (
                 Subject: $"Payment reminder — Invoice {get("InvoiceNumber")}",
                 HtmlBody: $"""
                     <h2>Payment Reminder</h2>
@@ -963,8 +1036,8 @@ public class EmailService : IEmailService
                     """
             ),
             _ => (
-                Subject: "Email from Fakvio",
-                HtmlBody: "<p>Email content</p>"
+                Subject: czech ? "E-mail od Fakvio" : "Email from Fakvio",
+                HtmlBody: czech ? "<p>Obsah e-mailu</p>" : "<p>Email content</p>"
             )
         };
     }

@@ -1,4 +1,4 @@
-# Fakvio — Developer Cookbook (DEVGUIDE)
+﻿# Fakvio — Developer Cookbook (DEVGUIDE)
 
 > Praktická příručka, jak věci v projektu **fungují** — ne API reference. Cílová skupina: nový vývojář / AI agent, který se musí rychle zorientovat. Vysvětluje **proč** byla zvolena daná řešení a **kde** v kódu žijí.
 >
@@ -697,13 +697,15 @@ Jeden dialog (`SendInvoiceEmailDialog`), jeden endpoint, jedna cesta v `EmailSer
 2. Any-language default (Type + IsDefault + IsActive).
 3. Built-in fallback HTML: pro PDF `PdfExportService.GetDefaultHtmlTemplate(documentType)` (volá `DefaultSeedData`), pro email `EmailService.BuildFallbackEmail()`.
 
+**Jazykové varianty e-mailů:** každý e-mailový typ (InvoiceEmail, CreditNoteEmail, AdvanceInvoiceEmail, TaxReceiptForAdvanceEmail, InvitationEmail, ReminderEmail) má výchozí šablonu `cs` i `en`. Text je na jednom místě — `DefaultEmailTemplates` (`Fakvio.Infrastructure/Data`); `en` varianty mají seed Id 12–17 (`DefaultEmailTemplates.EnglishVariants`, volá je `HasData` v obou kontextech). Jazyk vybírá `GetDefaultByTypeAsync(type, language)` z `Client.Language` (faktury, dobropisy, upomínky přes `ReminderService`); pozvánka a 2FA nemají klienta, pozvánka používá pevně `cs`. `BuildFallbackEmail(type, placeholders, language)` (když šablona v DB vůbec není) je cs/en podle téhož pravidla — cokoliv jiného než `en` = čeština. `TenantProvisioningService` kopíruje **i `Language`** (bez toho by každý zkopírovaný řádek dostal default `cs`) a řadí podle Id, aby „any-language" fallback dál vracel českou šablonu. Data migrace pro existující DB: `LocalizeDefaultEmailTemplates` (Master + Tenant, SQL sdílí `LocalizeDefaultEmailTemplatesSql`) — viz §12 „Seed-text migrace".
+
 **Vestavěné PDF šablony** (embedded resources `Fakvio.Infrastructure/Templates/*.html`, wildcard `Templates\*.html` v csproj):
 - `InvoicePdfTemplate.html` → modrý `#5B7D9D`
 - `CreditNotePdfTemplate.html` → červený `#A05050`
 - `AdvanceInvoicePdfTemplate.html` → zelený `#3D7A4A` + „ZÁLOHOVÁ FAKTURA — NENÍ DAŇOVÝ DOKLAD" banner
 - `TaxReceiptForAdvancePdfTemplate.html` → fialový `#6A3D9A`, titulek „DAŇOVÝ DOKLAD O PŘIJATÉ PLATBĚ"
 
-**Pokud přidáváš nový typ šablony**: 1) přidej hodnotu do `EContentTemplateType` (zachovat číselnou stabilitu), 2) přidej embedded `.html` soubor do `Templates/` (wildcard ho zahrne automaticky), 3) přidej getter do `DefaultSeedData`, 4) přidej seed záznamy s unikátním Id do `MasterDbContext` + `TenantDbContext`, 5) rozšiř switche v `ResolveTemplateType` / `ResolveEmailTemplateType` / `GetDefaultHtmlTemplate` / `BuildFallbackEmail`, 6) přidej lokalizační klíče `ContentType_XYZ` do obou resx, 7) rozšiř switche `GetTemplateTypeColor` + `GetTemplateTypeLabel` v `ContentTemplates.razor`, 8) zaznamenej zde do tabulky, **9) spusť EF Core migrace pro oba kontexty** — `dotnet ef migrations add <Name> --context MasterDbContext --output-dir Migrations/Master --project Fakvio.Infrastructure --startup-project Fakvio.API` a totéž pro `TenantDbContext / Migrations/Tenant`. Bez tohoto kroku existující DB nedostane nové šablony přes `dotnet ef database update` a `TenantProvisioningService.SeedCodeTablesFromMasterAsync` je taky neuvidí (master je prázdný).
+**Pokud přidáváš nový typ šablony**: 1) přidej hodnotu do `EContentTemplateType` (zachovat číselnou stabilitu), 2) přidej embedded `.html` soubor do `Templates/` (wildcard ho zahrne automaticky), 3) přidej getter do `DefaultSeedData`, 4) přidej seed záznamy s unikátním Id do `MasterDbContext` + `TenantDbContext` (u e-mailů **`cs` i `en`**, text do `DefaultEmailTemplates`), 5) rozšiř switche v `ResolveTemplateType` / `ResolveEmailTemplateType` / `GetDefaultHtmlTemplate` / `BuildFallbackEmail`, 6) přidej lokalizační klíče `ContentType_XYZ` do obou resx, 7) rozšiř switche `GetTemplateTypeColor` + `GetTemplateTypeLabel` v `ContentTemplates.razor`, 8) zaznamenej zde do tabulky, **9) spusť EF Core migrace pro oba kontexty** — `dotnet ef migrations add <Name> --context MasterDbContext --output-dir Migrations/Master --project Fakvio.Infrastructure --startup-project Fakvio.API` a totéž pro `TenantDbContext / Migrations/Tenant`. Bez tohoto kroku existující DB nedostane nové šablony přes `dotnet ef database update` a `TenantProvisioningService.SeedCodeTablesFromMasterAsync` je taky neuvidí (master je prázdný).
 
 ### 4.4 Invoice lifecycle
 
@@ -3643,6 +3645,10 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 
 ### EF Core Identity Map caching
 - `FindAsync` bez `Include` cachuje entitu v identity mapu. Pozdější query s `Include` vrátí cached instanci s `null` navigation properties (issue #104). Fix: `AsNoTracking()` na read-only queries, nebo explicitní `Include` na `FindAsync`.
+
+### Seed-text migrace musí být podmíněné
+- Změna TEXTU již nasazené seed šablony (nebo přidání jejího jazykového páru) **nesmí** být EF-generovaný `UpdateData`/`InsertData`: `UpdateData` jede podle Id a přepsal by šablony, které uživatel upravil; tenantní Id přidělil `TenantProvisioningService` (smaže a znovu vloží řádky z masteru s restartovanou sekvencí), takže seed Id neidentifikuje všude tentýž řádek; `InsertData` s pevným Id se může srazit s existujícím řádkem.
+- Postup: `dotnet ef migrations add …` pro oba kontexty (snapshot musí sedět s novým `HasData`), pak `Up()` **přepsat** na `migrationBuilder.Sql(...)`: `UPDATE … WHERE "TemplateType" = n AND "Language" = 'cs' AND "Subject" = '<původní>' AND "HtmlBody" = '<původní>'` (původní texty zmrazit v migraci — nesmí záviset na seed konstantách, které se později změní) a `INSERT … (bez Id) … WHERE NOT EXISTS (…)`. Před INSERT ošetřit sekvenci (`nextval` ≤ `MAX("Id")` → `setval`) — `HasData` s explicitním Id ji neposouvá. Názvy tabulek bez schématu (tenantní migrace běží se `search_path` na tenantní schéma). Vzor: `LocalizeDefaultEmailTemplatesSql` + `LocalizeDefaultEmailTemplatesMigrationTests` (reálný PostgreSQL: neupravený řádek se přeloží, upravený ne, opakované spuštění nedělá duplicity).
 
 ### Non-idempotent seed migrace
 - `migrationBuilder.InsertData` s hardcoded `Id` selže na `PK duplicate` pokud data už existují (issue #97/#109). Vždy použít raw SQL `INSERT ... ON CONFLICT (Id) DO NOTHING` nebo `DELETE + InsertData` guard.

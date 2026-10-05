@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.05.5 — 2026-10-05
+
+### Opravy
+
+- **#517** — Výchozí e-mailové šablony (faktura, dobropis, upomínka, pozvánka) jsou nyní česky a k e-mailovým šablonám přibyly anglické varianty volené podle jazyka klienta; upravené šablony zůstávají beze změny. (PR #517, `b51deec`)
+
 ## 2026.10.05.4 — 2026-10-05
 
 ### Změny pro uživatele

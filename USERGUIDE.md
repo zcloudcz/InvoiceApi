@@ -658,6 +658,14 @@ ContentTemplates jsou HTML šablony pro generování PDF a emailů. Lze je edito
 | Email | InvoiceEmail, ReminderEmail, InvitationEmail, PasswordResetEmail |
 | Systémové | Šablony upravované SysAdminem (globální) |
 
+### Jazyk e-mailových šablon
+
+Každý e-mail (faktura, dobropis, zálohová faktura, daňový doklad o přijaté platbě, upomínka, pozvánka) má **dvě výchozí šablony: českou (`cs`) a anglickou (`en`)**. Odesílá se ta, která odpovídá **jazyku klienta** (pole „Jazyk dokumentů" na detailu klienta; bez nastavení čeština). Upomínky se řídí jazykem klienta stejně jako faktury; pozvánky pro nové uživatele jsou zatím vždy česky.
+
+- Anglické šablony se u stávajících firem objeví samy po aktualizaci aplikace; české výchozí šablony faktury, dobropisu, pozvánky a upomínky, které byly dřív omylem anglické, se přepíší do češtiny.
+- **Šablonu, kterou jste upravili, aplikace nepřepisuje** — zůstane přesně tak, jak jste ji uložili; pokud je její text pořád anglický, přepište ho ručně.
+- Výchozí šablona je jedna pro každou dvojici typ + jazyk: nastavení anglické šablony jako výchozí nezruší českou.
+
 ### Filtrování
 
 Čipy v horní části: Vše / PDF / Email / Systémové

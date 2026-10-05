@@ -1,4 +1,4 @@
-using Fakvio.Domain.Enums;
+﻿using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using MimeKit;
@@ -159,7 +159,7 @@ public class ProformaTemplateExtendedTests
 
         var result = ((string Subject, string HtmlBody))method.Invoke(
             null,
-            new object[] { EContentTemplateType.AdvanceInvoiceEmail, placeholders })!;
+            new object[] { EContentTemplateType.AdvanceInvoiceEmail, placeholders, "en" })!;
 
         // Subject must contain the document number and not be the generic invoice label
         result.Subject.ShouldContain("PF-2025-001");
@@ -194,7 +194,7 @@ public class ProformaTemplateExtendedTests
 
         var result = ((string Subject, string HtmlBody))method.Invoke(
             null,
-            new object[] { EContentTemplateType.TaxReceiptForAdvanceEmail, placeholders })!;
+            new object[] { EContentTemplateType.TaxReceiptForAdvanceEmail, placeholders, "en" })!;
 
         result.Subject.ShouldContain("DPP-2025-001");
         result.Subject.ShouldContain("tax receipt", Case.Insensitive);

@@ -1,4 +1,4 @@
-using Fakvio.Application.Service;
+﻿using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.ContentTemplate;
 using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Domain.Entities;
@@ -57,7 +57,7 @@ public class ReminderServiceTests : IDisposable
 
         // Default mock: no email template found — forces fallback body in SendReminderAsync.
         _contentTemplateService
-            .GetDefaultByTypeAsync(Arg.Any<EContentTemplateType>(), Arg.Any<CancellationToken>())
+            .GetDefaultByTypeAsync(Arg.Any<EContentTemplateType>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((ContentTemplateDto?)null);
 
         // Instantiate the service under test with all mocks.
@@ -770,5 +770,36 @@ public class ReminderServiceTests : IDisposable
         // Assert
         result.Items.ShouldBeEmpty();
         result.TotalCount.ShouldBe(0);
+    }
+
+    /// <summary>
+    /// The reminder e-mail must be looked up (and, without a template, worded) in the CLIENT's language —
+    /// before this fix it ignored Client.Language, so a Czech client could get an English default.
+    /// With no template available the built-in fallback is used, which makes the language visible in the subject.
+    /// </summary>
+    [Theory]
+    [InlineData("cs", "Upomínka")]
+    [InlineData("en", "Payment Reminder")]
+    public async Task SendReminder_UsesClientLanguageForTemplateLookupAndFallback(string language, string expectedSubjectStart)
+    {
+        // Arrange — the seeded customer (Id 1) gets the language under test.
+        var client = await _context.Client.FirstAsync(c => c.Id == 1);
+        client.Language = language;
+        _context.Invoice.Add(CreateOverdueInvoice());
+        await _context.SaveChangesAsync();
+
+        // Act
+        await _service.ProcessOverdueInvoicesAsync();
+
+        // Assert — template requested for that language, and the e-mail went out in that language.
+        await _contentTemplateService.Received(1).GetDefaultByTypeAsync(
+            EContentTemplateType.ReminderEmail, language, Arg.Any<CancellationToken>());
+        await _emailService.Received(1).SendEmailAsync(
+            "client@test.com",
+            Arg.Is<string>(s => s.StartsWith(expectedSubjectStart)),
+            Arg.Any<string>(),
+            Arg.Any<byte[]?>(),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
     }
 }
