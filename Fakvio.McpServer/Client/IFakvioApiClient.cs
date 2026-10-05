@@ -26,6 +26,13 @@ using Fakvio.Domain.Enums;
 namespace Fakvio.McpServer.Client;
 
 /// <summary>
+/// A document downloaded from the API together with the file name the server chose for it
+/// (Content-Disposition). The server builds the name from the client's file name format,
+/// so callers must use it as-is instead of composing their own.
+/// </summary>
+public sealed record ExportedFile(byte[] Content, string FileName);
+
+/// <summary>
 /// Abstraction over the Fakvio REST API.
 /// All methods map 1:1 to API controller endpoints.
 ///
@@ -103,10 +110,10 @@ public interface IFakvioApiClient
     Task SendInvoiceEmailAsync(long id, SendInvoiceEmailDto dto, CancellationToken ct = default);
 
     /// <summary>GET /api/invoice/{id}/pdf — export invoice as PDF file (raw bytes).</summary>
-    Task<byte[]> ExportInvoicePdfAsync(long id, CancellationToken ct = default);
+    Task<ExportedFile> ExportInvoicePdfAsync(long id, CancellationToken ct = default);
 
     /// <summary>GET /api/invoice/{id}/isdoc — export invoice as ISDOC 6.0.2 XML (raw bytes).</summary>
-    Task<byte[]> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default);
+    Task<ExportedFile> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default);
 
     /// <summary>
     /// GET /api/invoice/{id}/ubl — export invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (raw
@@ -114,7 +121,7 @@ public interface IFakvioApiClient
     /// (Draft, pro-forma, missing Peppol ID, …) — surfaced to the caller like any other
     /// FakvioApiException (ADR 0002, F1.7).
     /// </summary>
-    Task<byte[]> ExportInvoiceUblAsync(long id, CancellationToken ct = default);
+    Task<ExportedFile> ExportInvoiceUblAsync(long id, CancellationToken ct = default);
 
     /// <summary>
     /// POST /api/accounting-export/{system} — "Export do účetnictví". Generates one XML file

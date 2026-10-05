@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
@@ -476,6 +477,10 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.InvoiceNumberSuffix).HasMaxLength(50);
             entity.Property(e => e.CreditNoteNumberPrefix).HasMaxLength(50);
             entity.Property(e => e.CreditNoteNumberSuffix).HasMaxLength(50);
+            entity.Property(e => e.InvoiceFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.CreditNoteFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.ProformaFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.TaxReceiptFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
             entity.Property(e => e.DefaultPaymentMethod).HasConversion<int?>();
             entity.Property(e => e.BankAccountNumber).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(2000);

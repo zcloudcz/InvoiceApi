@@ -1,0 +1,106 @@
+@*
+    Input for a document file name format, e.g. "{{DocumentType}}_{{DocumentNumber}}".
+    Used for the four per-document-type formats (invoice, credit note, proforma, tax receipt)
+    both on the client detail and on the company (issuer) page, so they behave identically.
+
+    - Clickable chips append the matching {{Placeholder}} to the format.
+    - A live preview runs the SAME builder the server uses (DocumentFileName), fed with sample data,
+      so what the user sees is what the generated file will be called.
+
+    Usage:
+      <FileNameFormatInput Label="@L["FileNameFormat_Invoice"].Value"
+                           Value="@_billingSettings.InvoiceFileNameFormat"
+                           ValueChanged="@(v => _billingSettings.InvoiceFileNameFormat = v)"
+                           DocumentType="EDocumentType.Invoice"
+                           Language="@_editClient.Language"
+                           EmptyHint="@L["FileNameFormat_EmptyHintClient"].Value" />
+*@
+@using Fakvio.Contracts.Common
+@using Fakvio.Domain.Enums
+@inject IStringLocalizer<SharedResource> L
+
+<MudTextField T="string" Value="@Value" ValueChanged="OnValueChanged"
+              Label="@Label" Placeholder="@DocumentFileName.DefaultFormat"
+              MaxLength="@DocumentFileName.MaxFormatLength"
+              Variant="Variant.Text" Immediate="true"
+              HelperText="@HelperText" />
+
+<div class="d-flex flex-wrap align-center gap-1 mt-1 mb-3">
+    <MudText Typo="Typo.caption" Class="mr-1">@L["FileNameFormat_Placeholders"]</MudText>
+    @foreach (var key in DocumentFileName.PlaceholderKeys)
+    {
+        var placeholder = "{{" + key + "}}";
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                 OnClick="@(() => InsertPlaceholder(placeholder))">@key</MudChip>
+    }
+</div>
+
+@code {
+    // Sample data for the preview — fixed so the preview is deterministic and easy to read.
+    private static readonly DateTime SampleIssueDate = new(2026, 3, 15);
+
+    /// <summary>Current format (two-way binding). Null/empty means "inherit".</summary>
+    [Parameter]
+    public string? Value { get; set; }
+
+    /// <summary>Callback when the format changes. Emits "" (not null) when cleared so the server clears the setting.</summary>
+    [Parameter]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>Field label, e.g. "File name of invoices".</summary>
+    [Parameter]
+    public string? Label { get; set; }
+
+    /// <summary>Document type the format is for — only affects the {{DocumentType}} word in the preview.</summary>
+    [Parameter]
+    public EDocumentType DocumentType { get; set; } = EDocumentType.Invoice;
+
+    /// <summary>Client language ("cs"/"en") — decides the wording of {{DocumentType}} in the preview.</summary>
+    [Parameter]
+    public string? Language { get; set; }
+
+    /// <summary>
+    /// Localized sentence shown instead of the preview while the field is empty
+    /// (explains what "empty" means — differs for client vs. company).
+    /// </summary>
+    [Parameter]
+    public string? EmptyHint { get; set; }
+
+    /// <summary>
+    /// Helper text under the field: the live preview, plus the unknown placeholders (if any)
+    /// so the user sees the typo before the server rejects the save.
+    /// </summary>
+    private string HelperText
+    {
+        get
+        {
+            var unknown = DocumentFileName.Validate(Value);
+            if (unknown.Count > 0)
+                return $"{L["FileNameFormat_Unknown"]}: {string.Join(", ", unknown)}";
+
+            // Empty on a client means "inherit from the company", which the preview cannot know —
+            // so only the hint is shown then (the caller words it for client vs. company).
+            if (string.IsNullOrWhiteSpace(Value) && !string.IsNullOrEmpty(EmptyHint))
+                return EmptyHint;
+
+            var preview = DocumentFileName.Build(
+                Value,
+                new DocumentFileNameValues(
+                    DocumentType, Language, 1, "2026001", "2026001", SampleIssueDate,
+                    "Acme s.r.o.", "My Company s.r.o."),
+                DocumentFileName.PdfExtension);
+
+            return $"{L["FileNameFormat_Preview"]}: {preview}";
+        }
+    }
+
+    private async Task OnValueChanged(string? newValue)
+    {
+        Value = newValue;
+        // "" instead of null: the API treats null as "not sent, keep" and "" as "clear".
+        await ValueChanged.InvokeAsync(newValue ?? "");
+    }
+
+    /// <summary>Appends the placeholder at the end of the format (a plain append keeps this free of JS interop).</summary>
+    private Task InsertPlaceholder(string placeholder) => OnValueChanged((Value ?? "") + placeholder);
+}

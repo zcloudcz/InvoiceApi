@@ -933,6 +933,10 @@ public class TenantProvisioningService : ITenantProvisioningService
                 InvoiceNumberSuffix = masterCompany.BillingSettings.InvoiceNumberSuffix,
                 CreditNoteNumberPrefix = masterCompany.BillingSettings.CreditNoteNumberPrefix,
                 CreditNoteNumberSuffix = masterCompany.BillingSettings.CreditNoteNumberSuffix,
+                InvoiceFileNameFormat = masterCompany.BillingSettings.InvoiceFileNameFormat,
+                CreditNoteFileNameFormat = masterCompany.BillingSettings.CreditNoteFileNameFormat,
+                ProformaFileNameFormat = masterCompany.BillingSettings.ProformaFileNameFormat,
+                TaxReceiptFileNameFormat = masterCompany.BillingSettings.TaxReceiptFileNameFormat,
                 Notes = masterCompany.BillingSettings.Notes,
                 CreatedAt = DateTime.UtcNow
             };

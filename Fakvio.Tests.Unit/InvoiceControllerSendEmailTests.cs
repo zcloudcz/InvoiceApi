@@ -20,6 +20,7 @@ public class InvoiceControllerSendEmailTests
     private InvoiceController BuildController() => new(
         Substitute.For<IInvoiceService>(),
         Substitute.For<IPdfExportService>(),
+        Substitute.For<IDocumentFileNameService>(),
         Substitute.For<IIsdocExportService>(),
         Substitute.For<IUblExportService>(),
         _emailService,

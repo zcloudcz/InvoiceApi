@@ -136,7 +136,15 @@ public static class ClientTools
     [McpServerTool(Title = "Update client", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Update an existing client. Only provided fields are changed (partial update). " +
         "JSON object with optional: companyName, taxNumber, isVatPayer, isActive, language, " +
-        "refreshFromAres (re-fetch from ARES registry).")]
+        "refreshFromAres (re-fetch from ARES registry), " +
+        "billingSettings {invoiceFileNameFormat, creditNoteFileNameFormat, proformaFileNameFormat, " +
+        "taxReceiptFileNameFormat} — the file name of generated PDF/ISDOC/UBL documents (downloads and e-mail " +
+        "attachments), per document type; send an empty string to clear (falls back to the company default, " +
+        "then to '{{DocumentType}}_{{DocumentNumber}}'). The format has no extension. Placeholders: " +
+        "{{DocumentType}} (Faktura/Invoice, localized by client language), {{DocumentNumber}}, {{VariableSymbol}}, " +
+        "{{IssueDate}} (yyyy-MM-dd), {{Year}}, {{Month}}, {{ClientName}}, {{IssuerName}}; unknown placeholders are " +
+        "rejected. Example: '{{IssuerName}}_{{Year}}-{{DocumentNumber}}'. " +
+        "Use the issuer's client ID to set the company-wide default.")]
     public static async Task<string> UpdateClient(
         IFakvioApiClient api,
         [Description("The client ID to update")] long clientId,

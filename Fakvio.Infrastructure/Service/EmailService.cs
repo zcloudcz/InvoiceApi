@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
@@ -31,6 +32,7 @@ public class EmailService : IEmailService
     private readonly TenantDbContext _context;
     private readonly MasterDbContext _masterContext;
     private readonly IPdfExportService _pdfExportService;
+    private readonly IDocumentFileNameService _fileNameService;
     private readonly IIsdocExportService _isdocExportService;
     private readonly IUblExportService _ublExportService;
     private readonly IContentTemplateService _contentTemplateService;
@@ -59,6 +61,7 @@ public class EmailService : IEmailService
         TenantDbContext context,
         MasterDbContext masterContext,
         IPdfExportService pdfExportService,
+        IDocumentFileNameService fileNameService,
         IIsdocExportService isdocExportService,
         IUblExportService ublExportService,
         IContentTemplateService contentTemplateService,
@@ -72,6 +75,7 @@ public class EmailService : IEmailService
         _context = context;
         _masterContext = masterContext;
         _pdfExportService = pdfExportService;
+        _fileNameService = fileNameService;
         _isdocExportService = isdocExportService;
         _ublExportService = ublExportService;
         _contentTemplateService = contentTemplateService;
@@ -101,27 +105,19 @@ public class EmailService : IEmailService
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
-        // Build a safe file-name prefix from the document type.
-        // Each type gets its own recognisable prefix so the attachment name in the inbox
-        // immediately tells the recipient what they received.
-        var prefix = invoice.DocumentType switch
-        {
-            EDocumentType.CreditNote => "CreditNote",
-            EDocumentType.Proforma => "Proforma",
-            EDocumentType.TaxReceiptForAdvance => "TaxReceipt",
-            _ => "Invoice"
-        };
         var docNumber = invoice.DocumentNumber ?? invoiceId.ToString();
 
         // Generate the PDF attachment using the PDF export service.
         var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(invoiceId, ct);
-        var pdfFileName = $"{prefix}_{docNumber}.pdf";
+        // Attachment names come from the configured per-client / per-document-type file name format,
+        // so they match what the user gets when downloading the same document.
+        var pdfFileName = await _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.PdfExtension, ct);
 
         // Generate the ISDOC XML attachment.
         // ISDOC 6.0.2 is the Czech electronic invoice standard read by Pohoda, Money, Helios.
         // The attachment is always included — per-client opt-out is a separate future feature.
         var isdocBytes = await _isdocExportService.ExportInvoiceAsync(invoiceId, ct);
-        var isdocFileName = $"{prefix}_{docNumber}.isdoc";
+        var isdocFileName = await _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.IsdocExtension, ct);
 
         // UBL/Peppol attachment (ADR 0002, F1.9) — only for a buyer who is actually reachable
         // via Peppol: a Slovak buyer (SK e-invoicing 2027) or any buyer with an explicit
@@ -141,7 +137,7 @@ public class EmailService : IEmailService
             try
             {
                 ublBytes = await _ublExportService.ExportInvoiceAsync(invoiceId, ct);
-                ublFileName = $"{prefix}_{docNumber}.xml";
+                ublFileName = await _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.UblExtension, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

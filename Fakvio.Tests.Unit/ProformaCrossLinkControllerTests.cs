@@ -61,6 +61,7 @@ public class ProformaCrossLinkControllerTests
         var controller = new InvoiceController(
             _invoiceService,
             _pdfService,
+            Substitute.For<IDocumentFileNameService>(),
             _isdocService,
             Substitute.For<IUblExportService>(),
             _emailService,
