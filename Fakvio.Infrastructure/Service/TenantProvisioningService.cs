@@ -704,9 +704,12 @@ public class TenantProvisioningService : ITenantProvisioningService
             .Where(f => f.IsActive)
             .ToListAsync(cancellationToken);
 
+        // OrderBy(Id): keep the master order (Czech defaults before English ones) so the tenant's "any language" fallback
+        // (GetDefaultByTypeAsync without a language) keeps picking the Czech default.
         var templates = await _masterContext.ContentTemplate
             .AsNoTracking()
             .Where(t => t.IsActive)
+            .OrderBy(t => t.Id)
             .ToListAsync(cancellationToken);
 
         _logger.LogInformation(
@@ -810,6 +813,9 @@ public class TenantProvisioningService : ITenantProvisioningService
                     IsDefault = template.IsDefault,
                     IsActive = template.IsActive,
                     Description = template.Description,
+                    // Language must be copied: without it every copied row gets the column default "cs", so the
+                    // English variants would become a second Czech default and never be picked for English clients.
+                    Language = template.Language,
                     CreatedAt = DateTime.UtcNow
                 });
             }
