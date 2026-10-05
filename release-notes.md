@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.05.4 — 2026-10-05
+
 ### Změny pro uživatele
 
 - **#514** — Odeslat e-mailem: výběr příjemce z kontaktů klienta, kopie (CC), volba příloh PDF/ISDOC/UBL i příloh uložených u faktury, výchozí volba příloh per klient a firma; hromadné odeslání nyní používá e-mail klienta (dříve selhávalo); totéž v MCP `send_invoice_email`. (PR #514, `f87aba1`)
