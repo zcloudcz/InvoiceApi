@@ -251,6 +251,15 @@ else
                                                  DocumentType="EDocumentType.TaxReceiptForAdvance"
                                                  Language="@_editClient.Language"
                                                  EmptyHint="@L["FileNameFormat_EmptyHintCompany"].Value" />
+                        <div class="mt-3">
+                            <EmailAttachmentDefaultsInput IsCompany="true"
+                                                          Pdf="_billingSettings.EmailAttachPdf"
+                                                          PdfChanged="@(v => _billingSettings.EmailAttachPdf = v)"
+                                                          Isdoc="_billingSettings.EmailAttachIsdoc"
+                                                          IsdocChanged="@(v => _billingSettings.EmailAttachIsdoc = v)"
+                                                          Ubl="_billingSettings.EmailAttachUbl"
+                                                          UblChanged="@(v => _billingSettings.EmailAttachUbl = v)" />
+                        </div>
                     }
                     else if (_company.BillingSettings != null)
                     {
@@ -286,6 +295,16 @@ else
                             {
                                 <MudListItem T="string">
                                     <strong>@L["FileNameFormat_TaxReceipt"]:</strong> @_company.BillingSettings.TaxReceiptFileNameFormat
+                                </MudListItem>
+                            }
+                            @{
+                                var emailAttach = EmailAttachmentDefaultsInput.Summary(L,
+                                    _company.BillingSettings.EmailAttachPdf, _company.BillingSettings.EmailAttachIsdoc, _company.BillingSettings.EmailAttachUbl);
+                            }
+                            @if (emailAttach != null)
+                            {
+                                <MudListItem T="string">
+                                    <strong>@L["EmailAttach_Title"]:</strong> @emailAttach
                                 </MudListItem>
                             }
                         </MudList>
@@ -901,6 +920,9 @@ else
                 CreditNoteFileNameFormat = _company.BillingSettings.CreditNoteFileNameFormat,
                 ProformaFileNameFormat = _company.BillingSettings.ProformaFileNameFormat,
                 TaxReceiptFileNameFormat = _company.BillingSettings.TaxReceiptFileNameFormat,
+                EmailAttachPdf = _company.BillingSettings.EmailAttachPdf,
+                EmailAttachIsdoc = _company.BillingSettings.EmailAttachIsdoc,
+                EmailAttachUbl = _company.BillingSettings.EmailAttachUbl,
                 DefaultPaymentMethod = _company.BillingSettings.DefaultPaymentMethod,
                 BankAccountNumber = _company.BillingSettings.BankAccountNumber,
                 Notes = _company.BillingSettings.Notes
@@ -1001,6 +1023,9 @@ else
                     CreditNoteFileNameFormat = _billingSettings.CreditNoteFileNameFormat,
                     ProformaFileNameFormat = _billingSettings.ProformaFileNameFormat,
                     TaxReceiptFileNameFormat = _billingSettings.TaxReceiptFileNameFormat,
+                    EmailAttachPdf = _billingSettings.EmailAttachPdf,
+                    EmailAttachIsdoc = _billingSettings.EmailAttachIsdoc,
+                    EmailAttachUbl = _billingSettings.EmailAttachUbl,
                     DefaultPaymentMethod = _billingSettings.DefaultPaymentMethod,
                     BankAccountNumber = _billingSettings.BankAccountNumber,
                     Notes = _billingSettings.Notes

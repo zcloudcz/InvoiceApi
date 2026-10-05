@@ -83,7 +83,7 @@ public class EmailSmtpIntegrationTests
             .Returns(new Contracts.Dto.SystemConfiguration.SystemConfigurationDto());
 
         var service = new EmailService(
-            tenantContext, masterContext, pdfExport, new DocumentFileNameService(tenantContext), isdocExport, ublExport, contentTemplate,
+            tenantContext, masterContext, pdfExport, new DocumentFileNameService(tenantContext), Substitute.For<IFileAttachmentService>(), isdocExport, ublExport, contentTemplate,
             systemConfig, credentialProtector, tenantResolver, configuration, logger);
 
         // ── Act — send a real email ─────────────────────────────────────────

@@ -106,8 +106,11 @@ public interface IFakvioApiClient
     /// <summary>DELETE /api/invoice/{id} — soft-delete a draft invoice.</summary>
     Task DeleteInvoiceAsync(long id, CancellationToken ct = default);
 
-    /// <summary>POST /api/invoice/{id}/send-email — send invoice PDF via email.</summary>
+    /// <summary>POST /api/invoice/{id}/send-email — send the invoice by email (recipient, CC and attachments are optional).</summary>
     Task SendInvoiceEmailAsync(long id, SendInvoiceEmailDto dto, CancellationToken ct = default);
+
+    /// <summary>GET /api/invoice/{id}/email-defaults — client e-mail contacts, default attachments and stored invoice files.</summary>
+    Task<InvoiceEmailDefaultsDto> GetInvoiceEmailDefaultsAsync(long id, CancellationToken ct = default);
 
     /// <summary>GET /api/invoice/{id}/pdf — export invoice as PDF file (raw bytes).</summary>
     Task<ExportedFile> ExportInvoicePdfAsync(long id, CancellationToken ct = default);

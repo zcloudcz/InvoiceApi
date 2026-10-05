@@ -937,6 +937,9 @@ public class TenantProvisioningService : ITenantProvisioningService
                 CreditNoteFileNameFormat = masterCompany.BillingSettings.CreditNoteFileNameFormat,
                 ProformaFileNameFormat = masterCompany.BillingSettings.ProformaFileNameFormat,
                 TaxReceiptFileNameFormat = masterCompany.BillingSettings.TaxReceiptFileNameFormat,
+                EmailAttachPdf = masterCompany.BillingSettings.EmailAttachPdf,
+                EmailAttachIsdoc = masterCompany.BillingSettings.EmailAttachIsdoc,
+                EmailAttachUbl = masterCompany.BillingSettings.EmailAttachUbl,
                 Notes = masterCompany.BillingSettings.Notes,
                 CreatedAt = DateTime.UtcNow
             };

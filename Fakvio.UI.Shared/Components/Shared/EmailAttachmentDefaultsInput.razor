@@ -1,0 +1,64 @@
+@*
+    The three "which files does the invoice e-mail attach by default" selects (PDF, ISDOC, UBL) of the
+    billing settings. One component for the client detail AND the company page, so labels, order and
+    wording stay identical.
+
+    Each select is the shared EnumSelect over EEmailAttachMode: Default (inherit) / Yes / No.
+      - client:  Default = take the company setting
+      - company: Default = system default (PDF + ISDOC attached, UBL automatic = Slovak / Peppol buyers)
+
+    Usage (Value + ValueChanged, because @bind does not work with generic EnumSelect - see DEVGUIDE 7.4):
+      <EmailAttachmentDefaultsInput Pdf="_bs.EmailAttachPdf" PdfChanged="@(v => _bs.EmailAttachPdf = v)" ... />
+*@
+@using Fakvio.Domain.Enums
+@inject IStringLocalizer<SharedResource> L
+
+<MudText Typo="Typo.subtitle2" Class="mb-1">@L["EmailAttach_Title"]</MudText>
+<MudGrid Spacing="2">
+    <MudItem xs="12" md="4">
+        <EnumSelect TEnum="EEmailAttachMode" Value="Pdf" ValueChanged="PdfChanged"
+                    Label="@L["EmailAttach_Pdf"].Value" Dense="true" />
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <EnumSelect TEnum="EEmailAttachMode" Value="Isdoc" ValueChanged="IsdocChanged"
+                    Label="@L["EmailAttach_Isdoc"].Value" Dense="true" />
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <EnumSelect TEnum="EEmailAttachMode" Value="Ubl" ValueChanged="UblChanged"
+                    Label="@L["EmailAttach_Ubl"].Value" Dense="true" />
+    </MudItem>
+</MudGrid>
+<MudText Typo="Typo.caption" Color="Color.Secondary">@L[IsCompany ? "EmailAttach_HintCompany" : "EmailAttach_HintClient"]</MudText>
+
+@code {
+    [Parameter] public EEmailAttachMode Pdf { get; set; }
+    [Parameter] public EventCallback<EEmailAttachMode> PdfChanged { get; set; }
+
+    [Parameter] public EEmailAttachMode Isdoc { get; set; }
+    [Parameter] public EventCallback<EEmailAttachMode> IsdocChanged { get; set; }
+
+    [Parameter] public EEmailAttachMode Ubl { get; set; }
+    [Parameter] public EventCallback<EEmailAttachMode> UblChanged { get; set; }
+
+    /// <summary>True on the company page: only changes the hint text (what "Default" means at that level).</summary>
+    [Parameter] public bool IsCompany { get; set; }
+
+    /// <summary>
+    /// One-line read-only summary for the detail views, listing only what is configured
+    /// (e.g. "PDF: Ano, UBL: Ne"); null when every field is on Default.
+    /// </summary>
+    public static string? Summary(IStringLocalizer<SharedResource> localizer, EEmailAttachMode pdf, EEmailAttachMode isdoc, EEmailAttachMode ubl)
+    {
+        var parts = new List<string>();
+        void Add(string key, EEmailAttachMode mode)
+        {
+            if (mode != EEmailAttachMode.Inherit)
+                parts.Add($"{localizer[key].Value}: {localizer[$"EEmailAttachMode_{mode}"].Value}");
+        }
+
+        Add("EmailAttach_Pdf", pdf);
+        Add("EmailAttach_Isdoc", isdoc);
+        Add("EmailAttach_Ubl", ubl);
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+}

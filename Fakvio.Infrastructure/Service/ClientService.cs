@@ -616,6 +616,13 @@ public class ClientService : IClientService
                 client.BillingSettings.ProformaFileNameFormat = NormalizeFormat(bs.ProformaFileNameFormat);
             if (bs.TaxReceiptFileNameFormat != null)
                 client.BillingSettings.TaxReceiptFileNameFormat = NormalizeFormat(bs.TaxReceiptFileNameFormat);
+            // E-mail attachment defaults: null = "not sent, keep"; Inherit = "reset to the company setting".
+            if (bs.EmailAttachPdf.HasValue)
+                client.BillingSettings.EmailAttachPdf = bs.EmailAttachPdf.Value;
+            if (bs.EmailAttachIsdoc.HasValue)
+                client.BillingSettings.EmailAttachIsdoc = bs.EmailAttachIsdoc.Value;
+            if (bs.EmailAttachUbl.HasValue)
+                client.BillingSettings.EmailAttachUbl = bs.EmailAttachUbl.Value;
             if (bs.DefaultPaymentMethod != null)
                 client.BillingSettings.DefaultPaymentMethod = bs.DefaultPaymentMethod;
             if (bs.BankAccountNumber != null)
@@ -842,6 +849,9 @@ public class ClientService : IClientService
         client.BillingSettings.CreditNoteFileNameFormat = NormalizeFormat(settingsDto.CreditNoteFileNameFormat);
         client.BillingSettings.ProformaFileNameFormat = NormalizeFormat(settingsDto.ProformaFileNameFormat);
         client.BillingSettings.TaxReceiptFileNameFormat = NormalizeFormat(settingsDto.TaxReceiptFileNameFormat);
+        client.BillingSettings.EmailAttachPdf = settingsDto.EmailAttachPdf;
+        client.BillingSettings.EmailAttachIsdoc = settingsDto.EmailAttachIsdoc;
+        client.BillingSettings.EmailAttachUbl = settingsDto.EmailAttachUbl;
         client.BillingSettings.DefaultPaymentMethod = settingsDto.DefaultPaymentMethod;
         client.BillingSettings.BankAccountNumber = settingsDto.BankAccountNumber;
         client.BillingSettings.Notes = settingsDto.Notes;

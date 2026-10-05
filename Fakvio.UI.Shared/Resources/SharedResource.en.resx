@@ -230,6 +230,31 @@
   <data name="FileNameFormat_Unknown" xml:space="preserve"><value>Unknown or invalid placeholders</value></data>
   <data name="FileNameFormat_DateHint" xml:space="preserve"><value>Dates accept a format, e.g. {{IssueDate:yyyyMMdd}} or {{DueDate:dd.MM.yyyy}} (allowed: y M d - _ .)</value></data>
   <data name="FileNameFormat_EmptyHintClient" xml:space="preserve"><value>Empty = company setting, otherwise e.g. Invoice_2026001</value></data>
+  <data name="EmailAttach_Title" xml:space="preserve"><value>E-mail attachments for invoices (default)</value></data>
+  <data name="EmailAttach_Pdf" xml:space="preserve"><value>PDF</value></data>
+  <data name="EmailAttach_Isdoc" xml:space="preserve"><value>ISDOC</value></data>
+  <data name="EmailAttach_Ubl" xml:space="preserve"><value>UBL / Peppol</value></data>
+  <data name="EmailAttach_HintClient" xml:space="preserve"><value>Default = company setting. Company default: PDF and ISDOC are attached, UBL automatically only for Slovak buyers and buyers with a Peppol ID. The choice can be changed when sending.</value></data>
+  <data name="EmailAttach_HintCompany" xml:space="preserve"><value>Default = PDF and ISDOC are attached, UBL automatically only for Slovak buyers and buyers with a Peppol ID. A client can have its own setting.</value></data>
+  <data name="EEmailAttachMode_Inherit" xml:space="preserve"><value>Default</value></data>
+  <data name="EEmailAttachMode_Yes" xml:space="preserve"><value>Yes</value></data>
+  <data name="EEmailAttachMode_No" xml:space="preserve"><value>No</value></data>
+  <data name="EmailSend_ToInvalid" xml:space="preserve"><value>Enter a valid e-mail address.</value></data>
+  <data name="EmailSend_Cc" xml:space="preserve"><value>Copy (CC)</value></data>
+  <data name="EmailSend_CcHelper" xml:space="preserve"><value>Optional. Separate several addresses with a comma or semicolon (at most {0}).</value></data>
+  <data name="EmailSend_CcInvalid" xml:space="preserve"><value>Invalid CC address: {0}</value></data>
+  <data name="EmailSend_CcTooMany" xml:space="preserve"><value>A copy can go to at most {0} addresses.</value></data>
+  <data name="EmailSend_Attachments" xml:space="preserve"><value>Attachments</value></data>
+  <data name="EmailSend_AttachPdf" xml:space="preserve"><value>Invoice PDF</value></data>
+  <data name="EmailSend_AttachIsdoc" xml:space="preserve"><value>ISDOC (XML for accounting software)</value></data>
+  <data name="EmailSend_AttachUbl" xml:space="preserve"><value>UBL / Peppol (XML)</value></data>
+  <data name="EmailSend_UblAutoOn" xml:space="preserve"><value>UBL is attached automatically: the buyer is Slovak or has a Peppol ID.</value></data>
+  <data name="EmailSend_UblAutoOff" xml:space="preserve"><value>UBL is attached automatically only for Slovak buyers and buyers with a Peppol ID. Tick it to attach it for this buyer too.</value></data>
+  <data name="EmailSend_StoredAttachments" xml:space="preserve"><value>Files stored on the document</value></data>
+  <data name="EmailSend_Subject" xml:space="preserve"><value>Subject</value></data>
+  <data name="EmailSend_Message" xml:space="preserve"><value>Message (shown above the e-mail text)</value></data>
+  <data name="EmailSend_SaveDefaults" xml:space="preserve"><value>Save this attachment choice as the default for the client</value></data>
+  <data name="EmailSend_DefaultsFailed" xml:space="preserve"><value>The defaults could not be loaded. You can still send the e-mail; attachments follow the client's settings.</value></data>
   <data name="FileNameFormat_EmptyHintCompany" xml:space="preserve"><value>Empty = default format, e.g. Invoice_2026001</value></data>
   <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Days from issue</value></data>
   <data name="Billing_DaysFromEndOfMonth" xml:space="preserve"><value>Days from end of month</value></data>

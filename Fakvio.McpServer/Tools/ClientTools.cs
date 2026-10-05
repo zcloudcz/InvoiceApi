@@ -148,6 +148,10 @@ public static class ClientTools
         "{{DueDate:dd.MM.yyyy}}; only the characters y M d - _ . are allowed (anything else, or a format on a " +
         "non-date placeholder, is rejected). Examples: '{{IssuerName}}_{{Year}}-{{DocumentNumber}}', " +
         "'{{DocumentType}}_{{IssueDate:yyyyMMdd}}_{{DocumentNumber}}'. " +
+        "billingSettings also takes emailAttachPdf, emailAttachIsdoc, emailAttachUbl — which generated files " +
+        "send_invoice_email attaches by default: 'Yes', 'No' or 'Inherit' (= use the company setting; at company level " +
+        "= system default: PDF and ISDOC attached, UBL automatic = only for Slovak / Peppol buyers). Omit a field to " +
+        "keep it, send 'Inherit' to reset it. " +
         "Use the issuer's client ID to set the company-wide default.")]
     public static async Task<string> UpdateClient(
         IFakvioApiClient api,
