@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.05.3 — 2026-10-05
+
 ### Opravy
 
 - **#490** — automatické vystavování pravidelných faktur a odesílání upomínek na pozadí nepracovalo se správnou firmou (dotazy mířily mimo schéma tenanta) — opraveno. (PR #490, `dffdc5c`)
