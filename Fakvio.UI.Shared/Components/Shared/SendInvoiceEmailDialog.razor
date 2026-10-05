@@ -8,12 +8,14 @@
       - CC: optional, comma / semicolon separated
       - attachments: PDF / ISDOC / UBL (preset from the client -> company -> system defaults) plus
         files already stored on the document
-      - subject + message, and "remember the attachment choice for this client"
+      - subject + the whole e-mail text (rich-text editor, prefilled from the template), and
+        "remember the attachment choice for this client"
     The server (POST /api/invoice/{id}/send-email) validates everything again; the checks here are only
     early feedback.
 *@
 @using Fakvio.Contracts.Common
 @using Fakvio.Contracts.Dto.Email
+@using Tizzani.MudBlazor.HtmlEditor
 @inject FakvioService InvoiceService
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
@@ -84,8 +86,19 @@
             }
 
             <MudTextField T="string" @bind-Value="_subject" Label="@L["EmailSend_Subject"].Value" Class="mt-4" MaxLength="500" />
-            <MudTextField T="string" @bind-Value="_message" Label="@L["EmailSend_Message"].Value" Class="mt-3"
-                          Lines="4" AutoGrow="true" MaxLength="5000" />
+
+            @* The whole e-mail text (template with placeholders already filled in), editable. Hidden when the
+               defaults could not be rendered: the server then builds the body from the template itself. *@
+            @if (_hasBody)
+            {
+                <div class="d-flex align-center justify-space-between mt-4">
+                    <MudText Typo="Typo.subtitle2">@L["EmailSend_Body"]</MudText>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.RestartAlt"
+                               OnClick="ResetToTemplateAsync">@L["EmailSend_ResetToTemplate"]</MudButton>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">@L["EmailSend_BodyHint"]</MudText>
+                <MudHtmlEditor @ref="_editor" Html="@_bodyHtml" HtmlChanged="OnBodyChanged" Style="min-height: 240px;" />
+            }
 
             @if (_defaults != null)
             {
@@ -129,7 +142,11 @@
     private string _to = string.Empty;
     private string _ccText = string.Empty;
     private string _subject = string.Empty;
-    private string _message = string.Empty;
+    private MudHtmlEditor? _editor;
+
+    // The editor's text. Starts as the template body; the tracker decides whether the user really changed it.
+    private string _bodyHtml = string.Empty;
+    private readonly EditorEditTracker _bodyTracker = new();
     private bool _attachPdf = true;
     private bool _attachIsdoc = true;
     private bool _attachUbl;
@@ -149,7 +166,8 @@
             { x => x.DocumentNumber, documentNumber },
             { x => x.ClientName, clientName }
         };
-        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        // Large enough for the rich-text editor; FullWidth makes it fill the screen on a phone.
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
         var dialog = await dialogService.ShowAsync<SendInvoiceEmailDialog>(title, parameters, options);
         var result = await dialog.Result;
         return result is { Canceled: false };
@@ -172,12 +190,33 @@
             // The server orders contacts best-first, so the first one is the preselected recipient.
             _to = _defaults.Recipients.FirstOrDefault()?.Email ?? string.Empty;
             _subject = _defaults.DefaultSubject ?? string.Empty;
+            _bodyHtml = _defaults.DefaultHtmlBody ?? string.Empty;
             _attachPdf = _defaults.AttachPdf;
             _attachIsdoc = _defaults.AttachIsdoc;
             _attachUbl = _defaults.AttachUbl;
         }
 
         _loading = false;
+    }
+
+    /// <summary>Show the body editor only when the server could render the template body.</summary>
+    private bool _hasBody => !string.IsNullOrWhiteSpace(_defaults?.DefaultHtmlBody);
+
+    private void OnBodyChanged(string? html)
+    {
+        _bodyHtml = html ?? string.Empty;
+        _bodyTracker.OnChanged(html);
+    }
+
+    /// <summary>Puts the template subject and body back (the "reset to template" button).</summary>
+    private async Task ResetToTemplateAsync()
+    {
+        _subject = _defaults?.DefaultSubject ?? string.Empty;
+        _bodyHtml = _defaults?.DefaultHtmlBody ?? string.Empty;
+        _bodyTracker.Reset();
+        // The editor only reads its Html parameter once, so the text has to be pushed into it explicitly.
+        if (_editor != null)
+            await _editor.SetHtml(_bodyHtml);
     }
 
     private bool ToInvalid => !string.IsNullOrWhiteSpace(_to) && !EmailAddressList.IsValidAddress(_to.Trim());
@@ -244,7 +283,9 @@
             RecipientEmail = _to.Trim(),
             CcEmails = cc.Count > 0 ? cc : null,
             Subject = string.IsNullOrWhiteSpace(_subject) || _subject == _defaults?.DefaultSubject ? null : _subject.Trim(),
-            Message = string.IsNullOrWhiteSpace(_message) ? null : _message.Trim(),
+            // Unedited body = null: the server re-renders the template and keeps its original styling
+            // (the editor's re-formatted copy would lose it). Edited = the editor's HTML replaces the template.
+            HtmlBody = _hasBody && _bodyTracker.IsEdited ? _bodyTracker.Current : null,
             AttachPdf = _defaults == null ? null : _attachPdf,
             AttachIsdoc = _defaults == null ? null : _attachIsdoc,
             AttachUbl = _defaults == null ? null : _attachUbl,
