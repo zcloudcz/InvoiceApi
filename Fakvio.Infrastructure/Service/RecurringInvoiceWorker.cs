@@ -122,10 +122,7 @@ public class RecurringInvoiceWorker : BackgroundService
         {
             try
             {
-                using var scope = _scopeFactory.CreateScope();
-
-                var factory = scope.ServiceProvider.GetRequiredService<ITenantDbContextFactory>();
-                await factory.CreateContextForCompanyAsync(companyId, ct);
+                using var scope = await _scopeFactory.CreateTenantScopeAsync(companyId, ct);
 
                 var recurringInvoiceService = scope.ServiceProvider.GetRequiredService<IRecurringInvoiceService>();
                 var count = await recurringInvoiceService.RunCycleAsync(companyId, nowUtc, ct);
