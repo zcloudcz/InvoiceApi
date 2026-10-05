@@ -395,8 +395,10 @@ public class ReminderService : IReminderService
             {
                 try
                 {
-                    pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(reminder.InvoiceId, ct);
+                    // Name first: if it failed after the bytes were set, SendEmailAsync would get
+                    // bytes without a name and silently drop the attachment.
                     pdfFileName = await _fileNameService.GetFileNameAsync(reminder.InvoiceId, DocumentFileName.PdfExtension, ct);
+                    pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(reminder.InvoiceId, ct);
                 }
                 catch (Exception ex)
                 {
