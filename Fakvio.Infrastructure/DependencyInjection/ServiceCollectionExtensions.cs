@@ -155,6 +155,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<ICurrencyService, CurrencyService>();
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
+        services.AddScopedWithLogging<IDocumentFileNameService, DocumentFileNameService>();
         services.AddScopedWithLogging<IIsdocExportService, IsdocExportService>();
         services.AddScopedWithLogging<IUblExportService, UblExportService>();
         services.AddScopedWithLogging<IAccountingExportService, AccountingExportService>();

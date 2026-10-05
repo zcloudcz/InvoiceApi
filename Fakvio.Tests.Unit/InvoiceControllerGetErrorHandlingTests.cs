@@ -50,6 +50,7 @@ public class InvoiceControllerGetErrorHandlingTests
         var controller = new InvoiceController(
             _invoiceService,
             Substitute.For<IPdfExportService>(),
+            Substitute.For<IDocumentFileNameService>(),
             Substitute.For<IIsdocExportService>(),
             Substitute.For<IUblExportService>(),
             Substitute.For<IEmailService>(),

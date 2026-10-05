@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using System.IO.Compression;
 using Fakvio.API.Controller;
 using Fakvio.Application.Service;
@@ -168,9 +169,14 @@ public class IsdocReceivedInvoiceEndpointTests
     {
         var invoiceService = Substitute.For<IInvoiceService>();
         var isdocService = Substitute.For<IIsdocExportService>();
+        var fileNames = Substitute.For<IDocumentFileNameService>();
+        // Names are resolved for all ids at once and come from the configured format
+        fileNames.GetFileNamesAsync(Arg.Any<IReadOnlyCollection<long>>(), DocumentFileName.IsdocExtension, Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<long, string> { [1] = "Invoice_INV001.isdoc", [2] = "Invoice_INV002.isdoc" });
         var controller = new InvoiceController(
             invoiceService,
             Substitute.For<IPdfExportService>(),
+            fileNames,
             isdocService,
             Substitute.For<IUblExportService>(),
             Substitute.For<IEmailService>(),

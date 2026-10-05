@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Invoice;
@@ -30,6 +31,7 @@ public class IsdocEndpointTests
 
     private readonly IInvoiceService _invoiceService = Substitute.For<IInvoiceService>();
     private readonly IPdfExportService _pdfExportService = Substitute.For<IPdfExportService>();
+    private readonly IDocumentFileNameService _fileNameService = Substitute.For<IDocumentFileNameService>();
     private readonly IIsdocExportService _isdocExportService = Substitute.For<IIsdocExportService>();
     private readonly IEmailService _emailService = Substitute.For<IEmailService>();
     private readonly IQrPaymentService _qrPaymentService = Substitute.For<IQrPaymentService>();
@@ -44,6 +46,7 @@ public class IsdocEndpointTests
         _controller = new InvoiceController(
             _invoiceService,
             _pdfExportService,
+            _fileNameService,
             _isdocExportService,
             Substitute.For<IUblExportService>(),
             _emailService,
@@ -80,6 +83,9 @@ public class IsdocEndpointTests
         var invoiceId = 42L;
         var docNumber = "INV2026001";
         var fakeXmlBytes = "<ISDOC>test</ISDOC>"u8.ToArray();
+        // The controller must hand out exactly the name the file name service resolves
+        _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.IsdocExtension, Arg.Any<CancellationToken>())
+            .Returns("Custom_INV2026001.isdoc");
 
         _isdocExportService.ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(fakeXmlBytes);
@@ -94,30 +100,9 @@ public class IsdocEndpointTests
         fileResult.ContentType.ShouldBe("application/xml");
         fileResult.FileContents.ShouldBe(fakeXmlBytes);
 
-        // File name should include the document number and .isdoc extension
-        fileResult.FileDownloadName.ShouldBe($"Invoice_{docNumber}.isdoc");
+        fileResult.FileDownloadName.ShouldBe("Custom_INV2026001.isdoc");
     }
 
-    [Fact]
-    public async Task ExportIsdoc_CreditNote_UsesCorrectFileNamePrefix()
-    {
-        // Arrange — credit note should use "CreditNote_" prefix in file name
-        var invoiceId = 99L;
-        var docNumber = "CN2026001";
-        var fakeXmlBytes = "<ISDOC>credit</ISDOC>"u8.ToArray();
-
-        _isdocExportService.ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(fakeXmlBytes);
-        _invoiceService.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(MakeInvoiceDto(invoiceId, docNumber, EDocumentType.CreditNote));
-
-        // Act
-        var result = await _controller.ExportIsdoc(invoiceId, CancellationToken.None);
-
-        // Assert — credit note prefix must be used
-        var fileResult = result.ShouldBeOfType<FileContentResult>();
-        fileResult.FileDownloadName.ShouldBe($"CreditNote_{docNumber}.isdoc");
-    }
 
     [Fact]
     public async Task ExportIsdoc_InvoiceNotFound_Returns404()
@@ -167,7 +152,7 @@ public class IsdocEndpointTests
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(MakeInvoiceDto(invoiceId, "INV2026005"));
         apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(xmlBytes);
+            .Returns(new ExportedFile(xmlBytes, "Invoice_INV2026005.isdoc"));
 
         // Act
         var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
@@ -221,26 +206,6 @@ public class IsdocEndpointTests
         doc.RootElement.GetProperty("error").GetString().ShouldNotBeNullOrEmpty();
     }
 
-    [Fact]
-    public async Task ExportInvoiceIsdoc_CreditNote_UsesCorrectFileName()
-    {
-        // Arrange — credit note should use "CreditNote_" prefix in the returned file name
-        var apiClient = Substitute.For<IFakvioApiClient>();
-        var invoiceId = 20L;
-        var xmlBytes = "<?xml?>"u8.ToArray();
-
-        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(MakeInvoiceDto(invoiceId, "CN2026001", EDocumentType.CreditNote));
-        apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(xmlBytes);
-
-        // Act
-        var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
-
-        // Assert
-        var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("CreditNote_CN2026001.isdoc");
-    }
 
     // ── MCP tool tests — ExportInvoiceUbl (ADR 0002, F1.7) ─────────────────────
 
@@ -255,7 +220,7 @@ public class IsdocEndpointTests
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(MakeInvoiceDto(invoiceId, "INV2026005"));
         apiClient.ExportInvoiceUblAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(xmlBytes);
+            .Returns(new ExportedFile(xmlBytes, "Invoice_INV2026005.xml"));
 
         var json = await InvoiceTools.ExportInvoiceUbl(apiClient, invoiceId);
 
@@ -308,21 +273,4 @@ public class IsdocEndpointTests
         doc.RootElement.TryGetProperty("stackTrace", out _).ShouldBeFalse();
     }
 
-    [Fact]
-    public async Task ExportInvoiceUbl_CreditNote_UsesCorrectFileName()
-    {
-        var apiClient = Substitute.For<IFakvioApiClient>();
-        var invoiceId = 21L;
-        var xmlBytes = "<?xml?>"u8.ToArray();
-
-        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(MakeInvoiceDto(invoiceId, "CN2026002", EDocumentType.CreditNote));
-        apiClient.ExportInvoiceUblAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(xmlBytes);
-
-        var json = await InvoiceTools.ExportInvoiceUbl(apiClient, invoiceId);
-
-        var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("CreditNote_CN2026002.xml");
-    }
 }

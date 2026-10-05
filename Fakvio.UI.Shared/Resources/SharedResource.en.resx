@@ -221,6 +221,15 @@
   <data name="Billing_DefaultPaymentMethod" xml:space="preserve"><value>Default payment method</value></data>
   <data name="Billing_BankAccount" xml:space="preserve"><value>Bank account number</value></data>
   <data name="Billing_Notes" xml:space="preserve"><value>Billing notes</value></data>
+  <data name="FileNameFormat_Invoice" xml:space="preserve"><value>File name – invoice</value></data>
+  <data name="FileNameFormat_CreditNote" xml:space="preserve"><value>File name – credit note</value></data>
+  <data name="FileNameFormat_Proforma" xml:space="preserve"><value>File name – proforma invoice</value></data>
+  <data name="FileNameFormat_TaxReceipt" xml:space="preserve"><value>File name – tax receipt for advance payment</value></data>
+  <data name="FileNameFormat_Placeholders" xml:space="preserve"><value>Placeholders (click to insert):</value></data>
+  <data name="FileNameFormat_Preview" xml:space="preserve"><value>Preview</value></data>
+  <data name="FileNameFormat_Unknown" xml:space="preserve"><value>Unknown placeholders</value></data>
+  <data name="FileNameFormat_EmptyHintClient" xml:space="preserve"><value>Empty = company setting, otherwise e.g. Invoice_2026001</value></data>
+  <data name="FileNameFormat_EmptyHintCompany" xml:space="preserve"><value>Empty = default format, e.g. Invoice_2026001</value></data>
   <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Days from issue</value></data>
   <data name="Billing_DaysFromEndOfMonth" xml:space="preserve"><value>Days from end of month</value></data>
   <data name="Billing_EndOfNextMonth" xml:space="preserve"><value>End of next month</value></data>
@@ -478,8 +487,6 @@
   <data name="Invoice_CopyError" xml:space="preserve"><value>Failed to copy invoice</value></data>
   <data name="Invoice_CopyShiftPeriods" xml:space="preserve"><value>Shift periods in texts</value></data>
   <data name="Invoice_CopyShiftPeriodsHint" xml:space="preserve"><value>Months and years in item descriptions and notes (e.g. "3/2026", "March 2026") move forward by the month difference from the original invoice.</value></data>
-  <data name="FileName_Invoice" xml:space="preserve"><value>Invoice</value></data>
-  <data name="FileName_CreditNote" xml:space="preserve"><value>CreditNote</value></data>
   <data name="FileName_Invoices" xml:space="preserve"><value>Invoices</value></data>
   <data name="FileName_CreditNotes" xml:space="preserve"><value>CreditNotes</value></data>
   <data name="FileName_TaxComparison" xml:space="preserve"><value>tax-comparison</value></data>
@@ -1649,8 +1656,6 @@
   <data name="TaxReceiptForAdvance_Detail" xml:space="preserve"><value>Tax Receipt for Advance Payment</value></data>
   <data name="Template_DocumentTypeProforma" xml:space="preserve"><value>Advance Invoice (Proforma)</value></data>
   <data name="Template_DocumentTypeTaxReceiptForAdvance" xml:space="preserve"><value>Tax Receipt for Advance Payment</value></data>
-  <data name="FileName_Proforma" xml:space="preserve"><value>Proforma</value></data>
-  <data name="FileName_TaxReceiptForAdvance" xml:space="preserve"><value>TaxReceipt</value></data>
   <data name="Proforma_IssueFinalInvoice" xml:space="preserve"><value>Issue Final Invoice</value></data>
   <data name="Proforma_FinalInvoices" xml:space="preserve"><value>Linked Final Invoices</value></data>
   <data name="Proforma_NoFinalInvoices" xml:space="preserve"><value>No final invoices issued yet.</value></data>

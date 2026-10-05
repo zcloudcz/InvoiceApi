@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Reminder;
@@ -28,6 +29,7 @@ public class ReminderService : IReminderService
     private readonly IInterestCalculator _interestCalculator;
     private readonly IEmailService _emailService;
     private readonly IPdfExportService _pdfExportService;
+    private readonly IDocumentFileNameService _fileNameService;
     private readonly IContentTemplateService _contentTemplateService;
     private readonly ILogger<ReminderService> _logger;
 
@@ -36,6 +38,7 @@ public class ReminderService : IReminderService
         IInterestCalculator interestCalculator,
         IEmailService emailService,
         IPdfExportService pdfExportService,
+        IDocumentFileNameService fileNameService,
         IContentTemplateService contentTemplateService,
         ILogger<ReminderService> logger)
     {
@@ -43,6 +46,7 @@ public class ReminderService : IReminderService
         _interestCalculator = interestCalculator;
         _emailService = emailService;
         _pdfExportService = pdfExportService;
+        _fileNameService = fileNameService;
         _contentTemplateService = contentTemplateService;
         _logger = logger;
     }
@@ -386,10 +390,14 @@ public class ReminderService : IReminderService
 
             // Optionally attach the invoice PDF.
             byte[]? pdfBytes = null;
+            string? pdfFileName = null;
             if (await ShouldAttachPdf(reminder.ClientId, ct))
             {
                 try
                 {
+                    // Name first: if it failed after the bytes were set, SendEmailAsync would get
+                    // bytes without a name and silently drop the attachment.
+                    pdfFileName = await _fileNameService.GetFileNameAsync(reminder.InvoiceId, DocumentFileName.PdfExtension, ct);
                     pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(reminder.InvoiceId, ct);
                 }
                 catch (Exception ex)
@@ -400,8 +408,7 @@ public class ReminderService : IReminderService
             }
 
             // Send the email.
-            await _emailService.SendEmailAsync(email, subject, body, pdfBytes,
-                pdfBytes != null ? $"Invoice_{reminder.Invoice.DocumentNumber}.pdf" : null, ct);
+            await _emailService.SendEmailAsync(email, subject, body, pdfBytes, pdfFileName, ct);
 
             // Update status to Sent.
             reminder.Status = EReminderStatus.Sent;

@@ -221,12 +221,12 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
-    /// Downloads the invoice as a PDF byte array using the default template.
-    /// Uses GetBytesAsync from the base class for binary content.
+    /// Downloads the invoice as a PDF using the default template.
+    /// The returned file name is the one chosen by the server (client's file name format).
     /// </summary>
-    public async Task<byte[]?> ExportToPdfAsync(long id)
+    public async Task<DownloadedFile?> ExportToPdfAsync(long id)
     {
-        return await GetBytesAsync($"/api/invoice/{id}/pdf");
+        return await GetFileAsync($"/api/invoice/{id}/pdf");
     }
 
     /// <summary>
@@ -234,12 +234,12 @@ public class FakvioService : ApiClientBase
     /// When templateId is null, uses the default template for the document type.
     /// When provided, uses the specified template — allows users to choose PDF layouts.
     /// </summary>
-    public async Task<byte[]?> ExportToPdfAsync(long id, long? templateId)
+    public async Task<DownloadedFile?> ExportToPdfAsync(long id, long? templateId)
     {
         var url = templateId.HasValue
             ? $"/api/invoice/{id}/pdf?templateId={templateId.Value}"
             : $"/api/invoice/{id}/pdf";
-        return await GetBytesAsync(url);
+        return await GetFileAsync(url);
     }
 
     /// <summary>
@@ -338,11 +338,11 @@ public class FakvioService : ApiClientBase
     /// <summary>
     /// Downloads the invoice as an ISDOC 6.0.2 XML byte array.
     /// ISDOC is the Czech electronic invoice standard importable by Pohoda, Money S3, Helios.
-    /// Uses GetBytesAsync from the base class for binary content.
+    /// The returned file name is the one chosen by the server (same format as the PDF).
     /// </summary>
-    public async Task<byte[]?> ExportIsdocAsync(long id)
+    public async Task<DownloadedFile?> ExportIsdocAsync(long id)
     {
-        return await GetBytesAsync($"/api/invoice/{id}/isdoc");
+        return await GetFileAsync($"/api/invoice/{id}/isdoc");
     }
 
     /// <summary>
@@ -386,7 +386,8 @@ public class FakvioService : ApiClientBase
             if (response.IsSuccessStatusCode)
             {
                 var bytes = await response.Content.ReadAsByteArrayAsync();
-                return UblDownloadResult.Success(bytes, fallbackFileName);
+                // Prefer the server-built name (client's file name format); fall back to the caller's.
+                return UblDownloadResult.Success(bytes, GetServerFileName(response) ?? fallbackFileName);
             }
 
             return await ParseUblErrorAsync(response);
