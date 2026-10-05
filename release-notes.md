@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.05 — 2026-10-05
+
 ### Změny pro uživatele
 
 - **#506** — Názvy generovaných dokumentů (PDF, ISDOC, UBL) se nyní konfigurují per klient a typ dokladu s možností výchozího formátu na úrovni firmy. Formát se používá pro stažení, e-mailové přílohy a export nástrojů. Nastavit jde v UI nebo přes MCP nástroj `update_client`. (PR #506, `e54505f`)
