@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.05.2 — 2026-10-05
+
+### Změny pro uživatele
+
+- **#509** — Zástupné symboly pro data v názvech dokumentů ({{IssueDate}}, {{TaxDate}}, {{DueDate}}) akceptují volitelný formát — např. {{IssueDate:yyyyMMdd}} nebo {{DueDate:dd.MM.yyyy}}; bez formátu se používá výchozí yyyy-MM-dd. Přibyly symboly {{TaxDate}} (DUZP) a {{DueDate}}. (PR #509, `78e016a`)
+
 ## 2026.10.05 — 2026-10-05
 
 ### Změny pro uživatele

@@ -184,6 +184,46 @@ public class DocumentFileNameEndpointTests : IClassFixture<FakvioFactory>
     }
 
     [Fact]
+    public async Task UpdateClient_InvalidDateFormat_Returns400()
+    {
+        var client = await AuthClientAsync();
+
+        var response = await client.PutAsJsonAsync($"/api/client/{CustomerInheriting}", new UpdateClientDto
+        {
+            BillingSettings = new UpdateBillingSettingsDto { InvoiceFileNameFormat = "{{IssueDate:HH}}_{{DocumentNumber}}" }
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Invalid date format 'HH'");
+    }
+
+    [Fact]
+    public async Task UpdateClient_DateFormat_IsUsedByTheNextDownload()
+    {
+        var client = await AuthClientAsync();
+
+        var update = await client.PutAsJsonAsync($"/api/client/{EnglishCustomer}", new UpdateClientDto
+        {
+            BillingSettings = new UpdateBillingSettingsDto
+            {
+                CreditNoteFileNameFormat = "{{IssueDate:yyyyMMdd}}_{{DueDate:dd.MM.yyyy}}_{{DocumentNumber}}"
+            }
+        });
+        update.StatusCode.ShouldBe(HttpStatusCode.OK, await update.Content.ReadAsStringAsync());
+
+        var response = await client.GetAsync($"/api/invoice/{CreditNoteEnglish}/pdf");
+
+        // Seeded credit note: issued 2026-03-05, due 2026-03-19.
+        DownloadName(response).ShouldBe("20260305_19.03.2026_DB3.pdf");
+
+        // Leave the shared fixture as other tests expect it (no format -> system default)
+        await client.PutAsJsonAsync($"/api/client/{EnglishCustomer}", new UpdateClientDto
+        {
+            BillingSettings = new UpdateBillingSettingsDto { CreditNoteFileNameFormat = "" }
+        });
+    }
+
+    [Fact]
     public async Task UpdateClient_ValidFormat_IsUsedByTheNextDownload()
     {
         var client = await AuthClientAsync();

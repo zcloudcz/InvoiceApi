@@ -501,12 +501,27 @@ Prázdné pole = „převezmi výchozí".
 | `{{DocumentNumber}}` | Číslo dokladu (u konceptu ID dokladu) | `2026001` |
 | `{{VariableSymbol}}` | Variabilní symbol | `2026001` |
 | `{{IssueDate}}` | Datum vystavení | `2026-03-15` |
+| `{{TaxDate}}` | Datum uskutečnění zdanitelného plnění (DUZP) | `2026-03-10` |
+| `{{DueDate}}` | Datum splatnosti | `2026-03-29` |
 | `{{Year}}` / `{{Month}}` | Rok / měsíc vystavení (měsíc dvojmístně) | `2026` / `03` |
 | `{{ClientName}}` | Název klienta | `Acme s.r.o.` |
 | `{{IssuerName}}` | Název vaší firmy | `Moje firma s.r.o.` |
 
 Příklady: `{{IssuerName}}_{{Year}}-{{DocumentNumber}}` → `Moje firma s.r.o._2026-2026001.pdf`;
 `{{ClientName}} {{DocumentNumber}}` → `Acme s.r.o. 2026001.pdf`.
+
+**Formát data:** za název datumového zástupného znaku (`IssueDate`, `TaxDate`, `DueDate`) můžete za dvojtečku
+připsat vlastní formát. Bez formátu se použije `yyyy-MM-dd`. Povolená písmena jsou jen `y` (rok), `M` (měsíc, velké M!)
+a `d` (den) a oddělovače `-`, `_`, `.`; cokoli jiného (např. `HH`, `:`, `/`) aplikace při uložení odmítne.
+
+| Zápis | Výsledek |
+|-------|----------|
+| `{{IssueDate:yyyyMMdd}}` | `20260315` |
+| `{{IssueDate:dd.MM.yyyy}}` | `15.03.2026` |
+| `{{DueDate:yyMM}}` | `2603` |
+
+Příklad: `{{DocumentType}}_{{IssueDate:yyyyMMdd}}_{{DocumentNumber}}` → `Faktura_20260315_2026001.pdf`.
+Formát nejde použít u ostatních zástupných znaků. Pokud datum doklad nemá, zůstane na jeho místě prázdno.
 
 **Pravidla:** znaky nepovolené v názvech souborů (`/ \ : * ? " < > |`) se nahradí `_`, mezery a tečky na
 začátku a konci se ořežou, název se zkrátí na 150 znaků. Neznámý zástupný znak (překlep) aplikace při uložení

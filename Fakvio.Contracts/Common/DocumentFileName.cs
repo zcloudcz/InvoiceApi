@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Fakvio.Domain.Enums;
 
@@ -16,6 +17,8 @@ namespace Fakvio.Contracts.Common;
 /// <param name="IssueDate">Used for <c>{{IssueDate}}</c>, <c>{{Year}}</c> and <c>{{Month}}</c>.</param>
 /// <param name="ClientName">Customer company name.</param>
 /// <param name="IssuerName">Our own company name.</param>
+/// <param name="TaxDate">Date of taxable supply (DUZP), used for <c>{{TaxDate}}</c>.</param>
+/// <param name="DueDate">Payment due date, used for <c>{{DueDate}}</c>.</param>
 public sealed record DocumentFileNameValues(
     EDocumentType DocumentType,
     string? Language,
@@ -24,7 +27,9 @@ public sealed record DocumentFileNameValues(
     string? VariableSymbol,
     DateTime? IssueDate,
     string? ClientName,
-    string? IssuerName);
+    string? IssuerName,
+    DateTime? TaxDate = null,
+    DateTime? DueDate = null);
 
 /// <summary>
 /// THE single place where file names of generated documents (PDF, ISDOC, UBL) are built.
@@ -35,6 +40,8 @@ public sealed record DocumentFileNameValues(
 /// with the issuer's setting as company-wide default and <see cref="DefaultFormat"/> as the last resort.
 /// A format uses <c>{{Key}}</c> placeholders (same syntax as content templates) and never contains
 /// the file extension — the extension is appended here.
+/// Date placeholders (IssueDate, TaxDate, DueDate) accept an optional format after a colon,
+/// e.g. <c>{{IssueDate:yyyyMMdd}}</c>; without it they render as <c>yyyy-MM-dd</c>.
 /// </summary>
 public static class DocumentFileName
 {
@@ -55,9 +62,19 @@ public static class DocumentFileName
     /// <summary>All recognised placeholder keys. Also used by the UI (FileNameFormatInput) for the live preview.</summary>
     public static readonly IReadOnlyList<string> PlaceholderKeys =
     [
-        "DocumentType", "DocumentNumber", "VariableSymbol", "IssueDate",
+        "DocumentType", "DocumentNumber", "VariableSymbol", "IssueDate", "TaxDate", "DueDate",
         "Year", "Month", "ClientName", "IssuerName"
     ];
+
+    /// <summary>Placeholders that accept an optional <c>:format</c> suffix.</summary>
+    private static readonly string[] DateKeys = ["IssueDate", "TaxDate", "DueDate"];
+
+    /// <summary>Format used by a date placeholder without (or with an invalid) <c>:format</c> suffix.</summary>
+    public const string DefaultDateFormat = "yyyy-MM-dd";
+
+    // Only year/month/day letters and the separators - _ . — no time, no culture-dependent
+    // separators (':' and '/'), no quotes or escapes. Case matters: MM = month, mm = minutes (not allowed).
+    private static readonly Regex DateFormatRegex = new(@"^[yMd._-]+$", RegexOptions.Compiled);
 
     // Same shape as ContentTemplateService: {{Key}}. Whitespace inside the braces is tolerated.
     private static readonly Regex PlaceholderRegex =
@@ -86,9 +103,10 @@ public static class DocumentFileName
     }
 
     /// <summary>
-    /// Returns the placeholder keys in <paramref name="format"/> that are not supported
-    /// (empty list = valid). Called when saving settings so typos are rejected early,
-    /// while <see cref="Build"/> merely drops them.
+    /// Returns the placeholders in <paramref name="format"/> that are not supported
+    /// (empty list = valid): unknown keys (<c>Foo</c>), invalid date formats (<c>IssueDate:HH</c>)
+    /// and formats on non-date placeholders (<c>ClientName:x</c>), exactly as typed.
+    /// Called when saving settings so typos are rejected early, while <see cref="Build"/> merely drops them.
     /// </summary>
     public static IReadOnlyList<string> Validate(string? format)
     {
@@ -97,7 +115,15 @@ public static class DocumentFileName
 
         return PlaceholderRegex.Matches(format)
             .Select(m => m.Groups[1].Value)
-            .Where(key => !PlaceholderKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+            .Where(token =>
+            {
+                var (key, dateFormat) = SplitToken(token);
+                if (!PlaceholderKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+                    return true;
+                if (dateFormat is null)
+                    return false;
+                return !IsDateKey(key) || !DateFormatRegex.IsMatch(dateFormat);
+            })
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -108,11 +134,24 @@ public static class DocumentFileName
     /// </summary>
     public static string? ValidateFormats(params string?[] formats)
     {
-        var unknown = formats.SelectMany(Validate).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (unknown.Count > 0)
+        var invalid = formats.SelectMany(Validate).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        // A token with a colon on a known date key is a bad date format; everything else
+        // (unknown key, format on a non-date key) is reported as an unknown placeholder.
+        var badFormat = invalid
+            .Select(SplitToken)
+            .FirstOrDefault(p => p.Format is not null && IsDateKey(p.Key));
+        if (badFormat.Key is not null)
         {
-            return $"Unknown file name placeholder(s): {string.Join(", ", unknown)}. " +
-                   $"Allowed: {string.Join(", ", PlaceholderKeys)}.";
+            return $"Invalid date format '{badFormat.Format}' in {{{{{badFormat.Key}:{badFormat.Format}}}}}. " +
+                   "Allowed characters: y M d - _ .";
+        }
+
+        if (invalid.Count > 0)
+        {
+            return $"Unknown file name placeholder(s): {string.Join(", ", invalid)}. " +
+                   $"Allowed: {string.Join(", ", PlaceholderKeys)} " +
+                   $"(only {string.Join(", ", DateKeys)} accept a ':format' suffix).";
         }
 
         return formats.Any(f => f is { Length: > MaxFormatLength })
@@ -149,21 +188,53 @@ public static class DocumentFileName
     /// <summary>Replaces placeholders, then sanitizes and shortens the result (no extension).</summary>
     private static string Render(string format, DocumentFileNameValues v)
     {
-        var rendered = PlaceholderRegex.Replace(format, match => match.Groups[1].Value.ToLowerInvariant() switch
+        var rendered = PlaceholderRegex.Replace(format, match =>
         {
-            "documenttype" => DocumentTypeLabel(v.DocumentType, v.Language),
-            // Drafts have no number yet — the id keeps the name unique and identifiable.
-            "documentnumber" => string.IsNullOrWhiteSpace(v.DocumentNumber) ? v.InvoiceId.ToString() : v.DocumentNumber,
-            "variablesymbol" => v.VariableSymbol ?? "",
-            "issuedate" => v.IssueDate?.ToString("yyyy-MM-dd") ?? "",
-            "year" => v.IssueDate?.ToString("yyyy") ?? "",
-            "month" => v.IssueDate?.ToString("MM") ?? "",
-            "clientname" => v.ClientName ?? "",
-            "issuername" => v.IssuerName ?? "",
-            _ => "" // unknown placeholder: dropped (rejected earlier at save time)
+            var (key, dateFormat) = SplitToken(match.Groups[1].Value);
+            return key.ToLowerInvariant() switch
+            {
+                "documenttype" => DocumentTypeLabel(v.DocumentType, v.Language),
+                // Drafts have no number yet — the id keeps the name unique and identifiable.
+                "documentnumber" => string.IsNullOrWhiteSpace(v.DocumentNumber) ? v.InvoiceId.ToString() : v.DocumentNumber,
+                "variablesymbol" => v.VariableSymbol ?? "",
+                "issuedate" => FormatDate(v.IssueDate, dateFormat),
+                "taxdate" => FormatDate(v.TaxDate, dateFormat),
+                "duedate" => FormatDate(v.DueDate, dateFormat),
+                "year" => v.IssueDate?.ToString("yyyy") ?? "",
+                "month" => v.IssueDate?.ToString("MM") ?? "",
+                "clientname" => v.ClientName ?? "",
+                "issuername" => v.IssuerName ?? "",
+                _ => "" // unknown placeholder: dropped (rejected earlier at save time)
+            };
         });
 
         return Sanitize(rendered);
+    }
+
+    /// <summary>Splits <c>IssueDate:yyyyMMdd</c> into key and format (format is null when there is no colon).</summary>
+    private static (string Key, string? Format) SplitToken(string token)
+    {
+        var colon = token.IndexOf(':');
+        return colon < 0 ? (token.Trim(), null) : (token[..colon].Trim(), token[(colon + 1)..]);
+    }
+
+    private static bool IsDateKey(string key) => DateKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Formats a date with an optional custom format. Never throws: a missing or invalid format
+    /// (Build must work even for data saved before validation existed) uses the default one.
+    /// </summary>
+    private static string FormatDate(DateTime? date, string? format)
+    {
+        if (date is null)
+            return "";
+
+        var f = format is not null && DateFormatRegex.IsMatch(format) ? format : DefaultDateFormat;
+        // A single-letter format is a .NET *standard* specifier ("d" = short date, "M" = month+day),
+        // so prefix '%' to force it to be read as a custom one-letter format.
+        if (f.Length == 1)
+            f = "%" + f;
+        return date.Value.ToString(f, CultureInfo.InvariantCulture);
     }
 
     /// <summary>

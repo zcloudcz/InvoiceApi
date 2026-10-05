@@ -227,7 +227,8 @@
   <data name="FileNameFormat_TaxReceipt" xml:space="preserve"><value>Název souboru – daňový doklad k přijaté platbě</value></data>
   <data name="FileNameFormat_Placeholders" xml:space="preserve"><value>Zástupné znaky (kliknutím vložíte):</value></data>
   <data name="FileNameFormat_Preview" xml:space="preserve"><value>Náhled</value></data>
-  <data name="FileNameFormat_Unknown" xml:space="preserve"><value>Neznámé zástupné znaky</value></data>
+  <data name="FileNameFormat_Unknown" xml:space="preserve"><value>Neznámé nebo neplatné zástupné znaky</value></data>
+  <data name="FileNameFormat_DateHint" xml:space="preserve"><value>Datum lze formátovat, např. {{IssueDate:yyyyMMdd}} nebo {{DueDate:dd.MM.yyyy}} (povoleno: y M d - _ .)</value></data>
   <data name="FileNameFormat_EmptyHintClient" xml:space="preserve"><value>Prázdné = nastavení firmy, jinak např. Faktura_2026001</value></data>
   <data name="FileNameFormat_EmptyHintCompany" xml:space="preserve"><value>Prázdné = výchozí tvar, např. Faktura_2026001</value></data>
   <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Dní od vystavení</value></data>

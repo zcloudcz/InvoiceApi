@@ -19,13 +19,16 @@ public class DocumentFileNameBuilderTests
         string? language = "cs",
         string? number = "2026001") =>
         new(type, language, InvoiceId: 42, number, VariableSymbol: "VS123",
-            IssueDate: new DateTime(2026, 3, 5), ClientName: "Acme s.r.o.", IssuerName: "My Firm");
+            IssueDate: new DateTime(2026, 3, 5), ClientName: "Acme s.r.o.", IssuerName: "My Firm",
+            TaxDate: new DateTime(2026, 3, 1), DueDate: new DateTime(2026, 3, 19));
 
     [Theory]
     [InlineData("{{DocumentType}}", "Faktura.pdf")]
     [InlineData("{{DocumentNumber}}", "2026001.pdf")]
     [InlineData("{{VariableSymbol}}", "VS123.pdf")]
     [InlineData("{{IssueDate}}", "2026-03-05.pdf")]
+    [InlineData("{{TaxDate}}", "2026-03-01.pdf")]
+    [InlineData("{{DueDate}}", "2026-03-19.pdf")]
     [InlineData("{{Year}}", "2026.pdf")]
     [InlineData("{{Month}}", "03.pdf")] // two digits
     [InlineData("{{ClientName}}", "Acme s.r.o.pdf")] // the name's trailing dot is trimmed, then ".pdf" is appended
@@ -135,6 +138,94 @@ public class DocumentFileNameBuilderTests
     public void Build_UnknownPlaceholder_IsDropped_NotKeptLiterally()
     {
         DocumentFileName.Build("A_{{Nope}}_{{DocumentNumber}}", Values(), ".pdf").ShouldBe("A__2026001.pdf");
+    }
+
+    [Theory]
+    [InlineData("{{IssueDate:yyyyMMdd}}", "20260305.pdf")]
+    [InlineData("{{IssueDate:dd.MM.yyyy}}", "05.03.2026.pdf")]
+    [InlineData("{{IssueDate:yyMM}}", "2603.pdf")]
+    [InlineData("{{TaxDate:yyyyMMdd}}", "20260301.pdf")]
+    [InlineData("{{TaxDate:dd.MM.yyyy}}", "01.03.2026.pdf")]
+    [InlineData("{{DueDate:yyyyMMdd}}", "20260319.pdf")]
+    [InlineData("{{DueDate:yyMM}}", "2603.pdf")]
+    [InlineData("{{issuedate:yyyy_MM_dd}}", "2026_03_05.pdf")] // key is case-insensitive
+    [InlineData("{{ IssueDate:yyyyMMdd }}", "20260305.pdf")] // whitespace around the whole token is tolerated
+    [InlineData("{{IssueDate:d}}", "5.pdf")] // single letter must be a custom format, not the short-date specifier
+    [InlineData("{{IssueDate:M}}", "3.pdf")]
+    public void Build_DateFormat_IsApplied(string format, string expected)
+    {
+        DocumentFileName.Build(format, Values(), DocumentFileName.PdfExtension).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("{{IssueDate:HH}}")]
+    [InlineData("{{IssueDate:}}")]
+    [InlineData("{{IssueDate:mm}}")] // case matters: only M (month) is allowed
+    [InlineData("{{IssueDate:yyyy/MM}}")]
+    [InlineData("{{IssueDate:'x'}}")]
+    [InlineData("{{IssueDate:\\d}}")]
+    [InlineData("{{IssueDate:yyyy:MM}}")]
+    public void Build_InvalidDateFormat_DoesNotThrow_AndUsesDefaultFormat(string format)
+    {
+        DocumentFileName.Build(format, Values(), ".pdf").ShouldBe("2026-03-05.pdf");
+    }
+
+    [Fact]
+    public void Build_NullDates_RenderEmpty_AlsoWithAFormat()
+    {
+        var values = Values() with { IssueDate = null, TaxDate = null, DueDate = null };
+
+        DocumentFileName.Build("A{{IssueDate:yyyyMMdd}}_{{TaxDate}}_{{DueDate:yyMM}}B", values, ".pdf")
+            .ShouldBe("A__B.pdf");
+    }
+
+    [Theory]
+    [InlineData("{{IssueDate:HH}}", "IssueDate:HH")]
+    [InlineData("{{TaxDate:}}", "TaxDate:")]
+    [InlineData("{{DueDate:dd/MM}}", "DueDate:dd/MM")]
+    [InlineData("{{IssueDate:mm}}", "IssueDate:mm")]
+    [InlineData("{{IssueDate:abc}}", "IssueDate:abc")]
+    [InlineData("{{ClientName:xyz}}", "ClientName:xyz")] // formats exist only on date placeholders
+    [InlineData("{{Year:yy}}", "Year:yy")]
+    [InlineData("{{Nope:yyyy}}", "Nope:yyyy")]
+    public void Validate_InvalidFormatSuffix_IsReported(string format, string expected)
+    {
+        DocumentFileName.Validate(format).ShouldBe([expected]);
+    }
+
+    [Theory]
+    [InlineData("{{IssueDate:yyyyMMdd}}")]
+    [InlineData("{{DueDate:dd.MM.yyyy}}_{{TaxDate:yy-MM-dd}}")]
+    [InlineData("{{IssueDate:yyyy_MM}}")]
+    public void Validate_ValidDateFormat_ReturnsNothing(string format)
+    {
+        DocumentFileName.Validate(format).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ValidateFormats_InvalidDateFormat_ExplainsAllowedCharacters()
+    {
+        var message = DocumentFileName.ValidateFormats("{{DocumentNumber}}", "{{IssueDate:HH}}");
+
+        message.ShouldNotBeNull();
+        message.ShouldContain("Invalid date format 'HH' in {{IssueDate:HH}}");
+        message.ShouldContain("Allowed characters: y M d - _ .");
+    }
+
+    [Fact]
+    public void ValidateFormats_FormatOnNonDatePlaceholder_IsRejected()
+    {
+        var message = DocumentFileName.ValidateFormats("{{ClientName:xyz}}");
+
+        message.ShouldNotBeNull();
+        message.ShouldContain("ClientName:xyz");
+    }
+
+    [Fact]
+    public void PlaceholderKeys_IncludeTaxAndDueDate()
+    {
+        DocumentFileName.PlaceholderKeys.ShouldContain("TaxDate");
+        DocumentFileName.PlaceholderKeys.ShouldContain("DueDate");
     }
 
     [Fact]
