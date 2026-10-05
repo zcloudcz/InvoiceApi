@@ -339,7 +339,94 @@ public class EmailSendOptionsEndpointTests : IClassFixture<EmailSendOptionsEndpo
         defaults.AttachIsdoc.ShouldBeTrue();
     }
 
+    // ─── Editable body (full HTML override) ────────────────────────────────────
+
+    [Fact]
+    public async Task Send_HtmlBodyOverride_IsTheSentBody_WithPlaceholdersFilled_AndMessageIgnored()
+    {
+        var client = await AuthClientAsync();
+
+        var response = await SendAsync(client, InvoiceMain, new SendInvoiceEmailDto
+        {
+            RecipientEmail = "to@customer-a.cz",
+            HtmlBody = "<p>Dear client, invoice {{InvoiceNumber}} is attached.</p>",
+            Message = "this intro must be ignored"
+        }, "html-override");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        SentFor("html-override")!.HtmlBody.ShouldBe("<p>Dear client, invoice EM1 is attached.</p>");
+    }
+
+    [Fact]
+    public async Task Send_WithoutHtmlBody_SendsTheRenderedTemplate_NotAnEmptyBody()
+    {
+        var client = await AuthClientAsync();
+
+        var response = await SendAsync(client, InvoiceMain, new SendInvoiceEmailDto { RecipientEmail = "to@customer-a.cz" }, "no-override");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        SentFor("no-override")!.HtmlBody.ShouldContain("EM1");
+    }
+
+    [Theory]
+    [InlineData("<p>ok</p><script>alert(1)</script>")]
+    [InlineData("<IFRAME src='x'></IFRAME>")]
+    [InlineData("<a href='javascript:alert(1)'>x</a>")]
+    public async Task Send_ActiveContentInHtmlBody_Returns400_AndNothingIsSent(string body)
+    {
+        var client = await AuthClientAsync();
+
+        var response = await SendAsync(client, InvoiceMain, new SendInvoiceEmailDto
+        {
+            RecipientEmail = "to@customer-a.cz", HtmlBody = body
+        }, "bad-body");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        SentFor("bad-body").ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Send_OversizedHtmlBody_Returns400()
+    {
+        var client = await AuthClientAsync();
+
+        var response = await SendAsync(client, InvoiceMain, new SendInvoiceEmailDto
+        {
+            RecipientEmail = "to@customer-a.cz", HtmlBody = new string('a', EmailContentValidator.MaxHtmlBodyLength + 1)
+        }, "big-body");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        SentFor("big-body").ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Send_SubjectWithLineBreak_Returns400_AndNothingIsSent()
+    {
+        var client = await AuthClientAsync();
+
+        // Posted directly: SendAsync would overwrite the subject with its marker.
+        var response = await client.PostAsJsonAsync($"/api/invoice/{InvoiceMain}/send-email", new SendInvoiceEmailDto
+        {
+            RecipientEmail = "to@customer-a.cz", Subject = "hdr-injection\r\nBcc: evil@x.cz"
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        SentFor("hdr-injection").ShouldBeNull();
+    }
+
     // ─── GET /api/invoice/{id}/email-defaults ──────────────────────────────────
+
+    [Fact]
+    public async Task Defaults_ReturnTheRenderedBody_WithPlaceholdersResolved()
+    {
+        var client = await AuthClientAsync();
+
+        var defaults = await client.GetFromJsonAsync<InvoiceEmailDefaultsDto>($"/api/invoice/{InvoiceMain}/email-defaults");
+
+        defaults!.DefaultHtmlBody.ShouldNotBeNullOrWhiteSpace();
+        defaults.DefaultHtmlBody.ShouldContain("EM1");
+        defaults.DefaultHtmlBody.ShouldNotContain("{{");
+    }
 
     [Fact]
     public async Task Defaults_HaveTheShapeTheDialogNeeds()

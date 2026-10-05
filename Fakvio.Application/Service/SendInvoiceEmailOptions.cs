@@ -8,6 +8,7 @@ namespace Fakvio.Application.Service;
 /// </summary>
 /// <param name="Subject">Replaces the template subject when not blank.</param>
 /// <param name="Message">Plain-text message prepended to the template body when not blank. It is HTML-encoded before use, never injected as raw HTML.</param>
+/// <param name="HtmlBody">Complete HTML body that replaces the template body when not blank (then <paramref name="Message"/> is ignored). Already validated by the caller (see <c>EmailContentValidator</c>).</param>
 /// <param name="Attachments">Extra, already validated files appended after PDF / ISDOC / UBL. Null means none.</param>
 /// <param name="CcEmails">CC recipients (already validated by the caller, see <c>EmailAddressList</c>). Null means none.</param>
 /// <param name="AttachPdf">Attach the PDF? Null = the client's default (client → company → system default: yes).</param>
@@ -25,7 +26,8 @@ public sealed record SendInvoiceEmailOptions(
     bool? AttachIsdoc = null,
     bool? AttachUbl = null,
     IReadOnlyList<long>? FileAttachmentIds = null,
-    bool SaveAttachmentDefaults = false);
+    bool SaveAttachmentDefaults = false,
+    string? HtmlBody = null);
 
 /// <summary>
 /// A decoded extra attachment. Content type is intentionally absent: the email layer derives it

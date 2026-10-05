@@ -255,10 +255,11 @@ public partial class ContentTemplateService : IContentTemplateService
     /// Replaces all Handlebars-style placeholders ({{Key}}) in the input text.
     /// Uses a compiled regex to find all {{...}} patterns and substitutes them with values
     /// from the provided dictionary. Unknown placeholders are left as-is.
+    /// Internal (not private) so EmailService can fill placeholders in a caller-edited subject / body too.
     /// </summary>
-    private static string ReplacePlaceholders(string input, Dictionary<string, string> placeholders)
+    internal static string ReplacePlaceholders(string input, IReadOnlyDictionary<string, string>? placeholders)
     {
-        if (string.IsNullOrEmpty(input))
+        if (string.IsNullOrEmpty(input) || placeholders is null)
             return input;
 
         return PlaceholderRegex().Replace(input, match =>

@@ -1124,6 +1124,55 @@ public class EmailServiceTests : IDisposable
         resultBody.ShouldBe("<p>Template body</p>");
     }
 
+    /// <summary>A full HTML body replaces the template body and makes the Message intro irrelevant.</summary>
+    [Fact]
+    public void ApplyCustomization_HtmlBody_ReplacesTemplateBody_AndMessageIsIgnored()
+    {
+        var (_, body) = EmailService.ApplyCustomization(
+            "S", "<p>Template body</p>",
+            new SendInvoiceEmailOptions(Message: "intro", HtmlBody: "<p>My own text</p>"));
+
+        body.ShouldBe("<p>My own text</p>");
+    }
+
+    /// <summary>Without an HtmlBody the old behaviour (template + optional message) is untouched.</summary>
+    [Fact]
+    public void ApplyCustomization_BlankHtmlBody_KeepsTemplateAndMessage()
+    {
+        var (_, body) = EmailService.ApplyCustomization(
+            "S", "<p>Template body</p>", new SendInvoiceEmailOptions(Message: "intro", HtmlBody: "  "));
+
+        body.ShouldBe("<p>intro</p><p>Template body</p>");
+    }
+
+    /// <summary>Overrides may carry {{Placeholders}}; unknown ones stay as typed.</summary>
+    [Fact]
+    public void ApplyCustomization_Overrides_GetTheirPlaceholdersFilled()
+    {
+        var placeholders = new Dictionary<string, string> { ["InvoiceNumber"] = "INV7" };
+
+        var (subject, body) = EmailService.ApplyCustomization(
+            "S", "B",
+            new SendInvoiceEmailOptions(Subject: "Invoice {{InvoiceNumber}}", HtmlBody: "<p>{{ InvoiceNumber }} {{Unknown}}</p>"),
+            placeholders);
+
+        subject.ShouldBe("Invoice INV7");
+        body.ShouldBe("<p>INV7 {{Unknown}}</p>");
+    }
+
+    /// <summary>A placeholder value with a line break must not smuggle a header break into the subject.</summary>
+    [Fact]
+    public void ApplyCustomization_PlaceholderValueWithLineBreak_CannotBreakTheSubject()
+    {
+        var placeholders = new Dictionary<string, string> { ["CompanyName"] = "Evil\r\nBcc: x@y.cz" };
+
+        var (subject, _) = EmailService.ApplyCustomization(
+            "S", "B", new SendInvoiceEmailOptions(Subject: "From {{CompanyName}}"), placeholders);
+
+        subject.ShouldNotContain("\r");
+        subject.ShouldNotContain("\n");
+    }
+
     [Fact]
     public void ApplyCustomization_NullOptions_KeepsTemplate()
     {
