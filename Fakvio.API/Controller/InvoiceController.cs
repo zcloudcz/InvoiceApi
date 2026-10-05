@@ -1048,6 +1048,13 @@ public class InvoiceController : ControllerBase
             return BadRequest(new { message = "Recipient is not a valid e-mail address." });
         }
 
+        // Subject / full HTML body override: size, single-line subject, no active content (trust boundary).
+        if (EmailContentValidator.Validate(dto.Subject, dto.HtmlBody) is { } contentError)
+        {
+            _logger.LogWarning("Rejected subject / body for invoice {Id} email: {Message}", id, contentError);
+            return BadRequest(new { message = contentError });
+        }
+
         // CC list: count + address syntax, same rules the UI applies for its inline hint.
         var ccEmails = EmailAddressList.Normalize(dto.CcEmails);
         if (EmailAddressList.ValidateCc(ccEmails) is { } ccError)
@@ -1062,7 +1069,7 @@ public class InvoiceController : ControllerBase
             var options = new SendInvoiceEmailOptions(
                 dto.Subject, dto.Message, attachments, ccEmails,
                 dto.AttachPdf, dto.AttachIsdoc, dto.AttachUbl,
-                dto.FileAttachmentIds, dto.SaveAttachmentDefaults);
+                dto.FileAttachmentIds, dto.SaveAttachmentDefaults, dto.HtmlBody);
             await _emailService.SendInvoiceEmailAsync(id, dto.RecipientEmail ?? string.Empty, cancellationToken, options);
 
             // The service resolves a blank recipient to the client's contact; echo what the caller sent (or the default).

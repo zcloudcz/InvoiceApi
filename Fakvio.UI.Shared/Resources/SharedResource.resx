@@ -253,7 +253,9 @@
   <data name="EmailSend_UblAutoOff" xml:space="preserve"><value>UBL se automaticky přikládá jen slovenským odběratelům a odběratelům s Peppol ID. Zaškrtnutím ho přiložíte i tomuto odběrateli.</value></data>
   <data name="EmailSend_StoredAttachments" xml:space="preserve"><value>Soubory uložené u dokladu</value></data>
   <data name="EmailSend_Subject" xml:space="preserve"><value>Předmět</value></data>
-  <data name="EmailSend_Message" xml:space="preserve"><value>Zpráva (zobrazí se nad textem e-mailu)</value></data>
+  <data name="EmailSend_Body" xml:space="preserve"><value>Text e-mailu</value></data>
+  <data name="EmailSend_BodyHint" xml:space="preserve"><value>Text vychází ze šablony e-mailu pro jazyk klienta. Úpravy platí jen pro tento e-mail. Po úpravě se použije zjednodušené formátování.</value></data>
+  <data name="EmailSend_ResetToTemplate" xml:space="preserve"><value>Obnovit podle šablony</value></data>
   <data name="EmailSend_SaveDefaults" xml:space="preserve"><value>Uložit volbu příloh jako výchozí pro klienta</value></data>
   <data name="EmailSend_DefaultsFailed" xml:space="preserve"><value>Výchozí nastavení se nepodařilo načíst. E-mail lze přesto odeslat, přílohy se řídí nastavením klienta.</value></data>
   <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Dní od vystavení</value></data>

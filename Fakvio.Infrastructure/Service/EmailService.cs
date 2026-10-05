@@ -233,10 +233,10 @@ public class EmailService : IEmailService
             ccEmails.Count);
 
         // Try to render from the default content template for the client's language, fall back to simple HTML
-        var (templateSubject, templateBody) = await RenderInvoiceTemplateAsync(invoice, ct);
+        var (templateSubject, templateBody, placeholders) = await RenderInvoiceTemplateAsync(invoice, ct);
 
-        // Let the caller's custom subject / message override or extend the template output.
-        var (subject, htmlBody) = ApplyCustomization(templateSubject, templateBody, options);
+        // Let the caller's custom subject / message / full body override or extend the template output.
+        var (subject, htmlBody) = ApplyCustomization(templateSubject, templateBody, options, placeholders);
 
         // Build and send the email with the chosen generated files (+ UBL when applicable, F1.9) + extra files.
         // We call the internal builder directly instead of SendEmailAsync because
@@ -315,15 +315,18 @@ public class EmailService : IEmailService
             StoredAttachments = await _fileAttachmentService.GetByEntityAsync("Invoice", invoiceId, ct)
         };
 
-        // The dialog only prefills the subject; if the template cannot be rendered the dialog still works
-        // (the server falls back to the template subject at send time when no custom subject is sent).
+        // The dialog prefills the subject AND the body from ONE render, so what the user reads is exactly what
+        // the template produces. If the template cannot be rendered the dialog still works (the server falls
+        // back to the template at send time when no custom subject / body is sent).
         try
         {
-            defaults.DefaultSubject = (await RenderInvoiceTemplateAsync(invoice, ct)).Subject;
+            var rendered = await RenderInvoiceTemplateAsync(invoice, ct);
+            defaults.DefaultSubject = rendered.Subject;
+            defaults.DefaultHtmlBody = rendered.HtmlBody;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex, "Default e-mail subject for invoice {InvoiceId} could not be rendered", invoiceId);
+            _logger.LogWarning(ex, "Default e-mail subject / body for invoice {InvoiceId} could not be rendered", invoiceId);
         }
 
         return defaults;
@@ -401,9 +404,12 @@ public class EmailService : IEmailService
 
     /// <summary>
     /// Renders the invoice e-mail template (subject + HTML body) for the client's language, falling back to
-    /// a simple built-in text. Shared by sending and by the dialog's "default subject" so both always agree.
+    /// a simple built-in text. Shared by sending and by the dialog's "default subject / body" so both always agree.
+    /// Also returns the placeholder values, so a caller-supplied subject / body can have its own
+    /// <c>{{Placeholders}}</c> filled in with the same data.
     /// </summary>
-    private async Task<(string Subject, string HtmlBody)> RenderInvoiceTemplateAsync(Invoice invoice, CancellationToken ct)
+    private async Task<(string Subject, string HtmlBody, Dictionary<string, string> Placeholders)> RenderInvoiceTemplateAsync(
+        Invoice invoice, CancellationToken ct)
     {
         // Build placeholders dictionary for template substitution
         var placeholders = new Dictionary<string, string>
@@ -426,7 +432,8 @@ public class EmailService : IEmailService
         // Falls back to "cs" (Czech) when client or language is not set.
         var clientLanguage = invoice.Client?.Language ?? "cs";
 
-        return await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
+        var (subject, htmlBody) = await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
+        return (subject, htmlBody, placeholders);
     }
 
     /// <summary>
@@ -547,16 +554,26 @@ public class EmailService : IEmailService
     }
 
     /// <summary>
-    /// Applies the caller's optional subject / message on top of the rendered template.
+    /// Applies the caller's optional subject / message / full body on top of the rendered template.
     /// Extracted as a static method so it can be unit-tested without SMTP or a database.
     /// </summary>
     /// <remarks>
     /// Junior note on the message: it is plain text from an untrusted caller, so it is HTML-encoded
     /// (a "&lt;script&gt;" becomes harmless text) and only then are line breaks turned into
     /// &lt;br&gt; - the one piece of HTML we add ourselves.
+    /// <para>
+    /// A <see cref="SendInvoiceEmailOptions.HtmlBody"/> is different: it is deliberate HTML (the user edited the
+    /// whole e-mail in the dialog), so it replaces the template body and the <c>Message</c> is ignored.
+    /// The API boundary has already rejected scripts and oversized bodies (<c>EmailContentValidator</c>).
+    /// </para>
+    /// <para>
+    /// Subject and body overrides get their <c>{{Placeholders}}</c> filled in: harmless when the text was already
+    /// rendered (nothing is left to replace) and it lets a user or an AI type <c>{{InvoiceNumber}}</c>.
+    /// </para>
     /// </remarks>
     internal static (string Subject, string HtmlBody) ApplyCustomization(
-        string templateSubject, string templateBody, SendInvoiceEmailOptions? options)
+        string templateSubject, string templateBody, SendInvoiceEmailOptions? options,
+        IReadOnlyDictionary<string, string>? placeholders = null)
     {
         var subject = templateSubject;
         var htmlBody = templateBody;
@@ -564,10 +581,16 @@ public class EmailService : IEmailService
         if (!string.IsNullOrWhiteSpace(options?.Subject))
         {
             // CR/LF in a subject would let a caller inject extra mail headers.
-            subject = options.Subject.Replace("\r", " ").Replace("\n", " ").Trim();
+            subject = ContentTemplateService.ReplacePlaceholders(options.Subject, placeholders)
+                .Replace("\r", " ").Replace("\n", " ").Trim();
         }
 
-        if (!string.IsNullOrWhiteSpace(options?.Message))
+        if (!string.IsNullOrWhiteSpace(options?.HtmlBody))
+        {
+            // Full body override: replaces the template, so a separate Message intro would be confusing.
+            htmlBody = ContentTemplateService.ReplacePlaceholders(options.HtmlBody, placeholders);
+        }
+        else if (!string.IsNullOrWhiteSpace(options?.Message))
         {
             var encoded = System.Net.WebUtility.HtmlEncode(options.Message.Trim())
                 .Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "<br>");

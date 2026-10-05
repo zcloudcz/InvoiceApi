@@ -36,6 +36,14 @@ public class SendInvoiceEmailDto
     public string? Message { get; set; }
 
     /// <summary>
+    /// Optional complete HTML body that REPLACES the template body (then <see cref="Message"/> is ignored).
+    /// Null = today's behaviour: the rendered template, plus the optional <see cref="Message"/> intro.
+    /// <c>{{Placeholders}}</c> such as <c>{{InvoiceNumber}}</c> are filled in. Limits (256 KB, no scripts /
+    /// iframes / javascript: links) are enforced by <c>EmailContentValidator</c>; violations answer 400.
+    /// </summary>
+    public string? HtmlBody { get; set; }
+
+    /// <summary>
     /// Attach the generated PDF? Null = use the client's default (client → company → system default: yes).
     /// </summary>
     public bool? AttachPdf { get; set; }

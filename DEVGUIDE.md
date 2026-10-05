@@ -654,8 +654,17 @@ Jeden dialog (`SendInvoiceEmailDialog`), jeden endpoint, jedna cesta v `EmailSer
   odeslání, ve stejném `SaveChanges` jako `IsSentByEmail`. Pole se zapíše jen když se volba liší od dosud platné hodnoty NEBO klient už má vlastní hodnotu
   (`EmailAttachmentDefaults.ApplyChoices`) — pouhé potvrzení zděděného nastavení klienta „nezamrazí“. Pole poslaná jako `null` se nemění.
 - **Endpoint pro dialog**: `GET /api/invoice/{id}/email-defaults` → `InvoiceEmailDefaultsDto` (kontakty seřazené nejlepší první, efektivní `AttachPdf/Isdoc/Ubl`,
-  `UblIsAutomatic`, `UblAutoWouldAttach`, `StoredAttachments`, `DefaultSubject` z téže šablony jako při odeslání — `EmailService.RenderInvoiceTemplateAsync`, žádné duplicitní renderování).
-  Jedno volání. MCP: `get_invoice_email_options` (read-only) + `send_invoice_email` s `ccEmails`, `attachPdf/attachIsdoc/attachUbl`, `fileAttachmentIds`, `saveAttachmentDefaults`.
+  `UblIsAutomatic`, `UblAutoWouldAttach`, `StoredAttachments`, `DefaultSubject` + `DefaultHtmlBody` z téže šablony jako při odeslání — `EmailService.RenderInvoiceTemplateAsync`, jeden render pro oba, žádné duplicitní renderování).
+  Jedno volání. MCP: `get_invoice_email_options` (read-only, vrací i `defaultHtmlBody`) + `send_invoice_email` s `ccEmails`, `attachPdf/attachIsdoc/attachUbl`, `fileAttachmentIds`, `saveAttachmentDefaults`, `htmlBody`.
+- **Editovatelné tělo e-mailu**: `SendInvoiceEmailDto.HtmlBody` / `SendInvoiceEmailOptions.HtmlBody` = KOMPLETNÍ tělo, které nahradí tělo šablony (`Message` se pak ignoruje).
+  `null`/prázdné = původní chování (šablona + volitelný `Message`), takže stávající API/MCP volající se nemění. `EmailService.ApplyCustomization` dostane i slovník placeholderů
+  z `RenderInvoiceTemplateAsync` a doplní `{{Placeholdery}}` i do přepsaného `Subject`/`HtmlBody` (`ContentTemplateService.ReplacePlaceholders`, `internal static`); CR/LF se ze subjektu
+  odstraní až PO doplnění. Hranice důvěry: `InvoiceController.SendInvoiceEmail` volá `EmailContentValidator.Validate` (Application) → 400 při těle > 256 KB (znaků), subjektu > 500 znaků nebo
+  s CR/LF, nebo při `<script`, `<iframe`, `<object`, `<embed`, `javascript:` (case-insensitive). Je to jen deny-list, NE sanitizér (žádný balíček není) — strop je popsaný v komentáři třídy
+  (entity, `onerror=` apod. neřeší; při přijímání těl od nedůvěryhodných stran přejít na skutečný sanitizér).
+  Dialog: `MudHtmlEditor` (Quill) předvyplněný `DefaultHtmlBody`; Quill HTML po načtení přepíše do vlastního tvaru a ohlásí ho přes `HtmlChanged`, proto `EditorEditTracker` bere PRVNÍ ohlášenou hodnotu
+  jako baseline a za editaci považuje až pozdější odlišnou. Needitované tělo se posílá jako `null` (server vyrenderuje šablonu znovu a zachová její styl), editované jako HTML editoru.
+  „Obnovit podle šablony“ vrací předmět i tělo (`MudHtmlEditor.SetHtml` + `tracker.Reset()`). Bez `DefaultHtmlBody` (render selhal) se editor skryje a pošle se `null`. Hromadné odeslání dialog nepoužívá.
 - **UI**: `SendInvoiceEmailDialog` (`Components/Shared`, otevírá se přes `SendInvoiceEmailDialog.ShowAsync(...)` z `InvoiceDetail` i `Invoices` — dva dřívější inline dialogy jsou pryč),
   `EmailAttachmentDefaultsInput` (3× `EnumSelect<EEmailAttachMode>` v `ClientDetail` a `MyCompany`). Když se výchozí hodnoty nepodaří načíst, dialog funguje dál
   (ruční příjemce) a neposílá explicitní příznaky příloh → rozhodne server podle klienta.
@@ -1688,7 +1697,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `IssueFinalInvoice` | **Write** (Draft vyúčtování, `deductionAmount?`) | `issue_final_invoice` (confirm) | ✅ | |
 | `IssueTaxReceipt` | **Write** (DPP) | `issue_tax_receipt` (confirm) | ✅ | |
 | `GetRemainingAdvance` | Read | `get_remaining_advance` | ✅ | |
-| `SendInvoiceEmail` | **Write** (odešle e-mail; přílohy PDF/ISDOC/UBL podle výchozího nastavení klienta, volitelně `recipientEmail` (jinak kontakt klienta), `ccEmails`, `attachPdf`/`attachIsdoc`/`attachUbl`, `fileAttachmentIds`, `saveAttachmentDefaults`, `subject`, `message`, `attachments[]` base64 — limity viz §4.2, výchozí hodnoty §4.2b) | `send_invoice_email` (confirm) | ✅ | chat tool zatím nepřijímá `attachments`, CC ani volbu příloh; schéma `attachments` hlídá `ToolDiscoveryTests` (#500) |
+| `SendInvoiceEmail` | **Write** (odešle e-mail; přílohy PDF/ISDOC/UBL podle výchozího nastavení klienta, volitelně `recipientEmail` (jinak kontakt klienta), `ccEmails`, `attachPdf`/`attachIsdoc`/`attachUbl`, `fileAttachmentIds`, `saveAttachmentDefaults`, `subject`, `message`, `htmlBody` (celé tělo), `attachments[]` base64 — limity viz §4.2, výchozí hodnoty a tělo §4.2b) | `send_invoice_email` (confirm) | ✅ | chat tool zatím nepřijímá `attachments`, CC ani volbu příloh; schéma `attachments` hlídá `ToolDiscoveryTests` (#500) |
 | `GetInvoiceEmailOptions` | Read (kontakty klienta, výchozí přílohy, uložené soubory dokladu) | — | ❌ | chat zatím bez tasku; volá `GET /api/invoice/{id}/email-defaults` (§4.2b) |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
 | `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
