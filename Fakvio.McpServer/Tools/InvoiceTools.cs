@@ -544,7 +544,11 @@ public static class InvoiceTools
         "(error if the client has none); ccEmails adds CC recipients (max 10). Call get_invoice_email_options first to see the " +
         "client's e-mail contacts, the effective default attachments and the files stored on the invoice " +
         "(pass their ids in fileAttachmentIds to include them). " +
-        "You can pass a custom subject and a plain-text message (shown above the template text), " +
+        "When acting interactively, call get_invoice_email_options first and show the user the final subject and body " +
+        "(defaultSubject / defaultHtmlBody) before sending. " +
+        "You can pass a custom subject and either a plain-text message (shown above the template text) or htmlBody " +
+        "(the COMPLETE e-mail body, which replaces the template and makes message ignored; {{InvoiceNumber}}-style " +
+        "placeholders are filled in; max 256 KB, no script / iframe / object / embed / javascript:), " +
         "and extra attachments as base64 (max 5 files, 10 MB total, allowed types: " +
         "pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip); all attachments together are limited to 20 MB. " +
         "Invalid input is rejected and nothing is sent.")]
@@ -553,8 +557,7 @@ public static class InvoiceTools
         [Description("The invoice ID to send")] long invoiceId,
         [Description("Recipient email address; omit to use the client's invoice/primary e-mail contact")] string? recipientEmail = null,
         [Description("Optional custom email subject (replaces the template subject)")] string? subject = null,
-        [Description("Optional custom plain-text message, shown above the template email body (HTML is not interpreted)")] string? message = null,
-        [Description("Optional extra attachments in addition to the generated PDF/ISDOC/UBL. " +
+        [Description("Optional custom plain-text message, shown above the template email body (HTML is not interpreted). Ignored when htmlBody is set")] string? message = null,        [Description("Optional extra attachments in addition to the generated PDF/ISDOC/UBL. " +
                      "Each item: fileName (e.g. 'contract.pdf', no path) and contentBase64 (standard base64 of the file). " +
                      "Max 5 files, 10 MB decoded in total; allowed extensions: pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip.")]
         EmailAttachmentDto[]? attachments = null,
@@ -564,6 +567,8 @@ public static class InvoiceTools
         [Description("Attach the UBL XML? Omit to use the client's default (automatic: Slovak / Peppol buyers only)")] bool? attachUbl = null,
         [Description("Ids of files already stored on this invoice to include (see get_invoice_email_options)")] long[]? fileAttachmentIds = null,
         [Description("true = store the chosen attachPdf/attachIsdoc/attachUbl as this client's new defaults after a successful send")] bool saveAttachmentDefaults = false,
+        // Kept after the older parameters so existing positional callers keep compiling.
+        [Description("Optional COMPLETE HTML body that replaces the template body (start from defaultHtmlBody of get_invoice_email_options). Omit to keep the template as is")] string? htmlBody = null,
         CancellationToken ct = default)
     {
         try
@@ -574,6 +579,7 @@ public static class InvoiceTools
                 CcEmails = ccEmails?.ToList(),
                 Subject = subject,
                 Message = message,
+                HtmlBody = htmlBody,
                 Attachments = attachments?.ToList(),
                 AttachPdf = attachPdf,
                 AttachIsdoc = attachIsdoc,
@@ -602,7 +608,9 @@ public static class InvoiceTools
     [McpServerTool(Title = "Get invoice e-mail options", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Show the options for sending an invoice by e-mail: the client's e-mail contacts (best recipient first), the effective " +
         "default attachments (attachPdf / attachIsdoc / attachUbl, and whether UBL is automatic), the files stored on the invoice " +
-        "(id, name, size - pass the ids to send_invoice_email fileAttachmentIds) and the default subject. Sends nothing.")]
+        "(id, name, size - pass the ids to send_invoice_email fileAttachmentIds) and the rendered default subject " +
+        "(defaultSubject) and body (defaultHtmlBody, template with placeholders filled in). Show these to the user " +
+        "before sending; pass an edited version as subject / htmlBody to send_invoice_email. Sends nothing.")]
     public static async Task<string> GetInvoiceEmailOptions(
         IFakvioApiClient api,
         [Description("The invoice ID")] long invoiceId,
