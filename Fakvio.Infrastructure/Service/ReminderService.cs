@@ -1,4 +1,4 @@
-using Fakvio.Contracts.Common;
+﻿using Fakvio.Contracts.Common;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Reminder;
@@ -365,16 +365,21 @@ public class ReminderService : IReminderService
 
         try
         {
-            // Resolve email template — level-specific or default ReminderEmail.
+            // Resolve email template — default ReminderEmail in the CLIENT's language (cs when not set), so an
+            // English-speaking client gets an English reminder. Falls back to any language if none matches.
+            var language = reminder.Client.Language ?? "cs";
             var templateDto = await _contentTemplateService.GetDefaultByTypeAsync(
-                EContentTemplateType.ReminderEmail, ct);
+                EContentTemplateType.ReminderEmail, language, ct);
 
             // Build placeholder values for the template.
             var placeholders = BuildPlaceholders(reminder);
 
             // Render the template body with placeholders.
             string body;
-            var subject = $"Payment Reminder — Invoice {reminder.Invoice.DocumentNumber}";
+            var isCzech = !string.Equals(language, "en", StringComparison.OrdinalIgnoreCase);
+            var subject = isCzech
+                ? $"Upomínka – faktura {reminder.Invoice.DocumentNumber} po splatnosti"
+                : $"Payment Reminder — Invoice {reminder.Invoice.DocumentNumber}";
 
             if (templateDto != null)
             {
@@ -385,7 +390,7 @@ public class ReminderService : IReminderService
             }
             else
             {
-                body = BuildFallbackEmailBody(reminder);
+                body = BuildFallbackEmailBody(reminder, isCzech);
             }
 
             // Optionally attach the invoice PDF.
@@ -693,15 +698,22 @@ public class ReminderService : IReminderService
     };
 
     /// <summary>
-    /// Fallback email body when no template is available.
+    /// Fallback email body when no template is available (Czech by default, English for "en" clients).
     /// </summary>
-    private static string BuildFallbackEmailBody(Reminder reminder)
+    private static string BuildFallbackEmailBody(Reminder reminder, bool czech)
     {
-        return $"""
-            <p>This is a payment reminder for invoice <strong>{reminder.Invoice?.DocumentNumber}</strong>.</p>
-            <p>Amount due: <strong>{reminder.TotalCzk:N2} CZK</strong></p>
-            <p>Due date: {reminder.DueDate:d}</p>
-            <p>Please arrange payment at your earliest convenience.</p>
-            """;
+        return czech
+            ? $"""
+                <p>Toto je upomínka k úhradě faktury <strong>{reminder.Invoice?.DocumentNumber}</strong>.</p>
+                <p>Částka k úhradě: <strong>{reminder.TotalCzk:N2} CZK</strong></p>
+                <p>Datum splatnosti: {reminder.DueDate:d}</p>
+                <p>Prosíme o úhradu v nejbližším možném termínu.</p>
+                """
+            : $"""
+                <p>This is a payment reminder for invoice <strong>{reminder.Invoice?.DocumentNumber}</strong>.</p>
+                <p>Amount due: <strong>{reminder.TotalCzk:N2} CZK</strong></p>
+                <p>Due date: {reminder.DueDate:d}</p>
+                <p>Please arrange payment at your earliest convenience.</p>
+                """;
     }
 }
