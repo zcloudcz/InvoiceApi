@@ -279,6 +279,23 @@ public class EmailSendOptionsEndpointTests : IClassFixture<EmailSendOptionsEndpo
         SentFor("bad-cc").ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData("not an address")]
+    [InlineData("Jan <to@customer-a.cz>")]
+    [InlineData("to@customer-a.cz\r\nBcc: evil@x.cz")]
+    public async Task Send_InvalidRecipient_Returns400_AndNothingIsSent(string recipient)
+    {
+        var client = await AuthClientAsync();
+
+        var response = await SendAsync(client, InvoiceMain, new SendInvoiceEmailDto
+        {
+            RecipientEmail = recipient
+        }, "bad-to");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        SentFor("bad-to").ShouldBeNull();
+    }
+
     [Fact]
     public async Task Send_WithoutRecipient_UsesTheClientsInvoiceEmailContact()
     {

@@ -1040,6 +1040,14 @@ public class InvoiceController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
 
+        // To address: blank = client's default contact (resolved by EmailService); anything else must be a bare
+        // address - same rule as CC, so "Name <a@b.cz>" or CR/LF never reaches the MIME headers.
+        if (!string.IsNullOrWhiteSpace(dto.RecipientEmail) && !EmailAddressList.IsValidAddress(dto.RecipientEmail.Trim()))
+        {
+            _logger.LogWarning("Rejected recipient address for invoice {Id} email", id);
+            return BadRequest(new { message = "Recipient is not a valid e-mail address." });
+        }
+
         // CC list: count + address syntax, same rules the UI applies for its inline hint.
         var ccEmails = EmailAddressList.Normalize(dto.CcEmails);
         if (EmailAddressList.ValidateCc(ccEmails) is { } ccError)
