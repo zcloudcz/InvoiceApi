@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Application.Service;
@@ -188,6 +189,11 @@ public class ClientController : ControllerBase
             return BadRequest(new { message = "Only SysAdmin can create companies (issuers). Use /api/company endpoint." });
         }
 
+        var createBs = createDto.BillingSettings;
+        if (createBs != null && ValidateFileNameFormats(createBs.InvoiceFileNameFormat, createBs.CreditNoteFileNameFormat,
+                createBs.ProformaFileNameFormat, createBs.TaxReceiptFileNameFormat) is { } createInvalid)
+            return createInvalid;
+
         try
         {
             var client = await _clientService.CreateClientAsync(createDto, cancellationToken);
@@ -227,6 +233,11 @@ public class ClientController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("PUT /api/client/{Id}", id);
+
+        var updateBs = updateDto.BillingSettings;
+        if (updateBs != null && ValidateFileNameFormats(updateBs.InvoiceFileNameFormat, updateBs.CreditNoteFileNameFormat,
+                updateBs.ProformaFileNameFormat, updateBs.TaxReceiptFileNameFormat) is { } updateInvalid)
+            return updateInvalid;
 
         var client = await _clientService.UpdateClientAsync(id, updateDto, cancellationToken);
 
@@ -420,6 +431,10 @@ public class ClientController : ControllerBase
     {
         _logger.LogInformation("PUT /api/client/{Id}/billing-settings", id);
 
+        if (ValidateFileNameFormats(settingsDto.InvoiceFileNameFormat, settingsDto.CreditNoteFileNameFormat,
+                settingsDto.ProformaFileNameFormat, settingsDto.TaxReceiptFileNameFormat) is { } invalid)
+            return invalid;
+
         var client = await _clientService.UpdateBillingSettingsAsync(id, settingsDto, cancellationToken);
 
         if (client == null)
@@ -432,6 +447,20 @@ public class ClientController : ControllerBase
     }
 
     #region Helper Methods
+
+    /// <summary>
+    /// Rejects unknown {{placeholders}} in document file name formats at save time
+    /// (building a name later silently drops them). Returns a 400 result, or null when valid.
+    /// </summary>
+    private ActionResult? ValidateFileNameFormats(params string?[] formats)
+    {
+        var error = DocumentFileName.ValidateFormats(formats);
+        if (error == null)
+            return null;
+
+        _logger.LogWarning("Rejected invalid file name format: {Error}", error);
+        return BadRequest(new { message = error });
+    }
 
     /// <summary>
     /// Gets current user's role from JWT claims

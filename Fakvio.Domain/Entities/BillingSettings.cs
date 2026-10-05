@@ -89,6 +89,23 @@ public class BillingSettings : BaseEntity
     public string? CreditNoteNumberSuffix { get; set; }
 
     /// <summary>
+    /// Optional file name format for generated invoice documents (PDF, ISDOC, UBL).
+    /// Uses {{Placeholder}} keys, no extension, e.g. "{{DocumentType}}_{{DocumentNumber}}".
+    /// Resolution: this client's value → the issuer's value (company-wide default) → system default.
+    /// See DocumentFileName in Fakvio.Application for the supported placeholders.
+    /// </summary>
+    public string? InvoiceFileNameFormat { get; set; }
+
+    /// <summary>File name format for credit notes (same rules as <see cref="InvoiceFileNameFormat"/>).</summary>
+    public string? CreditNoteFileNameFormat { get; set; }
+
+    /// <summary>File name format for proforma (advance) invoices (same rules as <see cref="InvoiceFileNameFormat"/>).</summary>
+    public string? ProformaFileNameFormat { get; set; }
+
+    /// <summary>File name format for tax receipts for advance payment (same rules as <see cref="InvoiceFileNameFormat"/>).</summary>
+    public string? TaxReceiptFileNameFormat { get; set; }
+
+    /// <summary>
     /// Default payment method for this client (enum for type safety).
     /// Can be overridden on individual invoices.
     /// Null means no default is set — user must choose when creating invoice.

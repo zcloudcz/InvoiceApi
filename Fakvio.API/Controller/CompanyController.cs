@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AresService;
+using Fakvio.Contracts.Common;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.CompanySettings;
@@ -322,6 +323,12 @@ public class CompanyController : ControllerBase
             // Add billing settings if provided — ZMapper handles property mapping
             if (createDto.BillingSettings != null)
             {
+                var createFormatError = DocumentFileName.ValidateFormats(
+                    createDto.BillingSettings.InvoiceFileNameFormat, createDto.BillingSettings.CreditNoteFileNameFormat,
+                    createDto.BillingSettings.ProformaFileNameFormat, createDto.BillingSettings.TaxReceiptFileNameFormat);
+                if (createFormatError != null)
+                    return BadRequest(new { message = createFormatError });
+
                 company.BillingSettings = createDto.BillingSettings.ToBillingSettings();
             }
 
@@ -455,6 +462,13 @@ public class CompanyController : ControllerBase
                 }
 
                 var bs = updateDto.BillingSettings;
+
+                // Unknown {{placeholders}} in file name formats are rejected here, not silently dropped later.
+                var formatError = DocumentFileName.ValidateFormats(bs.InvoiceFileNameFormat, bs.CreditNoteFileNameFormat,
+                    bs.ProformaFileNameFormat, bs.TaxReceiptFileNameFormat);
+                if (formatError != null)
+                    return BadRequest(new { message = formatError });
+
                 if (bs.DueDateCalculationType.HasValue)
                     company.BillingSettings.DueDateCalculationType = bs.DueDateCalculationType.Value;
                 if (bs.DueDays.HasValue)
@@ -471,6 +485,14 @@ public class CompanyController : ControllerBase
                     company.BillingSettings.CreditNoteNumberPrefix = bs.CreditNoteNumberPrefix;
                 if (bs.CreditNoteNumberSuffix != null)
                     company.BillingSettings.CreditNoteNumberSuffix = bs.CreditNoteNumberSuffix;
+                if (bs.InvoiceFileNameFormat != null)
+                    company.BillingSettings.InvoiceFileNameFormat = bs.InvoiceFileNameFormat.Trim();
+                if (bs.CreditNoteFileNameFormat != null)
+                    company.BillingSettings.CreditNoteFileNameFormat = bs.CreditNoteFileNameFormat.Trim();
+                if (bs.ProformaFileNameFormat != null)
+                    company.BillingSettings.ProformaFileNameFormat = bs.ProformaFileNameFormat.Trim();
+                if (bs.TaxReceiptFileNameFormat != null)
+                    company.BillingSettings.TaxReceiptFileNameFormat = bs.TaxReceiptFileNameFormat.Trim();
                 if (bs.Notes != null)
                     company.BillingSettings.Notes = bs.Notes;
 

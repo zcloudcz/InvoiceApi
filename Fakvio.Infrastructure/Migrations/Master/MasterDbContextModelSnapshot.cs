@@ -362,6 +362,10 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("CreditNoteFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("CreditNoteNumberPrefix")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -385,6 +389,10 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<int>("DueDays")
                         .HasColumnType("integer");
 
+                    b.Property<string>("InvoiceFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("InvoiceNumberPrefix")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -396,6 +404,14 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ProformaFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TaxReceiptFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
