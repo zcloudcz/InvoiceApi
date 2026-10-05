@@ -592,6 +592,35 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
 
 **Pokud měníš SMTP/Seznam config** → ověř SASL strip + CRL tolerance, nesahej na ně bez testu proti všem tří providerům (Gmail, Outlook, Seznam).
 
+### 4.2a Názvy souborů generovaných dokladů (`DocumentFileName`)
+
+**Jediné místo**, kde vzniká název PDF / ISDOC / UBL souboru (stažení, bulk ZIP, příloha e-mailu, upomínka,
+upload do cloudu po vystavení, chat tool `export_invoice`, MCP export). **Nikdy neskládej název jinde** —
+názvy se pak rozjedou (původně byly v 7 místech 5 různých tvarů).
+
+- `Fakvio.Contracts/Common/DocumentFileName.cs` — čistý statický builder (v Contracts, ne v Application, protože ho
+  sdílí i UI `FileNameFormatInput` pro živý náhled; stejný precedens jako `DueDateCalculator`).
+  `Build(format, DocumentFileNameValues, extension)`, `Validate(format)` (neznámé klíče), `ValidateFormats(...)`
+  (zpráva pro 400), `ResolveFormat(client, issuer)`, `PlaceholderKeys`. Placeholdery `{{Key}}` (jako
+  `ContentTemplateService`): `DocumentType`, `DocumentNumber`, `VariableSymbol`, `IssueDate`, `Year`, `Month`,
+  `ClientName`, `IssuerName`. Přípona se přidává builderem, formát ji neobsahuje. Neznámý klíč se při `Build` zahodí,
+  při **uložení** nastavení se odmítne (`ClientController` create/update/billing-settings + `CompanyController` → 400).
+  Sanitizace: `/ \ : * ? " < > |` a řídicí znaky → `_`, trim mezer/teček, max 150 znaků, prázdný výsledek → výchozí formát.
+- Data: `BillingSettings.{Invoice,CreditNote,Proforma,TaxReceipt}FileNameFormat` (nullable, max 200; Master i Tenant
+  kontext, migrace `AddDocumentFileNameFormat` v obou). Řetěz: formát klienta → formát issuera (`Invoice.Issuer.BillingSettings`,
+  firemní default) → `DocumentFileName.DefaultFormat` (`{{DocumentType}}_{{DocumentNumber}}`, slovo typu lokalizované
+  podle `Client.Language`, cs je app default).
+- `IDocumentFileNameService` (`DocumentFileNameService`, Infrastructure) — načte vše jedním projekčním dotazem
+  (`GetFileNamesAsync(ids, ext)` pro bulk bez N+1) a zavolá builder. Volají ho `InvoiceController` (PDF/ISDOC/UBL +
+  bulk + cloud upload), `EmailService`, `ReminderService`, `ExportInvoiceTool`.
+- Single source of truth = hlavička `Content-Disposition` z API. UI (`ApiClientBase.GetFileAsync` → `DownloadedFile`)
+  i MCP (`FakvioApiClient` → `ExportedFile`) jméno jen přebírají (`FileNameStar` má přednost kvůli diakritice);
+  skládají jen nouzový fallback při chybějící hlavičce. **CORS** musí hlavičku vystavit (`WithExposedHeaders("Content-Disposition")`
+  v `Program.cs`), jinak ji WASM z cizí domény nevidí.
+- Nastavení se edituje komponentou `FileNameFormatInput` (klient: `ClientDetail`, firma: `MyCompany`); MCP `update_client`
+  (včetně issuera) přenáší pole přes `UpdateClientDto.BillingSettings`.
+- Nový placeholder = přidat do `PlaceholderKeys` + `Render` v builderu + test v `DocumentFileNameTests` + tabulku v USERGUIDE §5.3a.
+
 ### 4.3 ContentTemplate (Handlebars-like placeholders)
 
 | Co | Kde |

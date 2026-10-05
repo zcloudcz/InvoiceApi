@@ -293,7 +293,7 @@ Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukl
 
 - Kliknutím na ikonu PDF v řádku gridu
 - Výběr šablony: výchozí šablona nebo vlastní (pokud máte nakonfigurované ContentTemplates)
-- Soubor se stáhne pojmenovaný `Faktura_{číslo}.pdf`
+- Soubor se stáhne pojmenovaný `Faktura_{číslo}.pdf` (název jde změnit per klient a typ dokladu — viz [§5.3a](#53a-název-souboru-dokladů))
 
 **Hromadný PDF export:** zaškrtněte faktury → toolbar → PDF → stáhne se ZIP archiv
 
@@ -477,6 +477,40 @@ V detailu klienta sekce „Fakturační nastavení" (BillingSettings):
 | Splatnost (dny) | Výchozí počet dní od data vystavení do data splatnosti |
 
 Tyto hodnoty se automaticky aplikují při vytváření nové faktury pro tohoto klienta.
+
+### 5.3a Název souboru dokladů
+
+Jak se jmenuje stažený nebo e-mailem odeslaný soubor (PDF, ISDOC, UBL), nastavíte ve stejné sekci
+„Fakturační nastavení" — zvlášť pro **fakturu, dobropis, zálohovou fakturu a daňový doklad k přijaté platbě**.
+Stejný název se použije při stažení (včetně hromadného ZIP), v příloze e-mailu, v upomínce, při ukládání
+do cloudového úložiště i při exportu přes AI asistenta nebo MCP. Příponu (`.pdf`, `.isdoc`, `.xml`) doplní
+Fakvio samo — do formátu ji nepište.
+
+**Který formát platí** (od nejkonkrétnějšího):
+1. formát nastavený u **klienta** pro daný typ dokladu,
+2. formát nastavený u **vaší firmy** (Nastavení firmy → Fakturační nastavení) — společný výchozí pro všechny klienty,
+3. výchozí `{{DocumentType}}_{{DocumentNumber}}`, např. `Faktura_2026001.pdf` (u klienta s jazykem EN `Invoice_2026001.pdf`).
+
+Prázdné pole = „převezmi výchozí".
+
+**Zástupné znaky** (kliknutím na čip pod polem se vloží; pod polem je živý náhled):
+
+| Znak | Význam | Příklad |
+|------|--------|---------|
+| `{{DocumentType}}` | Typ dokladu v jazyce klienta | `Faktura`, `Dobropis`, `Proforma`, `Danovy_doklad` / `Invoice`, `CreditNote`, `Proforma`, `TaxReceipt` |
+| `{{DocumentNumber}}` | Číslo dokladu (u konceptu ID dokladu) | `2026001` |
+| `{{VariableSymbol}}` | Variabilní symbol | `2026001` |
+| `{{IssueDate}}` | Datum vystavení | `2026-03-15` |
+| `{{Year}}` / `{{Month}}` | Rok / měsíc vystavení (měsíc dvojmístně) | `2026` / `03` |
+| `{{ClientName}}` | Název klienta | `Acme s.r.o.` |
+| `{{IssuerName}}` | Název vaší firmy | `Moje firma s.r.o.` |
+
+Příklady: `{{IssuerName}}_{{Year}}-{{DocumentNumber}}` → `Moje firma s.r.o._2026-2026001.pdf`;
+`{{ClientName}} {{DocumentNumber}}` → `Acme s.r.o. 2026001.pdf`.
+
+**Pravidla:** znaky nepovolené v názvech souborů (`/ \ : * ? " < > |`) se nahradí `_`, mezery a tečky na
+začátku a konci se ořežou, název se zkrátí na 150 znaků. Neznámý zástupný znak (překlep) aplikace při uložení
+odmítne s chybou. Vyjde-li název prázdný, použije se výchozí.
 
 ### 5.4 Historie faktur klienta
 
@@ -729,6 +763,9 @@ Správa informací o vaší firmě (vydavatele faktur).
 - **Peppol ID (přepis)** — volitelné, nechte prázdné. Adresu pro e-fakturu (Peppol) Fakvio
   odvodí samo z DIČ a země vaší firmy; vyplňte jen když odvození nestačí. Formát
   `schéma:hodnota`, např. `0245:2020123456` (SK) — viz §2.8a Export e-faktury.
+
+**Fakturační nastavení:** výchozí platební metoda, splatnost a **název souboru dokladů** (společný výchozí formát
+pro všechny klienty, který lze u klienta přepsat — viz [§5.3a](#53a-název-souboru-dokladů))
 
 **Adresy:** sídlo, provozovna, fakturační adresa (přes dialog Adresa)
 
