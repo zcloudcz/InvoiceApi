@@ -590,17 +590,13 @@ public static class InvoiceTools
     {
         try
         {
-            // Fetch the invoice metadata for the file name
+            // Fetch the invoice first so a missing invoice yields a clear "not found" error
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the PDF bytes from the API
-            var pdfBytes = await api.ExportInvoicePdfAsync(invoiceId, ct);
-
-            // Build a descriptive file name based on document type
-            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.pdf";
+            // Download the PDF; the file name is chosen by the server (client's file name format)
+            var (pdfBytes, fileName) = await api.ExportInvoicePdfAsync(invoiceId, ct);
 
             // Return base64-encoded PDF with metadata — AI client saves the file
             return JsonSerializer.Serialize(new
@@ -639,17 +635,13 @@ public static class InvoiceTools
     {
         try
         {
-            // Fetch the invoice metadata for a meaningful file name
+            // Fetch the invoice first so a missing invoice yields a clear "not found" error
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the ISDOC XML bytes from the API
-            var isdocBytes = await api.ExportInvoiceIsdocAsync(invoiceId, ct);
-
-            // Build a descriptive file name based on document type
-            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.isdoc";
+            // Download the ISDOC XML; the file name is chosen by the server (client's file name format)
+            var (isdocBytes, fileName) = await api.ExportInvoiceIsdocAsync(invoiceId, ct);
 
             // Return base64-encoded XML with metadata — AI client saves the file
             return JsonSerializer.Serialize(new
@@ -691,17 +683,13 @@ public static class InvoiceTools
     {
         try
         {
-            // Fetch the invoice metadata for a meaningful file name
+            // Fetch the invoice first so a missing invoice yields a clear "not found" error
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the UBL XML bytes from the API
-            var ublBytes = await api.ExportInvoiceUblAsync(invoiceId, ct);
-
-            // Build a descriptive file name based on document type
-            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.xml";
+            // Download the UBL XML; the file name is chosen by the server (client's file name format)
+            var (ublBytes, fileName) = await api.ExportInvoiceUblAsync(invoiceId, ct);
 
             // Return base64-encoded XML with metadata — AI client saves the file
             return JsonSerializer.Serialize(new

@@ -1,5 +1,14 @@
 # Fakvio TODO
 
+## Configurable document file names (branch `feature/document-file-name-format`)
+
+- [x] `DocumentFileName` builder (Contracts/Common) + `IDocumentFileNameService`; chain client -> issuer -> localized default.
+- [x] 4 `BillingSettings.*FileNameFormat` columns (Master + Tenant migration `AddDocumentFileNameFormat`), DTOs, save-time validation (400).
+- [x] All hardcoded names replaced: download PDF/ISDOC/UBL, bulk ZIP, e-mail attachments, reminder, cloud upload, chat tool, MCP; UI/MCP read `Content-Disposition` (CORS exposes it).
+- [x] `FileNameFormatInput` on client detail + my company; MCP `update_client` description; USERGUIDE §5.3a + DEVGUIDE §4.2a.
+- [x] Unit + bUnit + integration tests. Known unrelated: 3 `OAuthServiceTests` concurrency tests fail on local PostgreSQL auth.
+- [ ] Draft PR / merge (not pushed to PR yet).
+
 ## MCP send_invoice_email: custom subject/message + extra attachments (branch `feature/mcp-email-attachments`)
 
 - [x] Fix bug: `InvoiceController.SendInvoiceEmail` dropped `Subject` / `Message`; now passed via `SendInvoiceEmailOptions` (trailing optional param, other callers unchanged).

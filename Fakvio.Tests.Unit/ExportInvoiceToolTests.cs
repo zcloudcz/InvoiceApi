@@ -29,7 +29,12 @@ public class ExportInvoiceToolTests
         _invoiceService = Substitute.For<IInvoiceService>();
         _clientService = Substitute.For<IClientService>();
         var logger = Substitute.For<ILogger<ExportInvoiceTool>>();
-        _tool = new ExportInvoiceTool(_invoiceService, _clientService, logger);
+        // The tool must take the file name from the service (the real naming rules are tested in
+        // DocumentFileNameTests / DocumentFileNameServiceTests) — "Name_{id}{extension}" makes that visible.
+        var fileNameService = Substitute.For<IDocumentFileNameService>();
+        fileNameService.GetFileNameAsync(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => $"Name_{call.ArgAt<long>(0)}{call.ArgAt<string>(1)}");
+        _tool = new ExportInvoiceTool(_invoiceService, _clientService, fileNameService, logger);
     }
 
     /// <summary>
@@ -79,15 +84,15 @@ public class ExportInvoiceToolTests
         result.UiAction.Type.ShouldBe("download");
         result.UiAction.Url.ShouldBe("/api/invoice/42/pdf");
         result.UiAction.Parameters.ShouldNotBeNull();
-        result.UiAction.Parameters!["fileName"].ShouldBe("Invoice_FV-2024-0001.pdf");
+        result.UiAction.Parameters!["fileName"].ShouldBe("Name_42.pdf");
         result.UiAction.Parameters["mimeType"].ShouldBe("application/pdf");
         result.OutputText.ShouldContain("FV-2024-0001");
     }
 
     [Fact]
-    public async Task ExportByDocumentNumber_CreditNote_ReturnsCorrectPrefix()
+    public async Task ExportByDocumentNumber_CreditNote_UsesFileNameFromService()
     {
-        // Arrange — credit note (dobropis) should use "CreditNote" prefix in file name
+        // Arrange — credit note (dobropis); the file name is resolved by the service, not composed here
         var invoice = new InvoiceDto
         {
             Id = 10,
@@ -106,10 +111,10 @@ public class ExportInvoiceToolTests
         // Act
         var result = await _tool.ExecuteAsync(parameters);
 
-        // Assert — file name should use CreditNote prefix
+        // Assert — file name comes from the service
         result.IsSuccess.ShouldBeTrue();
         result.UiAction.ShouldNotBeNull();
-        result.UiAction.Parameters!["fileName"].ShouldBe("CreditNote_DP-2024-0001.pdf");
+        result.UiAction.Parameters!["fileName"].ShouldBe("Name_10.pdf");
         result.OutputText.ShouldContain("credit note");
     }
 
@@ -175,7 +180,7 @@ public class ExportInvoiceToolTests
         result.UiAction.ShouldNotBeNull();
         result.UiAction.Type.ShouldBe("download");
         result.UiAction.Url.ShouldBe("/api/invoice/2/pdf");
-        result.UiAction.Parameters!["fileName"].ShouldBe("Invoice_FV-2024-0002.pdf");
+        result.UiAction.Parameters!["fileName"].ShouldBe("Name_2.pdf");
     }
 
     [Fact]
@@ -340,8 +345,8 @@ public class ExportInvoiceToolTests
     /// with a plausible name.
     /// </summary>
     [Theory]
-    [InlineData("isdoc", "/api/invoice/42/isdoc", "Invoice_FV-2024-0001.isdoc", "application/xml")]
-    [InlineData("pdf", "/api/invoice/42/pdf", "Invoice_FV-2024-0001.pdf", "application/pdf")]
+    [InlineData("isdoc", "/api/invoice/42/isdoc", "Name_42.isdoc", "application/xml")]
+    [InlineData("pdf", "/api/invoice/42/pdf", "Name_42.pdf", "application/pdf")]
     public async Task ExportFormat_ChoosesTheEndpointFileNameAndMimeType(
         string format, string expectedUrl, string expectedFileName, string expectedMimeType)
     {
@@ -422,7 +427,7 @@ public class ExportInvoiceToolTests
 
         result.IsSuccess.ShouldBeTrue();
         result.UiAction!.Url.ShouldBe("/api/invoice/42/isdoc");
-        result.UiAction.Parameters!["fileName"].ShouldBe("Invoice_FV-2024-0001.isdoc");
+        result.UiAction.Parameters!["fileName"].ShouldBe("Name_42.isdoc");
         result.UiAction.Parameters["mimeType"].ShouldBe("application/xml");
     }
 

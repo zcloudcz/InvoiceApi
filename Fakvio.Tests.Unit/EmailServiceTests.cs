@@ -39,6 +39,9 @@ namespace Fakvio.Tests.Unit;
 /// </summary>
 public class EmailServiceTests : IDisposable
 {
+    // Name of the in-memory tenant database — lets a test open a SECOND context on the same data
+    private readonly string _tenantDbName = Guid.NewGuid().ToString();
+
     // The in-memory tenant database context with seeded invoice data
     private readonly TenantDbContext _tenantContext;
 
@@ -79,7 +82,7 @@ public class EmailServiceTests : IDisposable
     {
         // Setup in-memory tenant database with a unique name for test isolation
         var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(databaseName: _tenantDbName)
             .Options;
         _tenantContext = new TenantDbContext(tenantOptions);
 
@@ -219,6 +222,7 @@ public class EmailServiceTests : IDisposable
             _tenantContext,
             _masterContext,
             _pdfExport,
+            new DocumentFileNameService(_tenantContext),
             _isdocExport,
             _ublExport,
             _contentTemplate,
@@ -302,6 +306,51 @@ public class EmailServiceTests : IDisposable
         // call (ADR 0002, F1.9) — only an SK buyer or an explicit Client.PeppolId does.
         await _ublExport.DidNotReceive()
             .ExportInvoiceAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Attachment names must follow the client's configured file name format (same builder as the
+    /// download endpoints). SMTP cannot be reached in a unit test, so the names are read from the
+    /// "attachments prepared" log line that SendInvoiceEmailAsync writes right before connecting.
+    /// </summary>
+    [Fact]
+    public async Task SendInvoiceEmailAsync_ClientHasFileNameFormat_AttachmentsUseIt()
+    {
+        // Seeded through the test's own context on purpose: the service under test builds the name
+        // with a separate query, so a missing Include cannot hide behind the change tracker.
+        using (var seedContext = new TenantDbContext(
+                   new DbContextOptionsBuilder<TenantDbContext>().UseInMemoryDatabase(_tenantDbName).Options))
+        {
+            seedContext.BillingSettings.Add(new BillingSettings
+            {
+                ClientId = 2,
+                InvoiceFileNameFormat = "{{Year}}-{{DocumentNumber}}_{{ClientName}}"
+            });
+            seedContext.SaveChanges();
+        }
+
+        _pdfExport.GenerateInvoicePdfAsync(1, Arg.Any<CancellationToken>()).Returns(new byte[] { 0x25, 0x50 });
+        _isdocExport.ExportInvoiceAsync(1, Arg.Any<CancellationToken>()).Returns("<Invoice/>"u8.ToArray());
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        try
+        {
+            await CreateService().SendInvoiceEmailAsync(1, "test@example.com");
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException and not KeyNotFoundException
+                                       and not NullReferenceException)
+        {
+            // Expected SMTP connection failure — see SendInvoiceEmailAsync_ValidInvoice_GeneratesPdf.
+        }
+
+        var logLines = _logger.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(ILogger.Log))
+            .Select(c => c.GetArguments()[2]?.ToString() ?? "")
+            .ToList();
+        logLines.ShouldContain(l => l.Contains("PDF=2025-INV2025001_Client.pdf")
+                                    && l.Contains("ISDOC=2025-INV2025001_Client.isdoc"));
     }
 
     // --------------------------------------------------------------------------
@@ -470,7 +519,7 @@ public class EmailServiceTests : IDisposable
         _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
 
         var service = new EmailService(
-            _tenantContext, _masterContext, _pdfExport, _isdocExport, _ublExport, _contentTemplate,
+            _tenantContext, _masterContext, _pdfExport, new DocumentFileNameService(_tenantContext), _isdocExport, _ublExport, _contentTemplate,
             _systemConfig, _credentialProtector, _tenantResolver, emptyConfig, _logger);
 
         // Act & Assert — missing SMTP host in all 3 tiers should throw a clear error

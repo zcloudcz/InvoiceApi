@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Fakvio.Domain.Enums;
@@ -21,15 +22,18 @@ public class ExportInvoiceTool : IChatTool
 {
     private readonly IInvoiceService _invoiceService;
     private readonly IClientService _clientService;
+    private readonly IDocumentFileNameService _fileNameService;
     private readonly ILogger<ExportInvoiceTool> _logger;
 
     public ExportInvoiceTool(
         IInvoiceService invoiceService,
         IClientService clientService,
+        IDocumentFileNameService fileNameService,
         ILogger<ExportInvoiceTool> logger)
     {
         _invoiceService = invoiceService;
         _clientService = clientService;
+        _fileNameService = fileNameService;
         _logger = logger;
     }
 
@@ -124,8 +128,8 @@ public class ExportInvoiceTool : IChatTool
                 $"Invoice with document number '{documentNumber}' not found.");
         }
 
-        return BuildDownloadResult(invoice.Id, invoice.DocumentNumber ?? documentNumber,
-            invoice.DocumentType, invoice.ClientName ?? "", format);
+        return await BuildDownloadResultAsync(invoice.Id, invoice.DocumentNumber ?? documentNumber,
+            invoice.DocumentType, invoice.ClientName ?? "", format, ct);
     }
 
     /// <summary>
@@ -143,11 +147,11 @@ public class ExportInvoiceTool : IChatTool
             return ChatToolResult.Failure("No invoices found in the system.");
         }
 
-        return BuildDownloadResult(latest.Id,
+        return await BuildDownloadResultAsync(latest.Id,
             latest.DocumentNumber ?? latest.Id.ToString(),
             latest.DocumentType,
             latest.ClientName ?? "",
-            format);
+            format, ct);
     }
 
     /// <summary>
@@ -192,29 +196,30 @@ public class ExportInvoiceTool : IChatTool
                 $"No invoices found for client(s): {clientNames}.");
         }
 
-        return BuildDownloadResult(latestInvoice.Id,
+        return await BuildDownloadResultAsync(latestInvoice.Id,
             latestInvoice.DocumentNumber ?? latestInvoice.Id.ToString(),
             latestInvoice.DocumentType,
             latestInvoice.ClientName ?? clientName,
-            format);
+            format, ct);
     }
 
     /// <summary>
     /// Builds a ChatToolResult with a download action pointing to the export endpoint of the
-    /// requested format. Uses localized-friendly file naming (Invoice/CreditNote prefix).
+    /// requested format. The file name comes from <see cref="IDocumentFileNameService"/>, i.e. the
+    /// configured per-client / per-document-type format.
     ///
     /// Both endpoints share the same shape (<c>/api/invoice/{id}/{format}</c>) and the file
     /// extension equals the format, so one line covers PDF and ISDOC.
     /// </summary>
-    private static ChatToolResult BuildDownloadResult(
-        long invoiceId, string documentNumber, EDocumentType documentType, string clientName, string format)
+    private async Task<ChatToolResult> BuildDownloadResultAsync(
+        long invoiceId, string documentNumber, EDocumentType documentType, string clientName, string format,
+        CancellationToken ct)
     {
         // Build the API endpoint URL for the download
         var downloadUrl = $"/api/invoice/{invoiceId}/{format}";
 
-        // Build a descriptive file name
-        var typePrefix = documentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-        var fileName = $"{typePrefix}_{documentNumber}.{format}";
+        // ISDOC keeps ".isdoc", PDF ".pdf" — the extension equals the format.
+        var fileName = await _fileNameService.GetFileNameAsync(invoiceId, "." + format, ct);
 
         var description = documentType == EDocumentType.CreditNote ? "credit note" : "invoice";
         var outputText = $"Exporting {description} {documentNumber}" +

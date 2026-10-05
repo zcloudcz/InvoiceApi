@@ -607,6 +607,15 @@ public class ClientService : IClientService
                 client.BillingSettings.CreditNoteNumberPrefix = bs.CreditNoteNumberPrefix;
             if (bs.CreditNoteNumberSuffix != null)
                 client.BillingSettings.CreditNoteNumberSuffix = bs.CreditNoteNumberSuffix;
+            // File name formats: null = "not sent, keep"; blank = "clear, inherit from issuer/default".
+            if (bs.InvoiceFileNameFormat != null)
+                client.BillingSettings.InvoiceFileNameFormat = NormalizeFormat(bs.InvoiceFileNameFormat);
+            if (bs.CreditNoteFileNameFormat != null)
+                client.BillingSettings.CreditNoteFileNameFormat = NormalizeFormat(bs.CreditNoteFileNameFormat);
+            if (bs.ProformaFileNameFormat != null)
+                client.BillingSettings.ProformaFileNameFormat = NormalizeFormat(bs.ProformaFileNameFormat);
+            if (bs.TaxReceiptFileNameFormat != null)
+                client.BillingSettings.TaxReceiptFileNameFormat = NormalizeFormat(bs.TaxReceiptFileNameFormat);
             if (bs.DefaultPaymentMethod != null)
                 client.BillingSettings.DefaultPaymentMethod = bs.DefaultPaymentMethod;
             if (bs.BankAccountNumber != null)
@@ -829,6 +838,10 @@ public class ClientService : IClientService
         client.BillingSettings.InvoiceNumberSuffix = settingsDto.InvoiceNumberSuffix;
         client.BillingSettings.CreditNoteNumberPrefix = settingsDto.CreditNoteNumberPrefix;
         client.BillingSettings.CreditNoteNumberSuffix = settingsDto.CreditNoteNumberSuffix;
+        client.BillingSettings.InvoiceFileNameFormat = NormalizeFormat(settingsDto.InvoiceFileNameFormat);
+        client.BillingSettings.CreditNoteFileNameFormat = NormalizeFormat(settingsDto.CreditNoteFileNameFormat);
+        client.BillingSettings.ProformaFileNameFormat = NormalizeFormat(settingsDto.ProformaFileNameFormat);
+        client.BillingSettings.TaxReceiptFileNameFormat = NormalizeFormat(settingsDto.TaxReceiptFileNameFormat);
         client.BillingSettings.DefaultPaymentMethod = settingsDto.DefaultPaymentMethod;
         client.BillingSettings.BankAccountNumber = settingsDto.BankAccountNumber;
         client.BillingSettings.Notes = settingsDto.Notes;
@@ -837,5 +850,9 @@ public class ClientService : IClientService
 
         return await GetClientByIdAsync(clientId, cancellationToken);
     }
+
+    /// <summary>Blank format means "not configured" — store null so the resolution chain falls through.</summary>
+    private static string? NormalizeFormat(string? format) =>
+        string.IsNullOrWhiteSpace(format) ? null : format.Trim();
 
 }

@@ -277,6 +277,38 @@ else
                                               Label="@L["Billing_CreditNoteSuffix"].Value" />
                             </MudItem>
                             <MudItem xs="12" md="6">
+                                <FileNameFormatInput Label="@L["FileNameFormat_Invoice"].Value"
+                                                     Value="@_billingSettings.InvoiceFileNameFormat"
+                                                     ValueChanged="@(v => _billingSettings.InvoiceFileNameFormat = v)"
+                                                     DocumentType="EDocumentType.Invoice"
+                                                     Language="@_editClient.Language"
+                                                     EmptyHint="@L["FileNameFormat_EmptyHintClient"].Value" />
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <FileNameFormatInput Label="@L["FileNameFormat_CreditNote"].Value"
+                                                     Value="@_billingSettings.CreditNoteFileNameFormat"
+                                                     ValueChanged="@(v => _billingSettings.CreditNoteFileNameFormat = v)"
+                                                     DocumentType="EDocumentType.CreditNote"
+                                                     Language="@_editClient.Language"
+                                                     EmptyHint="@L["FileNameFormat_EmptyHintClient"].Value" />
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <FileNameFormatInput Label="@L["FileNameFormat_Proforma"].Value"
+                                                     Value="@_billingSettings.ProformaFileNameFormat"
+                                                     ValueChanged="@(v => _billingSettings.ProformaFileNameFormat = v)"
+                                                     DocumentType="EDocumentType.Proforma"
+                                                     Language="@_editClient.Language"
+                                                     EmptyHint="@L["FileNameFormat_EmptyHintClient"].Value" />
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <FileNameFormatInput Label="@L["FileNameFormat_TaxReceipt"].Value"
+                                                     Value="@_billingSettings.TaxReceiptFileNameFormat"
+                                                     ValueChanged="@(v => _billingSettings.TaxReceiptFileNameFormat = v)"
+                                                     DocumentType="EDocumentType.TaxReceiptForAdvance"
+                                                     Language="@_editClient.Language"
+                                                     EmptyHint="@L["FileNameFormat_EmptyHintClient"].Value" />
+                            </MudItem>
+                            <MudItem xs="12" md="6">
                                 <EnumSelect TEnum="EPaymentMethod"
                                             NullableValue="_billingSettings.DefaultPaymentMethod"
                                             NullableValueChanged="@(v => _billingSettings.DefaultPaymentMethod = v)"
@@ -307,6 +339,30 @@ else
                             {
                                 <MudItem xs="12" md="6">
                                     <MudText><strong>@L["Billing_InvoiceNumberPrefix"]:</strong> @_client.BillingSettings.InvoiceNumberPrefix</MudText>
+                                </MudItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_client.BillingSettings.InvoiceFileNameFormat))
+                            {
+                                <MudItem xs="12" md="6">
+                                    <MudText><strong>@L["FileNameFormat_Invoice"]:</strong> @_client.BillingSettings.InvoiceFileNameFormat</MudText>
+                                </MudItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_client.BillingSettings.CreditNoteFileNameFormat))
+                            {
+                                <MudItem xs="12" md="6">
+                                    <MudText><strong>@L["FileNameFormat_CreditNote"]:</strong> @_client.BillingSettings.CreditNoteFileNameFormat</MudText>
+                                </MudItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_client.BillingSettings.ProformaFileNameFormat))
+                            {
+                                <MudItem xs="12" md="6">
+                                    <MudText><strong>@L["FileNameFormat_Proforma"]:</strong> @_client.BillingSettings.ProformaFileNameFormat</MudText>
+                                </MudItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_client.BillingSettings.TaxReceiptFileNameFormat))
+                            {
+                                <MudItem xs="12" md="6">
+                                    <MudText><strong>@L["FileNameFormat_TaxReceipt"]:</strong> @_client.BillingSettings.TaxReceiptFileNameFormat</MudText>
                                 </MudItem>
                             }
                             @if (_client.BillingSettings.DefaultPaymentMethod.HasValue)
@@ -608,6 +664,10 @@ else
                 InvoiceNumberSuffix = _client.BillingSettings.InvoiceNumberSuffix,
                 CreditNoteNumberPrefix = _client.BillingSettings.CreditNoteNumberPrefix,
                 CreditNoteNumberSuffix = _client.BillingSettings.CreditNoteNumberSuffix,
+                InvoiceFileNameFormat = _client.BillingSettings.InvoiceFileNameFormat,
+                CreditNoteFileNameFormat = _client.BillingSettings.CreditNoteFileNameFormat,
+                ProformaFileNameFormat = _client.BillingSettings.ProformaFileNameFormat,
+                TaxReceiptFileNameFormat = _client.BillingSettings.TaxReceiptFileNameFormat,
                 DefaultPaymentMethod = _client.BillingSettings.DefaultPaymentMethod,
                 BankAccountNumber = _client.BillingSettings.BankAccountNumber,
                 Notes = _client.BillingSettings.Notes
@@ -726,6 +786,10 @@ else
                     InvoiceNumberSuffix = _billingSettings.InvoiceNumberSuffix,
                     CreditNoteNumberPrefix = _billingSettings.CreditNoteNumberPrefix,
                     CreditNoteNumberSuffix = _billingSettings.CreditNoteNumberSuffix,
+                    InvoiceFileNameFormat = _billingSettings.InvoiceFileNameFormat,
+                    CreditNoteFileNameFormat = _billingSettings.CreditNoteFileNameFormat,
+                    ProformaFileNameFormat = _billingSettings.ProformaFileNameFormat,
+                    TaxReceiptFileNameFormat = _billingSettings.TaxReceiptFileNameFormat,
                     DefaultPaymentMethod = _billingSettings.DefaultPaymentMethod,
                     BankAccountNumber = _billingSettings.BankAccountNumber,
                     Notes = _billingSettings.Notes

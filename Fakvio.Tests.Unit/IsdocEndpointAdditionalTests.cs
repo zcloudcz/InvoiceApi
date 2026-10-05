@@ -89,7 +89,7 @@ public class FakvioApiClientIsdocTests : IDisposable
         var result = await _sut.ExportInvoiceIsdocAsync(7);
 
         // Assert — raw bytes must be returned unchanged (no JSON wrapping)
-        result.ShouldBe(expectedBytes);
+        result.Content.ShouldBe(expectedBytes);
     }
 
     [Fact]
@@ -189,6 +189,7 @@ public class IsdocEndpointEdgeCaseTests
 {
     private readonly IInvoiceService _invoiceService = Substitute.For<IInvoiceService>();
     private readonly IPdfExportService _pdfExportService = Substitute.For<IPdfExportService>();
+    private readonly IDocumentFileNameService _fileNameService = Substitute.For<IDocumentFileNameService>();
     private readonly IIsdocExportService _isdocExportService = Substitute.For<IIsdocExportService>();
     private readonly IEmailService _emailService = Substitute.For<IEmailService>();
     private readonly IQrPaymentService _qrPaymentService = Substitute.For<IQrPaymentService>();
@@ -201,6 +202,7 @@ public class IsdocEndpointEdgeCaseTests
         _controller = new InvoiceController(
             _invoiceService,
             _pdfExportService,
+            _fileNameService,
             _isdocExportService,
             Substitute.For<IUblExportService>(),
             _emailService,
@@ -208,58 +210,6 @@ public class IsdocEndpointEdgeCaseTests
             _cloudStorage,
             Substitute.For<IPaymentMatchingService>(),
             Substitute.For<ILogger<InvoiceController>>());
-    }
-
-    // ── Controller: null DocumentNumber → fallback to id ─────────────────
-
-    [Fact]
-    public async Task ExportIsdoc_NullDocumentNumber_UsesIdAsFileName()
-    {
-        // Arrange — invoice exists but DocumentNumber is not yet assigned (draft)
-        const long invoiceId = 77L;
-        var fakeBytes = "<ISDOC/>"u8.ToArray();
-
-        _isdocExportService.ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(fakeBytes);
-        _invoiceService.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new InvoiceDto
-            {
-                Id = invoiceId,
-                DocumentNumber = null,          // <-- null: document number not yet set
-                DocumentType = EDocumentType.Invoice
-            });
-
-        // Act
-        var result = await _controller.ExportIsdoc(invoiceId, CancellationToken.None);
-
-        // Assert — file name falls back to "Invoice_{id}.isdoc"
-        var fileResult = result.ShouldBeOfType<FileContentResult>();
-        fileResult.FileDownloadName.ShouldBe($"Invoice_{invoiceId}.isdoc");
-    }
-
-    [Fact]
-    public async Task ExportIsdoc_NullDocumentNumber_CreditNote_UsesIdWithCorrectPrefix()
-    {
-        // Arrange — credit note with null document number
-        const long invoiceId = 88L;
-        var fakeBytes = "<ISDOC/>"u8.ToArray();
-
-        _isdocExportService.ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(fakeBytes);
-        _invoiceService.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new InvoiceDto
-            {
-                Id = invoiceId,
-                DocumentNumber = null,
-                DocumentType = EDocumentType.CreditNote
-            });
-
-        // Act
-        var result = await _controller.ExportIsdoc(invoiceId, CancellationToken.None);
-
-        // Assert — prefix must still be "CreditNote" even when DocumentNumber is null
-        var fileResult = result.ShouldBeOfType<FileContentResult>();
-        fileResult.FileDownloadName.ShouldBe($"CreditNote_{invoiceId}.isdoc");
     }
 
     // ── Controller: cancellation token propagation ────────────────────────
@@ -274,15 +224,15 @@ public class IsdocEndpointEdgeCaseTests
 
         _isdocExportService.ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns("<ISDOC/>"u8.ToArray());
-        _invoiceService.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new InvoiceDto { Id = invoiceId, DocumentNumber = "FAK100", DocumentType = EDocumentType.Invoice });
+        _fileNameService.GetFileNameAsync(invoiceId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("FAK100.isdoc");
 
         // Act
         await _controller.ExportIsdoc(invoiceId, token);
 
         // Assert — the same token must reach both service calls
         await _isdocExportService.Received(1).ExportInvoiceAsync(invoiceId, token);
-        await _invoiceService.Received(1).GetInvoiceByIdAsync(invoiceId, token);
+        await _fileNameService.Received(1).GetFileNameAsync(invoiceId, Arg.Any<string>(), token);
     }
 
     [Fact]
@@ -316,7 +266,7 @@ public class IsdocEndpointEdgeCaseTests
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto { Id = invoiceId, DocumentNumber = "INV009", DocumentType = EDocumentType.Invoice });
         apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(xmlBytes);
+            .Returns(new ExportedFile(xmlBytes, "Invoice_12.isdoc"));
 
         // Act
         var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
@@ -338,7 +288,7 @@ public class IsdocEndpointEdgeCaseTests
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto { Id = invoiceId, DocumentNumber = "INV010", DocumentType = EDocumentType.Invoice });
         apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(emptyBytes);
+            .Returns(new ExportedFile(emptyBytes, "Invoice_12.isdoc"));
 
         // Act
         var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
@@ -352,26 +302,6 @@ public class IsdocEndpointEdgeCaseTests
 
     // ── MCP tool: null DocumentNumber → fallback to id in file name ──────
 
-    [Fact]
-    public async Task ExportInvoiceIsdoc_NullDocumentNumber_FallsBackToId()
-    {
-        // Arrange — invoice has no document number yet (draft state)
-        var apiClient = Substitute.For<IFakvioApiClient>();
-        const long invoiceId = 11L;
-        var xmlBytes = "<ISDOC/>"u8.ToArray();
-
-        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new InvoiceDto { Id = invoiceId, DocumentNumber = null, DocumentType = EDocumentType.Invoice });
-        apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(xmlBytes);
-
-        // Act
-        var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
-
-        // Assert — file name must fall back to "Invoice_11.isdoc"
-        var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("fileName").GetString().ShouldBe($"Invoice_{invoiceId}.isdoc");
-    }
 
     // ── MCP tool: JSON envelope shape mirrors ExportInvoicePdf ───────────
 
@@ -387,7 +317,7 @@ public class IsdocEndpointEdgeCaseTests
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto { Id = invoiceId, DocumentNumber = "FAK012", DocumentType = EDocumentType.Invoice });
         apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(xmlBytes);
+            .Returns(new ExportedFile(xmlBytes, "Invoice_12.isdoc"));
 
         // Act
         var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Fakvio.UI.Shared.Models;
 using Microsoft.AspNetCore.Components.Authorization;
 
 namespace Fakvio.UI.Shared.Services;
@@ -348,6 +349,52 @@ public abstract class ApiClientBase
             LogClientException(ex, "GET (bytes)", endpoint);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Like <see cref="GetBytesAsync"/>, but also returns the file name the server put into
+    /// Content-Disposition. Used for generated documents, whose names are built server-side
+    /// from the client's file name format. Throws ApiException on non-success status codes.
+    /// </summary>
+    protected async Task<DownloadedFile?> GetFileAsync(string endpoint)
+    {
+        try
+        {
+            await AddAuthorizationHeaderAsync();
+            _logger.LogInformation("GET (file) {Endpoint}", endpoint);
+            var response = await _httpClient.GetAsync(endpoint);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return new DownloadedFile(
+                    await response.Content.ReadAsByteArrayAsync(),
+                    GetServerFileName(response));
+            }
+
+            await HandleErrorResponseAsync(response, "GET (file)", endpoint);
+            return null; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogClientException(ex, "GET (file)", endpoint);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Reads the file name from the Content-Disposition header, or null when absent.
+    /// FileNameStar (RFC 5987) wins because it keeps non-ASCII characters (Czech client names) intact.
+    /// The browser can only see this header cross-origin because the API exposes it via CORS.
+    /// </summary>
+    protected static string? GetServerFileName(HttpResponseMessage response)
+    {
+        var disposition = response.Content.Headers.ContentDisposition;
+        var name = disposition?.FileNameStar ?? disposition?.FileName;
+        return string.IsNullOrWhiteSpace(name) ? null : name.Trim('"');
     }
 
     /// <summary>
