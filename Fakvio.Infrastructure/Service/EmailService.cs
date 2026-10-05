@@ -1,6 +1,9 @@
 using Fakvio.Contracts.Common;
+using Fakvio.Contracts.Dto.Email;
+using Fakvio.Application.Common.Helpers;
 using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
+using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.Ubl;
@@ -33,6 +36,7 @@ public class EmailService : IEmailService
     private readonly MasterDbContext _masterContext;
     private readonly IPdfExportService _pdfExportService;
     private readonly IDocumentFileNameService _fileNameService;
+    private readonly IFileAttachmentService _fileAttachmentService;
     private readonly IIsdocExportService _isdocExportService;
     private readonly IUblExportService _ublExportService;
     private readonly IContentTemplateService _contentTemplateService;
@@ -48,7 +52,7 @@ public class EmailService : IEmailService
     /// This avoids passing 7+ parameters around — a single object holds everything needed
     /// to connect to an SMTP server and send an email.
     /// </summary>
-    private record SmtpSettings(
+    internal record SmtpSettings(
         string Host,
         int Port,
         string? Username,
@@ -62,6 +66,7 @@ public class EmailService : IEmailService
         MasterDbContext masterContext,
         IPdfExportService pdfExportService,
         IDocumentFileNameService fileNameService,
+        IFileAttachmentService fileAttachmentService,
         IIsdocExportService isdocExportService,
         IUblExportService ublExportService,
         IContentTemplateService contentTemplateService,
@@ -76,6 +81,7 @@ public class EmailService : IEmailService
         _masterContext = masterContext;
         _pdfExportService = pdfExportService;
         _fileNameService = fileNameService;
+        _fileAttachmentService = fileAttachmentService;
         _isdocExportService = isdocExportService;
         _ublExportService = ublExportService;
         _contentTemplateService = contentTemplateService;
@@ -91,48 +97,72 @@ public class EmailService : IEmailService
     public async Task SendInvoiceEmailAsync(long invoiceId, string recipientEmail, CancellationToken ct = default,
         SendInvoiceEmailOptions? options = null)
     {
-        _logger.LogInformation("Sending invoice {InvoiceId} via email to {Email}", invoiceId, recipientEmail);
+        // Cheap validation first - a bad CC list must reject the request before any PDF is generated.
+        var ccEmails = EmailAddressList.Normalize(options?.CcEmails);
+        if (EmailAddressList.ValidateCc(ccEmails) is { } ccError)
+            throw new ArgumentException(ccError);
 
-        // Load the invoice with related data for placeholder substitution.
-        // Include Client to read the client's preferred language for template resolution.
-        // Client.Address is included on top of the ISDOC-era set of includes — F1.9 needs the
-        // buyer's country to decide whether a UBL attachment applies (UblCodes.CountryToIso2).
-        var invoice = await _context.Invoice
-            .Include(i => i.Currency)
-            .Include(i => i.Issuer)
-            .Include(i => i.Client)
-                .ThenInclude(c => c!.Address)
-            .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
+        // Tracked (not AsNoTracking): "save as client default" below edits Client.BillingSettings.
+        var invoice = await LoadInvoiceForEmailAsync(invoiceId, track: true, ct)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
-        var docNumber = invoice.DocumentNumber ?? invoiceId.ToString();
+        // Blank recipient = the client's default e-mail contact (this is also what bulk send relies on).
+        var to = string.IsNullOrWhiteSpace(recipientEmail)
+            ? OrderEmailContacts(invoice.Client?.Contact).FirstOrDefault()?.ContactValue.Trim()
+            : recipientEmail.Trim();
+        if (string.IsNullOrEmpty(to))
+            throw new InvalidOperationException(
+                "No recipient: pass a recipient address or add an e-mail contact to the client.");
+
+        _logger.LogInformation("Sending invoice {InvoiceId} via email to {Email}", invoiceId, to);
+
+        // CC must never repeat the To address (the recipient would get two copies).
+        ccEmails.RemoveAll(cc => string.Equals(cc, to, StringComparison.OrdinalIgnoreCase));
+
+        // Which generated files go out: the sender's explicit choice wins, otherwise the client's
+        // default (client → company → system default).
+        var (wantPdf, wantIsdoc, wantUbl, resolved, ublEffectiveDefault) = ResolveAttachmentPlan(invoice, options);
+
+        // Stored invoice files the user ticked. Loaded (and ownership + size checked) BEFORE the expensive
+        // PDF generation, so a bad id or an oversized selection fails fast.
+        var storedFiles = options?.FileAttachmentIds is { Count: > 0 } storedIds
+            ? await _fileAttachmentService.DownloadSelectedAsync(
+                "Invoice", invoiceId, storedIds, EmailAttachmentValidator.MaxEmailTotalBytes, ct)
+            : [];
 
         // Generate the PDF attachment using the PDF export service.
-        var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(invoiceId, ct);
-        // Attachment names come from the configured per-client / per-document-type file name format,
-        // so they match what the user gets when downloading the same document.
-        var pdfFileName = await _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.PdfExtension, ct);
+        byte[]? pdfBytes = null;
+        string? pdfFileName = null;
+        if (wantPdf)
+        {
+            pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(invoiceId, ct);
+            // Attachment names come from the configured per-client / per-document-type file name format,
+            // so they match what the user gets when downloading the same document.
+            pdfFileName = await _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.PdfExtension, ct);
+        }
 
         // Generate the ISDOC XML attachment.
         // ISDOC 6.0.2 is the Czech electronic invoice standard read by Pohoda, Money, Helios.
-        // The attachment is always included — per-client opt-out is a separate future feature.
-        var isdocBytes = await _isdocExportService.ExportInvoiceAsync(invoiceId, ct);
-        var isdocFileName = await _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.IsdocExtension, ct);
+        byte[]? isdocBytes = null;
+        string? isdocFileName = null;
+        if (wantIsdoc)
+        {
+            isdocBytes = await _isdocExportService.ExportInvoiceAsync(invoiceId, ct);
+            isdocFileName = await _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.IsdocExtension, ct);
+        }
 
-        // UBL/Peppol attachment (ADR 0002, F1.9) — only for a buyer who is actually reachable
-        // via Peppol: a Slovak buyer (SK e-invoicing 2027) or any buyer with an explicit
-        // Client.PeppolId override (F1.8). A pre-flight failure (missing Peppol ID, incomplete
-        // address, …) just skips the attachment — the email itself must never fail because the
-        // UBL side of the document is not ready yet; PDF + ISDOC still go out as before.
+        // UBL/Peppol attachment (ADR 0002, F1.9). By default (nothing configured, nothing requested) it is
+        // only built for a buyer who is actually reachable via Peppol: a Slovak buyer (SK e-invoicing 2027)
+        // or any buyer with an explicit Client.PeppolId override (F1.8) - see ResolveAttachmentPlan.
+        // A pre-flight failure (missing Peppol ID, incomplete address, …) just skips the attachment - the
+        // email itself must never fail because the UBL side of the document is not ready yet; PDF + ISDOC
+        // still go out as before. The one exception is an EXPLICIT request (options.AttachUbl == true):
+        // there the sender must not be told "sent" while the file they asked for is missing.
         // Sending e-invoice XML by email instead of through a Peppol courier is only lawful with
-        // the recipient's consent ([FAQ] I/66) — USERGUIDE §2.8a tells the user that.
+        // the recipient's consent ([FAQ] I/66) - USERGUIDE §2.8a tells the user that.
         byte[]? ublBytes = null;
         string? ublFileName = null;
-        var buyerCountry = UblCodes.CountryToIso2(
-            invoice.Client?.Address?.FirstOrDefault(a => a.IsPrimary)?.Country
-                ?? invoice.Client?.Address?.FirstOrDefault()?.Country);
-        var buyerIsPeppolReachable = buyerCountry == "SK" || !string.IsNullOrWhiteSpace(invoice.Client?.PeppolId);
-        if (buyerIsPeppolReachable)
+        if (wantUbl)
         {
             try
             {
@@ -142,6 +172,12 @@ public class EmailService : IEmailService
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw; // A caller-requested cancellation must still abort the whole send.
+            }
+            catch (Exception ex) when (options?.AttachUbl == true)
+            {
+                _logger.LogWarning(ex, "Explicitly requested UBL could not be generated for invoice {InvoiceId}: {Message}",
+                    invoiceId, ex.Message);
+                throw new InvalidOperationException($"The UBL attachment could not be generated: {ex.Message}", ex);
             }
             catch (Exception ex)
             {
@@ -155,21 +191,224 @@ public class EmailService : IEmailService
             }
         }
 
-        // Extra files chosen by the caller (already validated at the API boundary). Only names and
-        // sizes are ever logged - never the content.
-        var extraAttachments = options?.Attachments ?? [];
+        // Extra files (API/MCP base64 upload, already validated at the API boundary) followed by the stored
+        // invoice files. Names are made unique (case-insensitive, "name (2).ext") across ALL attachments,
+        // because two files with one name overwrite each other when the recipient saves them together.
+        // Only names and sizes are ever logged - never the content.
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var generatedName in new[] { pdfFileName, isdocFileName, ublFileName })
+        {
+            if (generatedName != null)
+                usedNames.Add(generatedName);
+        }
+
+        var extraAttachments = new List<OutgoingEmailAttachment>();
+        foreach (var extra in options?.Attachments ?? [])
+            extraAttachments.Add(extra with { FileName = ZipArchiveHelper.UniqueEntryName(usedNames, extra.FileName) });
+        foreach (var (content, meta) in storedFiles)
+        {
+            // Path.GetFileName: a stored name is user data, never let it carry a path into the MIME part.
+            var storedName = Path.GetFileName(meta.OriginalFileName);
+            extraAttachments.Add(new OutgoingEmailAttachment(
+                ZipArchiveHelper.UniqueEntryName(usedNames, string.IsNullOrWhiteSpace(storedName) ? "attachment" : storedName),
+                content));
+        }
+
+        // Final size guard on the real bytes (the stored-file check above only knew the metadata).
+        var totalBytes = (long)(pdfBytes?.Length ?? 0) + (isdocBytes?.Length ?? 0) + (ublBytes?.Length ?? 0)
+                         + extraAttachments.Sum(a => (long)a.Content.Length);
+        if (totalBytes > EmailAttachmentValidator.MaxEmailTotalBytes)
+            throw new InvalidOperationException(
+                $"The attachments are too large ({totalBytes / (1024 * 1024)} MB); the limit for one e-mail is " +
+                $"{EmailAttachmentValidator.MaxEmailTotalBytes / (1024 * 1024)} MB.");
 
         _logger.LogInformation(
-            "Invoice {InvoiceId} attachments prepared: PDF={PdfFile} ({PdfBytes} B), ISDOC={IsdocFile} ({IsdocBytes} B){UblInfo}, extra={ExtraCount} [{ExtraNames}]",
-            invoiceId, pdfFileName, pdfBytes.Length, isdocFileName, isdocBytes.Length,
+            "Invoice {InvoiceId} attachments prepared: PDF={PdfInfo}, ISDOC={IsdocInfo}{UblInfo}, extra={ExtraCount} [{ExtraNames}], cc={CcCount}",
+            invoiceId,
+            pdfBytes != null ? $"{pdfFileName} ({pdfBytes.Length} B)" : "(not attached)",
+            isdocBytes != null ? $"{isdocFileName} ({isdocBytes.Length} B)" : "(not attached)",
             ublBytes != null ? $", UBL={ublFileName} ({ublBytes.Length} B)" : "",
             extraAttachments.Count,
-            string.Join(", ", extraAttachments.Select(a => $"{a.FileName} ({a.Content.Length} B)")));
+            string.Join(", ", extraAttachments.Select(a => $"{a.FileName} ({a.Content.Length} B)")),
+            ccEmails.Count);
 
+        // Try to render from the default content template for the client's language, fall back to simple HTML
+        var (templateSubject, templateBody) = await RenderInvoiceTemplateAsync(invoice, ct);
+
+        // Let the caller's custom subject / message override or extend the template output.
+        var (subject, htmlBody) = ApplyCustomization(templateSubject, templateBody, options);
+
+        // Build and send the email with the chosen generated files (+ UBL when applicable, F1.9) + extra files.
+        // We call the internal builder directly instead of SendEmailAsync because
+        // the public SendEmailAsync signature supports only one optional attachment
+        // and we don't want to break that public interface (per issue #16 analysis).
+        await SendInvoiceMessageAsync(
+            to, subject, htmlBody,
+            pdfBytes, pdfFileName,
+            isdocBytes, isdocFileName,
+            ublBytes, ublFileName,
+            ct,
+            extraAttachments,
+            ccEmails);
+
+        // Mark the invoice as sent by email in the database
+        invoice.IsSentByEmail = true;
+        invoice.LastSentByEmailAt = DateTime.UtcNow;
+
+        // "Save as default for this client": only after the mail really left, so a failed send changes nothing.
+        // Persisted in the same SaveChanges as the "sent" flag.
+        if (options is { SaveAttachmentDefaults: true } && invoice.Client != null)
+        {
+            invoice.Client.BillingSettings ??= new BillingSettings { ClientId = invoice.Client.Id, CreatedAt = DateTime.UtcNow };
+            EmailAttachmentDefaults.ApplyChoices(
+                invoice.Client.BillingSettings, resolved, ublEffectiveDefault,
+                options.AttachPdf, options.AttachIsdoc, options.AttachUbl);
+            _logger.LogInformation("Saved e-mail attachment defaults for client {ClientId}", invoice.Client.Id);
+        }
+
+        await _context.SaveChangesAsync(ct);
+
+        // "invoice.sent" webhook — never throws (see IWebhookPublisher).
+        if (_webhookPublisher != null)
+            await _webhookPublisher.PublishInvoiceEventAsync(Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceSent, invoiceId, ct);
+
+        var sentNames = new List<string>();
+        if (pdfFileName != null)
+            sentNames.Add(pdfFileName);
+        if (isdocFileName != null)
+            sentNames.Add(isdocFileName);
+        if (ublBytes != null)
+            sentNames.Add(ublFileName!);
+        sentNames.AddRange(extraAttachments.Select(a => a.FileName));
+        var attachmentCount = sentNames.Count;
+        var attachmentNames = string.Join(", ", sentNames);
+        _logger.LogInformation(
+            "Invoice {InvoiceId} email sent successfully to {Email} with {AttachmentCount} attachments: {Attachments}",
+            invoiceId, to, attachmentCount, attachmentNames);
+    }
+
+    /// <inheritdoc />
+    public async Task<InvoiceEmailDefaultsDto> GetSendDefaultsAsync(long invoiceId, CancellationToken ct = default)
+    {
+        var invoice = await LoadInvoiceForEmailAsync(invoiceId, track: false, ct)
+            ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
+
+        var resolved = EmailAttachmentDefaults.Resolve(invoice.Client?.BillingSettings, invoice.Issuer?.BillingSettings);
+        var autoWouldAttach = IsPeppolReachable(invoice);
+
+        var defaults = new InvoiceEmailDefaultsDto
+        {
+            Recipients = OrderEmailContacts(invoice.Client?.Contact)
+                .Select(c => new EmailRecipientOptionDto
+                {
+                    Email = c.ContactValue.Trim(),
+                    Label = c.Label,
+                    IsPrimary = c.IsPrimary,
+                    IsInvoiceEmail = c.ContactType == EContactType.InvoiceEmail
+                })
+                .ToList(),
+            AttachPdf = resolved.Pdf,
+            AttachIsdoc = resolved.Isdoc,
+            AttachUbl = resolved.Ubl ?? autoWouldAttach,
+            UblIsAutomatic = resolved.Ubl is null,
+            UblAutoWouldAttach = autoWouldAttach,
+            StoredAttachments = await _fileAttachmentService.GetByEntityAsync("Invoice", invoiceId, ct)
+        };
+
+        // The dialog only prefills the subject; if the template cannot be rendered the dialog still works
+        // (the server falls back to the template subject at send time when no custom subject is sent).
+        try
+        {
+            defaults.DefaultSubject = (await RenderInvoiceTemplateAsync(invoice, ct)).Subject;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Default e-mail subject for invoice {InvoiceId} could not be rendered", invoiceId);
+        }
+
+        return defaults;
+    }
+
+    /// <summary>
+    /// Loads an invoice with everything the e-mail needs: currency and issuer for the template, the client's
+    /// address (buyer country → UBL rule), contacts (default recipient) and BOTH BillingSettings (client + issuer
+    /// → attachment defaults). Split query because Address and Contact are two collections: a single query would
+    /// multiply their rows (cartesian explosion).
+    /// </summary>
+    private async Task<Invoice?> LoadInvoiceForEmailAsync(long invoiceId, bool track, CancellationToken ct)
+    {
+        var query = _context.Invoice
+            .Include(i => i.Currency)
+            .Include(i => i.Issuer)
+                .ThenInclude(c => c.BillingSettings)
+            .Include(i => i.Client)
+                .ThenInclude(c => c!.Address)
+            .Include(i => i.Client)
+                .ThenInclude(c => c!.Contact)
+            .Include(i => i.Client)
+                .ThenInclude(c => c!.BillingSettings)
+            .AsSplitQuery();
+
+        if (!track)
+            query = query.AsNoTracking();
+
+        return await query.FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
+    }
+
+    /// <summary>
+    /// A buyer who is actually reachable via Peppol: a Slovak buyer (SK e-invoicing 2027) or any buyer with
+    /// an explicit Client.PeppolId override (F1.8). This is the "automatic" rule for the UBL attachment.
+    /// </summary>
+    private static bool IsPeppolReachable(Invoice invoice)
+    {
+        var buyerCountry = UblCodes.CountryToIso2(
+            invoice.Client?.Address?.FirstOrDefault(a => a.IsPrimary)?.Country
+                ?? invoice.Client?.Address?.FirstOrDefault()?.Country);
+        return buyerCountry == "SK" || !string.IsNullOrWhiteSpace(invoice.Client?.PeppolId);
+    }
+
+    /// <summary>
+    /// Decides which generated files to build: the explicit per-send choice, else the resolved client default.
+    /// Also returns the resolved defaults and the effective UBL default so "save as default" can tell a real
+    /// change from a mere confirmation of what was already preselected.
+    /// </summary>
+    private static (bool Pdf, bool Isdoc, bool Ubl, ResolvedEmailAttachments Resolved, bool UblEffectiveDefault)
+        ResolveAttachmentPlan(Invoice invoice, SendInvoiceEmailOptions? options)
+    {
+        var resolved = EmailAttachmentDefaults.Resolve(invoice.Client?.BillingSettings, invoice.Issuer?.BillingSettings);
+        var ublEffectiveDefault = resolved.Ubl ?? IsPeppolReachable(invoice);
+        return (
+            options?.AttachPdf ?? resolved.Pdf,
+            options?.AttachIsdoc ?? resolved.Isdoc,
+            options?.AttachUbl ?? ublEffectiveDefault,
+            resolved,
+            ublEffectiveDefault);
+    }
+
+    /// <summary>
+    /// The client's e-mail contacts, best recipient first: the dedicated "invoice e-mail" type before a general
+    /// e-mail, primary before non-primary, then the oldest. Blank values and duplicates are dropped.
+    /// </summary>
+    internal static List<Contact> OrderEmailContacts(IEnumerable<Contact>? contacts) =>
+        (contacts ?? [])
+            .Where(c => c.ContactType is EContactType.InvoiceEmail or EContactType.Email
+                        && !string.IsNullOrWhiteSpace(c.ContactValue))
+            .OrderByDescending(c => c.ContactType == EContactType.InvoiceEmail)
+            .ThenByDescending(c => c.IsPrimary)
+            .ThenBy(c => c.Id)
+            .DistinctBy(c => c.ContactValue.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>
+    /// Renders the invoice e-mail template (subject + HTML body) for the client's language, falling back to
+    /// a simple built-in text. Shared by sending and by the dialog's "default subject" so both always agree.
+    /// </summary>
+    private async Task<(string Subject, string HtmlBody)> RenderInvoiceTemplateAsync(Invoice invoice, CancellationToken ct)
+    {
         // Build placeholders dictionary for template substitution
         var placeholders = new Dictionary<string, string>
         {
-            ["InvoiceNumber"] = docNumber,
+            ["InvoiceNumber"] = invoice.DocumentNumber ?? invoice.Id.ToString(),
             ["CompanyName"] = invoice.Issuer?.CompanyName ?? "",
             ["TotalWithVat"] = invoice.TotalWithVat.ToString("N2"),
             ["CurrencyCode"] = invoice.Currency?.Code ?? "",
@@ -187,42 +426,7 @@ public class EmailService : IEmailService
         // Falls back to "cs" (Czech) when client or language is not set.
         var clientLanguage = invoice.Client?.Language ?? "cs";
 
-        // Try to render from the default content template for the client's language, fall back to simple HTML
-        var (templateSubject, templateBody) = await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
-
-        // Let the caller's custom subject / message override or extend the template output.
-        var (subject, htmlBody) = ApplyCustomization(templateSubject, templateBody, options);
-
-        // Build and send the email with PDF + ISDOC (+ UBL when applicable, F1.9) + extra files.
-        // We call the internal builder directly instead of SendEmailAsync because
-        // the public SendEmailAsync signature supports only one optional attachment
-        // and we don't want to break that public interface (per issue #16 analysis).
-        await SendInvoiceMessageAsync(
-            recipientEmail, subject, htmlBody,
-            pdfBytes, pdfFileName,
-            isdocBytes, isdocFileName,
-            ublBytes, ublFileName,
-            ct,
-            extraAttachments);
-
-        // Mark the invoice as sent by email in the database
-        invoice.IsSentByEmail = true;
-        invoice.LastSentByEmailAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync(ct);
-
-        // "invoice.sent" webhook — never throws (see IWebhookPublisher).
-        if (_webhookPublisher != null)
-            await _webhookPublisher.PublishInvoiceEventAsync(Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceSent, invoiceId, ct);
-
-        var sentNames = new List<string> { pdfFileName, isdocFileName };
-        if (ublBytes != null)
-            sentNames.Add(ublFileName!);
-        sentNames.AddRange(extraAttachments.Select(a => a.FileName));
-        var attachmentCount = sentNames.Count;
-        var attachmentNames = string.Join(", ", sentNames);
-        _logger.LogInformation(
-            "Invoice {InvoiceId} email sent successfully to {Email} with {AttachmentCount} attachments: {Attachments}",
-            invoiceId, recipientEmail, attachmentCount, attachmentNames);
+        return await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
     }
 
     /// <summary>
@@ -242,13 +446,15 @@ public class EmailService : IEmailService
     /// <param name="ublFileName">Filename for the UBL attachment; required when <paramref name="ublBytes"/> is set.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <param name="extraAttachments">Caller-supplied extra files appended after PDF / ISDOC / UBL, or null for none.</param>
+    /// <param name="ccEmails">CC recipients, or null for none.</param>
     internal async Task SendInvoiceMessageAsync(
         string to, string subject, string htmlBody,
-        byte[] pdfBytes, string pdfFileName,
-        byte[] isdocBytes, string isdocFileName,
+        byte[]? pdfBytes, string? pdfFileName,
+        byte[]? isdocBytes, string? isdocFileName,
         byte[]? ublBytes = null, string? ublFileName = null,
         CancellationToken ct = default,
-        IReadOnlyList<OutgoingEmailAttachment>? extraAttachments = null)
+        IReadOnlyList<OutgoingEmailAttachment>? extraAttachments = null,
+        IReadOnlyList<string>? ccEmails = null)
     {
         // Resolve SMTP settings using the 3-tier priority chain
         var smtp = await ResolveSmtpSettingsAsync(ct);
@@ -260,7 +466,8 @@ public class EmailService : IEmailService
             pdfBytes, pdfFileName,
             isdocBytes, isdocFileName,
             ublBytes, ublFileName,
-            extraAttachments);
+            extraAttachments,
+            ccEmails);
 
         // Connect and send using MailKit
         await SendViaSMTPAsync(smtp, message, ct);
@@ -284,27 +491,42 @@ public class EmailService : IEmailService
     /// <param name="ublBytes">Raw UBL XML bytes to attach, or null to skip the attachment.</param>
     /// <param name="ublFileName">Filename for the UBL attachment; required when <paramref name="ublBytes"/> is set.</param>
     /// <param name="extraAttachments">Caller-supplied extra files appended after PDF / ISDOC / UBL, or null for none.</param>
+    /// <param name="ccEmails">CC recipients (bare addresses), or null for none.</param>
+    /// <remarks>
+    /// <paramref name="pdfBytes"/> / <paramref name="isdocBytes"/> are null when the sender (or the client's default)
+    /// switched that attachment off.
+    /// </remarks>
     internal static MimeMessage BuildInvoiceMessage(
         string senderName, string senderEmail,
         string to, string subject, string htmlBody,
-        byte[] pdfBytes, string pdfFileName,
-        byte[] isdocBytes, string isdocFileName,
+        byte[]? pdfBytes, string? pdfFileName,
+        byte[]? isdocBytes, string? isdocFileName,
         byte[]? ublBytes = null, string? ublFileName = null,
-        IReadOnlyList<OutgoingEmailAttachment>? extraAttachments = null)
+        IReadOnlyList<OutgoingEmailAttachment>? extraAttachments = null,
+        IReadOnlyList<string>? ccEmails = null)
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(senderName, senderEmail));
         message.To.Add(MailboxAddress.Parse(to));
+        foreach (var cc in ccEmails ?? [])
+        {
+            // The API boundary already validated the list; this is the last line of defence for other callers.
+            if (!MailboxAddress.TryParse(cc, out var ccAddress))
+                throw new ArgumentException($"CC address '{cc}' is not a valid e-mail address.");
+            message.Cc.Add(ccAddress);
+        }
         message.Subject = subject;
 
         var bodyBuilder = new BodyBuilder { HtmlBody = htmlBody };
 
         // PDF invoice — standard document type
-        bodyBuilder.Attachments.Add(pdfFileName, pdfBytes, ContentType.Parse("application/pdf"));
+        if (pdfBytes != null && pdfFileName != null)
+            bodyBuilder.Attachments.Add(pdfFileName, pdfBytes, ContentType.Parse("application/pdf"));
 
         // ISDOC XML — Czech electronic invoice standard (ISO/IEC 19845 based).
         // Content type "application/xml" is the MIME type for XML documents (RFC 7303).
-        bodyBuilder.Attachments.Add(isdocFileName, isdocBytes, ContentType.Parse("application/xml"));
+        if (isdocBytes != null && isdocFileName != null)
+            bodyBuilder.Attachments.Add(isdocFileName, isdocBytes, ContentType.Parse("application/xml"));
 
         // UBL/Peppol XML (F1.9) — only when the caller resolved one (SK buyer or explicit
         // Client.PeppolId override, and the pre-flight actually passed).
@@ -401,7 +623,11 @@ public class EmailService : IEmailService
     ///   - Port 587 → StartTls (plain connect then STARTTLS upgrade — most common)
     ///   - UseSsl=false → None (no encryption, for trusted internal relay servers)
     /// </summary>
-    private async Task SendViaSMTPAsync(SmtpSettings smtp, MimeMessage message, CancellationToken ct)
+    /// <remarks>
+    /// <c>internal virtual</c> is the test seam: unit / integration tests derive from <see cref="EmailService"/> and
+    /// capture the finished <see cref="MimeMessage"/> here instead of opening a real SMTP connection.
+    /// </remarks>
+    internal virtual async Task SendViaSMTPAsync(SmtpSettings smtp, MimeMessage message, CancellationToken ct)
     {
         var socketOptions = ResolveSocketOptions(smtp.Port, smtp.UseSsl);
         _logger.LogInformation("Connecting to SMTP {Host}:{Port} with {Options}",

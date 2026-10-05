@@ -1,0 +1,279 @@
+@*
+    THE dialog for "send a document by e-mail" - used by the invoice detail page AND the invoice grid
+    (invoices, credit notes, proformas, tax receipts all share it). Open it with the static
+    SendInvoiceEmailDialog.ShowAsync(...) so every caller gets the same size and result handling.
+
+    What it offers:
+      - recipient: the client's e-mail contacts (best one preselected) or any typed address
+      - CC: optional, comma / semicolon separated
+      - attachments: PDF / ISDOC / UBL (preset from the client -> company -> system defaults) plus
+        files already stored on the document
+      - subject + message, and "remember the attachment choice for this client"
+    The server (POST /api/invoice/{id}/send-email) validates everything again; the checks here are only
+    early feedback.
+*@
+@using Fakvio.Contracts.Common
+@using Fakvio.Contracts.Dto.Email
+@inject FakvioService InvoiceService
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["Invoice_SendByEmail"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+            @L["Invoice_SendingInvoice"] <strong>@DocumentNumber</strong> @L["Invoice_ToClient"] <strong>@ClientName</strong>
+        </MudAlert>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="my-4" />
+        }
+        else
+        {
+            @if (_defaults == null)
+            {
+                @* Defaults could not be loaded: sending still works - without explicit attachment flags the
+                   server applies the client's own defaults. *@
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">@L["EmailSend_DefaultsFailed"]</MudAlert>
+            }
+
+            @* To: the client's contacts, but any typed address is accepted (CoerceValue). *@
+            <MudAutocomplete T="string" Label="@L["Invoice_EmailRecipient"].Value" Required="true"
+                             Value="_to" ValueChanged="OnToChanged" Text="@_to" TextChanged="OnToChanged"
+                             SearchFunc="SearchRecipients" CoerceValue="true" ResetValueOnEmptyText="true"
+                             OpenOnFocus="true" MinCharacters="0" MaxItems="20"
+                             Error="@ToInvalid" ErrorText="@L["EmailSend_ToInvalid"].Value"
+                             HelperText="@L["Invoice_RecipientHelper"].Value">
+                <ItemTemplate Context="email">
+                    <MudText Typo="Typo.body2">@email</MudText>
+                    @if (!string.IsNullOrWhiteSpace(LabelOf(email)))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@LabelOf(email)</MudText>
+                    }
+                </ItemTemplate>
+            </MudAutocomplete>
+
+            <MudTextField T="string" @bind-Value="_ccText" Immediate="true" Class="mt-3"
+                          Label="@L["EmailSend_Cc"].Value"
+                          Error="@(CcError != null)" ErrorText="@CcError"
+                          HelperText="@string.Format(L["EmailSend_CcHelper"].Value, EmailAddressList.MaxCc)" />
+
+            @if (_defaults != null)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-4">@L["EmailSend_Attachments"]</MudText>
+                <MudCheckBox T="bool" @bind-Value="_attachPdf" Label="@L["EmailSend_AttachPdf"].Value" Dense="true" />
+                <MudCheckBox T="bool" @bind-Value="_attachIsdoc" Label="@L["EmailSend_AttachIsdoc"].Value" Dense="true" />
+                <MudCheckBox T="bool" @bind-Value="_attachUbl" Label="@L["EmailSend_AttachUbl"].Value" Dense="true" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@UblHint</MudText>
+
+                @if (_defaults.StoredAttachments.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-3">@L["EmailSend_StoredAttachments"]</MudText>
+                    @foreach (var file in _defaults.StoredAttachments)
+                    {
+                        var fileId = file.Id;
+                        <MudCheckBox T="bool" Dense="true"
+                                     Value="@_selectedFileIds.Contains(fileId)"
+                                     ValueChanged="@((bool on) => ToggleFile(fileId, on))"
+                                     Label="@($"{file.OriginalFileName} ({FileAttachmentManager.FormatFileSize(file.FileSizeBytes)})")" />
+                    }
+                }
+            }
+
+            <MudTextField T="string" @bind-Value="_subject" Label="@L["EmailSend_Subject"].Value" Class="mt-4" MaxLength="500" />
+            <MudTextField T="string" @bind-Value="_message" Label="@L["EmailSend_Message"].Value" Class="mt-3"
+                          Lines="4" AutoGrow="true" MaxLength="5000" />
+
+            @if (_defaults != null)
+            {
+                <MudCheckBox T="bool" @bind-Value="_saveDefaults" Dense="true" Class="mt-2"
+                             Label="@L["EmailSend_SaveDefaults"].Value" />
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SendAsync" Disabled="@(!CanSend)">
+            @if (_sending)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>@L["Invoice_Sending"]</span>
+            }
+            else
+            {
+                <span>@L["Invoice_Send"]</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>Id of the document (invoice, credit note, ...) to send.</summary>
+    [Parameter, EditorRequired] public long InvoiceId { get; set; }
+
+    /// <summary>Shown in the header so the user sees which document is being sent.</summary>
+    [Parameter] public string? DocumentNumber { get; set; }
+
+    /// <summary>Shown in the header.</summary>
+    [Parameter] public string? ClientName { get; set; }
+
+    private InvoiceEmailDefaultsDto? _defaults;
+    private bool _loading = true;
+    private bool _sending;
+
+    private string _to = string.Empty;
+    private string _ccText = string.Empty;
+    private string _subject = string.Empty;
+    private string _message = string.Empty;
+    private bool _attachPdf = true;
+    private bool _attachIsdoc = true;
+    private bool _attachUbl;
+    private bool _saveDefaults;
+    private readonly HashSet<long> _selectedFileIds = new();
+
+    /// <summary>
+    /// Opens the dialog and returns true when the e-mail was sent (so the caller can refresh its "sent" status).
+    /// One entry point = every caller gets identical size, buttons and result semantics.
+    /// </summary>
+    public static async Task<bool> ShowAsync(
+        IDialogService dialogService, string title, long invoiceId, string? documentNumber, string? clientName)
+    {
+        var parameters = new DialogParameters<SendInvoiceEmailDialog>
+        {
+            { x => x.InvoiceId, invoiceId },
+            { x => x.DocumentNumber, documentNumber },
+            { x => x.ClientName, clientName }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await dialogService.ShowAsync<SendInvoiceEmailDialog>(title, parameters, options);
+        var result = await dialog.Result;
+        return result is { Canceled: false };
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _defaults = await InvoiceService.GetEmailDefaultsAsync(InvoiceId);
+        }
+        catch (Exception)
+        {
+            // ApiClientBase already logged it; the dialog degrades to manual entry (see the warning alert).
+            _defaults = null;
+        }
+
+        if (_defaults != null)
+        {
+            // The server orders contacts best-first, so the first one is the preselected recipient.
+            _to = _defaults.Recipients.FirstOrDefault()?.Email ?? string.Empty;
+            _subject = _defaults.DefaultSubject ?? string.Empty;
+            _attachPdf = _defaults.AttachPdf;
+            _attachIsdoc = _defaults.AttachIsdoc;
+            _attachUbl = _defaults.AttachUbl;
+        }
+
+        _loading = false;
+    }
+
+    private bool ToInvalid => !string.IsNullOrWhiteSpace(_to) && !EmailAddressList.IsValidAddress(_to.Trim());
+
+    private List<string> CcList => EmailAddressList.Normalize(EmailAddressList.Split(_ccText));
+
+    /// <summary>Early, localized CC feedback; the server enforces the same rules (EmailAddressList).</summary>
+    private string? CcError
+    {
+        get
+        {
+            var cc = CcList;
+            if (cc.Count > EmailAddressList.MaxCc)
+                return string.Format(L["EmailSend_CcTooMany"].Value, EmailAddressList.MaxCc);
+            var invalid = cc.FirstOrDefault(a => !EmailAddressList.IsValidAddress(a));
+            return invalid == null ? null : string.Format(L["EmailSend_CcInvalid"].Value, invalid);
+        }
+    }
+
+    private bool CanSend => !_loading && !_sending && !string.IsNullOrWhiteSpace(_to) && !ToInvalid && CcError == null;
+
+    private string? UblHint
+    {
+        get
+        {
+            if (_defaults is not { UblIsAutomatic: true })
+                return null;
+            return _defaults.UblAutoWouldAttach ? L["EmailSend_UblAutoOn"].Value : L["EmailSend_UblAutoOff"].Value;
+        }
+    }
+
+    private string? LabelOf(string email) =>
+        _defaults?.Recipients.FirstOrDefault(r => string.Equals(r.Email, email, StringComparison.OrdinalIgnoreCase))?.Label;
+
+    private Task<IEnumerable<string>> SearchRecipients(string? text, CancellationToken ct)
+    {
+        var all = _defaults?.Recipients ?? [];
+        var t = text?.Trim();
+        var hits = string.IsNullOrEmpty(t)
+            ? all
+            : all.Where(r => r.Email.Contains(t, StringComparison.OrdinalIgnoreCase)
+                             || (r.Label?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false));
+        return Task.FromResult(hits.Select(r => r.Email));
+    }
+
+    // Both the picked Value and the typed Text land here: whichever the user did last is what gets sent.
+    private void OnToChanged(string? value) => _to = value ?? string.Empty;
+
+    private void ToggleFile(long id, bool on)
+    {
+        if (on) _selectedFileIds.Add(id);
+        else _selectedFileIds.Remove(id);
+    }
+
+    private async Task SendAsync()
+    {
+        if (!CanSend) return;
+
+        // Only send what differs from the server's own behaviour: attachment flags are explicit only when the
+        // defaults were loaded (the user saw and confirmed them), the subject only when edited.
+        var cc = CcList;
+        var dto = new SendInvoiceEmailDto
+        {
+            RecipientEmail = _to.Trim(),
+            CcEmails = cc.Count > 0 ? cc : null,
+            Subject = string.IsNullOrWhiteSpace(_subject) || _subject == _defaults?.DefaultSubject ? null : _subject.Trim(),
+            Message = string.IsNullOrWhiteSpace(_message) ? null : _message.Trim(),
+            AttachPdf = _defaults == null ? null : _attachPdf,
+            AttachIsdoc = _defaults == null ? null : _attachIsdoc,
+            AttachUbl = _defaults == null ? null : _attachUbl,
+            FileAttachmentIds = _selectedFileIds.Count > 0 ? _selectedFileIds.ToList() : null,
+            SaveAttachmentDefaults = _defaults != null && _saveDefaults
+        };
+
+        try
+        {
+            _sending = true;
+            var success = await InvoiceService.SendEmailAsync(InvoiceId, dto);
+            if (success)
+            {
+                Snackbar.Add(string.Format(L["Invoice_EmailSentTo"].Value, dto.RecipientEmail), Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_EmailFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            // The server message (e.g. "attachments too large", "invalid CC address") is the useful part.
+            Snackbar.Add($"{L["Invoice_EmailFailed"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+}

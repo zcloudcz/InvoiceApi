@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Fakvio.Contracts.Dto.AccountingExport;
+using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
@@ -284,13 +285,21 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
-    /// Sends the invoice as an email with PDF attachment to the specified recipient.
-    /// The backend generates the PDF and sends it via configured SMTP.
+    /// Sends the invoice by e-mail (POST /api/invoice/{id}/send-email). The backend generates the chosen
+    /// attachments and sends them via the configured SMTP; throws ApiException with the server's message on 400.
     /// </summary>
-    public async Task<bool> SendEmailAsync(long invoiceId, string recipientEmail, string? subject = null, string? message = null)
+    public async Task<bool> SendEmailAsync(long invoiceId, SendInvoiceEmailDto dto)
     {
-        var dto = new { RecipientEmail = recipientEmail, Subject = subject, Message = message };
         return await PostBoolAsync($"/api/invoice/{invoiceId}/send-email", dto);
+    }
+
+    /// <summary>
+    /// Everything the send dialog prefills in one round trip: client e-mail contacts, effective default
+    /// attachments, stored invoice files and the default subject (GET /api/invoice/{id}/email-defaults).
+    /// </summary>
+    public async Task<InvoiceEmailDefaultsDto?> GetEmailDefaultsAsync(long invoiceId)
+    {
+        return await GetAsync<InvoiceEmailDefaultsDto>($"/api/invoice/{invoiceId}/email-defaults");
     }
 
     // ─── Bulk Operations ─────────────────────────────────────────────────────

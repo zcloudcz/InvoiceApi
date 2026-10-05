@@ -247,6 +247,13 @@ public class FakvioApiClient : IFakvioApiClient
         await EnsureSuccessAsync(response, ct);
     }
 
+    public async Task<InvoiceEmailDefaultsDto> GetInvoiceEmailDefaultsAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/invoice/{id}/email-defaults", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<InvoiceEmailDefaultsDto>(JsonOptions, ct))!;
+    }
+
     /// <summary>
     /// Downloads the invoice PDF as raw bytes from GET /api/invoice/{id}/pdf.
     /// </summary>

@@ -337,8 +337,10 @@ místo souboru — nejčastěji:
 
 **Automatická příloha v e-mailu:** když faktuře pošlete přes „Odeslat emailem" (§2.9) a
 odběratel je slovenský (nebo má nastavený přepis Peppol ID), Fakvio k PDF a ISDOC automaticky
-přidá i UBL XML. Když se e-faktura nedá vygenerovat (viz problémy výše), příloha se prostě
-vynechá — email se vždy odešle. **Pozor:** poslat e-fakturu jinak než přes Peppol síť
+přidá i UBL XML (v dialogu je políčko UBL předem zaškrtnuté a lze ho odškrtnout; u ostatních
+odběratelů ho můžete zaškrtnout sami — viz §2.9 a §5.3b). Když se e-faktura nedá vygenerovat
+(viz problémy výše), příloha se u automatického přikládání prostě vynechá — email se odešle;
+pokud jste UBL zaškrtli sami, odeslání skončí chybou, abyste nedostali „odesláno" bez přílohy. **Pozor:** poslat e-fakturu jinak než přes Peppol síť
 (např. e-mailem) je u slovenského plátce DPH legální jen se souhlasem příjemce.
 
 ### 2.8b Export do účetnictví (POHODA / Money S3 / ABRA Flexi)
@@ -368,13 +370,17 @@ Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakuj
 
 ### 2.9 Odeslání emailem
 
-- Z gridu: ikona emailu → dialog „Odeslat fakturu"
-- Zadejte emailovou adresu příjemce (předvyplněna z nastavení klienta)
-- Klikněte „Odeslat"
+- Z gridu (ikona emailu) i z detailu dokladu (tlačítko „Odeslat emailem") se otevře stejný dialog — platí pro faktury, dobropisy, proformy i daňové doklady
+- **Příjemce:** předvyplněný je nejvhodnější e-mail klienta (nejdřív kontakt „e-mail pro faktury", pak primární e-mail). Rozbalením nabídky vyberete jiný kontakt klienta, nebo napíšete libovolnou adresu
+- **Kopie (CC):** nepovinné, více adres oddělte čárkou nebo středníkem (nejvýše 10). Špatná adresa se zvýrazní a tlačítko „Odeslat" se zneplatní
+- **Přílohy:** zaškrtněte, co chcete přiložit — PDF, ISDOC, UBL / Peppol. Předvyplnění vychází z nastavení klienta, jinak firmy (§5.3b). U UBL je pod políčkem vysvětleno, jestli se pro tohoto odběratele přikládá automaticky. Pod tím jsou soubory nahrané u dokladu (sekce Přílohy) — ty se přiloží, jen když je zaškrtnete. Všechny přílohy dohromady smí mít nejvýše 20 MB
+- **Předmět a zpráva:** předmět je předvyplněný z šablony e-mailu a můžete ho upravit; zpráva se zobrazí nad textem šablony
+- **„Uložit volbu příloh jako výchozí pro klienta":** po úspěšném odeslání se zvolené přílohy uloží do nastavení klienta a příště budou předvyplněné. Když jste volbu nezměnili, klient dál následuje nastavení firmy
+- Klikněte „Odeslat". Chyba (např. příliš velké přílohy) se zobrazí a dialog zůstane otevřený, abyste ji opravili
 - Po odeslání se v řádku zobrazí ikonka zelené obálky s datem
-- V příloze je vždy PDF a ISDOC faktury (u slovenských a Peppol odběratelů i UBL XML). Vlastní předmět, zprávu a další přílohy umí přidat zatím jen AI klient přes MCP (§20.6) a API.
+- Názvy generovaných příloh (PDF, ISDOC, UBL) určuje formát názvu souboru (§5.3a)
 
-**Hromadné odeslání:** zaškrtněte faktury → toolbar → Email → odešle se na výchozí email každého klienta
+**Hromadné odeslání:** zaškrtněte faktury → toolbar → Email → odešle se na výchozí e-mail každého klienta (kontakt „e-mail pro faktury", jinak primární e-mail) a s přílohami podle nastavení klienta; klient bez e-mailu se v hlášení uvede jako chyba a ostatní se odešlou
 
 ---
 
@@ -477,6 +483,22 @@ V detailu klienta sekce „Fakturační nastavení" (BillingSettings):
 | Splatnost (dny) | Výchozí počet dní od data vystavení do data splatnosti |
 
 Tyto hodnoty se automaticky aplikují při vytváření nové faktury pro tohoto klienta.
+
+### 5.3b Přílohy e-mailu s fakturou (výchozí nastavení)
+
+V sekci „Fakturační nastavení" klienta (i na stránce Moje firma — tam jako výchozí pro všechny klienty)
+jsou tři volby **Přílohy e-mailu s fakturou**: PDF, ISDOC a UBL / Peppol. Každá má hodnoty
+**Výchozí / Ano / Ne**:
+
+| Hodnota | Význam |
+|---------|--------|
+| Výchozí | U klienta: převezme se nastavení firmy. U firmy: PDF a ISDOC se přikládají, UBL **automaticky** jen slovenským odběratelům a odběratelům s Peppol ID |
+| Ano | Příloha se přikládá vždy |
+| Ne | Příloha se nepřikládá nikdy |
+
+Pořadí rozhodování: **nastavení klienta → nastavení firmy → systémový výchozí stav**. Při odeslání v dialogu
+(§2.9) lze volbu pro jedno odeslání změnit; zaškrtnutím „Uložit volbu příloh jako výchozí pro klienta" se uloží
+natrvalo. Nastavení platí i pro hromadné odeslání a pro e-maily z opakovaných faktur.
 
 ### 5.3a Název souboru dokladů
 
@@ -779,8 +801,9 @@ Správa informací o vaší firmě (vydavatele faktur).
   odvodí samo z DIČ a země vaší firmy; vyplňte jen když odvození nestačí. Formát
   `schéma:hodnota`, např. `0245:2020123456` (SK) — viz §2.8a Export e-faktury.
 
-**Fakturační nastavení:** výchozí platební metoda, splatnost a **název souboru dokladů** (společný výchozí formát
-pro všechny klienty, který lze u klienta přepsat — viz [§5.3a](#53a-název-souboru-dokladů))
+**Fakturační nastavení:** výchozí platební metoda, splatnost, **název souboru dokladů** (společný výchozí formát
+pro všechny klienty, který lze u klienta přepsat — viz [§5.3a](#53a-název-souboru-dokladů)) a **přílohy e-mailu
+s fakturou** (PDF / ISDOC / UBL — viz [§5.3b](#53b-přílohy-e-mailu-s-fakturou-výchozí-nastavení))
 
 **Adresy:** sídlo, provozovna, fakturační adresa (přes dialog Adresa)
 
@@ -1342,7 +1365,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 81 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 82 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1480,7 +1503,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 
 | Oblast | Příklady |
 |--------|---------|
-| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, odeslat emailem (příjemce, kopie, volba příloh, uložené soubory dokladu), zobrazit možnosti odeslání, stáhnout PDF nebo ISDOC, smazat koncept |
 | Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES, zjistit vystavitele |
 | Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |

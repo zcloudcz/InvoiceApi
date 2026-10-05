@@ -198,7 +198,8 @@ public class ToolDiscoveryTests
 
         // Optional parameter: the AI client must still be able to omit it.
         SchemaRequiredNames(tool).ShouldNotContain("attachments");
-        SchemaRequiredNames(tool).ShouldBe(["invoiceId", "recipientEmail"]);
+        // recipientEmail is optional too: omitted = the client's default e-mail contact (server-side).
+        SchemaRequiredNames(tool).ShouldBe(["invoiceId"]);
     }
 
     /// <summary>

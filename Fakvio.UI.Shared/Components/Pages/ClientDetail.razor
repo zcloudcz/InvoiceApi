@@ -308,6 +308,14 @@ else
                                                      Language="@_editClient.Language"
                                                      EmptyHint="@L["FileNameFormat_EmptyHintClient"].Value" />
                             </MudItem>
+                            <MudItem xs="12">
+                                <EmailAttachmentDefaultsInput Pdf="_billingSettings.EmailAttachPdf"
+                                                              PdfChanged="@(v => _billingSettings.EmailAttachPdf = v)"
+                                                              Isdoc="_billingSettings.EmailAttachIsdoc"
+                                                              IsdocChanged="@(v => _billingSettings.EmailAttachIsdoc = v)"
+                                                              Ubl="_billingSettings.EmailAttachUbl"
+                                                              UblChanged="@(v => _billingSettings.EmailAttachUbl = v)" />
+                            </MudItem>
                             <MudItem xs="12" md="6">
                                 <EnumSelect TEnum="EPaymentMethod"
                                             NullableValue="_billingSettings.DefaultPaymentMethod"
@@ -363,6 +371,16 @@ else
                             {
                                 <MudItem xs="12" md="6">
                                     <MudText><strong>@L["FileNameFormat_TaxReceipt"]:</strong> @_client.BillingSettings.TaxReceiptFileNameFormat</MudText>
+                                </MudItem>
+                            }
+                            @{
+                                var emailAttach = EmailAttachmentDefaultsInput.Summary(L,
+                                    _client.BillingSettings.EmailAttachPdf, _client.BillingSettings.EmailAttachIsdoc, _client.BillingSettings.EmailAttachUbl);
+                            }
+                            @if (emailAttach != null)
+                            {
+                                <MudItem xs="12" md="6">
+                                    <MudText><strong>@L["EmailAttach_Title"]:</strong> @emailAttach</MudText>
                                 </MudItem>
                             }
                             @if (_client.BillingSettings.DefaultPaymentMethod.HasValue)
@@ -668,6 +686,9 @@ else
                 CreditNoteFileNameFormat = _client.BillingSettings.CreditNoteFileNameFormat,
                 ProformaFileNameFormat = _client.BillingSettings.ProformaFileNameFormat,
                 TaxReceiptFileNameFormat = _client.BillingSettings.TaxReceiptFileNameFormat,
+                EmailAttachPdf = _client.BillingSettings.EmailAttachPdf,
+                EmailAttachIsdoc = _client.BillingSettings.EmailAttachIsdoc,
+                EmailAttachUbl = _client.BillingSettings.EmailAttachUbl,
                 DefaultPaymentMethod = _client.BillingSettings.DefaultPaymentMethod,
                 BankAccountNumber = _client.BillingSettings.BankAccountNumber,
                 Notes = _client.BillingSettings.Notes
@@ -790,6 +811,9 @@ else
                     CreditNoteFileNameFormat = _billingSettings.CreditNoteFileNameFormat,
                     ProformaFileNameFormat = _billingSettings.ProformaFileNameFormat,
                     TaxReceiptFileNameFormat = _billingSettings.TaxReceiptFileNameFormat,
+                    EmailAttachPdf = _billingSettings.EmailAttachPdf,
+                    EmailAttachIsdoc = _billingSettings.EmailAttachIsdoc,
+                    EmailAttachUbl = _billingSettings.EmailAttachUbl,
                     DefaultPaymentMethod = _billingSettings.DefaultPaymentMethod,
                     BankAccountNumber = _billingSettings.BankAccountNumber,
                     Notes = _billingSettings.Notes

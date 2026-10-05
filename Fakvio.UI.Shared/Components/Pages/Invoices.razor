@@ -256,38 +256,6 @@
     </NoRecordsContent>
 </FakvioGrid>
 
-@* Email dialog - allows user to enter recipient email and send invoice *@
-<MudDialog @bind-Visible="_showEmailDialog" Options="_emailDialogOptions">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@L["Invoice_SendByEmail"]</MudText>
-    </TitleContent>
-    <DialogContent>
-        @if (_emailInvoice != null)
-        {
-            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
-                @L["Invoice_SendingInvoice"] <strong>@_emailInvoice.DocumentNumber</strong> @L["Invoice_ToClient"] <strong>@_emailInvoice.ClientName</strong>
-            </MudAlert>
-            <MudTextField @bind-Value="_emailRecipient" Label="@L["Invoice_EmailRecipient"].Value" Required="true"
-                          InputType="InputType.Email" HelperText="@L["Invoice_RecipientHelper"].Value" />
-        }
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseEmailDialog">@L["Btn_Cancel"]</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SendEmail"
-                   Disabled="@(string.IsNullOrWhiteSpace(_emailRecipient) || _sendingEmail)">
-            @if (_sendingEmail)
-            {
-                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                <span>@L["Invoice_Sending"]</span>
-            }
-            else
-            {
-                <span>@L["Invoice_Send"]</span>
-            }
-        </MudButton>
-    </DialogActions>
-</MudDialog>
-
 @* Template creation dialog - create a reusable template from an existing invoice (small popup) *@
 <MudDialog @bind-Visible="_showCreateTemplateDialog" Options="_templateDialogOptions">
     <TitleContent>
@@ -426,12 +394,6 @@
     private HashSet<InvoiceDto> _selectedInvoices = new();
     private bool _bulkProcessing = false;
 
-    // Email dialog state
-    private bool _showEmailDialog = false;
-    private bool _sendingEmail = false;
-    private InvoiceDto? _emailInvoice;
-    private string _emailRecipient = "";
-
     // Template dialog state (small popup — stays as dialog)
     private bool _showCreateTemplateDialog = false;
     private InvoiceDto? _selectedInvoice;
@@ -446,8 +408,7 @@
     private long _selectedTemplateId = 0;
     private CreateInvoiceFromTemplateDto _fromTemplateDto = new();
 
-    // Dialog options for small popups (email, template creation)
-    private DialogOptions _emailDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+    // Dialog options for small popups (template creation)
     private DialogOptions _templateDialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
     private DialogOptions _fromTemplateDialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
 
@@ -778,39 +739,17 @@
 
     // --- Email dialog ---
 
-    private void OpenEmailDialog(InvoiceDto invoice)
+    /// <summary>
+    /// Opens the shared "send by e-mail" dialog (same component as the invoice detail page) and refreshes the
+    /// grid when the e-mail was sent, so the "sent by e-mail" status is current.
+    /// </summary>
+    private async Task OpenEmailDialog(InvoiceDto invoice)
     {
-        _emailInvoice = invoice;
-        _emailRecipient = "";
-        _showEmailDialog = true;
-    }
-
-    private void CloseEmailDialog()
-    {
-        _showEmailDialog = false;
-        _emailInvoice = null;
-    }
-
-    private async Task SendEmail()
-    {
-        if (_emailInvoice == null || string.IsNullOrWhiteSpace(_emailRecipient)) return;
-
-        try
+        if (await SendInvoiceEmailDialog.ShowAsync(
+                DialogService, L["Invoice_SendByEmail"].Value, invoice.Id, invoice.DocumentNumber, invoice.ClientName))
         {
-            _sendingEmail = true;
-            var success = await InvoiceService.SendEmailAsync(_emailInvoice.Id, _emailRecipient);
-            if (success)
-            {
-                Snackbar.Add(string.Format(L["Invoice_EmailColumnTo"].Value, _emailRecipient), Severity.Success);
-                CloseEmailDialog();
-            }
-            else
-            {
-                Snackbar.Add(L["Invoice_EmailFailed"].Value, Severity.Error);
-            }
+            await SearchInvoices();
         }
-        catch (Exception ex) { Snackbar.Add($"Error sending email: {ex.Message}", Severity.Error); }
-        finally { _sendingEmail = false; }
     }
 
     // --- Template creation from invoice (small popup dialog — stays as-is) ---

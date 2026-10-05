@@ -106,6 +106,23 @@ public class BillingSettings : BaseEntity
     public string? TaxReceiptFileNameFormat { get; set; }
 
     /// <summary>
+    /// Whether the PDF is attached to invoice e-mails sent to this client by default.
+    /// Resolution: this client's value → the issuer's value (company-wide default) → system default (attach).
+    /// A single send can still override it (see SendInvoiceEmailDto.AttachPdf).
+    /// </summary>
+    public EEmailAttachMode EmailAttachPdf { get; set; } = EEmailAttachMode.Inherit;
+
+    /// <summary>Whether the ISDOC XML is attached by default (same rules as <see cref="EmailAttachPdf"/>; system default: attach).</summary>
+    public EEmailAttachMode EmailAttachIsdoc { get; set; } = EEmailAttachMode.Inherit;
+
+    /// <summary>
+    /// Whether the UBL / Peppol XML is attached by default (same rules as <see cref="EmailAttachPdf"/>).
+    /// <see cref="EEmailAttachMode.Inherit"/> at the end of the chain means "automatic": attach only for a
+    /// Slovak buyer or a buyer with an explicit Peppol ID.
+    /// </summary>
+    public EEmailAttachMode EmailAttachUbl { get; set; } = EEmailAttachMode.Inherit;
+
+    /// <summary>
     /// Default payment method for this client (enum for type safety).
     /// Can be overridden on individual invoices.
     /// Null means no default is set — user must choose when creating invoice.

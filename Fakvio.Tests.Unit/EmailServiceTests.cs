@@ -54,6 +54,9 @@ public class EmailServiceTests : IDisposable
     // Mocked ISDOC export service — returns fake XML bytes without real ISDOC generation
     private readonly IIsdocExportService _isdocExport;
 
+    // Mocked stored-attachment service — only the "send by e-mail" attachment selection touches it
+    private readonly IFileAttachmentService _fileAttachments = Substitute.For<IFileAttachmentService>();
+
     // Mocked UBL export service (ADR 0002, F1.9) — unused by most tests (no SK buyer / PeppolId
     // in their fixtures, so EmailService never calls it), present only so the constructor compiles.
     private readonly IUblExportService _ublExport;
@@ -223,6 +226,7 @@ public class EmailServiceTests : IDisposable
             _masterContext,
             _pdfExport,
             new DocumentFileNameService(_tenantContext),
+            _fileAttachments,
             _isdocExport,
             _ublExport,
             _contentTemplate,
@@ -519,7 +523,7 @@ public class EmailServiceTests : IDisposable
         _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
 
         var service = new EmailService(
-            _tenantContext, _masterContext, _pdfExport, new DocumentFileNameService(_tenantContext), _isdocExport, _ublExport, _contentTemplate,
+            _tenantContext, _masterContext, _pdfExport, new DocumentFileNameService(_tenantContext), _fileAttachments, _isdocExport, _ublExport, _contentTemplate,
             _systemConfig, _credentialProtector, _tenantResolver, emptyConfig, _logger);
 
         // Act & Assert — missing SMTP host in all 3 tiers should throw a clear error

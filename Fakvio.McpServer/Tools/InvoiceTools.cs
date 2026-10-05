@@ -535,21 +535,35 @@ public static class InvoiceTools
     /// and attaches them; the caller may add a custom subject, message and extra files.
     /// </summary>
     [McpServerTool(Title = "Send invoice by email", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true), Description(
-        "Send an invoice via email. The system generates the attachments automatically: " +
-        "PDF and ISDOC (Czech e-invoice XML) are ALWAYS attached, and a UBL XML is added for Slovak / Peppol buyers. " +
+        "Send an invoice via email. The system generates the attachments automatically: by default PDF and ISDOC " +
+        "(Czech e-invoice XML) are attached, and a UBL XML is added for Slovak / Peppol buyers - but each client (and " +
+        "the company) can change these defaults (update_client billingSettings.emailAttachPdf/emailAttachIsdoc/emailAttachUbl). " +
+        "Override them for this send with attachPdf / attachIsdoc / attachUbl (true/false; attachUbl=true forces the UBL for any " +
+        "buyer and fails the send if it cannot be generated). saveAttachmentDefaults=true stores the chosen attach* values as the " +
+        "client's new defaults. recipientEmail is optional: when omitted the client's invoice/primary e-mail contact is used " +
+        "(error if the client has none); ccEmails adds CC recipients (max 10). Call get_invoice_email_options first to see the " +
+        "client's e-mail contacts, the effective default attachments and the files stored on the invoice " +
+        "(pass their ids in fileAttachmentIds to include them). " +
         "You can pass a custom subject and a plain-text message (shown above the template text), " +
         "and extra attachments as base64 (max 5 files, 10 MB total, allowed types: " +
-        "pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip). Invalid attachments are rejected and nothing is sent.")]
+        "pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip); all attachments together are limited to 20 MB. " +
+        "Invalid input is rejected and nothing is sent.")]
     public static async Task<string> SendInvoiceEmail(
         IFakvioApiClient api,
         [Description("The invoice ID to send")] long invoiceId,
-        [Description("Recipient email address")] string recipientEmail,
+        [Description("Recipient email address; omit to use the client's invoice/primary e-mail contact")] string? recipientEmail = null,
         [Description("Optional custom email subject (replaces the template subject)")] string? subject = null,
         [Description("Optional custom plain-text message, shown above the template email body (HTML is not interpreted)")] string? message = null,
         [Description("Optional extra attachments in addition to the generated PDF/ISDOC/UBL. " +
                      "Each item: fileName (e.g. 'contract.pdf', no path) and contentBase64 (standard base64 of the file). " +
                      "Max 5 files, 10 MB decoded in total; allowed extensions: pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip.")]
         EmailAttachmentDto[]? attachments = null,
+        [Description("Optional CC e-mail addresses (max 10, plain addresses like 'jan@firma.cz')")] string[]? ccEmails = null,
+        [Description("Attach the PDF? Omit to use the client's default")] bool? attachPdf = null,
+        [Description("Attach the ISDOC XML? Omit to use the client's default")] bool? attachIsdoc = null,
+        [Description("Attach the UBL XML? Omit to use the client's default (automatic: Slovak / Peppol buyers only)")] bool? attachUbl = null,
+        [Description("Ids of files already stored on this invoice to include (see get_invoice_email_options)")] long[]? fileAttachmentIds = null,
+        [Description("true = store the chosen attachPdf/attachIsdoc/attachUbl as this client's new defaults after a successful send")] bool saveAttachmentDefaults = false,
         CancellationToken ct = default)
     {
         try
@@ -557,13 +571,47 @@ public static class InvoiceTools
             var dto = new SendInvoiceEmailDto
             {
                 RecipientEmail = recipientEmail,
+                CcEmails = ccEmails?.ToList(),
                 Subject = subject,
                 Message = message,
-                Attachments = attachments?.ToList()
+                Attachments = attachments?.ToList(),
+                AttachPdf = attachPdf,
+                AttachIsdoc = attachIsdoc,
+                AttachUbl = attachUbl,
+                FileAttachmentIds = fileAttachmentIds?.ToList(),
+                SaveAttachmentDefaults = saveAttachmentDefaults
             };
 
             await api.SendInvoiceEmailAsync(invoiceId, dto, ct);
-            return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} sent to {recipientEmail}." }, JsonOptions);
+            var target = string.IsNullOrWhiteSpace(recipientEmail) ? "the client's default e-mail address" : recipientEmail;
+            return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} sent to {target}." }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Read-only preview of what send_invoice_email would do: recipients, default attachments, stored files.
+    /// </summary>
+    [McpServerTool(Title = "Get invoice e-mail options", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Show the options for sending an invoice by e-mail: the client's e-mail contacts (best recipient first), the effective " +
+        "default attachments (attachPdf / attachIsdoc / attachUbl, and whether UBL is automatic), the files stored on the invoice " +
+        "(id, name, size - pass the ids to send_invoice_email fileAttachmentIds) and the default subject. Sends nothing.")]
+    public static async Task<string> GetInvoiceEmailOptions(
+        IFakvioApiClient api,
+        [Description("The invoice ID")] long invoiceId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await api.GetInvoiceEmailDefaultsAsync(invoiceId, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

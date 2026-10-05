@@ -182,6 +182,53 @@ public class FileAttachmentService : IFileAttachmentService
     }
 
     /// <inheritdoc />
+    public async Task<List<(byte[] Content, FileAttachmentDto Meta)>> DownloadSelectedAsync(
+        string entityName, long recordId, IReadOnlyCollection<long> attachmentIds, long maxTotalBytes,
+        CancellationToken ct = default)
+    {
+        var ids = attachmentIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return [];
+
+        // The record filter is the security check: an id of another invoice (or another tenant - the
+        // TenantDbContext only sees its own schema) simply does not come back and is reported below.
+        var entities = await _context.FileAttachment
+            .AsNoTracking()
+            .Where(f => ids.Contains(f.Id) && f.EntityName == entityName && f.RecordId == recordId)
+            .ToListAsync(ct);
+
+        var missing = ids.Except(entities.Select(e => e.Id)).ToList();
+        if (missing.Count > 0)
+            throw new ArgumentException(
+                $"Attachment id(s) {string.Join(", ", missing)} do not belong to this {entityName.ToLowerInvariant()}.");
+
+        // Size check from metadata first, so an oversized selection never downloads a single blob.
+        var totalBytes = entities.Sum(e => e.FileSizeBytes);
+        if (totalBytes > maxTotalBytes)
+            throw new InvalidOperationException(
+                $"The selected attachments are too large ({totalBytes / (1024 * 1024)} MB); the limit is {maxTotalBytes / (1024 * 1024)} MB.");
+
+        var byId = entities.ToDictionary(e => e.Id);
+        var results = new List<(byte[] Content, FileAttachmentDto Meta)>(ids.Count);
+        foreach (var id in ids)
+        {
+            var entity = byId[id];
+            try
+            {
+                var content = await _fileStorage.DownloadAsync(entity.BlobPath, ct);
+                results.Add((content, MapToDto(entity)));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Attachment #{Id} ({FileName}) could not be read from storage", entity.Id, entity.OriginalFileName);
+                throw new InvalidOperationException($"Attachment '{entity.OriginalFileName}' could not be read from storage.", ex);
+            }
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc />
     public async Task<bool> DeleteAsync(long attachmentId, CancellationToken ct = default)
     {
         var entity = await _context.FileAttachment

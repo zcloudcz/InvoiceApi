@@ -19,6 +19,13 @@ public static class EmailAttachmentValidator
     /// <summary>Maximum total size of all decoded files (10 MB).</summary>
     public const int MaxTotalBytes = 10 * 1024 * 1024;
 
+    /// <summary>
+    /// Maximum size of ALL attachments of one invoice e-mail together - generated PDF / ISDOC / UBL, extra
+    /// files and stored invoice attachments (20 MB). Most mail servers refuse messages around 25 MB once
+    /// base64 overhead is added, so this fails early with a clear message instead of an SMTP error.
+    /// </summary>
+    public const int MaxEmailTotalBytes = 20 * 1024 * 1024;
+
     /// <summary>Maximum file name length (matches the DTO attribute and common file-system limits).</summary>
     public const int MaxFileNameLength = 255;
 

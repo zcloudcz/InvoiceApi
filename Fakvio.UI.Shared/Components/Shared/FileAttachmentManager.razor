@@ -336,7 +336,7 @@
     /// <summary>
     /// Formats file size in bytes to a human-readable string (B, KB, MB, GB).
     /// </summary>
-    private static string FormatFileSize(long bytes) => bytes switch
+    internal static string FormatFileSize(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",
         < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
