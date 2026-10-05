@@ -339,6 +339,12 @@ else
                         @* Currency — readonly (changing currency on existing invoice is risky) *@
                         <MudTextField Value="@($"{_invoice.CurrencyCode} ({_invoice.CurrencySymbol})")"
                                       Label="@L["Template_Currency"].Value" ReadOnly="true" Class="mb-3" />
+                        @* Exchange rate (DEVGUIDE §4.17): editable only on a draft in a foreign currency; empty = ČNB rate is filled in on issue. *@
+                        @if (_invoice.Status == EInvoiceStatus.Draft && !string.Equals(_invoice.CurrencyCode, "CZK", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <MudNumericField T="decimal?" @bind-Value="_editDto.ExchangeRate" Label="@L["Invoice_ExchangeRate"].Value"
+                                             HelperText="@L["Invoice_ExchangeRateHint"].Value" Min="0.00000001m" HideSpinButtons="true" Class="mb-3" />
+                        }
                     </MudCardContent>
                 </MudCard>
             </MudItem>
@@ -496,6 +502,13 @@ else
                             <MudListItem T="string" Icon="@Icons.Material.Filled.CurrencyExchange">
                                 <strong>@L["Template_Currency"]:</strong> @_invoice.CurrencyCode (@_invoice.CurrencySymbol)
                             </MudListItem>
+                            @if (_invoice.ExchangeRate.HasValue)
+                            {
+                                @* CZK per ONE unit of the invoice currency; the date is the ČNB fixing it comes from (none = entered manually). *@
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.CurrencyExchange">
+                                    <strong>@L["Invoice_ExchangeRate"]:</strong> 1 @_invoice.CurrencyCode = @_invoice.ExchangeRate.Value.ToString("0.######") CZK@(_invoice.ExchangeRateDate.HasValue ? $" ({L["Invoice_ExchangeRateCnb"]} {_invoice.ExchangeRateDate.Value:d})" : "")
+                                </MudListItem>
+                            }
                         </MudList>
                     </MudCardContent>
                 </MudCard>
@@ -1749,6 +1762,8 @@ else
             SWIFT = _invoice.SWIFT,
             PaymentMethod = _invoice.PaymentMethod,
             CurrencyId = _invoice.CurrencyId,
+            // Only a manually entered rate (no ČNB date) is sent back; an automatic one is recomputed on issue.
+            ExchangeRate = _invoice.Status == EInvoiceStatus.Draft && _invoice.ExchangeRateDate == null ? _invoice.ExchangeRate : null,
             Notes = _invoice.Notes
         };
 
@@ -1951,12 +1966,12 @@ else
         if (_invoice == null) return;
         try
         {
-            var pdfBytes = await InvoiceService.ExportToPdfAsync(Id);
-            if (pdfBytes != null && pdfBytes.Length > 0)
+            var pdf = await InvoiceService.ExportToPdfAsync(Id);
+            if (pdf != null && pdf.Bytes.Length > 0)
             {
-                var base64 = Convert.ToBase64String(pdfBytes);
-                var prefix = GetPdfFileNamePrefix(_invoice.DocumentType);
-                var fileName = $"{prefix}_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
+                var base64 = Convert.ToBase64String(pdf.Bytes);
+                // The name comes from the server (client's file name format); the fallback only covers a missing header.
+                var fileName = pdf.FileName ?? $"{Id}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
             }
@@ -1978,12 +1993,12 @@ else
         if (_invoice == null) return;
         try
         {
-            var isdocBytes = await InvoiceService.ExportIsdocAsync(Id);
-            if (isdocBytes != null && isdocBytes.Length > 0)
+            var isdoc = await InvoiceService.ExportIsdocAsync(Id);
+            if (isdoc != null && isdoc.Bytes.Length > 0)
             {
-                var base64 = Convert.ToBase64String(isdocBytes);
-                // File name matches the document number so the user can identify the file easily.
-                var fileName = $"{_invoice.DocumentNumber ?? Id.ToString()}.isdoc";
+                var base64 = Convert.ToBase64String(isdoc.Bytes);
+                // The name comes from the server (same format as the PDF); the fallback only covers a missing header.
+                var fileName = isdoc.FileName ?? $"{Id}.isdoc";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/xml");
                 Snackbar.Add(L["Invoice_IsdocDownloaded"].Value, Severity.Success);
             }
@@ -2007,7 +2022,8 @@ else
         if (_invoice == null) return;
         try
         {
-            var fileName = $"{_invoice.DocumentNumber ?? Id.ToString()}.xml";
+            // Fallback only — ExportUblAsync prefers the server-built name from Content-Disposition.
+            var fileName = $"{Id}.xml";
             var result = await InvoiceService.ExportUblAsync(Id, fileName);
 
             if (result.IsSuccess && result.FileBytes != null)
@@ -2090,12 +2106,11 @@ else
         if (_invoice == null) return;
         try
         {
-            var pdfBytes = await InvoiceService.ExportToPdfAsync(Id, templateId);
-            if (pdfBytes != null && pdfBytes.Length > 0)
+            var pdf = await InvoiceService.ExportToPdfAsync(Id, templateId);
+            if (pdf != null && pdf.Bytes.Length > 0)
             {
-                var base64 = Convert.ToBase64String(pdfBytes);
-                var prefix = GetPdfFileNamePrefix(_invoice.DocumentType);
-                var fileName = $"{prefix}_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
+                var base64 = Convert.ToBase64String(pdf.Bytes);
+                var fileName = pdf.FileName ?? $"{Id}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
             }
@@ -2106,17 +2121,6 @@ else
         }
         catch (Exception ex) { Snackbar.Add($"Error downloading PDF: {ex.Message}", Severity.Error); }
     }
-
-    /// <summary>
-    /// Returns the localized file name prefix for PDF download, based on document type.
-    /// </summary>
-    private string GetPdfFileNamePrefix(EDocumentType docType) => docType switch
-    {
-        EDocumentType.CreditNote           => L["FileName_CreditNote"].Value,
-        EDocumentType.Proforma             => L["FileName_Proforma"].Value,
-        EDocumentType.TaxReceiptForAdvance => L["FileName_TaxReceiptForAdvance"].Value,
-        _                                  => L["FileName_Invoice"].Value
-    };
 
     /// <summary>
     /// Navigates back to the appropriate list page based on the document type.

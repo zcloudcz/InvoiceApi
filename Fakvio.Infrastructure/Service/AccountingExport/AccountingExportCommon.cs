@@ -32,6 +32,20 @@ internal static class AccountingExportCommon
     internal static bool IsHomeCurrency(string? currencyCode) =>
         string.IsNullOrEmpty(currencyCode) || currencyCode.Equals("CZK", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// True when the document can be exported in terms of currency: it is in CZK, or it carries a ČNB exchange
+    /// rate (Invoice.ExchangeRate, CZK per ONE unit). Exporters that need the rate (Money S3, ABRA Flexi) skip a
+    /// foreign-currency document without one — inventing a rate would produce wrong totals.
+    /// </summary>
+    internal static bool CurrencyExportable(string? currencyCode, decimal? exchangeRate) =>
+        IsHomeCurrency(currencyCode) || exchangeRate is > 0m;
+
+    /// <summary>Exchange rate for XML (invariant culture, up to 8 decimals, no trailing zeros).</summary>
+    internal static string FormatRate(decimal rate) => rate.ToString("0.########", CultureInfo.InvariantCulture);
+
+    /// <summary>Converts a foreign-currency amount to CZK with the document rate (2 decimals, away from zero).</summary>
+    internal static decimal ToCzk(decimal amount, decimal rate) => Math.Round(amount * rate, 2, MidpointRounding.AwayFromZero);
+
     /// <summary>Cuts a string to the importer's maximum field length (null-safe).</summary>
     internal static string Truncate(string? value, int maxLength) =>
         value is null ? string.Empty : value.Length <= maxLength ? value : value[..maxLength];

@@ -362,6 +362,10 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("CreditNoteFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("CreditNoteNumberPrefix")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -385,6 +389,10 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<int>("DueDays")
                         .HasColumnType("integer");
 
+                    b.Property<string>("InvoiceFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("InvoiceNumberPrefix")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -396,6 +404,14 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ProformaFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TaxReceiptFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1171,6 +1187,49 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             SortOrder = 8,
                             Symbol = "lei"
                         });
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.ExchangeRate", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Amount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<decimal>("Rate")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateOnly>("ValidFor")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrencyCode", "ValidFor")
+                        .IsUnique();
+
+                    b.ToTable("ExchangeRate");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.FeedbackReport", b =>

@@ -91,6 +91,7 @@
         EndDate = ToUtcMidnight(Model.EndDate),
         MaxOccurrences = Model.MaxOccurrences,
         AutoSend = Model.AutoSend,
+        ShiftPeriodsInText = Model.ShiftPeriodsInText,
     };
 
     private UpdateRecurringInvoiceScheduleDto BuildUpdateDto() => new()
@@ -110,6 +111,7 @@
         MaxOccurrences = Model.MaxOccurrences,
         ClearMaxOccurrences = Model.EndMode != "count",
         AutoSend = Model.AutoSend,
+        ShiftPeriodsInText = Model.ShiftPeriodsInText,
     };
 
     /// <summary>

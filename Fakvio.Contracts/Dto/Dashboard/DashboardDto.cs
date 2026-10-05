@@ -82,8 +82,8 @@ public class DashboardDto
     /// <summary>
     /// "Tržby po měsících" — last 12 months of net revenue (TotalBeforeVat), oldest first.
     /// Issued invoices (DocumentType.Invoice) count positive, credit notes
-    /// (DocumentType.CreditNote) count negative. CZK only — no currency conversion,
-    /// same simplification the rest of the dashboard already makes.
+    /// (DocumentType.CreditNote) count negative. In CZK: foreign-currency invoices are converted by the ČNB rate
+    /// stored on them (Invoice.ExchangeRate); those without a rate are left out.
     /// Always has exactly 12 entries (months with no activity are 0).
     /// </summary>
     public List<MonthlyAmountDto> RevenueByMonth { get; set; } = new();

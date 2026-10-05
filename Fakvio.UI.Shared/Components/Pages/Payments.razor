@@ -34,6 +34,38 @@
 <MudText Typo="Typo.h4" GutterBottom="true">@L["Payments_Title"]</MudText>
 <MudText Class="mb-4">@L["Payments_Subtitle"]</MudText>
 
+@* GPC/ABO bank statement import: upload a file, show the summary, refresh the grids. *@
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <div class="d-flex flex-wrap align-center gap-2">
+        <MudText Typo="Typo.h6">@L["Payments_Import_Title"]</MudText>
+        <MudSpacer />
+        <MudFileUpload T="IBrowserFile" Accept=".gpc,.abo,.txt" FilesChanged="ImportStatementAsync" Disabled="_importBusy">
+            <ActivatorContent>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="_importBusy"
+                           StartIcon="@Icons.Material.Filled.UploadFile">
+                    @L["Payments_Import_Button"]
+                </MudButton>
+            </ActivatorContent>
+        </MudFileUpload>
+    </div>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary">@L["Payments_Import_Hint"]</MudText>
+    @if (_importBusy)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-2" />
+    }
+    @if (_importResult is not null)
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-2">
+            @string.Format(L["Payments_Import_Summary"], _importResult.Statements, _importResult.Imported,
+                _importResult.Duplicates, _importResult.Matched, _importResult.Unmatched)
+        </MudAlert>
+        @foreach (var err in _importResult.Errors)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-1">@err</MudAlert>
+        }
+    }
+</MudPaper>
+
 @* ─────────────────────────────────────────────────────────────────────────────
    SECTION 1: Unmatched payments — auto-match candidates
    ───────────────────────────────────────────────────────────────────────────── *@
@@ -304,6 +336,32 @@ else if (_page is not null)
 }
 
 @code {
+    private const long MaxImportBytes = 5 * 1024 * 1024;
+    private bool _importBusy;
+    private BankStatementImportResultDto? _importResult;
+
+    /// <summary>Reads the chosen GPC/ABO file, uploads it and reloads both grids.</summary>
+    private async Task ImportStatementAsync(IBrowserFile? file)
+    {
+        if (file is null) return;
+        _importBusy = true;
+        _importResult = null;
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(MaxImportBytes).CopyToAsync(ms);
+            _importResult = await Api.ImportStatementAsync(file.Name, ms.ToArray());
+            await Task.WhenAll(Reload(), ReloadUnmatched());
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _importBusy = false;
+        }
+    }
     // ─── Filter state ─────────────────────────────────────────────────────
     private EMatchStatus? _statusFilter;
     private EPaymentDirection? _directionFilter;

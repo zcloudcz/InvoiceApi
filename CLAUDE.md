@@ -64,6 +64,7 @@ App Service má **Always On** povoleno — bez něj by idle recycle ukončil Bac
 - `ReminderWorker` (BackgroundService) — dunning denně v 06:00 UTC, per-tenant scope, jedno selhání ostatní nezastaví; advisory lock.
 - `RecurringInvoiceWorker` (BackgroundService) — opakované faktury, hodinově, per-tenant scope, advisory lock; viz DEVGUIDE §4.13.
 - `WebhookWorker` (BackgroundService) — doručování a retry odchozích webhooků, každou minutu, per-tenant scope, advisory lock; viz DEVGUIDE §4.15.
+- `ExchangeRateWorker` (BackgroundService) — stahuje denní kurzy ČNB do Master `ExchangeRate`, po startu a denně 14:45 pražského času, bez tenantů, advisory lock; viz DEVGUIDE §4.17.
 
 ## Dokumentace — povinná údržba
 

@@ -440,6 +440,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("CreditNoteFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("CreditNoteNumberPrefix")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -463,6 +467,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<int>("DueDays")
                         .HasColumnType("integer");
 
+                    b.Property<string>("InvoiceFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("InvoiceNumberPrefix")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -474,6 +482,14 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ProformaFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TaxReceiptFileNameFormat")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1400,6 +1416,13 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal?>("ExchangeRate")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
+
+                    b.Property<DateOnly?>("ExchangeRateDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("IBAN")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -2069,6 +2092,13 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal?>("ExchangeRate")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
+
+                    b.Property<DateOnly?>("ExchangeRateDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("IBAN")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -2366,6 +2396,16 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
+
+                    b.Property<int>("ShiftBaselineOccurrence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<bool>("ShiftPeriodsInText")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<long>("TemplateId")
                         .HasColumnType("bigint");

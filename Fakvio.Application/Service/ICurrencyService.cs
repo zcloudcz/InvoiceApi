@@ -62,7 +62,7 @@ public interface ICurrencyService
     /// for the specified date (DUZP — date of taxable supply).
     ///
     /// If <paramref name="currencyCode"/> is already "CZK", returns <paramref name="amount"/> unchanged.
-    /// If no rate is available for the given date, falls back to the most recent available rate.
+    /// When <c>storedRate</c> (CZK per 1 unit, from the document) is given it is used; otherwise the ČNB rate for the date. Throws ExchangeRateUnavailableException when no rate can be determined (never returns the foreign amount as CZK).
     ///
     /// Used by the EPO DPHDP3 generator to normalise non-CZK invoice amounts before
     /// mapping them to the XML rows (all EPO amounts are reported in whole CZK).
@@ -76,5 +76,6 @@ public interface ICurrencyService
         decimal amount,
         string currencyCode,
         DateOnly date,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        decimal? storedRate = null);
 }

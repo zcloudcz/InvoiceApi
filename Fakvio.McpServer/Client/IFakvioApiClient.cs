@@ -26,6 +26,13 @@ using Fakvio.Domain.Enums;
 namespace Fakvio.McpServer.Client;
 
 /// <summary>
+/// A document downloaded from the API together with the file name the server chose for it
+/// (Content-Disposition). The server builds the name from the client's file name format,
+/// so callers must use it as-is instead of composing their own.
+/// </summary>
+public sealed record ExportedFile(byte[] Content, string FileName);
+
+/// <summary>
 /// Abstraction over the Fakvio REST API.
 /// All methods map 1:1 to API controller endpoints.
 ///
@@ -74,9 +81,12 @@ public interface IFakvioApiClient
 
     /// <summary>
     /// PUT /api/invoice/{id} — update an existing invoice (Draft or Completed only). Used by
-    /// set_invoice_bank_account to change the bank account via UpdateInvoiceDto.BankAccountId.
+    /// update_invoice and set_invoice_bank_account; null DTO fields mean "keep current".
     /// </summary>
     Task<InvoiceDto?> UpdateInvoiceAsync(long id, UpdateInvoiceDto dto, CancellationToken ct = default);
+
+    /// <summary>POST /api/invoice/{id}/revert-to-draft — switch a Completed invoice back to Draft (null when not found).</summary>
+    Task<InvoiceDto?> RevertInvoiceToDraftAsync(long id, CancellationToken ct = default);
 
     /// <summary>POST /api/invoice/{id}/complete — issue a draft invoice (generates doc number).</summary>
     Task<InvoiceDto> CompleteInvoiceAsync(long id, CancellationToken ct = default);
@@ -100,10 +110,10 @@ public interface IFakvioApiClient
     Task SendInvoiceEmailAsync(long id, SendInvoiceEmailDto dto, CancellationToken ct = default);
 
     /// <summary>GET /api/invoice/{id}/pdf — export invoice as PDF file (raw bytes).</summary>
-    Task<byte[]> ExportInvoicePdfAsync(long id, CancellationToken ct = default);
+    Task<ExportedFile> ExportInvoicePdfAsync(long id, CancellationToken ct = default);
 
     /// <summary>GET /api/invoice/{id}/isdoc — export invoice as ISDOC 6.0.2 XML (raw bytes).</summary>
-    Task<byte[]> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default);
+    Task<ExportedFile> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default);
 
     /// <summary>
     /// GET /api/invoice/{id}/ubl — export invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (raw
@@ -111,7 +121,7 @@ public interface IFakvioApiClient
     /// (Draft, pro-forma, missing Peppol ID, …) — surfaced to the caller like any other
     /// FakvioApiException (ADR 0002, F1.7).
     /// </summary>
-    Task<byte[]> ExportInvoiceUblAsync(long id, CancellationToken ct = default);
+    Task<ExportedFile> ExportInvoiceUblAsync(long id, CancellationToken ct = default);
 
     /// <summary>
     /// POST /api/accounting-export/{system} — "Export do účetnictví". Generates one XML file
@@ -264,6 +274,11 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/oss-report?year=...&amp;quarter=... — quarterly OSS report in EUR.</summary>
     Task<OssReportDto> GetOssReportAsync(int year, int quarter, CancellationToken ct = default);
+
+    // ── Exchange rates ───────────────────────────────────────────────────
+
+    /// <summary>GET /api/exchange-rate?currency=...&amp;date=... — official ČNB rate valid on the date (last fixing on or before it), or null when unavailable.</summary>
+    Task<Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto?> GetExchangeRateAsync(string currency, DateOnly? date, CancellationToken ct = default);
 
     // ── Dashboard endpoints ────────────────────────────────────────────
 

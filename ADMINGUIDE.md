@@ -225,6 +225,12 @@ s novým `ValidFrom` a starému nastavte `ValidTo` — platnost se kontroluje k 
 **Kurzy pro OSS hlášení:** stahují se z ECB (`data-api.ecb.europa.eu`) — server musí mít odchozí HTTPS;
 při výpadku vrací hlášení chybu 502 `ECB_RATE_UNAVAILABLE`.
 
+### Kurzy ČNB (cizoměnové doklady)
+
+Tabulka `ExchangeRate` (master DB, společná pro všechny firmy) se plní **sama**: `ExchangeRateWorker` stáhne denní kurzy ČNB po startu API (doplní až 30 dní zpět, takže čerstvá DB není prázdná) a pak každý den ve **14:45 pražského času** (ČNB vyhlašuje ~14:30; při chybě to zkusí za 30 min). Běží jen jedna instance (advisory lock). Server potřebuje odchozí HTTPS na `www.cnb.cz`. Kurz se použije při vystavení faktury / schválení přijaté faktury v cizí měně (podrobně DEVGUIDE §4.17); chybí-li, doklad vznikne bez kurzu a v logu je warning.
+
+**Doplnění historie na požádání:** `POST /api/exchange-rate/backfill` s tělem `{"from":"2026-01-01","to":"2026-09-30"}` (jen SysAdmin, max. 400 dní, víkendy se přeskočí; výpadek ČNB vrací 502). Je idempotentní. Dnešní/libovolný kurz zjistíte `GET /api/exchange-rate?currency=EUR&date=2026-10-02` (nebo MCP `get_exchange_rate`). Konfigurace `ExchangeRates:SyncEnabled=false` automatické stahování vypne (testy, offline prostředí).
+
 ---
 
 ## 4. Systémové nastavení

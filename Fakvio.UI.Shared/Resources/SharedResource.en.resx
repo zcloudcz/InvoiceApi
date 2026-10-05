@@ -221,6 +221,16 @@
   <data name="Billing_DefaultPaymentMethod" xml:space="preserve"><value>Default payment method</value></data>
   <data name="Billing_BankAccount" xml:space="preserve"><value>Bank account number</value></data>
   <data name="Billing_Notes" xml:space="preserve"><value>Billing notes</value></data>
+  <data name="FileNameFormat_Invoice" xml:space="preserve"><value>File name – invoice</value></data>
+  <data name="FileNameFormat_CreditNote" xml:space="preserve"><value>File name – credit note</value></data>
+  <data name="FileNameFormat_Proforma" xml:space="preserve"><value>File name – proforma invoice</value></data>
+  <data name="FileNameFormat_TaxReceipt" xml:space="preserve"><value>File name – tax receipt for advance payment</value></data>
+  <data name="FileNameFormat_Placeholders" xml:space="preserve"><value>Placeholders (click to insert):</value></data>
+  <data name="FileNameFormat_Preview" xml:space="preserve"><value>Preview</value></data>
+  <data name="FileNameFormat_Unknown" xml:space="preserve"><value>Unknown or invalid placeholders</value></data>
+  <data name="FileNameFormat_DateHint" xml:space="preserve"><value>Dates accept a format, e.g. {{IssueDate:yyyyMMdd}} or {{DueDate:dd.MM.yyyy}} (allowed: y M d - _ .)</value></data>
+  <data name="FileNameFormat_EmptyHintClient" xml:space="preserve"><value>Empty = company setting, otherwise e.g. Invoice_2026001</value></data>
+  <data name="FileNameFormat_EmptyHintCompany" xml:space="preserve"><value>Empty = default format, e.g. Invoice_2026001</value></data>
   <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Days from issue</value></data>
   <data name="Billing_DaysFromEndOfMonth" xml:space="preserve"><value>Days from end of month</value></data>
   <data name="Billing_EndOfNextMonth" xml:space="preserve"><value>End of next month</value></data>
@@ -404,6 +414,9 @@
   <data name="Template_DocumentTypeInvoice" xml:space="preserve"><value>Invoice</value></data>
   <data name="Template_DocumentTypeCreditNote" xml:space="preserve"><value>Credit Note</value></data>
   <data name="Template_Currency" xml:space="preserve"><value>Currency</value></data>
+  <data name="Invoice_ExchangeRate" xml:space="preserve"><value>Exchange rate (CZK per 1 unit)</value></data>
+  <data name="Invoice_ExchangeRateHint" xml:space="preserve"><value>Empty = the ČNB rate for the taxable supply date is filled in when the document is issued.</value></data>
+  <data name="Invoice_ExchangeRateCnb" xml:space="preserve"><value>ČNB of</value></data>
   <data name="Template_Never" xml:space="preserve"><value>Never</value></data>
   <data name="Template_CreateInvoice" xml:space="preserve"><value>Create invoice from template</value></data>
   <data name="Template_TemplateName" xml:space="preserve"><value>Template name</value></data>
@@ -473,8 +486,8 @@
   <data name="Invoice_Copy" xml:space="preserve"><value>Copy invoice</value></data>
   <data name="Invoice_CopySuccess" xml:space="preserve"><value>Invoice copied as #{0}</value></data>
   <data name="Invoice_CopyError" xml:space="preserve"><value>Failed to copy invoice</value></data>
-  <data name="FileName_Invoice" xml:space="preserve"><value>Invoice</value></data>
-  <data name="FileName_CreditNote" xml:space="preserve"><value>CreditNote</value></data>
+  <data name="Invoice_CopyShiftPeriods" xml:space="preserve"><value>Shift periods in texts</value></data>
+  <data name="Invoice_CopyShiftPeriodsHint" xml:space="preserve"><value>Months and years in item descriptions and notes (e.g. "3/2026", "March 2026") move forward by the month difference from the original invoice.</value></data>
   <data name="FileName_Invoices" xml:space="preserve"><value>Invoices</value></data>
   <data name="FileName_CreditNotes" xml:space="preserve"><value>CreditNotes</value></data>
   <data name="FileName_TaxComparison" xml:space="preserve"><value>tax-comparison</value></data>
@@ -1644,8 +1657,6 @@
   <data name="TaxReceiptForAdvance_Detail" xml:space="preserve"><value>Tax Receipt for Advance Payment</value></data>
   <data name="Template_DocumentTypeProforma" xml:space="preserve"><value>Advance Invoice (Proforma)</value></data>
   <data name="Template_DocumentTypeTaxReceiptForAdvance" xml:space="preserve"><value>Tax Receipt for Advance Payment</value></data>
-  <data name="FileName_Proforma" xml:space="preserve"><value>Proforma</value></data>
-  <data name="FileName_TaxReceiptForAdvance" xml:space="preserve"><value>TaxReceipt</value></data>
   <data name="Proforma_IssueFinalInvoice" xml:space="preserve"><value>Issue Final Invoice</value></data>
   <data name="Proforma_FinalInvoices" xml:space="preserve"><value>Linked Final Invoices</value></data>
   <data name="Proforma_NoFinalInvoices" xml:space="preserve"><value>No final invoices issued yet.</value></data>
@@ -1826,6 +1837,8 @@
   <data name="Recurring_MaxOccurrences" xml:space="preserve"><value>Number of occurrences</value></data>
   <data name="Recurring_AutoSend" xml:space="preserve"><value>Complete and e-mail automatically</value></data>
   <data name="Recurring_AutoSendHelp" xml:space="preserve"><value>The invoice is always issued; this switch also e-mails it to the client.</value></data>
+  <data name="Recurring_ShiftPeriods" xml:space="preserve"><value>Shift periods in texts</value></data>
+  <data name="Recurring_ShiftPeriodsHelp" xml:space="preserve"><value>Months and quarters in the template text (e.g. "3/2026") advance with every invoice. The template text must name the period of the first generated invoice.</value></data>
   <data name="Recurring_NextRun" xml:space="preserve"><value>Next run</value></data>
   <data name="Recurring_LastRun" xml:space="preserve"><value>Last run</value></data>
   <data name="Recurring_OccurrenceCount" xml:space="preserve"><value>Occurrences</value></data>
@@ -2137,9 +2150,9 @@
   <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Income vs expenses by month</value></data>
   <data name="Dashboard_Income" xml:space="preserve"><value>Income</value></data>
   <data name="Dashboard_Expense" xml:space="preserve"><value>Expenses</value></data>
-  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Last 12 months, excl. VAT, CZK invoices only</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Last 12 months, excl. VAT, in CZK (foreign currencies at the CNB rate stored on the document; documents without a rate are left out)</value></data>
   <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Unpaid receivables by age</value></data>
-  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Days past due, incl. VAT, in CZK</value></data>
+  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Days past due, incl. VAT, in CZK (foreign currencies at the CNB rate stored on the document)</value></data>
   <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Start setup wizard</value></data>
   <data name="SetupWizard_Title" xml:space="preserve"><value>Setup wizard</value></data>
   <data name="SetupWizard_Intro" xml:space="preserve"><value>A few steps and you can issue your first invoice. You can change every step later in settings.</value></data>
@@ -2170,4 +2183,8 @@
   <data name="EpoSummaryGoods" xml:space="preserve"><value>Goods (else service)</value></data>
   <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Download EPO – summary statement</value></data>
   <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Goods (code 0) can only be reported in a monthly summary statement (§102(6) VAT Act). Switch to monthly periods or untick goods.</value></data>
+  <data name="Payments_Import_Title" xml:space="preserve"><value>Statement import (GPC/ABO)</value></data>
+  <data name="Payments_Import_Button" xml:space="preserve"><value>Upload statement</value></data>
+  <data name="Payments_Import_Hint" xml:space="preserve"><value>A .gpc / .abo / .txt file from internet banking (max 5 MB). Re-importing the same statement creates no duplicates. The statement account must be listed in company settings.</value></data>
+  <data name="Payments_Import_Summary" xml:space="preserve"><value>Statements: {0}, newly imported: {1}, duplicates: {2}, matched: {3}, unmatched: {4}.</value></data>
 </root>

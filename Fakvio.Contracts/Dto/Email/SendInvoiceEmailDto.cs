@@ -23,9 +23,17 @@ public class SendInvoiceEmailDto
     public string? Subject { get; set; }
 
     /// <summary>
-    /// Optional custom message to include in the email body.
-    /// The PDF invoice will always be attached regardless.
+    /// Optional custom message shown above the templated email body.
+    /// Plain text only: it is HTML-encoded and line breaks are kept.
+    /// The PDF and ISDOC are always attached; a UBL XML is added for Slovak or
+    /// Peppol-reachable buyers.
     /// </summary>
     [MaxLength(5000)]
     public string? Message { get; set; }
+
+    /// <summary>
+    /// Optional extra files (max 5, 10 MB decoded in total, whitelisted extensions) attached after
+    /// the generated PDF / ISDOC / UBL. Validated server-side before anything is sent.
+    /// </summary>
+    public List<EmailAttachmentDto>? Attachments { get; set; }
 }

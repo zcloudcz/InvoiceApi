@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Domain.Enums;
@@ -119,4 +120,26 @@ public class PaymentMatchingApiService : ApiClientBase
     public Task UnassignRecognizedAsync(long transactionId) =>
         PostAsync<object, object>(
             $"api/payment-matching/transactions/{transactionId}/unassign-recognized", new { });
+
+    // ─── GPC/ABO statement import ───────────────────────────────────────────
+
+    /// <summary>
+    /// Uploads a GPC/ABO bank statement (multipart, bypasses ApiClientBase's JSON helpers).
+    /// Throws ApiException with the server's message on failure (e.g. unsupported file).
+    /// </summary>
+    public async Task<BankStatementImportResultDto> ImportStatementAsync(string fileName, byte[] bytes)
+    {
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        content.Add(fileContent, "file", fileName);
+
+        await AddAuthorizationHeaderAsync();
+        var response = await _httpClient.PostAsync("api/bank-statement/import", content);
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<BankStatementImportResultDto>() ?? new BankStatementImportResultDto();
+
+        await HandleErrorResponseAsync(response, "POST", "api/bank-statement/import");
+        return new BankStatementImportResultDto(); // unreachable - HandleErrorResponseAsync always throws
+    }
 }

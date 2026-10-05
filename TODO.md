@@ -1,5 +1,23 @@
 # Fakvio TODO
 
+## Configurable document file names (branch `feature/document-file-name-format`)
+
+- [x] `DocumentFileName` builder (Contracts/Common) + `IDocumentFileNameService`; chain client -> issuer -> localized default.
+- [x] 4 `BillingSettings.*FileNameFormat` columns (Master + Tenant migration `AddDocumentFileNameFormat`), DTOs, save-time validation (400).
+- [x] All hardcoded names replaced: download PDF/ISDOC/UBL, bulk ZIP, e-mail attachments, reminder, cloud upload, chat tool, MCP; UI/MCP read `Content-Disposition` (CORS exposes it).
+- [x] `FileNameFormatInput` on client detail + my company; MCP `update_client` description; USERGUIDE §5.3a + DEVGUIDE §4.2a.
+- [x] Unit + bUnit + integration tests. Known unrelated: 3 `OAuthServiceTests` concurrency tests fail on local PostgreSQL auth.
+- [ ] Draft PR / merge (not pushed to PR yet).
+
+## MCP send_invoice_email: custom subject/message + extra attachments (branch `feature/mcp-email-attachments`)
+
+- [x] Fix bug: `InvoiceController.SendInvoiceEmail` dropped `Subject` / `Message`; now passed via `SendInvoiceEmailOptions` (trailing optional param, other callers unchanged).
+- [x] `EmailAttachmentDto` + `EmailAttachmentValidator` (max 5 files, 10 MB, base64 length checked before decoding, extension whitelist, no path/control chars) -> 400.
+- [x] `EmailService`: subject override, HTML-encoded message prepended, extra attachments with extension-derived MIME type, log names only.
+- [x] MCP tool: truthful description (PDF + ISDOC always, UBL for SK/Peppol), `attachments` parameter, schema test.
+- [x] Unit tests (validator, controller regression, message builder, customization, MCP payload/schema); USERGUIDE + DEVGUIDE updated.
+- [ ] Draft PR / merge (not pushed). Out of scope: Blazor SendEmail upload UI, per-client ISDOC/UBL opt-out, MCP nuget publish.
+
 ## UX audit remediation (2026-10-01)
 
 - [x] Correct all 20 ranked audit findings and related contact, deletion, error-state and mobile-context observations on `codex/ux-audit-fixes`.
@@ -1270,10 +1288,19 @@ Implemented by parallel agents, each PR reviewed (Fable) and merged into `develo
 
 Follow-ups:
 - [ ] SysAdmin: ověřit sazby `OssVatRate` proti EC TEDB před prvním OSS podáním (EE/LT 9 % sníž. sazby nejisté)
-- [ ] DPHDP3 ř. 1/2 a KH A.4/A.5 nezahrnují dobropisy (pre-existing)
-- [ ] Reminder/Recurring workery — ověřit, že scoped TenantDbContext má nastavené Schema (stejná chyba jako u webhooků)
-- [ ] MasterDbContext UTC normalizer neprovede Unspecified→Utc
+- [x] DPHDP3 ř. 1/2 a KH A.4/A.5 nezahrnují dobropisy — DONE #488
+- [ ] Reminder/Recurring workery — POTVRZENO rozbité (upomínky nikdy neběžely). Oprava v PR #490 ODLOŽENA vlastníkem: před nasazením rozhodnout ochranu proti hromadnému rozeslání starých upomínek (strop stáří / první běh jako koncepty) a systémové vs. firemní SMTP ve workeru
+- [x] MasterDbContext UTC normalizer neprovede Unspecified→Utc — DONE #489 (ValueConverter v obou kontextech)
 - [ ] Šablony/opakované faktury nepodporují OSS; DPP k OSS záloze se vystaví s CZ sazbou
 - [ ] Pořízení zboží/služeb z EU (ř. 3–6) není modelováno; ReverseCharge = jen tuzemské §92a
 - [ ] Zbývající položky z porovnání s MyInvoice: GPC/ABO import, hromadné vystavení, výkazy práce, auto měsíc v klonu, IP allowlist/Turnstile, per-client sazby + kurzy ČNB, granulární role
+
+## Batch 2 (2026-10-02)
+- [x] #493 MCP/chat `update_invoice` + `revert_invoice_to_draft` (koncept upraví; vystavenou jen po výslovném souhlasu; zaplacenou ne)
+- [x] #492 Import výpisů GPC/ABO (dedupe vůči IMAP, párování obou směrů)
+- [x] #491 Posun období v textech (kopie; opakované faktury opt-in per plán)
+- [x] #494 Kurzy ČNB (denní sync, kurz na dokladu, PDF rekap v Kč, EPO/přehled/exporty/nástěnka v Kč)
+- [ ] Hromadné vystavení faktur z existujících (navazuje na #491)
+- [ ] Chat parity: get_exchange_rate, export_vat_epo, get_oss_report, export_accounting
+- [ ] ABRA Flexi: ověřit import reálným souborem (typDokl DOBROPIS, kurz)
 

@@ -278,40 +278,9 @@ public static class InvoiceTools
                              "an Invoice (not proforma/credit note) and a consumer client without VAT id in another EU state.");
             if (issuer.IsVatPayer && string.IsNullOrEmpty(ossCountry))
             {
-                var itemsNeedingRate = items.Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
-                if (itemsNeedingRate.Count > 0)
-                {
-                    var activeRates = await api.GetActiveVatRatesAsync(parsedIssueDate, ct);
-
-                    foreach (var item in itemsNeedingRate)
-                    {
-                        // Codex review: FirstOrDefault picked an arbitrary rate when a tenant has
-                        // more than one active rate at the same percentage (e.g. two overlapping
-                        // validity periods during a rate change) — the model never even saw that
-                        // there was a choice. A single match still resolves silently; two or more
-                        // is a real ambiguity the model must resolve itself, by setting vatRateId
-                        // on the item directly (CreateInvoiceItemDto already has that property).
-                        var candidates = activeRates.Where(r => r.Rate == item.VatRatePercentage).ToList();
-
-                        if (candidates.Count == 0)
-                        {
-                            return Error(
-                                $"No active VAT rate matches {item.VatRatePercentage}% " +
-                                $"(item '{item.Description}'). Active rates: " +
-                                string.Join(", ", activeRates.Select(r => $"{r.Rate}%")) + ".");
-                        }
-
-                        if (candidates.Count > 1)
-                        {
-                            return Error(
-                                $"{candidates.Count} active VAT rates match {item.VatRatePercentage}% " +
-                                $"(item '{item.Description}') — set vatRateId on the item to pick one. Candidates: " +
-                                string.Join(", ", candidates.Select(DescribeVatRate)) + ".");
-                        }
-
-                        item.VatRateId = candidates[0].Id;
-                    }
-                }
+                var rateError = await ResolveItemVatRatesAsync(api, items, parsedIssueDate, ct);
+                if (rateError is not null)
+                    return Error(rateError);
             }
 
             var dto = new CreateInvoiceDto
@@ -435,6 +404,52 @@ public static class InvoiceTools
         }
     }
 
+    /// <summary>
+    /// Fills in VatRateId on every non-text item that only carries a vatRatePercentage, using the
+    /// rates active on <paramref name="rateDate"/>. Returns an error message for the model, or null on success.
+    /// Shared by create_invoice and update_invoice (VAT-paying issuer, non-OSS invoice only).
+    /// </summary>
+    private static async Task<string?> ResolveItemVatRatesAsync(
+        IFakvioApiClient api, List<CreateInvoiceItemDto> items, DateTime? rateDate, CancellationToken ct)
+    {
+        var itemsNeedingRate = items.Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
+        if (itemsNeedingRate.Count > 0)
+        {
+            var activeRates = await api.GetActiveVatRatesAsync(rateDate, ct);
+
+            foreach (var item in itemsNeedingRate)
+            {
+                // Codex review: FirstOrDefault picked an arbitrary rate when a tenant has
+                // more than one active rate at the same percentage (e.g. two overlapping
+                // validity periods during a rate change) — the model never even saw that
+                // there was a choice. A single match still resolves silently; two or more
+                // is a real ambiguity the model must resolve itself, by setting vatRateId
+                // on the item directly (CreateInvoiceItemDto already has that property).
+                var candidates = activeRates.Where(r => r.Rate == item.VatRatePercentage).ToList();
+
+                if (candidates.Count == 0)
+                {
+                    return (
+                        $"No active VAT rate matches {item.VatRatePercentage}% " +
+                        $"(item '{item.Description}'). Active rates: " +
+                        string.Join(", ", activeRates.Select(r => $"{r.Rate}%")) + ".");
+                }
+
+                if (candidates.Count > 1)
+                {
+                    return (
+                        $"{candidates.Count} active VAT rates match {item.VatRatePercentage}% " +
+                        $"(item '{item.Description}') — set vatRateId on the item to pick one. Candidates: " +
+                        string.Join(", ", candidates.Select(DescribeVatRate)) + ".");
+                }
+
+                item.VatRateId = candidates[0].Id;
+            }
+        }
+
+        return null;
+    }
+
     private static string Error(string message) =>
         JsonSerializer.Serialize(new { error = message }, JsonOptions);
 
@@ -516,18 +531,25 @@ public static class InvoiceTools
     }
 
     /// <summary>
-    /// Sends an invoice via email with a PDF attachment.
-    /// The API generates the PDF from the content template and attaches it.
+    /// Sends an invoice via email. The API generates PDF + ISDOC (and UBL for SK / Peppol buyers)
+    /// and attaches them; the caller may add a custom subject, message and extra files.
     /// </summary>
     [McpServerTool(Title = "Send invoice by email", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true), Description(
-        "Send an invoice via email with PDF attachment. " +
-        "The system generates the PDF automatically and attaches it to the email.")]
+        "Send an invoice via email. The system generates the attachments automatically: " +
+        "PDF and ISDOC (Czech e-invoice XML) are ALWAYS attached, and a UBL XML is added for Slovak / Peppol buyers. " +
+        "You can pass a custom subject and a plain-text message (shown above the template text), " +
+        "and extra attachments as base64 (max 5 files, 10 MB total, allowed types: " +
+        "pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip). Invalid attachments are rejected and nothing is sent.")]
     public static async Task<string> SendInvoiceEmail(
         IFakvioApiClient api,
         [Description("The invoice ID to send")] long invoiceId,
         [Description("Recipient email address")] string recipientEmail,
-        [Description("Optional custom email subject")] string? subject = null,
-        [Description("Optional custom message in the email body")] string? message = null,
+        [Description("Optional custom email subject (replaces the template subject)")] string? subject = null,
+        [Description("Optional custom plain-text message, shown above the template email body (HTML is not interpreted)")] string? message = null,
+        [Description("Optional extra attachments in addition to the generated PDF/ISDOC/UBL. " +
+                     "Each item: fileName (e.g. 'contract.pdf', no path) and contentBase64 (standard base64 of the file). " +
+                     "Max 5 files, 10 MB decoded in total; allowed extensions: pdf, isdoc, xml, txt, csv, png, jpg, jpeg, xlsx, docx, zip.")]
+        EmailAttachmentDto[]? attachments = null,
         CancellationToken ct = default)
     {
         try
@@ -536,7 +558,8 @@ public static class InvoiceTools
             {
                 RecipientEmail = recipientEmail,
                 Subject = subject,
-                Message = message
+                Message = message,
+                Attachments = attachments?.ToList()
             };
 
             await api.SendInvoiceEmailAsync(invoiceId, dto, ct);
@@ -567,17 +590,13 @@ public static class InvoiceTools
     {
         try
         {
-            // Fetch the invoice metadata for the file name
+            // Fetch the invoice first so a missing invoice yields a clear "not found" error
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the PDF bytes from the API
-            var pdfBytes = await api.ExportInvoicePdfAsync(invoiceId, ct);
-
-            // Build a descriptive file name based on document type
-            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.pdf";
+            // Download the PDF; the file name is chosen by the server (client's file name format)
+            var (pdfBytes, fileName) = await api.ExportInvoicePdfAsync(invoiceId, ct);
 
             // Return base64-encoded PDF with metadata — AI client saves the file
             return JsonSerializer.Serialize(new
@@ -616,17 +635,13 @@ public static class InvoiceTools
     {
         try
         {
-            // Fetch the invoice metadata for a meaningful file name
+            // Fetch the invoice first so a missing invoice yields a clear "not found" error
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the ISDOC XML bytes from the API
-            var isdocBytes = await api.ExportInvoiceIsdocAsync(invoiceId, ct);
-
-            // Build a descriptive file name based on document type
-            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.isdoc";
+            // Download the ISDOC XML; the file name is chosen by the server (client's file name format)
+            var (isdocBytes, fileName) = await api.ExportInvoiceIsdocAsync(invoiceId, ct);
 
             // Return base64-encoded XML with metadata — AI client saves the file
             return JsonSerializer.Serialize(new
@@ -668,17 +683,13 @@ public static class InvoiceTools
     {
         try
         {
-            // Fetch the invoice metadata for a meaningful file name
+            // Fetch the invoice first so a missing invoice yields a clear "not found" error
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the UBL XML bytes from the API
-            var ublBytes = await api.ExportInvoiceUblAsync(invoiceId, ct);
-
-            // Build a descriptive file name based on document type
-            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.xml";
+            // Download the UBL XML; the file name is chosen by the server (client's file name format)
+            var (ublBytes, fileName) = await api.ExportInvoiceUblAsync(invoiceId, ct);
 
             // Return base64-encoded XML with metadata — AI client saves the file
             return JsonSerializer.Serialize(new
@@ -830,5 +841,236 @@ public static class InvoiceTools
         {
             return McpToolError.ToJson(ex);
         }
+    }
+
+    /// <summary>
+    /// General-purpose edit of an existing invoice (PUT /api/invoice/{id}). Draft only. Partial semantics:
+    /// every omitted argument stays unchanged, so the DTO is built with nulls for them.
+    ///
+    /// Junior note: the status check below is a pre-flight read. The API itself would also accept Completed
+    /// documents, but the product rule for agents is "never edit an issued document without the user agreeing
+    /// to revert it to Draft" — so Completed returns a structured hint and Paid/Creditnoted a clear error.
+    /// </summary>
+    [McpServerTool(Title = "Update invoice", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false), Description(
+        "Edit an existing invoice, credit note or proforma. Partial update: only the arguments you pass " +
+        "are changed, omitted ones stay as they are. Edits Draft documents. For an issued (Completed) invoice " +
+        "nothing is changed and the result has status 'requires_revert_to_draft': ask the user for explicit " +
+        "confirmation, then call revert_invoice_to_draft and retry. Paid / credit-noted invoices cannot be edited " +
+        "(issue a credit note instead, create_invoice with documentType='CreditNote' and originalInvoiceId). " +
+        "IMPORTANT: 'items' REPLACES ALL existing lines — to change one line, call get_invoice first and " +
+        "send the complete list back with your change. The client and document type cannot be changed " +
+        "(delete the draft and create a new one instead). Returns the updated invoice like get_invoice.")]
+    public static async Task<string> UpdateInvoice(
+        IFakvioApiClient api,
+        [Description("The invoice ID to update")] long invoiceId,
+        [Description("New issue date, ISO 8601 (e.g. '2026-01-15'). Omit to keep.")] string? issueDate = null,
+        [Description("New due date, ISO 8601. Omit to keep.")] string? dueDate = null,
+        [Description("New date of taxable supply (DUZP), ISO 8601. Omit to keep.")] string? taxableSupplyDate = null,
+        [Description("New variable symbol (digits only, max 10). Omit to keep, '' to clear.")] string? variableSymbol = null,
+        [Description("New constant symbol. Omit to keep, '' to clear.")] string? constantSymbol = null,
+        [Description("New specific symbol. Omit to keep, '' to clear.")] string? specificSymbol = null,
+        [Description("New payment method: BankTransfer, Cash, CreditCard, PayPal, Other. Omit to keep.")] string? paymentMethod = null,
+        [Description("One of the issuer's bank accounts (BankAccount.Id, see get_issuer). Omit to keep.")] long? bankAccountId = null,
+        [Description("New ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit to keep.")] string? currency = null,
+        [Description("New notes text on the invoice (replaces the old one). Omit to keep.")] string? notes = null,
+        [Description(
+            "Opt in (true) or out (false) of the EU OSS regime when you also send items. Omit to keep the current regime.")] bool? applyOss = null,
+        [Description(
+            "COMPLETE replacement list of line items (all existing lines are removed). Same schema as create_invoice: " +
+            "description, quantity, unit, unitPrice, vatRatePercentage (VAT payer; vatRateId is resolved automatically), " +
+            "isTextRow, vatRegime / reverseChargeCodeId. Omit to keep the current lines.")]
+        List<CreateInvoiceItemDto>? items = null,
+        CancellationToken ct = default)
+    {
+        // ── Validate the model's own input BEFORE any API call (same rule as create_invoice) ──
+        EPaymentMethod? parsedPaymentMethod = null;
+        if (!string.IsNullOrWhiteSpace(paymentMethod))
+        {
+            if (!Enum.TryParse<EPaymentMethod>(paymentMethod, ignoreCase: true, out var pm))
+                return Error(
+                    $"Unknown paymentMethod '{paymentMethod}'. Valid values: " +
+                    string.Join(", ", Enum.GetNames<EPaymentMethod>()) + ".");
+            parsedPaymentMethod = pm;
+        }
+
+        var (parsedIssueDate, issueDateError) = ParseOptionalDate(issueDate, nameof(issueDate));
+        var (parsedDueDate, dueDateError) = ParseOptionalDate(dueDate, nameof(dueDate));
+        var (parsedDuzp, duzpError) = ParseOptionalDate(taxableSupplyDate, nameof(taxableSupplyDate));
+        var dateError = issueDateError ?? dueDateError ?? duzpError;
+        if (dateError is not null)
+            return Error(dateError);
+
+        // Empty currency = "not provided" (models often send "" instead of omitting the argument).
+        // Symbols are different: "" is sent as-is and CLEARS the symbol (null = keep).
+        if (variableSymbol is not null && !System.Text.RegularExpressions.Regex.IsMatch(variableSymbol, @"^\d{0,10}$"))
+            return Error("variableSymbol must contain only digits (max 10), or '' to clear it.");
+        currency = string.IsNullOrWhiteSpace(currency) ? null : currency;
+
+        if (items is { Count: 0 })
+            return Error("items must contain at least one line — it replaces ALL existing lines. Omit items to keep the current ones.");
+
+        var nothingToChange = parsedIssueDate is null && parsedDueDate is null && parsedDuzp is null
+            && variableSymbol is null && constantSymbol is null && specificSymbol is null
+            && parsedPaymentMethod is null && bankAccountId is null && currency is null
+            && notes is null && applyOss is null && items is null;
+        if (nothingToChange)
+            return Error("Nothing to update — pass at least one field to change.");
+
+        try
+        {
+            // ── Pre-flight: does it exist, and is its status editable? ──────────────
+            var existing = await api.GetInvoiceByIdAsync(invoiceId, ct);
+            if (existing is null)
+                return Error($"Invoice with ID {invoiceId} not found.");
+
+            var notDraft = NotEditableResult(existing);
+            if (notDraft is not null)
+                return notDraft;
+
+            long? currencyId = null;
+            if (currency is not null)
+            {
+                var (resolvedCurrency, currencyError) = await CodeListTools.ResolveCurrencyAsync(api, currency, ct);
+                if (resolvedCurrency is null)
+                    return Error(currencyError!);
+                currencyId = resolvedCurrency.Id;
+            }
+
+            // ── Resolve vatRatePercentage → VatRateId (VAT-paying issuer, non-OSS invoice) ──
+            if (items is not null && items.Any(i => !i.IsTextRow && !i.VatRateId.HasValue))
+            {
+                var issuer = await api.GetClientByIdAsync(existing.IssuerId, ct);
+                var ossActive = applyOss ?? existing.OssCountryCode is not null;
+                if (issuer is { IsVatPayer: true } && !ossActive)
+                {
+                    var rateError = await ResolveItemVatRatesAsync(api, items, parsedIssueDate ?? existing.IssueDate, ct);
+                    if (rateError is not null)
+                        return Error(rateError);
+                }
+            }
+
+            var dto = new UpdateInvoiceDto
+            {
+                IssueDate = parsedIssueDate,
+                DueDate = parsedDueDate,
+                TaxableSupplyDate = parsedDuzp,
+                VariableSymbol = variableSymbol,
+                ConstantSymbol = constantSymbol,
+                SpecificSymbol = specificSymbol,
+                PaymentMethod = parsedPaymentMethod,
+                BankAccountId = bankAccountId,
+                CurrencyId = currencyId,
+                Notes = notes,
+                ApplyOss = applyOss,
+                InvoiceItem = items,
+                // Guards the gap between the status check above and the write: 409 if someone changed the status meanwhile.
+                ExpectedStatus = EInvoiceStatus.Draft
+            };
+
+            InvoiceDto? result;
+            try
+            {
+                result = await api.UpdateInvoiceAsync(invoiceId, dto, ct);
+            }
+            catch (FakvioApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                // Status changed since the pre-flight read: re-read and give the same guidance as above.
+                var current = await api.GetInvoiceByIdAsync(invoiceId, ct);
+                var guidance = current is null ? null : NotEditableResult(current);
+                if (guidance is not null)
+                    return guidance;
+                throw;
+            }
+
+            if (result is null)
+                return Error($"Invoice with ID {invoiceId} not found.");
+
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Switches an issued (Completed) invoice back to Draft (POST /api/invoice/{id}/revert-to-draft) so it can be
+    /// edited with update_invoice. Destructive: the document stops being an issued tax document until completed again.
+    /// </summary>
+    [McpServerTool(Title = "Revert invoice to draft", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
+        "Switch an issued (Completed) invoice back to Draft so it can be edited. Call ONLY after the user has " +
+        "explicitly confirmed this in the current conversation (explain: the issued document becomes a draft, it must be " +
+        "issued again with complete_invoice after editing, and re-sent if it was already e-mailed; the invoice still shows as e-mailed, and re-completing fires the invoice webhook again). The document number " +
+        "is kept. Only Completed invoices can be reverted — Paid and credit-noted ones cannot. Typical flow: " +
+        "update_invoice answers 'requires_revert_to_draft' → ask the user → revert_invoice_to_draft → update_invoice → complete_invoice.")]
+    public static async Task<string> RevertInvoiceToDraft(
+        IFakvioApiClient api,
+        [Description("The invoice ID to switch back to Draft")] long invoiceId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await api.RevertInvoiceToDraftAsync(invoiceId, ct);
+            return result is null
+                ? Error($"Invoice with ID {invoiceId} not found.")
+                : JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Explains why a non-Draft invoice cannot be edited, or null for a Draft. Completed (issued) documents are never
+    /// modified silently: a structured result (not an error) tells the model to ask the user and revert first.
+    /// </summary>
+    private static string? NotEditableResult(InvoiceDto existing)
+    {
+        if (existing.Status == EInvoiceStatus.Draft)
+            return null;
+
+        if (existing.Status == EInvoiceStatus.Completed)
+            return JsonSerializer.Serialize(new
+            {
+                status = "requires_revert_to_draft",
+                invoiceId = existing.Id,
+                number = existing.DocumentNumber,
+                message = "This invoice is already issued (Completed), so it was NOT changed. To edit it, it must first " +
+                          "be switched back to Draft. Ask the user explicitly whether to do that and explain the consequences: " +
+                          "the issued document becomes a draft, it must be issued again with complete_invoice after editing, " +
+                          "and it must be re-sent if it was already e-mailed to the client. Only after the user confirms, " +
+                          "call revert_invoice_to_draft and then update_invoice again."
+            }, JsonOptions);
+
+        var number = existing.DocumentNumber ?? existing.Id.ToString();
+        if (existing.Status == EInvoiceStatus.PartiallyPaid)
+            return Error(
+                $"Invoice {number} is partially paid — a partial payment is recorded, so it cannot be edited. " +
+                "Issue a credit note (create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice instead.");
+
+        return Error(
+            $"Invoice {number} is not editable in status {existing.Status}: " +
+            "only Draft documents can be edited (issued ones after reverting to draft). To correct it, issue a credit note " +
+            "(create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice. If a payment was recorded " +
+            "by mistake, the user can mark the invoice as unpaid in the Fakvio app first.");
+    }
+
+    /// <summary>Parses an optional ISO date argument; blank = not provided, unparsable = error message.</summary>
+    private static (DateTime? Value, string? Error) ParseOptionalDate(string? raw, string name)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return (null, null);
+        return DateTime.TryParse(raw, out var d)
+            ? (d, null)
+            : (null, $"Invalid {name} '{raw}'. Use ISO 8601 (e.g. '2026-01-15').");
     }
 }

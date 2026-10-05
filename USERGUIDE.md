@@ -145,6 +145,7 @@ Kontrolní seznam používá názvy polí odpovídající formulářům. Pokud o
 
 - **Faktury podle stavu** — koláčový (donut) graf: Draft / Issued / Paid / Credited
 - **Top klienti podle obratu** — koláčový graf: top 10 klientů, seřazeni sestupně
+- **Tržby, příjmy a výdaje po měsících a pohledávky po splatnosti** jsou v Kč. Doklady v cizí měně se přepočítají kurzem ČNB uloženým na dokladu; doklad bez kurzu se do těchto grafů nezapočítá.
 
 ### Pojistné zálohy
 
@@ -278,10 +279,13 @@ Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukl
 - Ve stavu Issued/Paid: pouze zobrazení; pro editaci vraťte fakturu do Draft (pokud to systém umožňuje)
 - Unsaved changes guard: při navigaci pryč bez uložení se zobrazí potvrzovací dialog
 
+**Kurz u faktury v cizí měně:** při vystavení faktury v jiné měně než CZK Fakvio samo doplní **kurz České národní banky** platný ke dni zdanitelného plnění (o víkendu nebo svátku poslední vyhlášený) a zobrazí ho v detailu faktury. Na konceptu můžete kurz přepsat vlastním (pole „Kurz“ — Kč za 1 jednotku měny); prázdné pole = použije se kurz ČNB. Použije se vždy poslední vyhlášený kurz ČNB ke dni zdanitelného plnění nebo dříve — kurz se vyhlašuje kolem 14:30, takže u dnešního data před 14:30 platí kurz předchozího pracovního dne (datum kurzu najdete na faktuře). Potřebujete-li jiný kurz, přepište ho na konceptu. Vystavenou fakturu už kurz změnit nejde. Dobropis přebírá kurz původní faktury. Není-li kurz ČNB dostupný, faktura se vystaví i tak, jen bez kurzu.
+
 ### 2.6 Kopírování faktury
 
 - Ikonka kopírování v řádku gridu → vytvoří nový Draft se stejnými daty
 - Nová faktura dostane nové číslo dokladu (z číselné řady)
+- Před kopírováním se zobrazí dialog s volbou **„Posunout období v textech“** (výchozí: zapnuto). Měsíce v popisech položek a poznámce (`3/2026`, `03/2026`, `2026-03`, `březen 2026`, `za března`, `March 2026`, `Q1/2026`, `1Q 2026`) se posunou o rozdíl měsíců mezi datem vystavení původní a nové faktury; rok se přepíše při přechodu přes prosinec. Čtvrtletí se posouvají jen o celá čtvrtletí. Čísla faktur, IBAN, úplná data (`15. března 2026`) a zlomky se nemění. API: `POST /api/invoice/{id}/copy?shiftPeriods=false` posun vypne.
 - Po zkopírování se zobrazí toast se číslem nové faktury + grid se obnoví
 - Kopírování není dostupné pro Dobropisy ani Smazané faktury
 
@@ -289,9 +293,11 @@ Pole zákazníka začíná prázdné; před vytvořením jej vyberte. Během ukl
 
 - Kliknutím na ikonu PDF v řádku gridu
 - Výběr šablony: výchozí šablona nebo vlastní (pokud máte nakonfigurované ContentTemplates)
-- Soubor se stáhne pojmenovaný `Faktura_{číslo}.pdf`
+- Soubor se stáhne pojmenovaný `Faktura_{číslo}.pdf` (název jde změnit per klient a typ dokladu — viz [§5.3a](#53a-název-souboru-dokladů))
 
 **Hromadný PDF export:** zaškrtněte faktury → toolbar → PDF → stáhne se ZIP archiv
+
+**Faktura v cizí měně od plátce DPH:** PDF navíc uvádí použitý kurz a **rekapitulaci DPH v korunách** (základ přepočtený kurzem ČNB a z něj vypočtená daň — zákon o DPH vyžaduje částku DPH na dokladu v Kč). U proformy, neplátce DPH, faktury v režimu OSS ani faktury bez kurzu se tento blok netiskne.
 
 ### 2.8 Export ISDOC
 
@@ -352,9 +358,9 @@ Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakuj
 - Export počítá se sazbami DPH platnými od roku 2024 (**21 / 12 / 0 %**). Starší doklady s jinou sazbou
   (např. 10 % nebo 15 %) a doklady s jinou sazbou DPH se do souboru nezahrnou.
 - Do souboru se také nezahrnují doklady, které cílový systém nedokáže správně přijmout: daňové doklady
-  k přijaté platbě (všechny systémy), doklady v cizí měně (Money S3, ABRA Flexi), proformy (ABRA Flexi)
+  k přijaté platbě (všechny systémy), doklady v cizí měně **bez kurzu** (Money S3, ABRA Flexi), proformy (ABRA Flexi)
   a v POHODĚ doklady s číslem delším než 20 znaků. Přijaté dobropisy export nepodporuje (Fakvio je nerozlišuje od běžných přijatých faktur). Po exportu uvidíte, kolik dokladů bylo vynecháno.
-- U cizí měny v POHODĚ Fakvio kurz neexportuje — POHODA použije svůj kurzový lístek k datu dokladu.
+- Doklady v cizí měně se exportují **s kurzem ČNB uloženým na dokladu** (POHODA kurz + množství, Money S3 valuty s kurzem, ABRA Flexi měna a kurz). Doklad v cizí měně bez kurzu (např. vystavený před zavedením kurzů nebo při výpadku ČNB) POHODA převezme bez kurzu a použije svůj lístek, Money S3 a ABRA Flexi ho vynechají.
 - Dobropisy se do Money S3 a ABRA Flexi přenášejí s kladnými částkami (jako dobropis), do POHODY se záporným znaménkem.
 - ABRA Flexi: v cílové firmě musí existovat typy dokladů `FAKTURA` a `DOBROPIS` (výchozí databáze je má).
   Číslo přijaté faktury dodavatele se uloží do pole „číslo dodavatele", interní číslo přidělí Flexi.
@@ -366,6 +372,7 @@ Koncepty vydaných faktur a smazané/odmítnuté přijaté faktury se přeskakuj
 - Zadejte emailovou adresu příjemce (předvyplněna z nastavení klienta)
 - Klikněte „Odeslat"
 - Po odeslání se v řádku zobrazí ikonka zelené obálky s datem
+- V příloze je vždy PDF a ISDOC faktury (u slovenských a Peppol odběratelů i UBL XML). Vlastní předmět, zprávu a další přílohy umí přidat zatím jen AI klient přes MCP (§20.6) a API.
 
 **Hromadné odeslání:** zaškrtněte faktury → toolbar → Email → odešle se na výchozí email každého klienta
 
@@ -471,6 +478,55 @@ V detailu klienta sekce „Fakturační nastavení" (BillingSettings):
 
 Tyto hodnoty se automaticky aplikují při vytváření nové faktury pro tohoto klienta.
 
+### 5.3a Název souboru dokladů
+
+Jak se jmenuje stažený nebo e-mailem odeslaný soubor (PDF, ISDOC, UBL), nastavíte ve stejné sekci
+„Fakturační nastavení" — zvlášť pro **fakturu, dobropis, zálohovou fakturu a daňový doklad k přijaté platbě**.
+Stejný název se použije při stažení (včetně hromadného ZIP), v příloze e-mailu, v upomínce, při ukládání
+do cloudového úložiště i při exportu přes AI asistenta nebo MCP. Příponu (`.pdf`, `.isdoc`, `.xml`) doplní
+Fakvio samo — do formátu ji nepište.
+
+**Který formát platí** (od nejkonkrétnějšího):
+1. formát nastavený u **klienta** pro daný typ dokladu,
+2. formát nastavený u **vaší firmy** (Nastavení firmy → Fakturační nastavení) — společný výchozí pro všechny klienty,
+3. výchozí `{{DocumentType}}_{{DocumentNumber}}`, např. `Faktura_2026001.pdf` (u klienta s jazykem EN `Invoice_2026001.pdf`).
+
+Prázdné pole = „převezmi výchozí".
+
+**Zástupné znaky** (kliknutím na čip pod polem se vloží; pod polem je živý náhled):
+
+| Znak | Význam | Příklad |
+|------|--------|---------|
+| `{{DocumentType}}` | Typ dokladu v jazyce klienta | `Faktura`, `Dobropis`, `Proforma`, `Danovy_doklad` / `Invoice`, `CreditNote`, `Proforma`, `TaxReceipt` |
+| `{{DocumentNumber}}` | Číslo dokladu (u konceptu ID dokladu) | `2026001` |
+| `{{VariableSymbol}}` | Variabilní symbol | `2026001` |
+| `{{IssueDate}}` | Datum vystavení | `2026-03-15` |
+| `{{TaxDate}}` | Datum uskutečnění zdanitelného plnění (DUZP) | `2026-03-10` |
+| `{{DueDate}}` | Datum splatnosti | `2026-03-29` |
+| `{{Year}}` / `{{Month}}` | Rok / měsíc vystavení (měsíc dvojmístně) | `2026` / `03` |
+| `{{ClientName}}` | Název klienta | `Acme s.r.o.` |
+| `{{IssuerName}}` | Název vaší firmy | `Moje firma s.r.o.` |
+
+Příklady: `{{IssuerName}}_{{Year}}-{{DocumentNumber}}` → `Moje firma s.r.o._2026-2026001.pdf`;
+`{{ClientName}} {{DocumentNumber}}` → `Acme s.r.o. 2026001.pdf`.
+
+**Formát data:** za název datumového zástupného znaku (`IssueDate`, `TaxDate`, `DueDate`) můžete za dvojtečku
+připsat vlastní formát. Bez formátu se použije `yyyy-MM-dd`. Povolená písmena jsou jen `y` (rok), `M` (měsíc, velké M!)
+a `d` (den) a oddělovače `-`, `_`, `.`; cokoli jiného (např. `HH`, `:`, `/`) aplikace při uložení odmítne.
+
+| Zápis | Výsledek |
+|-------|----------|
+| `{{IssueDate:yyyyMMdd}}` | `20260315` |
+| `{{IssueDate:dd.MM.yyyy}}` | `15.03.2026` |
+| `{{DueDate:yyMM}}` | `2603` |
+
+Příklad: `{{DocumentType}}_{{IssueDate:yyyyMMdd}}_{{DocumentNumber}}` → `Faktura_20260315_2026001.pdf`.
+Formát nejde použít u ostatních zástupných znaků. Pokud datum doklad nemá, zůstane na jeho místě prázdno.
+
+**Pravidla:** znaky nepovolené v názvech souborů (`/ \ : * ? " < > |`) se nahradí `_`, mezery a tečky na
+začátku a konci se ořežou, název se zkrátí na 150 znaků. Neznámý zástupný znak (překlep) aplikace při uložení
+odmítne s chybou. Vyjde-li název prázdný, použije se výchozí.
+
 ### 5.4 Historie faktur klienta
 
 V detailu klienta se zobrazuje tabulka faktur tohoto klienta (server-side stránkování). Číslo faktury otevře její detail. Stav filtrujte výběrem nad tabulkou; hlavička tabulky nenabízí druhý filtr stavu ani nepodporovaný filtr částky.
@@ -541,6 +597,8 @@ automatické generování faktur z této šablony:
 nastane naplánovaný termín. Faktura se **rovnou vystaví** (ne koncept) — číslo dokladu se přidělí
 ihned, takže po smazání vygenerované faktury nezůstane v číselné řadě díra.
 
+**Období v textech:** měsíce/čtvrtletí zapsaná v textu položek a poznámky šablony (např. „Hosting 3/2026“) se u každé vygenerované faktury posunou automaticky — text v šabloně musí odpovídat období **první vygenerované faktury**; n-tá faktura se posune o (n-1) intervalů plánu. Volba **„Posouvat období v textech“** je u nových plánů zapnutá; u plánů vytvořených dříve je vypnutá, a po zapnutí se aktuální text šablony bere jako období příští faktury. Týdenní plány text neposouvají. Zástupné značky typu `{month}` šablony nepodporují.
+
 **Co když aplikace byla dočasně nedostupná:** zmeškaná perioda se dožene v příštím běhu, ale vždy
 jen jedna faktura za cyklus — datum vystavení odpovídá původně plánovanému datu, ne datu, kdy se
 generování skutečně stihlo.
@@ -607,6 +665,8 @@ Dvě možnosti:
 2. **Import:** „Import" → `/received-invoices/import?target=ReceivedInvoice` → nahrání souboru
    (PDF, ISDOC, nebo UBL/Peppol BIS XML — viz kap. 18 „Podporované formáty příloh" pro detaily
    o rozpoznání UBL faktur a dobropisů)
+
+**Kurz u přijaté faktury v cizí měně:** při **schválení** se doplní kurz ČNB ke dni zdanitelného plnění; zobrazí se v detailu a použije se v exportu do účetnictví.
 
 ### Stavy přijatých faktur
 
@@ -718,6 +778,9 @@ Správa informací o vaší firmě (vydavatele faktur).
 - **Peppol ID (přepis)** — volitelné, nechte prázdné. Adresu pro e-fakturu (Peppol) Fakvio
   odvodí samo z DIČ a země vaší firmy; vyplňte jen když odvození nestačí. Formát
   `schéma:hodnota`, např. `0245:2020123456` (SK) — viz §2.8a Export e-faktury.
+
+**Fakturační nastavení:** výchozí platební metoda, splatnost a **název souboru dokladů** (společný výchozí formát
+pro všechny klienty, který lze u klienta přepsat — viz [§5.3a](#53a-název-souboru-dokladů))
 
 **Adresy:** sídlo, provozovna, fakturační adresa (přes dialog Adresa)
 
@@ -853,6 +916,12 @@ u nichž daň odvádí odběratel (osvobozeno / mimo předmět daně), včetně 
 se zároveň promítne do řádků 20 a 21 přiznání. Zboží (kód 0) lze vykázat jen v měsíčním hlášení. Třístranný
 obchod, přemístění obchodního majetku a zálohové doklady (DPP) zatím nejsou podporovány.
 
+**Dobropisy (opravné daňové doklady):** vystavené dobropisy se do přiznání (řádky 1/2), přehledu DPH i kontrolního
+hlášení promítají záporně v období svého DUZP. V kontrolním hlášení jsou uvedeny pod vlastním číslem dokladu; do oddílu A.4
+patří, pokud je absolutní hodnota dobropisu (včetně DPH) alespoň 10 000 Kč a odběratel má české DIČ, jinak do A.5 –
+rozhoduje hodnota samotné opravy, ne původní doklad (viz Časté dotazy Finanční správy ke kontrolnímu hlášení). Přijaté dobropisy Fakvio
+nerozlišuje od běžných přijatých faktur.
+
 **Postup:**
 1. Vyberte rok a typ období (Měsíční / Čtvrtletní)
 2. Vyberte konkrétní měsíc nebo čtvrtletí
@@ -972,6 +1041,14 @@ Grid zobrazuje bankovní transakce:
 | Spárovaná faktura / protistrana | Číslo faktury, nebo štítek rozpoznané protistrany |
 
 **Filtrace:** stav párování, směr platby (příchozí / odchozí), textové hledání
+
+### Import bankovního výpisu (GPC/ABO)
+
+Na stránce Platby nahrajte výpis ve formátu GPC/ABO (`.gpc`, `.abo`, `.txt`, max. 5 MB), který stáhnete z internetového bankovnictví
+(KB, ČSOB, Fio, Raiffeisenbank, MONETA a další). Číslo účtu z výpisu musí být uvedeno v nastavení firmy, jinak se výpis nenaimportuje.
+Fakvio vytvoří nové platby, přeskočí ty, které už v systému jsou (výpis můžete nahrát opakovaně), a příchozí platby automaticky spáruje
+s fakturami podle variabilního symbolu a částky. Po nahrání uvidíte souhrn: počet výpisů, nových plateb, duplicit, spárovaných a
+nespárovaných plateb a případná upozornění (např. storno položky se neimportují).
 
 ### Ruční párování
 
@@ -1265,7 +1342,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 78 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 81 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1403,7 +1480,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 
 | Oblast | Příklady |
 |--------|---------|
-| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
 | Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES, zjistit vystavitele |
 | Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
@@ -1414,7 +1491,11 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Opakované faktury | Vypsat a zobrazit plány (i pro konkrétní šablonu), založit nový plán, upravit frekvenci/datum/limity, pozastavit a obnovit, smazat |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
-„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
+„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“, „Změň splatnost konceptu FAK-2026-002 na 30. 6.“
+
+**Odeslání faktury emailem přes AI.** Příjemci vždy dorazí **PDF i ISDOC** faktury (u slovenských a Peppol odběratelů navíc UBL XML). AI může zadat i vlastní **předmět** emailu (nahradí předmět ze šablony) a vlastní **zprávu** (prostý text, zobrazí se nad textem ze šablony; HTML se nevykonává, jen se zobrazí jako text). Navíc lze přiložit **další soubory**: nejvýše 5, dohromady do 10 MB, jen typy `pdf`, `isdoc`, `xml`, `txt`, `csv`, `png`, `jpg`, `jpeg`, `xlsx`, `docx`, `zip`. Nepovolený typ, příliš velký soubor nebo vadný soubor se odmítne srozumitelnou chybou a email se **neodešle**.
+
+**Úprava faktury.** AI upraví jen **koncept**; změní jen to, co jste zadali (při změně položek nahradí všechny řádky celým novým seznamem). Už **vystavenou** fakturu sama nezmění: nejdřív se vás zeptá, zda ji smí vrátit na koncept — vystavený doklad se tím stane konceptem, po úpravě ho musíte znovu vystavit a pokud už byl odeslán emailem, poslat klientovi znovu. Zaplacenou nebo dobropisovanou fakturu upravit nejde; opravíte ji dobropisem a novou fakturou.
 
 ---
 

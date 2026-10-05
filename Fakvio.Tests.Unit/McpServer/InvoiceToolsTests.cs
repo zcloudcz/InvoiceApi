@@ -544,6 +544,39 @@ public class InvoiceToolsTests
     }
 
     [Fact]
+    public async Task SendInvoiceEmail_ForwardsSubjectMessageAndAttachmentsToApi()
+    {
+        // Arrange
+        SendInvoiceEmailDto? sent = null;
+        _api.SendInvoiceEmailAsync(3, Arg.Do<SendInvoiceEmailDto>(d => sent = d), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        var attachments = new[] { new EmailAttachmentDto { FileName = "note.txt", ContentBase64 = "AQID" } };
+
+        // Act
+        await InvoiceTools.SendInvoiceEmail(_api, 3, "test@example.com", "Subject", "Body", attachments);
+
+        // Assert
+        sent.ShouldNotBeNull();
+        sent.Subject.ShouldBe("Subject");
+        sent.Message.ShouldBe("Body");
+        sent.Attachments.ShouldNotBeNull();
+        sent.Attachments.Single().FileName.ShouldBe("note.txt");
+    }
+
+    [Fact]
+    public async Task SendInvoiceEmail_WithoutAttachments_SendsNullAttachments()
+    {
+        SendInvoiceEmailDto? sent = null;
+        _api.SendInvoiceEmailAsync(3, Arg.Do<SendInvoiceEmailDto>(d => sent = d), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        await InvoiceTools.SendInvoiceEmail(_api, 3, "test@example.com");
+
+        sent.ShouldNotBeNull();
+        sent.Attachments.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task DeleteInvoice_ReturnsSuccessMessage()
     {
         // Arrange
@@ -622,7 +655,7 @@ public class InvoiceToolsTests
         };
         _api.GetInvoiceByIdAsync(42, Arg.Any<CancellationToken>()).Returns(invoice);
         _api.ExportInvoicePdfAsync(42, Arg.Any<CancellationToken>())
-            .Returns(new byte[] { 0x25, 0x50, 0x44, 0x46 }); // %PDF header
+            .Returns(new ExportedFile(new byte[] { 0x25, 0x50, 0x44, 0x46 }, "Invoice_FV-2024-0001.pdf")); // %PDF header
 
         // Act
         var json = await InvoiceTools.ExportInvoicePdf(_api, 42);
@@ -636,26 +669,6 @@ public class InvoiceToolsTests
         doc.RootElement.GetProperty("sizeBytes").GetInt32().ShouldBe(4);
     }
 
-    [Fact]
-    public async Task ExportInvoicePdf_CreditNote_UsesCorrectPrefix()
-    {
-        // Arrange
-        var invoice = new InvoiceDto
-        {
-            Id = 10, DocumentNumber = "DP-2024-0001",
-            DocumentType = EDocumentType.CreditNote
-        };
-        _api.GetInvoiceByIdAsync(10, Arg.Any<CancellationToken>()).Returns(invoice);
-        _api.ExportInvoicePdfAsync(10, Arg.Any<CancellationToken>())
-            .Returns(new byte[] { 0x25, 0x50 });
-
-        // Act
-        var json = await InvoiceTools.ExportInvoicePdf(_api, 10);
-
-        // Assert
-        var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("CreditNote_DP-2024-0001.pdf");
-    }
 
     [Fact]
     public async Task ExportInvoicePdf_NotFound_ReturnsError()

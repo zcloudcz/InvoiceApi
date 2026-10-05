@@ -39,6 +39,9 @@ namespace Fakvio.Tests.Unit;
 /// </summary>
 public class EmailServiceTests : IDisposable
 {
+    // Name of the in-memory tenant database — lets a test open a SECOND context on the same data
+    private readonly string _tenantDbName = Guid.NewGuid().ToString();
+
     // The in-memory tenant database context with seeded invoice data
     private readonly TenantDbContext _tenantContext;
 
@@ -79,7 +82,7 @@ public class EmailServiceTests : IDisposable
     {
         // Setup in-memory tenant database with a unique name for test isolation
         var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(databaseName: _tenantDbName)
             .Options;
         _tenantContext = new TenantDbContext(tenantOptions);
 
@@ -219,6 +222,7 @@ public class EmailServiceTests : IDisposable
             _tenantContext,
             _masterContext,
             _pdfExport,
+            new DocumentFileNameService(_tenantContext),
             _isdocExport,
             _ublExport,
             _contentTemplate,
@@ -302,6 +306,51 @@ public class EmailServiceTests : IDisposable
         // call (ADR 0002, F1.9) — only an SK buyer or an explicit Client.PeppolId does.
         await _ublExport.DidNotReceive()
             .ExportInvoiceAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Attachment names must follow the client's configured file name format (same builder as the
+    /// download endpoints). SMTP cannot be reached in a unit test, so the names are read from the
+    /// "attachments prepared" log line that SendInvoiceEmailAsync writes right before connecting.
+    /// </summary>
+    [Fact]
+    public async Task SendInvoiceEmailAsync_ClientHasFileNameFormat_AttachmentsUseIt()
+    {
+        // Seeded through the test's own context on purpose: the service under test builds the name
+        // with a separate query, so a missing Include cannot hide behind the change tracker.
+        using (var seedContext = new TenantDbContext(
+                   new DbContextOptionsBuilder<TenantDbContext>().UseInMemoryDatabase(_tenantDbName).Options))
+        {
+            seedContext.BillingSettings.Add(new BillingSettings
+            {
+                ClientId = 2,
+                InvoiceFileNameFormat = "{{Year}}-{{DocumentNumber}}_{{ClientName}}"
+            });
+            seedContext.SaveChanges();
+        }
+
+        _pdfExport.GenerateInvoicePdfAsync(1, Arg.Any<CancellationToken>()).Returns(new byte[] { 0x25, 0x50 });
+        _isdocExport.ExportInvoiceAsync(1, Arg.Any<CancellationToken>()).Returns("<Invoice/>"u8.ToArray());
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        try
+        {
+            await CreateService().SendInvoiceEmailAsync(1, "test@example.com");
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException and not KeyNotFoundException
+                                       and not NullReferenceException)
+        {
+            // Expected SMTP connection failure — see SendInvoiceEmailAsync_ValidInvoice_GeneratesPdf.
+        }
+
+        var logLines = _logger.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(ILogger.Log))
+            .Select(c => c.GetArguments()[2]?.ToString() ?? "")
+            .ToList();
+        logLines.ShouldContain(l => l.Contains("PDF=2025-INV2025001_Client.pdf")
+                                    && l.Contains("ISDOC=2025-INV2025001_Client.isdoc"));
     }
 
     // --------------------------------------------------------------------------
@@ -470,7 +519,7 @@ public class EmailServiceTests : IDisposable
         _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
 
         var service = new EmailService(
-            _tenantContext, _masterContext, _pdfExport, _isdocExport, _ublExport, _contentTemplate,
+            _tenantContext, _masterContext, _pdfExport, new DocumentFileNameService(_tenantContext), _isdocExport, _ublExport, _contentTemplate,
             _systemConfig, _credentialProtector, _tenantResolver, emptyConfig, _logger);
 
         // Act & Assert — missing SMTP host in all 3 tiers should throw a clear error
@@ -991,5 +1040,92 @@ public class EmailServiceTests : IDisposable
 
         // Assert — Subject
         message.Subject.ShouldBe("Faktura INV2025001");
+    }
+
+    // ─── Extra attachments + custom subject / message (MCP send_invoice_email) ───
+
+    /// <summary>
+    /// Extra attachments are appended after PDF / ISDOC with the right names, count and
+    /// extension-derived content types.
+    /// </summary>
+    [Fact]
+    public void BuildInvoiceMessage_WithExtraAttachments_AppendsThemWithDerivedContentTypes()
+    {
+        var message = EmailService.BuildInvoiceMessage(
+            senderName: "TestApp",
+            senderEmail: "invoices@test.com",
+            to: "client@example.com",
+            subject: "Invoice",
+            htmlBody: "<p>Body</p>",
+            pdfBytes: [1],
+            pdfFileName: "Invoice_1.pdf",
+            isdocBytes: [2],
+            isdocFileName: "Invoice_1.isdoc",
+            extraAttachments:
+            [
+                new OutgoingEmailAttachment("contract.docx", [3]),
+                new OutgoingEmailAttachment("photo.png", [4]),
+                new OutgoingEmailAttachment("notes.txt", [5])
+            ]);
+
+        var attachments = (message.Body as MimeKit.Multipart)!
+            .OfType<MimeKit.MimePart>()
+            .Where(p => p.IsAttachment)
+            .ToList();
+
+        attachments.Select(a => a.FileName).ShouldBe(
+            ["Invoice_1.pdf", "Invoice_1.isdoc", "contract.docx", "photo.png", "notes.txt"]);
+        attachments.Single(a => a.FileName == "contract.docx").ContentType.MimeType
+            .ShouldBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        attachments.Single(a => a.FileName == "photo.png").ContentType.MimeType.ShouldBe("image/png");
+        attachments.Single(a => a.FileName == "notes.txt").ContentType.MimeType.ShouldBe("text/plain");
+    }
+
+    /// <summary>A custom message must be HTML-encoded (never injected raw) and prepended to the template body.</summary>
+    [Fact]
+    public void ApplyCustomization_Message_IsHtmlEncodedAndPrepended()
+    {
+        var (_, body) = EmailService.ApplyCustomization(
+            "Template subject", "<p>Template body</p>",
+            new SendInvoiceEmailOptions(Message: "Hi <script>alert(1)</script>\r\nSecond line"));
+
+        body.ShouldNotContain("<script>");
+        body.ShouldStartWith("<p>Hi &lt;script&gt;alert(1)&lt;/script&gt;<br>Second line</p>");
+        body.ShouldEndWith("<p>Template body</p>");
+    }
+
+    /// <summary>A non-blank subject replaces the template subject; CR/LF are stripped (header injection).</summary>
+    [Fact]
+    public void ApplyCustomization_Subject_ReplacesTemplateSubjectAndStripsLineBreaks()
+    {
+        var (subject, _) = EmailService.ApplyCustomization(
+            "Template subject", "<p>Body</p>",
+            new SendInvoiceEmailOptions(Subject: "  Custom\r\nBcc: evil@x.cz  "));
+
+        subject.ShouldNotContain("\r");
+        subject.ShouldNotContain("\n");
+        subject.ShouldBe("Custom  Bcc: evil@x.cz");
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", "")]
+    [InlineData("   ", "  \n ")]
+    public void ApplyCustomization_BlankValues_FallBackToTemplate(string? subject, string? message)
+    {
+        var (resultSubject, resultBody) = EmailService.ApplyCustomization(
+            "Template subject", "<p>Template body</p>", new SendInvoiceEmailOptions(subject, message));
+
+        resultSubject.ShouldBe("Template subject");
+        resultBody.ShouldBe("<p>Template body</p>");
+    }
+
+    [Fact]
+    public void ApplyCustomization_NullOptions_KeepsTemplate()
+    {
+        var (subject, body) = EmailService.ApplyCustomization("S", "B", null);
+
+        subject.ShouldBe("S");
+        body.ShouldBe("B");
     }
 }

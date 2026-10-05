@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Claims;
 using Fakvio.API.Extensions;
 using Fakvio.Application.Common.Helpers;
+using Fakvio.Contracts.Common;
 using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Email;
@@ -30,6 +31,7 @@ public class InvoiceController : ControllerBase
 {
     private readonly IInvoiceService _invoiceService;
     private readonly IPdfExportService _pdfExportService;
+    private readonly IDocumentFileNameService _fileNameService;
     private readonly IIsdocExportService _isdocExportService;
     private readonly IUblExportService _ublExportService;
     private readonly IEmailService _emailService;
@@ -41,6 +43,7 @@ public class InvoiceController : ControllerBase
     public InvoiceController(
         IInvoiceService invoiceService,
         IPdfExportService pdfExportService,
+        IDocumentFileNameService fileNameService,
         IIsdocExportService isdocExportService,
         IUblExportService ublExportService,
         IEmailService emailService,
@@ -51,6 +54,7 @@ public class InvoiceController : ControllerBase
     {
         _invoiceService = invoiceService;
         _pdfExportService = pdfExportService;
+        _fileNameService = fileNameService;
         _isdocExportService = isdocExportService;
         _ublExportService = ublExportService;
         _emailService = emailService;
@@ -325,6 +329,11 @@ public class InvoiceController : ControllerBase
             _logger.LogInformation("Invoice {Id} updated successfully", id);
             return Ok(invoice);
         }
+        catch (InvoiceStatusConflictException ex)
+        {
+            _logger.LogWarning("Status conflict updating invoice {Id}: {Message}", id, ex.Message);
+            return Conflict(new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
             _logger.LogWarning("Cannot update invoice {Id}: {Message}", id, ex.Message);
@@ -370,7 +379,7 @@ public class InvoiceController : ControllerBase
             try
             {
                 var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, null, cancellationToken);
-                var fileName = $"{invoice.DocumentNumber}.pdf";
+                var fileName = await _fileNameService.GetFileNameAsync(id, DocumentFileName.PdfExtension, cancellationToken);
                 await _cloudStorageOrchestrator.UploadInvoicePdfAsync(id, pdfBytes, fileName, cancellationToken);
             }
             catch (Exception cloudEx)
@@ -533,6 +542,7 @@ public class InvoiceController : ControllerBase
     /// CreditNote sources → 400 Bad Request.
     /// </summary>
     /// <param name="id">Source invoice ID to copy from</param>
+    /// <param name="shiftPeriods">Move billing periods in item texts/notes ("3/2026", "březen 2026") forward by the month difference to today (default true)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The newly created Draft invoice</returns>
     /// <response code="201">Copy created successfully</response>
@@ -546,13 +556,14 @@ public class InvoiceController : ControllerBase
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<InvoiceDto>> CopyInvoice(
         long id,
+        [FromQuery] bool shiftPeriods = true,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("POST /api/invoice/{Id}/copy", id);
 
         try
         {
-            var copy = await _invoiceService.CopyInvoiceAsync(id, cancellationToken);
+            var copy = await _invoiceService.CopyInvoiceAsync(id, shiftPeriods, cancellationToken);
 
             _logger.LogInformation(
                 "Invoice {SourceId} copied → new invoice {CopyId} ({DocNum})",
@@ -939,11 +950,8 @@ public class InvoiceController : ControllerBase
             // Generate the PDF bytes via the export service — pass optional templateId for template selection
             var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, templateId, cancellationToken);
 
-            // Fetch the invoice to get the document number and document type for the file name
-            var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-            // Use document type prefix — "Invoice" for invoices, "CreditNote" for credit notes
-            var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}.pdf";
+            // The file name comes from the configured per-client / per-document-type format.
+            var fileName = await _fileNameService.GetFileNameAsync(id, DocumentFileName.PdfExtension, cancellationToken);
 
             _logger.LogInformation("PDF generated for invoice {Id}, size: {Size} bytes", id, pdfBytes.Length);
 
@@ -982,11 +990,8 @@ public class InvoiceController : ControllerBase
             // Generate the ISDOC XML bytes via the export service
             var isdocBytes = await _isdocExportService.ExportInvoiceAsync(id, cancellationToken);
 
-            // Fetch the invoice to build a meaningful file name
-            var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-            // Use document type prefix for clarity in the file name
-            var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}.isdoc";
+            // ISDOC uses the same configured format as the PDF, only the extension differs.
+            var fileName = await _fileNameService.GetFileNameAsync(id, DocumentFileName.IsdocExtension, cancellationToken);
 
             _logger.LogInformation("ISDOC generated for invoice {Id}, size: {Size} bytes", id, isdocBytes.Length);
 
@@ -1001,11 +1006,11 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
-    /// Sends the specified invoice as an email with PDF attachment.
-    /// Generates the PDF, attaches it to an email, and sends it via SMTP.
+    /// Sends the specified invoice as an email. PDF and ISDOC are always attached (plus UBL XML
+    /// for Slovak / Peppol-reachable buyers), followed by any extra attachments from the request.
     /// </summary>
     /// <param name="id">Invoice ID to send</param>
-    /// <param name="dto">Email recipient and optional subject/message</param>
+    /// <param name="dto">Email recipient and optional subject/message/extra attachments</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Success confirmation</returns>
     /// <response code="200">Email sent successfully</response>
@@ -1022,9 +1027,23 @@ public class InvoiceController : ControllerBase
     {
         _logger.LogInformation("POST /api/invoice/{Id}/send-email to {Email}", id, dto.RecipientEmail);
 
+        // Validate + decode the extra attachments first (trust boundary): on any violation nothing is sent.
+        IReadOnlyList<OutgoingEmailAttachment> attachments;
         try
         {
-            await _emailService.SendInvoiceEmailAsync(id, dto.RecipientEmail, cancellationToken);
+            attachments = EmailAttachmentValidator.ValidateAndDecode(dto.Attachments);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning("Rejected attachments for invoice {Id} email: {Message}", id, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+
+        try
+        {
+            // Subject / Message / Attachments used to be dropped here - they must reach the email.
+            var options = new SendInvoiceEmailOptions(dto.Subject, dto.Message, attachments);
+            await _emailService.SendInvoiceEmailAsync(id, dto.RecipientEmail, cancellationToken, options);
 
             _logger.LogInformation("Invoice {Id} sent via email to {Email}", id, dto.RecipientEmail);
             return Ok(new { message = $"Invoice email sent to {dto.RecipientEmail}" });
@@ -1283,6 +1302,11 @@ public class InvoiceController : ControllerBase
 
         _logger.LogInformation("GET /api/invoice/bulk/pdf - {Count} invoices", invoiceIds.Count);
 
+        // All file names in one query (no N+1); formats are configured per client / document type.
+        var fileNames = await _fileNameService.GetFileNamesAsync(invoiceIds, DocumentFileName.PdfExtension, cancellationToken);
+        // Custom formats can collide (e.g. "{{ClientName}}") — UniqueEntryName keeps every file in the ZIP.
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // Generate ZIP with all PDFs using System.IO.Compression (built-in .NET)
         using var zipStream = new MemoryStream();
         using (var archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, true))
@@ -1292,10 +1316,7 @@ public class InvoiceController : ControllerBase
                 try
                 {
                     var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, null, cancellationToken);
-                    var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-                    // Use document type prefix — "Invoice" for invoices, "CreditNote" for credit notes
-                    var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-                    var fileName = $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}.pdf";
+                    var fileName = ZipArchiveHelper.UniqueEntryName(usedNames, fileNames[id]);
 
                     // Add each PDF as an entry in the ZIP archive
                     var entry = archive.CreateEntry(fileName, System.IO.Compression.CompressionLevel.Optimal);
@@ -1342,22 +1363,18 @@ public class InvoiceController : ControllerBase
         _logger.LogInformation("GET /api/invoice/bulk/isdoc - {Count} invoices", invoiceIds.Count);
 
         var entries = new List<(string EntryName, byte[] Content)>();
-        // Entry names must be unique within the ZIP — document numbers should be
-        // unique per tenant, but UniqueEntryName guards against edge cases.
+        // Entry names must be unique within the ZIP — custom file name formats can collide,
+        // UniqueEntryName guards against that.
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // All file names in one query (no N+1).
+        var fileNames = await _fileNameService.GetFileNamesAsync(invoiceIds, DocumentFileName.IsdocExtension, cancellationToken);
 
         foreach (var id in invoiceIds)
         {
             try
             {
                 var isdocBytes = await _isdocExportService.ExportInvoiceAsync(id, cancellationToken);
-                var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-                // Use document type prefix — "Invoice" for invoices, "CreditNote" for credit notes
-                var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-                var fileName = ZipArchiveHelper.SanitizePathSegment(
-                    $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}") + ".isdoc";
-
-                entries.Add((ZipArchiveHelper.UniqueEntryName(usedNames, fileName), isdocBytes));
+                entries.Add((ZipArchiveHelper.UniqueEntryName(usedNames, fileNames[id]), isdocBytes));
             }
             catch (Exception ex)
             {
@@ -1400,9 +1417,7 @@ public class InvoiceController : ControllerBase
         {
             var ublBytes = await _ublExportService.ExportInvoiceAsync(id, cancellationToken);
 
-            var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-            var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-            var fileName = $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}.xml";
+            var fileName = await _fileNameService.GetFileNameAsync(id, DocumentFileName.UblExtension, cancellationToken);
 
             _logger.LogInformation("UBL generated for invoice {Id}, size: {Size} bytes", id, ublBytes.Length);
 
@@ -1445,18 +1460,14 @@ public class InvoiceController : ControllerBase
 
         var entries = new List<(string EntryName, byte[] Content)>();
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fileNames = await _fileNameService.GetFileNamesAsync(invoiceIds, DocumentFileName.UblExtension, cancellationToken);
 
         foreach (var id in invoiceIds)
         {
             try
             {
                 var ublBytes = await _ublExportService.ExportInvoiceAsync(id, cancellationToken);
-                var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-                var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-                var fileName = ZipArchiveHelper.SanitizePathSegment(
-                    $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}") + ".xml";
-
-                entries.Add((ZipArchiveHelper.UniqueEntryName(usedNames, fileName), ublBytes));
+                entries.Add((ZipArchiveHelper.UniqueEntryName(usedNames, fileNames[id]), ublBytes));
             }
             catch (Exception ex)
             {

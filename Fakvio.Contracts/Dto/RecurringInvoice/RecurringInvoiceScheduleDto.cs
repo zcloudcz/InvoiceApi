@@ -56,6 +56,9 @@ public class RecurringInvoiceScheduleDto
     /// <summary>Whether generated invoices are automatically completed and e-mailed to the client.</summary>
     public bool AutoSend { get; set; }
 
+    /// <summary>Whether billing periods in the template text move forward with each generated invoice.</summary>
+    public bool ShiftPeriodsInText { get; set; }
+
     /// <summary>Message from the last failed generation attempt. Null when the last run succeeded.</summary>
     public string? LastError { get; set; }
 }

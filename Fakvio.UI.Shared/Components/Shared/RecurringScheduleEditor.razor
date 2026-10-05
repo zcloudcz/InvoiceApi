@@ -82,6 +82,12 @@
         </MudItem>
     }
 
+    <MudItem xs="12">
+        <MudSwitch T="bool" @bind-Value="Model.ShiftPeriodsInText" Color="Color.Primary"
+                   Label="@L["Recurring_ShiftPeriods"].Value" />
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">@L["Recurring_ShiftPeriodsHelp"]</MudText>
+    </MudItem>
+
     @if (ShowAutoSend)
     {
         <MudItem xs="12">

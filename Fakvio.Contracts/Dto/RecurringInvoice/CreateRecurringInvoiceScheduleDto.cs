@@ -51,4 +51,7 @@ public class CreateRecurringInvoiceScheduleDto
 
     /// <summary>Whether the generated invoice should be automatically completed and e-mailed.</summary>
     public bool AutoSend { get; set; } = false;
+
+    /// <summary>Move billing periods in the template text ("Hosting 3/2026" → "4/2026") forward with each generated invoice. The template text must then name the period of the FIRST generated invoice.</summary>
+    public bool ShiftPeriodsInText { get; set; } = true;
 }

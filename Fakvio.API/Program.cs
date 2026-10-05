@@ -46,6 +46,10 @@ builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddHostedService<RecurringInvoiceWorker>();
 // WebhookWorker: sends/retries outbound webhook deliveries every minute (DEVGUIDE §4.15).
 builder.Services.AddHostedService<WebhookWorker>();
+// ExchangeRateWorker: downloads the ČNB daily fixing at startup and daily at 14:45 Prague time (DEVGUIDE §4.17).
+// ExchangeRates:SyncEnabled=false switches it off (integration tests must not call the internet).
+if (builder.Configuration.GetValue("ExchangeRates:SyncEnabled", true))
+    builder.Services.AddHostedService<ExchangeRateWorker>();
 // OAuthCleanupService: sweeps expired OAuth rows every hour (ADR 0001, §4.3). Registered
 // unconditionally — with McpOAuth:Enabled=false there is simply nothing for it to delete.
 builder.Services.AddHostedService<OAuthCleanupService>();
@@ -124,7 +128,9 @@ builder.Services.AddCors(options =>
                   // Expose X-Correlation-Id so browser JavaScript (Blazor WASM) can read the
                   // CorrelationId from the response header for client-side debugging/logging.
                   // X-Export-* carry the accounting-export counts (exported / skipped documents).
-                  .WithExposedHeaders("X-Correlation-Id", "X-Export-Exported", "X-Export-Skipped")
+                  // Content-Disposition carries the server-built document file name (DocumentFileName) —
+                  // without exposing it, cross-origin WASM cannot read it and falls back to a local name.
+                  .WithExposedHeaders("X-Correlation-Id", "X-Export-Exported", "X-Export-Skipped", "Content-Disposition")
                   .AllowCredentials(); // Required for cookie-based auth and SignalR
         }
         else

@@ -667,6 +667,7 @@ else
             EndDate = schedule.EndDate?.UtcDateTime,
             MaxOccurrences = schedule.MaxOccurrences,
             AutoSend = schedule.AutoSend,
+            ShiftPeriodsInText = schedule.ShiftPeriodsInText,
         };
         await OpenRecurringScheduleDialog(model, L["Recurring_EditSchedule"].Value);
     }

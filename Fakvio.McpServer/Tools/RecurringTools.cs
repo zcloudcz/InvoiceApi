@@ -92,7 +92,9 @@ public static class RecurringTools
         "dayOfMonth must be omitted. Optional endDate and/or maxOccurrences stop it automatically. " +
         "autoSend only controls whether the issued invoice is also e-mailed to the client — it is " +
         "issued either way. A missed run (app downtime) is caught up one invoice per hourly worker " +
-        "cycle, dated on the originally planned day.")]
+        "cycle, dated on the originally planned day. shiftPeriodsInText (default true) moves billing periods " +
+        "in the template text (\"Hosting 3/2026\", \"březen 2026\", \"Q1 2026\") forward with each generated invoice — " +
+        "the template text must then name the period of the FIRST generated invoice.")]
     public static async Task<string> CreateRecurringSchedule(
         IFakvioApiClient api,
         [Description("Schedule to create — templateId, clientId, frequency and startDate are required")]
@@ -126,7 +128,8 @@ public static class RecurringTools
         "(to Monthly/Quarterly/Yearly): set the new frequency, dayOfMonth (1-28) and " +
         "clearDayOfWeek=true (dayOfWeek itself is ignored for clearing — you must use " +
         "clearDayOfWeek). clearEndDate / clearMaxOccurrences explicitly remove those limits (plain " +
-        "null keeps the current value). nextRunAt lets you explicitly reschedule the next issue date.")]
+        "null keeps the current value). nextRunAt lets you explicitly reschedule the next issue date. " +
+        "shiftPeriodsInText=true switches period shifting in texts on — the current template text is then taken as the period of the NEXT invoice.")]
     public static async Task<string> UpdateRecurringSchedule(
         IFakvioApiClient api,
         [Description("The recurring schedule ID to update")] long scheduleId,

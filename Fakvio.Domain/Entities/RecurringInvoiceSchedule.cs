@@ -135,6 +135,20 @@ public class RecurringInvoiceSchedule : BaseEntity
     /// </summary>
     public bool AutoSend { get; set; } = false;
 
+    /// <summary>
+    /// When true, billing periods named in the template text ("Hosting 3/2026") move forward with every
+    /// generated invoice. Contract: the template text names the period of the invoice generated at
+    /// <see cref="ShiftBaselineOccurrence"/>; run N then shifts by (N - baseline) intervals.
+    /// Default false so schedules that existed before this feature keep their behaviour.
+    /// </summary>
+    public bool ShiftPeriodsInText { get; set; } = false;
+
+    /// <summary>
+    /// <see cref="OccurrenceCount"/> at the moment <see cref="ShiftPeriodsInText"/> was switched on
+    /// (0 for schedules created with it on): the next invoice is the one the template text describes.
+    /// </summary>
+    public int ShiftBaselineOccurrence { get; set; } = 0;
+
     // ── Error tracking ────────────────────────────────────────────────────────
 
     /// <summary>

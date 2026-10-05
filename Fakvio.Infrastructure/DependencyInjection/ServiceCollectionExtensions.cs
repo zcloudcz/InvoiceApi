@@ -155,6 +155,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<ICurrencyService, CurrencyService>();
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
+        services.AddScopedWithLogging<IDocumentFileNameService, DocumentFileNameService>();
         services.AddScopedWithLogging<IIsdocExportService, IsdocExportService>();
         services.AddScopedWithLogging<IUblExportService, UblExportService>();
         services.AddScopedWithLogging<IAccountingExportService, AccountingExportService>();
@@ -173,6 +174,10 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IOssVatRateService, OssVatRateService>();
         services.AddScopedWithLogging<IOssReportService, OssReportService>();
         services.AddHttpClient<IEcbExchangeRateClient, EcbExchangeRateClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
+        // ČNB exchange rates for Czech VAT (DEVGUIDE §4.17): Master cache + on-demand download + daily sync cycle.
+        services.AddHttpClient<ICnbExchangeRateClient, CnbExchangeRateClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+        services.AddScopedWithLogging<IExchangeRateService, ExchangeRateService>();
+        services.AddScoped<IExchangeRateSyncService, ExchangeRateSyncService>();
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
         // Tenant readiness — one place that answers "is this tenant set up well enough to invoice?".
@@ -281,6 +286,7 @@ public static class ServiceCollectionExtensions
         // AI-backed email parser + matching core.
         services.AddScopedWithLogging<IBankEmailParser, AiBankEmailParser>();
         services.AddScopedWithLogging<IPaymentMatchingService, PaymentMatchingService>();
+        services.AddScopedWithLogging<IBankStatementImportService, BankStatementImportService>();
         services.AddScopedWithLogging<IBankTransactionQueryService, BankTransactionQueryService>();
 
         // Registry of known counterparty accounts (insurance, tax office, …) for
@@ -380,14 +386,16 @@ public static class ServiceCollectionExtensions
         // Setup tools — let the agent say what is still missing before the user can invoice.
         services.AddScoped<IChatTool, GetReadinessTool>();
 
-        // Issued invoice lifecycle — read the detail, then issue / mark paid / send / delete.
-        // The four data-changing ones are IConfirmableChatTool: the model must show a preview
+        // Issued invoice lifecycle — read the detail, then issue / mark paid / send / delete / edit.
+        // The six data-changing ones (incl. update_invoice, revert_invoice_to_draft) are IConfirmableChatTool: the model must show a preview
         // and get the user's approval before anything is written (DEVGUIDE §4.7).
         services.AddScoped<IChatTool, GetInvoiceTool>();
         services.AddScoped<IChatTool, CompleteInvoiceTool>();
         services.AddScoped<IChatTool, MarkInvoicePaidTool>();
         services.AddScoped<IChatTool, SendInvoiceEmailTool>();
         services.AddScoped<IChatTool, DeleteInvoiceTool>();
+        services.AddScoped<IChatTool, UpdateInvoiceTool>();
+        services.AddScoped<IChatTool, RevertInvoiceToDraftTool>();
 
         // Advance (proforma) workflow — remaining advance, DPP, final invoice.
         services.AddScoped<IChatTool, GetRemainingAdvanceTool>();

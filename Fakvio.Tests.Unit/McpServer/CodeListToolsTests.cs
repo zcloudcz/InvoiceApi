@@ -46,4 +46,43 @@ public class CodeListToolsTests
         var root = JsonDocument.Parse(json).RootElement;
         root.GetProperty("error").GetString().ShouldBe("internal_error");
     }
+
+    [Fact]
+    public async Task GetExchangeRate_ReturnsRateAndPerUnitRate()
+    {
+        _api.GetExchangeRateAsync("HUF", new DateOnly(2026, 10, 2), Arg.Any<CancellationToken>()).Returns(
+            new Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto
+            {
+                CurrencyCode = "HUF", Amount = 100, Rate = 6.660m, RatePerUnit = 0.0666m, ValidFor = new DateOnly(2026, 10, 1)
+            });
+
+        var json = await CodeListTools.GetExchangeRate(_api, "HUF", new DateOnly(2026, 10, 2));
+
+        var root = JsonDocument.Parse(json).RootElement;
+        root.GetProperty("amount").GetInt32().ShouldBe(100);
+        root.GetProperty("ratePerUnit").GetDecimal().ShouldBe(0.0666m);
+        root.GetProperty("validFor").GetString().ShouldBe("2026-10-01");
+    }
+
+    [Theory]
+    [InlineData("CZK")]
+    [InlineData("")]
+    [InlineData("EURO")]
+    public async Task GetExchangeRate_InvalidCurrency_ReturnsErrorWithoutCallingApi(string currency)
+    {
+        var json = await CodeListTools.GetExchangeRate(_api, currency);
+
+        JsonDocument.Parse(json).RootElement.TryGetProperty("error", out _).ShouldBeTrue();
+        await _api.DidNotReceive().GetExchangeRateAsync(Arg.Any<string>(), Arg.Any<DateOnly?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetExchangeRate_Unavailable_ReturnsClearError()
+    {
+        _api.GetExchangeRateAsync("USD", Arg.Any<DateOnly?>(), Arg.Any<CancellationToken>()).Returns((Fakvio.Contracts.Dto.ExchangeRate.ExchangeRateDto?)null);
+
+        var json = await CodeListTools.GetExchangeRate(_api, "usd");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("USD");
+    }
 }

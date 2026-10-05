@@ -498,8 +498,11 @@ public class OssTests : IDisposable
 
         var resolver = Substitute.For<ITenantResolver>();
         resolver.GetCurrentCompanyId().Returns(CompanyId);
+        var passThrough = Substitute.For<ICurrencyService>(); // all-CZK scenario: conversion is the identity
+        passThrough.ConvertToCzkAsync(Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>(), Arg.Any<decimal?>())
+            .Returns(call => Task.FromResult(call.ArgAt<decimal>(0)));
         var vat = new VatReportService(_tenant, _master, resolver, Substitute.For<IEpoSchemaProvider>(),
-            Substitute.For<ICurrencyService>(), Substitute.For<ILogger<VatReportService>>());
+            passThrough, Substitute.For<ILogger<VatReportService>>());
 
         var report = await vat.GetReportAsync(new DateTime(2026, 1, 1), new DateTime(2026, 3, 31));
 

@@ -85,10 +85,28 @@ public class UpdateInvoiceDto
     public long? CurrencyId { get; set; }
 
     /// <summary>
+    /// Manual CZK-per-one-unit exchange rate for a non-CZK document (optional; must be &gt; 0).
+    /// Normally omitted — the ČNB rate for the DUZP is assigned when the document is issued/approved.
+    /// Allowed only while the document is still a draft / not yet approved.
+    /// On update, null means "no change" (a manual rate cannot be cleared through this DTO).
+    /// </summary>
+    // Numeric (double) overload on purpose: the MCP schema generator copies Range arguments into
+    // JSON Schema minimum/maximum verbatim, so the string overload emitted "0.00000001" as a string —
+    // invalid JSON Schema that made ChatGPT reject the whole tools/list. Validation is unchanged.
+    [Range(0.00000001, 1000000)]
+    public decimal? ExchangeRate { get; set; }
+
+    /// <summary>
     /// Optional notes on the invoice
     /// </summary>
     [StringLength(5000)]
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Optional optimistic-concurrency guard: when set, the update is rejected with 409 unless the invoice
+    /// currently has exactly this status. Used by MCP/chat (they only edit Drafts); the UI does not send it.
+    /// </summary>
+    public EInvoiceStatus? ExpectedStatus { get; set; }
 
     /// <summary>
     /// Updated invoice line items

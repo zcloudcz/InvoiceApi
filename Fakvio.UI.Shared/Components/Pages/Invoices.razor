@@ -725,15 +725,20 @@
     }
 
     /// <summary>
-    /// Copies the specified invoice as a new Draft document.
+    /// Copies the specified invoice as a new Draft document (after the user confirms the period-shift option).
     /// On success shows a toast with the new document number and refreshes the grid.
     /// On failure shows an error toast — no grid refresh is needed.
     /// </summary>
     private async Task CopyInvoice(long id)
     {
+        // Ask whether billing periods in the texts should move to the new month (default on).
+        var dialog = await DialogService.ShowAsync<CopyInvoiceDialog>(L["Invoice_Copy"].Value);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
         try
         {
-            var copy = await InvoiceService.CopyAsync(id);
+            var copy = await InvoiceService.CopyAsync(id, result.Data is true);
             if (copy != null)
             {
                 Snackbar.Add(string.Format(L["Invoice_CopySuccess"].Value, copy.DocumentNumber), Severity.Success);
@@ -754,12 +759,12 @@
     {
         try
         {
-            var pdfBytes = await InvoiceService.ExportToPdfAsync(invoice.Id);
-            if (pdfBytes != null && pdfBytes.Length > 0)
+            var pdf = await InvoiceService.ExportToPdfAsync(invoice.Id);
+            if (pdf != null && pdf.Bytes.Length > 0)
             {
-                var base64 = Convert.ToBase64String(pdfBytes);
-                var prefix = GetFileNamePrefix(invoice.DocumentType);
-                var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
+                var base64 = Convert.ToBase64String(pdf.Bytes);
+                // The name comes from the server (client's file name format); the fallback only covers a missing header.
+                var fileName = pdf.FileName ?? $"{invoice.Id}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
             }
@@ -910,12 +915,11 @@
     {
         try
         {
-            var pdfBytes = await InvoiceService.ExportToPdfAsync(invoice.Id, templateId);
-            if (pdfBytes != null && pdfBytes.Length > 0)
+            var pdf = await InvoiceService.ExportToPdfAsync(invoice.Id, templateId);
+            if (pdf != null && pdf.Bytes.Length > 0)
             {
-                var base64 = Convert.ToBase64String(pdfBytes);
-                var prefix = GetFileNamePrefix(invoice.DocumentType);
-                var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
+                var base64 = Convert.ToBase64String(pdf.Bytes);
+                var fileName = pdf.FileName ?? $"{invoice.Id}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
             }
@@ -1262,16 +1266,4 @@
         var b = Convert.ToInt32(hex[4..6], 16);
         return $"rgba({r},{g},{b},{opacity})";
     }
-
-    /// <summary>
-    /// Returns the localized file name prefix for a given document type.
-    /// Used when building PDF download file names in grid row actions.
-    /// </summary>
-    private string GetFileNamePrefix(EDocumentType docType) => docType switch
-    {
-        EDocumentType.CreditNote           => L["FileName_CreditNote"].Value,
-        EDocumentType.Proforma             => L["FileName_Proforma"].Value,
-        EDocumentType.TaxReceiptForAdvance => L["FileName_TaxReceiptForAdvance"].Value,
-        _                                  => L["FileName_Invoice"].Value
-    };
 }

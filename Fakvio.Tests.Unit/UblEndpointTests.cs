@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.API.Controller;
 using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
@@ -23,6 +24,7 @@ public class UblEndpointTests
 {
     private readonly IInvoiceService _invoiceService = Substitute.For<IInvoiceService>();
     private readonly IUblExportService _ublExportService = Substitute.For<IUblExportService>();
+    private readonly IDocumentFileNameService _fileNameService = Substitute.For<IDocumentFileNameService>();
     private readonly InvoiceController _controller;
 
     public UblEndpointTests()
@@ -30,6 +32,7 @@ public class UblEndpointTests
         _controller = new InvoiceController(
             _invoiceService,
             Substitute.For<IPdfExportService>(),
+            _fileNameService,
             Substitute.For<IIsdocExportService>(),
             _ublExportService,
             Substitute.For<IEmailService>(),
@@ -60,6 +63,9 @@ public class UblEndpointTests
         var fakeXmlBytes = "<Invoice>test</Invoice>"u8.ToArray();
 
         _ublExportService.ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>()).Returns(fakeXmlBytes);
+        // The controller must hand out exactly the name the file name service resolves
+        _fileNameService.GetFileNameAsync(invoiceId, DocumentFileName.UblExtension, Arg.Any<CancellationToken>())
+            .Returns("Custom_INV2026001.xml");
         _invoiceService.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(MakeInvoiceDto(invoiceId, docNumber));
 
@@ -68,24 +74,9 @@ public class UblEndpointTests
         var fileResult = result.ShouldBeOfType<FileContentResult>();
         fileResult.ContentType.ShouldBe("application/xml");
         fileResult.FileContents.ShouldBe(fakeXmlBytes);
-        fileResult.FileDownloadName.ShouldBe($"Invoice_{docNumber}.xml");
+        fileResult.FileDownloadName.ShouldBe("Custom_INV2026001.xml");
     }
 
-    [Fact]
-    public async Task ExportUbl_CreditNote_UsesCorrectFileNamePrefix()
-    {
-        var invoiceId = 99L;
-        var docNumber = "CN2026001";
-
-        _ublExportService.ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns("<CreditNote/>"u8.ToArray());
-        _invoiceService.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(MakeInvoiceDto(invoiceId, docNumber, EDocumentType.CreditNote));
-
-        var result = await _controller.ExportUbl(invoiceId, CancellationToken.None);
-
-        result.ShouldBeOfType<FileContentResult>().FileDownloadName.ShouldBe($"CreditNote_{docNumber}.xml");
-    }
 
     [Fact]
     public async Task ExportUbl_InvoiceNotFound_Returns404()
@@ -119,6 +110,8 @@ public class UblEndpointTests
     [Fact]
     public async Task BulkExportUbl_SkipsFailedInvoices_ReturnsZipWithSuccessfulOnes()
     {
+        _fileNameService.GetFileNamesAsync(Arg.Any<IReadOnlyCollection<long>>(), DocumentFileName.UblExtension, Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<long, string> { [1] = "INV2026001.xml", [2] = "INV2026002.xml" });
         _ublExportService.ExportInvoiceAsync(1, Arg.Any<CancellationToken>())
             .Returns("<Invoice/>"u8.ToArray());
         _invoiceService.GetInvoiceByIdAsync(1, Arg.Any<CancellationToken>())

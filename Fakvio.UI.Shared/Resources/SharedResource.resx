@@ -221,6 +221,16 @@
   <data name="Billing_DefaultPaymentMethod" xml:space="preserve"><value>Výchozí způsob platby</value></data>
   <data name="Billing_BankAccount" xml:space="preserve"><value>Číslo bankovního účtu</value></data>
   <data name="Billing_Notes" xml:space="preserve"><value>Poznámky k fakturaci</value></data>
+  <data name="FileNameFormat_Invoice" xml:space="preserve"><value>Název souboru – faktura</value></data>
+  <data name="FileNameFormat_CreditNote" xml:space="preserve"><value>Název souboru – dobropis</value></data>
+  <data name="FileNameFormat_Proforma" xml:space="preserve"><value>Název souboru – zálohová faktura</value></data>
+  <data name="FileNameFormat_TaxReceipt" xml:space="preserve"><value>Název souboru – daňový doklad k přijaté platbě</value></data>
+  <data name="FileNameFormat_Placeholders" xml:space="preserve"><value>Zástupné znaky (kliknutím vložíte):</value></data>
+  <data name="FileNameFormat_Preview" xml:space="preserve"><value>Náhled</value></data>
+  <data name="FileNameFormat_Unknown" xml:space="preserve"><value>Neznámé nebo neplatné zástupné znaky</value></data>
+  <data name="FileNameFormat_DateHint" xml:space="preserve"><value>Datum lze formátovat, např. {{IssueDate:yyyyMMdd}} nebo {{DueDate:dd.MM.yyyy}} (povoleno: y M d - _ .)</value></data>
+  <data name="FileNameFormat_EmptyHintClient" xml:space="preserve"><value>Prázdné = nastavení firmy, jinak např. Faktura_2026001</value></data>
+  <data name="FileNameFormat_EmptyHintCompany" xml:space="preserve"><value>Prázdné = výchozí tvar, např. Faktura_2026001</value></data>
   <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Dní od vystavení</value></data>
   <data name="Billing_DaysFromEndOfMonth" xml:space="preserve"><value>Dní od konce měsíce</value></data>
   <data name="Billing_EndOfNextMonth" xml:space="preserve"><value>Konec příštího měsíce</value></data>
@@ -404,6 +414,9 @@
   <data name="Template_DocumentTypeInvoice" xml:space="preserve"><value>Faktura</value></data>
   <data name="Template_DocumentTypeCreditNote" xml:space="preserve"><value>Dobropis</value></data>
   <data name="Template_Currency" xml:space="preserve"><value>Měna</value></data>
+  <data name="Invoice_ExchangeRate" xml:space="preserve"><value>Kurz (CZK za 1 jednotku)</value></data>
+  <data name="Invoice_ExchangeRateHint" xml:space="preserve"><value>Prázdné = kurz ČNB k datu zdanitelného plnění se doplní při vystavení dokladu.</value></data>
+  <data name="Invoice_ExchangeRateCnb" xml:space="preserve"><value>ČNB k</value></data>
   <data name="Template_Never" xml:space="preserve"><value>Nikdy</value></data>
   <data name="Template_CreateInvoice" xml:space="preserve"><value>Vytvořit fakturu ze šablony</value></data>
   <data name="Template_TemplateName" xml:space="preserve"><value>Název šablony</value></data>
@@ -473,8 +486,8 @@
   <data name="Invoice_Copy" xml:space="preserve"><value>Zkopírovat fakturu</value></data>
   <data name="Invoice_CopySuccess" xml:space="preserve"><value>Faktura zkopírována jako #{0}</value></data>
   <data name="Invoice_CopyError" xml:space="preserve"><value>Kopírování faktury se nepodařilo</value></data>
-  <data name="FileName_Invoice" xml:space="preserve"><value>Faktura</value></data>
-  <data name="FileName_CreditNote" xml:space="preserve"><value>Dobropis</value></data>
+  <data name="Invoice_CopyShiftPeriods" xml:space="preserve"><value>Posunout období v textech</value></data>
+  <data name="Invoice_CopyShiftPeriodsHint" xml:space="preserve"><value>Měsíce a roky v popisech položek a poznámce (např. „3/2026“, „březen 2026“) se posunou podle rozdílu oproti původní faktuře.</value></data>
   <data name="FileName_Invoices" xml:space="preserve"><value>Faktury</value></data>
   <data name="FileName_CreditNotes" xml:space="preserve"><value>Dobropisy</value></data>
   <data name="FileName_TaxComparison" xml:space="preserve"><value>porovnani-dani</value></data>
@@ -1644,8 +1657,6 @@
   <data name="TaxReceiptForAdvance_Detail" xml:space="preserve"><value>Daňový doklad o přijaté platbě</value></data>
   <data name="Template_DocumentTypeProforma" xml:space="preserve"><value>Zálohová faktura (proforma)</value></data>
   <data name="Template_DocumentTypeTaxReceiptForAdvance" xml:space="preserve"><value>Daňový doklad o přijaté platbě</value></data>
-  <data name="FileName_Proforma" xml:space="preserve"><value>Proforma</value></data>
-  <data name="FileName_TaxReceiptForAdvance" xml:space="preserve"><value>Danovy_doklad</value></data>
   <data name="Proforma_IssueFinalInvoice" xml:space="preserve"><value>Vystavit finální fakturu</value></data>
   <data name="Proforma_FinalInvoices" xml:space="preserve"><value>Navázané finální faktury</value></data>
   <data name="Proforma_NoFinalInvoices" xml:space="preserve"><value>Žádné finální faktury zatím nevystaveny.</value></data>
@@ -1826,6 +1837,8 @@
   <data name="Recurring_MaxOccurrences" xml:space="preserve"><value>Počet opakování</value></data>
   <data name="Recurring_AutoSend" xml:space="preserve"><value>Rovnou vystavit a odeslat e-mailem</value></data>
   <data name="Recurring_AutoSendHelp" xml:space="preserve"><value>Faktura se vždy vystaví; tento přepínač navíc pošle e-mail klientovi.</value></data>
+  <data name="Recurring_ShiftPeriods" xml:space="preserve"><value>Posouvat období v textech</value></data>
+  <data name="Recurring_ShiftPeriodsHelp" xml:space="preserve"><value>Měsíce a čtvrtletí v textu šablony (např. „3/2026“) se u každé další faktury posunou. Text v šabloně musí odpovídat období první vygenerované faktury.</value></data>
   <data name="Recurring_NextRun" xml:space="preserve"><value>Další běh</value></data>
   <data name="Recurring_LastRun" xml:space="preserve"><value>Poslední běh</value></data>
   <data name="Recurring_OccurrenceCount" xml:space="preserve"><value>Počet vystavení</value></data>
@@ -2137,9 +2150,9 @@
   <data name="Dashboard_IncomeVsExpense" xml:space="preserve"><value>Příjmy vs výdaje po měsících</value></data>
   <data name="Dashboard_Income" xml:space="preserve"><value>Příjmy</value></data>
   <data name="Dashboard_Expense" xml:space="preserve"><value>Výdaje</value></data>
-  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Posledních 12 měsíců, bez DPH, jen faktury v CZK</value></data>
+  <data name="Dashboard_MonthlyChartHint" xml:space="preserve"><value>Posledních 12 měsíců, bez DPH, v CZK (cizí měny kurzem ČNB uvedeným na dokladu; doklady bez kurzu se nezapočítávají)</value></data>
   <data name="Dashboard_ReceivablesAging" xml:space="preserve"><value>Neuhrazené pohledávky podle stáří</value></data>
-  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Dny po splatnosti, s DPH, v CZK</value></data>
+  <data name="Dashboard_ReceivablesAgingHint" xml:space="preserve"><value>Dny po splatnosti, s DPH, v CZK (cizí měny kurzem ČNB uvedeným na dokladu)</value></data>
   <data name="SetupChecklist_StartWizard" xml:space="preserve"><value>Spustit průvodce</value></data>
   <data name="SetupWizard_Title" xml:space="preserve"><value>Průvodce nastavením</value></data>
   <data name="SetupWizard_Intro" xml:space="preserve"><value>Pár kroků a můžete vystavit první fakturu. Každý krok jde později změnit v nastavení.</value></data>
@@ -2170,4 +2183,8 @@
   <data name="EpoSummaryGoods" xml:space="preserve"><value>Zboží (jinak služba)</value></data>
   <data name="EpoDownloadSummaryStatement" xml:space="preserve"><value>Stáhnout EPO – souhrnné hlášení</value></data>
   <data name="EpoSummaryQuarterlyGoods" xml:space="preserve"><value>Zboží (kód 0) lze v souhrnném hlášení vykázat jen za měsíc (§ 102 odst. 6 ZDPH). Přepněte na měsíční období nebo odškrtněte zboží.</value></data>
+  <data name="Payments_Import_Title" xml:space="preserve"><value>Import výpisu (GPC/ABO)</value></data>
+  <data name="Payments_Import_Button" xml:space="preserve"><value>Nahrát výpis</value></data>
+  <data name="Payments_Import_Hint" xml:space="preserve"><value>Soubor .gpc / .abo / .txt z internetového bankovnictví (max. 5 MB). Opakovaný import téhož výpisu nevytvoří duplicity. Účet z výpisu musí být uvedený v nastavení firmy.</value></data>
+  <data name="Payments_Import_Summary" xml:space="preserve"><value>Výpisů: {0}, nově naimportováno: {1}, duplicit: {2}, spárováno: {3}, nespárováno: {4}.</value></data>
 </root>

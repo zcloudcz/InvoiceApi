@@ -240,6 +240,22 @@ public class Invoice : BaseEntity
     /// </summary>
     public string? OssCountryCode { get; set; }
 
+    /// <summary>
+    /// CZK per ONE unit of the invoice currency (ČNB rate), for non-CZK documents. Null for CZK invoices
+    /// and while the rate has not been determined yet. Set automatically when the invoice is completed
+    /// (rate valid for the DUZP — DEVGUIDE §4.17) or typed in by the user on a draft (then
+    /// <see cref="ExchangeRateDate"/> is null). §29 ZDPH needs the VAT amount in CZK on the document;
+    /// the accounting exports and dashboards use this rate.
+    /// </summary>
+    public decimal? ExchangeRate { get; set; }
+
+    /// <summary>
+    /// Date the ČNB fixing in <see cref="ExchangeRate"/> was declared for (can be earlier than the DUZP on a
+    /// weekend/holiday). Null when the rate was entered manually or there is none. A non-null date means
+    /// "assigned automatically", so it is recomputed when the invoice is completed again after a revert.
+    /// </summary>
+    public DateOnly? ExchangeRateDate { get; set; }
+
     // Navigation properties
 
     /// <summary>

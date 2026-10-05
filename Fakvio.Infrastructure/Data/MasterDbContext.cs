@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
@@ -121,6 +122,9 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     /// </summary>
     public DbSet<OssVatRate> OssVatRate { get; set; }
 
+    /// <summary>Official ČNB daily exchange rates (Master only, DEVGUIDE §4.17).</summary>
+    public DbSet<ExchangeRate> ExchangeRate { get; set; }
+
     /// <summary>
     /// Currencies — master copy used as source for provisioning new tenants.
     /// </summary>
@@ -217,6 +221,10 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
+    /// <summary>Every DateTime is written as UTC (Unspecified is pinned as UTC, not shifted by the host time zone) — see <see cref="PostgresDateTime.UtcOnWrite"/>.</summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder) =>
+        PostgresDateTime.UtcOnWrite(configurationBuilder);
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -279,6 +287,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         ConfigureCompanySystemSettings(modelBuilder);
         ConfigureVatRate(modelBuilder);
         ConfigureOssVatRate(modelBuilder);
+        ConfigureExchangeRate(modelBuilder);
         ConfigureCurrency(modelBuilder);
         ConfigureNumberSequenceFormat(modelBuilder);
         ConfigureContentTemplate(modelBuilder);
@@ -786,6 +795,10 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
             entity.Property(e => e.InvoiceNumberSuffix).HasMaxLength(50);
             entity.Property(e => e.CreditNoteNumberPrefix).HasMaxLength(50);
             entity.Property(e => e.CreditNoteNumberSuffix).HasMaxLength(50);
+            entity.Property(e => e.InvoiceFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.CreditNoteFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.ProformaFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.TaxReceiptFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
             entity.Property(e => e.DefaultPaymentMethod).HasConversion<int?>();
             entity.Property(e => e.BankAccountNumber).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(2000);
@@ -905,6 +918,22 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
             entity.Property(e => e.Description)
                 .HasMaxLength(200);
+        });
+    }
+
+    /// <summary>ExchangeRate table (ČNB daily fixing, see Domain.Entities.ExchangeRate).</summary>
+    private void ConfigureExchangeRate(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ExchangeRate>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // One fixing per currency per declaration date — makes the sync an idempotent upsert
+            // and serves the "last fixing on or before date" lookup.
+            entity.HasIndex(e => new { e.CurrencyCode, e.ValidFor }).IsUnique();
+
+            entity.Property(e => e.CurrencyCode).IsRequired().HasMaxLength(3);
+            entity.Property(e => e.Rate).HasPrecision(18, 4);
         });
     }
 
@@ -1285,7 +1314,6 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     {
         InitializeNewUserMemberships();
         UpdateTimestamps();
-        NormalizeDateTimesToUtc();
         return base.SaveChanges();
     }
 
@@ -1293,7 +1321,6 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     {
         InitializeNewUserMemberships();
         UpdateTimestamps();
-        NormalizeDateTimesToUtc();
         return base.SaveChangesAsync(cancellationToken);
     }
 
@@ -1345,30 +1372,6 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
             if (currentUserId.HasValue)
             {
                 entity.UpdatedByUserId = currentUserId.Value;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Npgsql 10.x requires DateTime values with DateTimeKind.Utc for "timestamp with time zone" columns.
-    /// Blazor date pickers send DateTimeKind.Unspecified — this method normalizes all DateTime properties
-    /// on added/modified entities to UTC before they reach the database driver.
-    /// </summary>
-    private void NormalizeDateTimesToUtc()
-    {
-        var entries = ChangeTracker.Entries()
-            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified);
-
-        foreach (var entry in entries)
-        {
-            foreach (var property in entry.Properties)
-            {
-                if (property.CurrentValue is DateTime dt && dt.Kind != DateTimeKind.Utc)
-                {
-                    // Treat Unspecified/Local as UTC — the app already uses UtcNow everywhere,
-                    // and Blazor WASM date pickers produce Unspecified values that are logically UTC.
-                    property.CurrentValue = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
-                }
             }
         }
     }

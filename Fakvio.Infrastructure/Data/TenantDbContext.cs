@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Common;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
@@ -269,6 +270,10 @@ public class TenantDbContext : DbContext
 
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
+    /// <summary>Every DateTime is written as UTC (Unspecified is pinned as UTC, not shifted by the host time zone) — see <see cref="PostgresDateTime.UtcOnWrite"/>.</summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder) =>
+        PostgresDateTime.UtcOnWrite(configurationBuilder);
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -472,6 +477,10 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.InvoiceNumberSuffix).HasMaxLength(50);
             entity.Property(e => e.CreditNoteNumberPrefix).HasMaxLength(50);
             entity.Property(e => e.CreditNoteNumberSuffix).HasMaxLength(50);
+            entity.Property(e => e.InvoiceFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.CreditNoteFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.ProformaFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            entity.Property(e => e.TaxReceiptFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
             entity.Property(e => e.DefaultPaymentMethod).HasConversion<int?>();
             entity.Property(e => e.BankAccountNumber).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(2000);
@@ -551,6 +560,8 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.Notes).HasMaxLength(5000);
             // EU OSS destination country (ISO2) — null for ordinary/non-OSS invoices. See §4.16.
             entity.Property(e => e.OssCountryCode).HasMaxLength(2);
+            // CZK per one unit of the document currency (ČNB). 8 decimals: HUF/JPY are per-100 on ČNB, so per-unit is small.
+            entity.Property(e => e.ExchangeRate).HasPrecision(18, 8);
             entity.HasIndex(e => e.OssCountryCode);
 
             entity.HasOne(e => e.Client).WithMany().HasForeignKey(e => e.ClientId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
@@ -734,6 +745,8 @@ public class TenantDbContext : DbContext
 
             entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
             entity.Property(e => e.TotalVat).HasPrecision(18, 2);
+            // CZK per one unit of the document currency (ČNB), see Invoice.ExchangeRate.
+            entity.Property(e => e.ExchangeRate).HasPrecision(18, 8);
             entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
 
             // Supplier is a Client record — Restrict to prevent accidental deletion of supplier with invoices.
@@ -1031,6 +1044,8 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.OccurrenceCount).HasDefaultValue(0);
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.AutoSend).HasDefaultValue(false);
+            entity.Property(e => e.ShiftPeriodsInText).HasDefaultValue(false);
+            entity.Property(e => e.ShiftBaselineOccurrence).HasDefaultValue(0);
 
             // LastError: free-form text, capped at 2000 chars (matches Reminder.ErrorMessage).
             entity.Property(e => e.LastError).HasMaxLength(2000);
@@ -1603,7 +1618,6 @@ public class TenantDbContext : DbContext
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         UpdateTimestamps();
-        NormalizeDateTimesToUtc();
         return base.SaveChangesAsync(cancellationToken);
     }
 
@@ -1635,30 +1649,6 @@ public class TenantDbContext : DbContext
             if (currentUserId.HasValue)
             {
                 entity.UpdatedByUserId = currentUserId.Value;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Npgsql 10.x requires DateTime values with DateTimeKind.Utc for "timestamp with time zone" columns.
-    /// Blazor date pickers send DateTimeKind.Unspecified — this method normalizes all DateTime properties
-    /// on added/modified entities to UTC before they reach the database driver.
-    /// </summary>
-    private void NormalizeDateTimesToUtc()
-    {
-        var entries = ChangeTracker.Entries()
-            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified);
-
-        foreach (var entry in entries)
-        {
-            foreach (var property in entry.Properties)
-            {
-                if (property.CurrentValue is DateTime dt && dt.Kind != DateTimeKind.Utc)
-                {
-                    // Treat Unspecified/Local as UTC — the app already uses UtcNow everywhere,
-                    // and Blazor WASM date pickers produce Unspecified values that are logically UTC.
-                    property.CurrentValue = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
-                }
             }
         }
     }

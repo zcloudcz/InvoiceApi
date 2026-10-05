@@ -144,6 +144,53 @@ public class PaymentMatchingE2ETests : IClassFixture<FakvioFactory>
         count.ShouldBe(0);
     }
 
+    // ─── GPC/ABO statement import ────────────────────────────────────────────
+
+    private static MultipartFormDataContent StatementForm(string fileName, string text)
+    {
+        var form = new MultipartFormDataContent();
+        form.Add(new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(text)), "file", fileName);
+        return form;
+    }
+
+    [Fact]
+    public async Task StatementImport_Anonymous_Returns401()
+    {
+        var response = await _factory.CreateClient().PostAsync("/api/bank-statement/import", StatementForm("a.gpc", "x"));
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task StatementImport_WrongExtension_Returns400()
+    {
+        var client = _factory.CreateClient();
+        var login = await AuthHelper.LoginAsSysAdminAsync(client);
+        AuthHelper.SetAuthToken(client, login.Token);
+        AuthHelper.SetImpersonation(client, await ProvisionTenantAsync(client));
+
+        var response = await client.PostAsync("/api/bank-statement/import", StatementForm("a.pdf", "x"));
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>A statement whose account is not in company settings: 200 with an error, nothing imported (tenant DI + routing work).</summary>
+    [Fact]
+    public async Task StatementImport_UnknownAccount_ReturnsErrorSummary()
+    {
+        var client = _factory.CreateClient();
+        var login = await AuthHelper.LoginAsSysAdminAsync(client);
+        AuthHelper.SetAuthToken(client, login.Token);
+        AuthHelper.SetImpersonation(client, await ProvisionTenantAsync(client));
+
+        var header = ("074" + "0000009999999999" + "TEST".PadRight(20)).PadRight(105) + "001" + "150326";
+        var response = await client.PostAsync("/api/bank-statement/import", StatementForm("a.gpc", header + "\r\n"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var dto = (await response.Content.ReadFromJsonAsync<BankStatementImportResultDto>())!;
+        dto.Statements.ShouldBe(1);
+        dto.Imported.ShouldBe(0);
+        dto.Errors.ShouldHaveSingleItem();
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     /// <summary>

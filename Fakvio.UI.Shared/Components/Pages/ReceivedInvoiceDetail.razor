@@ -137,6 +137,15 @@ else
                                DateChanged="@(v => { _taxableSupplyDate = v; _isDirty = true; })"
                                ReadOnly="!_isEditMode"
                                Class="mb-2" />
+
+                @* ČNB rate (CZK per 1 unit) assigned when the invoice is approved — DEVGUIDE §4.17 *@
+                @if (_invoice?.ExchangeRate is { } fx)
+                {
+                    <MudTextField Value="@($"1 {_invoice.CurrencyCode} = {fx:0.######} CZK" + (_invoice.ExchangeRateDate.HasValue ? $" ({L["Invoice_ExchangeRateCnb"]} {_invoice.ExchangeRateDate.Value:d})" : ""))"
+                                  Label="@L["Invoice_ExchangeRate"]"
+                                  ReadOnly="true"
+                                  Class="mb-2" />
+                }
             </MudPaper>
         </MudItem>
 

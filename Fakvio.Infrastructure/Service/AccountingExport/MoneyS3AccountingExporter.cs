@@ -21,8 +21,10 @@ namespace Fakvio.Infrastructure.Service.AccountingExport;
 ///   are mapped; other rates are skipped (<see cref="CanExport(Invoice)"/>).
 /// - Credit notes are exported with Dobropis = 1 and POSITIVE amounts (Fakvio stores them negative).
 /// - Proforma → Druh = F. Advance-payment tax receipts (DPP) are skipped.
-/// - Foreign-currency documents are skipped: Money requires the exchange rate for the home-currency
-///   summary and Fakvio does not store it — fabricating one would produce wrong totals.
+/// - Foreign-currency documents are exported only when they carry a ČNB rate (Invoice.ExchangeRate, DEVGUIDE §4.17):
+///   Valuty/Mena = code + Mnozstvi 1 + Kurs (CZK per 1 unit), Valuty/SouhrnDPH + Celkem in the document currency,
+///   the main SouhrnDPH/Celkem converted to CZK (base by the rate, VAT from the CZK base), item prices in
+///   Polozka/Valuty (Cena omitted). Without a rate the document is skipped — a made-up rate would give wrong totals.
 /// - The full document number goes to EvCisDokl; Doklad (max 10 characters) is written only when it fits,
 ///   otherwise Money assigns its own number. Received invoices get their Money number from Money's own series; the supplier's number goes to PrijatDokl.
 /// - Celkem is required by the schema and written as the sum of the summary; Money recalculates it. Proplatit is not written.
@@ -35,11 +37,11 @@ public class MoneyS3AccountingExporter : IAccountingExporter
 
     public bool CanExport(Invoice invoice) =>
         invoice.DocumentType != EDocumentType.TaxReceiptForAdvance
-        && AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
+        && AccountingExportCommon.CurrencyExportable(invoice.Currency?.Code, invoice.ExchangeRate)
         && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
 
     public bool CanExport(ReceivedInvoice invoice) =>
-        AccountingExportCommon.IsHomeCurrency(invoice.Currency?.Code)
+        AccountingExportCommon.CurrencyExportable(invoice.Currency?.Code, invoice.ExchangeRate)
         && AccountingExportCommon.AllRatesSupported((invoice.Items ?? []).Select(i => i.VatRatePercentage));
 
     public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<ReceivedInvoice> receivedInvoices, Client issuer)
@@ -80,10 +82,11 @@ public class MoneyS3AccountingExporter : IAccountingExporter
         el.Add(new XElement("EvCisDokl", AccountingExportCommon.Truncate(number, 50)));
         AddDates(el, invoice.IssueDate, invoice.TaxableSupplyDate, invoice.DueDate);
         el.Add(new XElement("VarSymbol", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 20)));
+        var foreign = ForeignOf(invoice.Currency?.Code, invoice.ExchangeRate);
         AddKindAndTotals(el, invoice.DocumentType == EDocumentType.Proforma ? "F" : "N", isCreditNote,
-            items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), invoice.Notes);
+            items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), invoice.Notes, foreign);
         el.Add(BuildPartner(invoice.Client));
-        el.Add(BuildItems(items.Select(i => (i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage)), isCreditNote));
+        el.Add(BuildItems(items.Select(i => (i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage)), isCreditNote, foreign != null));
         return el;
     }
 
@@ -96,12 +99,17 @@ public class MoneyS3AccountingExporter : IAccountingExporter
         el.Add(new XElement("VarSymbol", AccountingExportCommon.Truncate(invoice.VariableSymbol ?? invoice.DocumentNumber, 20)));
         el.Add(new XElement("PrijatDokl", AccountingExportCommon.Truncate(invoice.DocumentNumber, 50)));
         // Fakvio has no credit-note flag on received invoices, so they are exported as normal documents.
+        var foreign = ForeignOf(invoice.Currency?.Code, invoice.ExchangeRate);
         AddKindAndTotals(el, "N", isCreditNote: false,
-            items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), invoice.Notes);
+            items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), invoice.Notes, foreign);
         el.Add(BuildPartner(invoice.Supplier));
-        el.Add(BuildItems(items.Select(i => (i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage)), false));
+        el.Add(BuildItems(items.Select(i => (i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage)), false, foreign != null));
         return el;
     }
+
+    /// <summary>The (currency code, CZK per 1 unit) pair of a foreign-currency document, or null for CZK (CanExport guarantees the rate).</summary>
+    private static (string Code, decimal Rate)? ForeignOf(string? code, decimal? rate) =>
+        AccountingExportCommon.IsHomeCurrency(code) || rate is not > 0m ? null : (code!, rate.Value);
 
     /// <summary>Vystaveno, DatUcPr, PlnenoDPH, Splatno in schema order.</summary>
     private static void AddDates(XElement el, DateTime? issued, DateTime? taxable, DateTime? due)
@@ -116,7 +124,7 @@ public class MoneyS3AccountingExporter : IAccountingExporter
     /// <summary>Druh, Dobropis, SazbaDPH1/2, SouhrnDPH and the memo Poznamka — all before the partner block.</summary>
     private static void AddKindAndTotals(
         XElement el, string druh, bool isCreditNote,
-        IEnumerable<(decimal Rate, decimal Base, decimal Vat)> items, string? notes)
+        IEnumerable<(decimal Rate, decimal Base, decimal Vat)> items, string? notes, (string Code, decimal Rate)? foreign = null)
     {
         decimal zaklad0 = 0, zaklad5 = 0, zaklad22 = 0, dph5 = 0, dph22 = 0;
         foreach (var (rate, @base, vat) in items)
@@ -136,14 +144,39 @@ public class MoneyS3AccountingExporter : IAccountingExporter
         el.Add(new XElement("Dobropis", isCreditNote ? "1" : "0"));
         el.Add(new XElement("SazbaDPH1", "12"));
         el.Add(new XElement("SazbaDPH2", "21"));
-        el.Add(new XElement("SouhrnDPH",
-            new XElement("Zaklad0", AccountingExportCommon.FormatDecimal(zaklad0)),
-            new XElement("Zaklad5", AccountingExportCommon.FormatDecimal(zaklad5)),
-            new XElement("Zaklad22", AccountingExportCommon.FormatDecimal(zaklad22)),
-            new XElement("DPH5", AccountingExportCommon.FormatDecimal(dph5)),
-            new XElement("DPH22", AccountingExportCommon.FormatDecimal(dph22))));
-        // Required by the schema; Money recalculates it on import.
-        el.Add(new XElement("Celkem", AccountingExportCommon.FormatDecimal(zaklad0 + zaklad5 + zaklad22 + dph5 + dph22)));
+
+        static XElement Summary(decimal z0, decimal z5, decimal z22, decimal d5, decimal d22) => new("SouhrnDPH",
+            new XElement("Zaklad0", AccountingExportCommon.FormatDecimal(z0)),
+            new XElement("Zaklad5", AccountingExportCommon.FormatDecimal(z5)),
+            new XElement("Zaklad22", AccountingExportCommon.FormatDecimal(z22)),
+            new XElement("DPH5", AccountingExportCommon.FormatDecimal(d5)),
+            new XElement("DPH22", AccountingExportCommon.FormatDecimal(d22)));
+
+        if (foreign is { } f)
+        {
+            // Main summary and Celkem are in CZK: base converted by the ČNB rate, VAT computed from the CZK base (§37 ZDPH).
+            var cz0 = AccountingExportCommon.ToCzk(zaklad0, f.Rate);
+            var cz5 = AccountingExportCommon.ToCzk(zaklad5, f.Rate);
+            var cz22 = AccountingExportCommon.ToCzk(zaklad22, f.Rate);
+            var cd5 = Math.Round(cz5 * 0.12m, 2, MidpointRounding.AwayFromZero);
+            var cd22 = Math.Round(cz22 * 0.21m, 2, MidpointRounding.AwayFromZero);
+            el.Add(Summary(cz0, cz5, cz22, cd5, cd22));
+            el.Add(new XElement("Celkem", AccountingExportCommon.FormatDecimal(cz0 + cz5 + cz22 + cd5 + cd22)));
+            // Valuty = the same document in its own currency, with the rate Money needs (Kurs per Mnozstvi units).
+            el.Add(new XElement("Valuty",
+                new XElement("Mena",
+                    new XElement("Kod", AccountingExportCommon.Truncate(f.Code, 4)),
+                    new XElement("Mnozstvi", "1"),
+                    new XElement("Kurs", AccountingExportCommon.FormatRate(f.Rate))),
+                Summary(zaklad0, zaklad5, zaklad22, dph5, dph22),
+                new XElement("Celkem", AccountingExportCommon.FormatDecimal(zaklad0 + zaklad5 + zaklad22 + dph5 + dph22))));
+        }
+        else
+        {
+            el.Add(Summary(zaklad0, zaklad5, zaklad22, dph5, dph22));
+            // Required by the schema; Money recalculates it on import.
+            el.Add(new XElement("Celkem", AccountingExportCommon.FormatDecimal(zaklad0 + zaklad5 + zaklad22 + dph5 + dph22)));
+        }
         if (!string.IsNullOrWhiteSpace(notes))
             el.Add(new XElement("Poznamka", notes));
     }
@@ -173,7 +206,7 @@ public class MoneyS3AccountingExporter : IAccountingExporter
     /// quantity and price because the Dobropis flag already carries the "negative" meaning.
     /// </summary>
     private static XElement BuildItems(
-        IEnumerable<(string Description, decimal Quantity, string Unit, decimal UnitPrice, decimal Rate)> items, bool positive)
+        IEnumerable<(string Description, decimal Quantity, string Unit, decimal UnitPrice, decimal Rate)> items, bool positive, bool foreign = false)
     {
         var list = new XElement("SeznamPolozek");
         var index = 1;
@@ -188,7 +221,8 @@ public class MoneyS3AccountingExporter : IAccountingExporter
             polozka.Add(
                 new XElement("PocetMJ", AccountingExportCommon.FormatDecimal(q)),
                 new XElement("SazbaDPH", AccountingExportCommon.FormatDecimal(rate)),
-                new XElement("Cena", AccountingExportCommon.FormatDecimal(p)),
+                // Foreign-currency document: the price goes to Valuty (Money calculates Cena from the rate).
+                new XElement(foreign ? "Valuty" : "Cena", AccountingExportCommon.FormatDecimal(p)),
                 new XElement("CenaTyp", "0"),
                 new XElement("Poradi", index++),
                 // Protizapis is required by the schema (0 = not an advance deduction).

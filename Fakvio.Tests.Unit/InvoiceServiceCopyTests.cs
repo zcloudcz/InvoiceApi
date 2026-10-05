@@ -219,6 +219,49 @@ public class InvoiceServiceCopyTests : IDisposable
     }
 
     // ═════════════════════════════════════════════════════════════════════════
+    // Billing-period shifting
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Source issued 2 months ago with period text → copy names the current month instead.</summary>
+    [Fact]
+    public async Task CopyInvoiceAsync_ShiftsPeriodsInItemsAndNotes_ToCurrentMonth()
+    {
+        // The service uses DateTime.UtcNow, so the texts are built from "now minus 2 months" and the
+        // expected values from "now" — formatted independently of BillingPeriodShifter.
+        var now = DateTime.UtcNow;
+        var past = now.AddDays(-now.Day + 1).AddMonths(-2); // 1st of the month, 2 months back (avoids day clamping)
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var sourceId = CreateSourceInvoice();
+        var source = _context.Invoice.Include(i => i.InvoiceItem).Single(i => i.Id == sourceId);
+        source.IssueDate = past;
+        source.Notes = $"Fakturace za {past.ToString("yyyy-MM", inv)}";
+        source.InvoiceItem.First(i => i.OrderIndex == 1).Description = $"Hosting {past.ToString("M/yyyy", inv)}";
+        _context.SaveChanges();
+
+        var copy = await _service.CopyInvoiceAsync(sourceId);
+
+        copy.Notes.ShouldBe($"Fakturace za {now.ToString("yyyy-MM", inv)}");
+        copy.InvoiceItem.First(i => i.OrderIndex == 1).Description.ShouldBe($"Hosting {now.ToString("M/yyyy", inv)}");
+        // Untouched text stays as is.
+        copy.InvoiceItem.First(i => i.OrderIndex == 2).Description.ShouldBe("Travel");
+    }
+
+    /// <summary>shiftPeriods = false keeps the texts verbatim.</summary>
+    [Fact]
+    public async Task CopyInvoiceAsync_ShiftPeriodsFalse_KeepsTexts()
+    {
+        var sourceId = CreateSourceInvoice();
+        var source = _context.Invoice.Single(i => i.Id == sourceId);
+        source.IssueDate = DateTime.UtcNow.AddMonths(-2);
+        source.Notes = "Fakturace za 2026-01";
+        _context.SaveChanges();
+
+        var copy = await _service.CopyInvoiceAsync(sourceId, shiftPeriods: false);
+
+        copy.Notes.ShouldBe("Fakturace za 2026-01");
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
     // CopyInvoiceAsync — Happy-Path Tests
     // ═════════════════════════════════════════════════════════════════════════
 
