@@ -493,6 +493,13 @@ public class CompanyController : ControllerBase
                     company.BillingSettings.ProformaFileNameFormat = bs.ProformaFileNameFormat.Trim();
                 if (bs.TaxReceiptFileNameFormat != null)
                     company.BillingSettings.TaxReceiptFileNameFormat = bs.TaxReceiptFileNameFormat.Trim();
+                // Null = not sent, keep; Inherit = reset to the system default.
+                if (bs.EmailAttachPdf.HasValue)
+                    company.BillingSettings.EmailAttachPdf = bs.EmailAttachPdf.Value;
+                if (bs.EmailAttachIsdoc.HasValue)
+                    company.BillingSettings.EmailAttachIsdoc = bs.EmailAttachIsdoc.Value;
+                if (bs.EmailAttachUbl.HasValue)
+                    company.BillingSettings.EmailAttachUbl = bs.EmailAttachUbl.Value;
                 if (bs.Notes != null)
                     company.BillingSettings.Notes = bs.Notes;
 

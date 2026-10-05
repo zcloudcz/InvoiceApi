@@ -1006,11 +1006,12 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
-    /// Sends the specified invoice as an email. PDF and ISDOC are always attached (plus UBL XML
-    /// for Slovak / Peppol-reachable buyers), followed by any extra attachments from the request.
+    /// Sends the specified invoice as an email. Which generated files are attached (PDF / ISDOC / UBL) follows the
+    /// client's defaults unless the request overrides them; extra files and stored invoice attachments from the
+    /// request come after them. CC recipients are optional.
     /// </summary>
     /// <param name="id">Invoice ID to send</param>
-    /// <param name="dto">Email recipient and optional subject/message/extra attachments</param>
+    /// <param name="dto">Recipient (blank = client's default e-mail) and optional CC/subject/message/attachment choices</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Success confirmation</returns>
     /// <response code="200">Email sent successfully</response>
@@ -1039,24 +1040,66 @@ public class InvoiceController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
 
+        // CC list: count + address syntax, same rules the UI applies for its inline hint.
+        var ccEmails = EmailAddressList.Normalize(dto.CcEmails);
+        if (EmailAddressList.ValidateCc(ccEmails) is { } ccError)
+        {
+            _logger.LogWarning("Rejected CC list for invoice {Id} email: {Message}", id, ccError);
+            return BadRequest(new { message = ccError });
+        }
+
         try
         {
             // Subject / Message / Attachments used to be dropped here - they must reach the email.
-            var options = new SendInvoiceEmailOptions(dto.Subject, dto.Message, attachments);
-            await _emailService.SendInvoiceEmailAsync(id, dto.RecipientEmail, cancellationToken, options);
+            var options = new SendInvoiceEmailOptions(
+                dto.Subject, dto.Message, attachments, ccEmails,
+                dto.AttachPdf, dto.AttachIsdoc, dto.AttachUbl,
+                dto.FileAttachmentIds, dto.SaveAttachmentDefaults);
+            await _emailService.SendInvoiceEmailAsync(id, dto.RecipientEmail ?? string.Empty, cancellationToken, options);
 
-            _logger.LogInformation("Invoice {Id} sent via email to {Email}", id, dto.RecipientEmail);
-            return Ok(new { message = $"Invoice email sent to {dto.RecipientEmail}" });
+            // The service resolves a blank recipient to the client's contact; echo what the caller sent (or the default).
+            _logger.LogInformation("Invoice {Id} sent via email", id);
+            return Ok(new { message = string.IsNullOrWhiteSpace(dto.RecipientEmail)
+                ? "Invoice email sent to the client's default e-mail address"
+                : $"Invoice email sent to {dto.RecipientEmail}" });
         }
         catch (KeyNotFoundException)
         {
             _logger.LogWarning("Invoice {Id} not found for email sending", id);
             return NotFound(new { message = $"Invoice with ID {id} not found" });
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
+            // InvalidOperation: no recipient / SMTP not configured / too large / UBL failed.
+            // Argument: a stored attachment id that does not belong to this invoice.
             _logger.LogWarning("Failed to send invoice {Id} email: {Message}", id, ex.Message);
             return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Everything the "send by e-mail" dialog prefills in one round trip: the client's e-mail contacts, the
+    /// effective default attachments (client → company → system default), stored invoice files and the default subject.
+    /// </summary>
+    /// <param name="id">Invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <response code="200">Defaults for the dialog</response>
+    /// <response code="404">Invoice not found</response>
+    [HttpGet("{id:long}/email-defaults")]
+    [ProducesResponseType(typeof(InvoiceEmailDefaultsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<InvoiceEmailDefaultsDto>> GetEmailDefaults(
+        long id, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET /api/invoice/{Id}/email-defaults", id);
+
+        try
+        {
+            return Ok(await _emailService.GetSendDefaultsAsync(id, cancellationToken));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = $"Invoice with ID {id} not found" });
         }
     }
 
@@ -1238,8 +1281,10 @@ public class InvoiceController : ControllerBase
                     continue;
                 }
 
-                // Use the client name as a fallback — actual email resolution happens in EmailService
-                await _emailService.SendInvoiceEmailAsync(id, invoice.ClientName, cancellationToken);
+                // A blank recipient makes EmailService use the client's default e-mail contact and the client's
+                // default attachments - the same code path as a single send, just without the dialog's overrides.
+                // (This used to pass invoice.ClientName, which is not an e-mail address and always failed.)
+                await _emailService.SendInvoiceEmailAsync(id, string.Empty, cancellationToken);
                 result.SuccessCount++;
             }
             catch (Exception ex)

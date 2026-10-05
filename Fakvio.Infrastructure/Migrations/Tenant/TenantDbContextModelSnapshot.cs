@@ -467,6 +467,15 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<int>("DueDays")
                         .HasColumnType("integer");
 
+                    b.Property<int>("EmailAttachIsdoc")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EmailAttachPdf")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EmailAttachUbl")
+                        .HasColumnType("integer");
+
                     b.Property<string>("InvoiceFileNameFormat")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
