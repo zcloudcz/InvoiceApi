@@ -227,7 +227,8 @@
   <data name="FileNameFormat_TaxReceipt" xml:space="preserve"><value>File name – tax receipt for advance payment</value></data>
   <data name="FileNameFormat_Placeholders" xml:space="preserve"><value>Placeholders (click to insert):</value></data>
   <data name="FileNameFormat_Preview" xml:space="preserve"><value>Preview</value></data>
-  <data name="FileNameFormat_Unknown" xml:space="preserve"><value>Unknown placeholders</value></data>
+  <data name="FileNameFormat_Unknown" xml:space="preserve"><value>Unknown or invalid placeholders</value></data>
+  <data name="FileNameFormat_DateHint" xml:space="preserve"><value>Dates accept a format, e.g. {{IssueDate:yyyyMMdd}} or {{DueDate:dd.MM.yyyy}} (allowed: y M d - _ .)</value></data>
   <data name="FileNameFormat_EmptyHintClient" xml:space="preserve"><value>Empty = company setting, otherwise e.g. Invoice_2026001</value></data>
   <data name="FileNameFormat_EmptyHintCompany" xml:space="preserve"><value>Empty = default format, e.g. Invoice_2026001</value></data>
   <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Days from issue</value></data>

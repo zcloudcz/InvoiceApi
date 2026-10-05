@@ -72,6 +72,30 @@ public class FileNameFormatInputTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Preview_AppliesDateFormats_ToIssueTaxAndDueDate()
+    {
+        var cut = Render("{{IssueDate:yyyyMMdd}}_{{TaxDate:dd.MM.yyyy}}_{{DueDate:yyMM}}");
+
+        // Sample dates of the component: issue 2026-03-15, tax 2026-03-10, due 2026-03-29.
+        cut.Markup.ShouldContain("20260315_10.03.2026_2603.pdf");
+    }
+
+    [Fact]
+    public void InvalidDateFormat_IsReportedBeforeSaving()
+    {
+        var cut = Render("{{IssueDate:HH}}");
+
+        cut.Markup.ShouldContain("FileNameFormat_Unknown");
+        cut.Markup.ShouldContain("IssueDate:HH");
+    }
+
+    [Fact]
+    public void ShowsTheDateFormatHint()
+    {
+        Render("").Markup.ShouldContain("FileNameFormat_DateHint");
+    }
+
+    [Fact]
     public void UnknownPlaceholder_IsReportedBeforeSaving()
     {
         var cut = Render("{{DocumentNumber}}_{{Typo}}");
