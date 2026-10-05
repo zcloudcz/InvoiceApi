@@ -227,6 +227,30 @@ else
                                     Value="_billingSettings.DueDateCalculationType"
                                     ValueChanged="@(v => _billingSettings.DueDateCalculationType = v)"
                                     Label="@L["Billing_DueDateCalcType"].Value" />
+                            <FileNameFormatInput Label="@L["FileNameFormat_Invoice"].Value"
+                                                 Value="@_billingSettings.InvoiceFileNameFormat"
+                                                 ValueChanged="@(v => _billingSettings.InvoiceFileNameFormat = v)"
+                                                 DocumentType="EDocumentType.Invoice"
+                                                 Language="@_editClient.Language"
+                                                 EmptyHint="@L["FileNameFormat_EmptyHintCompany"].Value" />
+                            <FileNameFormatInput Label="@L["FileNameFormat_CreditNote"].Value"
+                                                 Value="@_billingSettings.CreditNoteFileNameFormat"
+                                                 ValueChanged="@(v => _billingSettings.CreditNoteFileNameFormat = v)"
+                                                 DocumentType="EDocumentType.CreditNote"
+                                                 Language="@_editClient.Language"
+                                                 EmptyHint="@L["FileNameFormat_EmptyHintCompany"].Value" />
+                            <FileNameFormatInput Label="@L["FileNameFormat_Proforma"].Value"
+                                                 Value="@_billingSettings.ProformaFileNameFormat"
+                                                 ValueChanged="@(v => _billingSettings.ProformaFileNameFormat = v)"
+                                                 DocumentType="EDocumentType.Proforma"
+                                                 Language="@_editClient.Language"
+                                                 EmptyHint="@L["FileNameFormat_EmptyHintCompany"].Value" />
+                            <FileNameFormatInput Label="@L["FileNameFormat_TaxReceipt"].Value"
+                                                 Value="@_billingSettings.TaxReceiptFileNameFormat"
+                                                 ValueChanged="@(v => _billingSettings.TaxReceiptFileNameFormat = v)"
+                                                 DocumentType="EDocumentType.TaxReceiptForAdvance"
+                                                 Language="@_editClient.Language"
+                                                 EmptyHint="@L["FileNameFormat_EmptyHintCompany"].Value" />
                     }
                     else if (_company.BillingSettings != null)
                     {
@@ -240,6 +264,30 @@ else
                             <MudListItem T="string">
                                 <strong>@L["Billing_DueDays"]:</strong> @_company.BillingSettings.DueDays
                             </MudListItem>
+                            @if (!string.IsNullOrEmpty(_company.BillingSettings.InvoiceFileNameFormat))
+                            {
+                                <MudListItem T="string">
+                                    <strong>@L["FileNameFormat_Invoice"]:</strong> @_company.BillingSettings.InvoiceFileNameFormat
+                                </MudListItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_company.BillingSettings.CreditNoteFileNameFormat))
+                            {
+                                <MudListItem T="string">
+                                    <strong>@L["FileNameFormat_CreditNote"]:</strong> @_company.BillingSettings.CreditNoteFileNameFormat
+                                </MudListItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_company.BillingSettings.ProformaFileNameFormat))
+                            {
+                                <MudListItem T="string">
+                                    <strong>@L["FileNameFormat_Proforma"]:</strong> @_company.BillingSettings.ProformaFileNameFormat
+                                </MudListItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_company.BillingSettings.TaxReceiptFileNameFormat))
+                            {
+                                <MudListItem T="string">
+                                    <strong>@L["FileNameFormat_TaxReceipt"]:</strong> @_company.BillingSettings.TaxReceiptFileNameFormat
+                                </MudListItem>
+                            }
                         </MudList>
                     }
                     else
@@ -849,6 +897,10 @@ else
                 InvoiceNumberSuffix = _company.BillingSettings.InvoiceNumberSuffix,
                 CreditNoteNumberPrefix = _company.BillingSettings.CreditNoteNumberPrefix,
                 CreditNoteNumberSuffix = _company.BillingSettings.CreditNoteNumberSuffix,
+                InvoiceFileNameFormat = _company.BillingSettings.InvoiceFileNameFormat,
+                CreditNoteFileNameFormat = _company.BillingSettings.CreditNoteFileNameFormat,
+                ProformaFileNameFormat = _company.BillingSettings.ProformaFileNameFormat,
+                TaxReceiptFileNameFormat = _company.BillingSettings.TaxReceiptFileNameFormat,
                 DefaultPaymentMethod = _company.BillingSettings.DefaultPaymentMethod,
                 BankAccountNumber = _company.BillingSettings.BankAccountNumber,
                 Notes = _company.BillingSettings.Notes
@@ -945,6 +997,10 @@ else
                     InvoiceNumberSuffix = _billingSettings.InvoiceNumberSuffix,
                     CreditNoteNumberPrefix = _billingSettings.CreditNoteNumberPrefix,
                     CreditNoteNumberSuffix = _billingSettings.CreditNoteNumberSuffix,
+                    InvoiceFileNameFormat = _billingSettings.InvoiceFileNameFormat,
+                    CreditNoteFileNameFormat = _billingSettings.CreditNoteFileNameFormat,
+                    ProformaFileNameFormat = _billingSettings.ProformaFileNameFormat,
+                    TaxReceiptFileNameFormat = _billingSettings.TaxReceiptFileNameFormat,
                     DefaultPaymentMethod = _billingSettings.DefaultPaymentMethod,
                     BankAccountNumber = _billingSettings.BankAccountNumber,
                     Notes = _billingSettings.Notes
