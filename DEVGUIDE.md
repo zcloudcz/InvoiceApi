@@ -2731,6 +2731,17 @@ Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 | Kurzy ČNB (denní fixing → Master `ExchangeRate`) | `IExchangeRateSyncService.RunCycleAsync` | `ExchangeRateWorker` v Infrastructure | po startu + denně 14:45 Europe/Prague (retry 30 min), bez tenantů | `0x46414B56494F4658L` ("FAKVIOFX") |
 | Vystavení DPP k proformě | `InvoiceService.IssueTaxReceiptForPaidProformaAsync` | — (volá se z plateb) | — | `pg_advisory_xact_lock` — klíč = `proformaId` (dynamický, jen PostgreSQL) |
 
+#### Tenant scope v pracovnících (POVINNÉ)
+
+`ITenantDbContextFactory.CreateContextForCompanyAsync` vrací **nový** kontext a **nenastavuje** `Schema` na scoped `TenantDbContext`, který dostanou služby z DI. Mimo HTTP request (žádný `TenantContextMiddleware`) by proto služby ve scope pracovníka dotazovaly schéma `public` (`Schema = null`). Proto každý kód, který iteruje tenanty (worker, IMAP poll, importy), použije jediný helper:
+
+```csharp
+using var scope = await _scopeFactory.CreateTenantScopeAsync(companyId, ct); // Fakvio.Infrastructure.Service.TenantScope
+var svc = scope.ServiceProvider.GetRequiredService<IReminderService>();
+```
+
+Helper ověří tenanta (`ResolveSchemaAsync` – throw pokud neexistuje / není provisioned / je neaktivní), zajistí migraci a nastaví `Schema`. **Nenastavuj `TenantDbContext.Schema` ručně.** Regresní test: `TenantWorkerScopeDatabaseTests` (skutečný PostgreSQL).
+
 ### 6.4 Když přidáš novou periodickou úlohu
 
 Krok-za-krokem:
