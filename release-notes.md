@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.05.6 — 2026-10-05
+
 ### Změny pro uživatele
 
 - **#520** — Odeslat e-mailem — dialog nyní zobrazuje celý e-mail (předmět i text vyplněný ze šablony) a umožňuje ho před odesláním upravit; tlačítko Obnovit podle šablony; totéž v MCP (htmlBody). (PR #520, `9cc380a`)
