@@ -142,8 +142,12 @@ public static class ClientTools
         "attachments), per document type; send an empty string to clear (falls back to the company default, " +
         "then to '{{DocumentType}}_{{DocumentNumber}}'). The format has no extension. Placeholders: " +
         "{{DocumentType}} (Faktura/Invoice, localized by client language), {{DocumentNumber}}, {{VariableSymbol}}, " +
-        "{{IssueDate}} (yyyy-MM-dd), {{Year}}, {{Month}}, {{ClientName}}, {{IssuerName}}; unknown placeholders are " +
-        "rejected. Example: '{{IssuerName}}_{{Year}}-{{DocumentNumber}}'. " +
+        "{{IssueDate}}, {{TaxDate}} (date of taxable supply), {{DueDate}} (all yyyy-MM-dd by default), " +
+        "{{Year}}, {{Month}}, {{ClientName}}, {{IssuerName}}; unknown placeholders are rejected. " +
+        "The three date placeholders accept a format after a colon, e.g. {{IssueDate:yyyyMMdd}} or " +
+        "{{DueDate:dd.MM.yyyy}}; only the characters y M d - _ . are allowed (anything else, or a format on a " +
+        "non-date placeholder, is rejected). Examples: '{{IssuerName}}_{{Year}}-{{DocumentNumber}}', " +
+        "'{{DocumentType}}_{{IssueDate:yyyyMMdd}}_{{DocumentNumber}}'. " +
         "Use the issuer's client ID to set the company-wide default.")]
     public static async Task<string> UpdateClient(
         IFakvioApiClient api,

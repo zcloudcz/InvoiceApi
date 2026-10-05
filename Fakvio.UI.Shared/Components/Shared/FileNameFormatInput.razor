@@ -4,6 +4,7 @@
     both on the client detail and on the company (issuer) page, so they behave identically.
 
     - Clickable chips append the matching {{Placeholder}} to the format.
+    - Date placeholders accept a format, e.g. {{IssueDate:yyyyMMdd}} (explained by a hint under the chips).
     - A live preview runs the SAME builder the server uses (DocumentFileName), fed with sample data,
       so what the user sees is what the generated file will be called.
 
@@ -34,10 +35,13 @@
                  OnClick="@(() => InsertPlaceholder(placeholder))">@key</MudChip>
     }
 </div>
+<MudText Typo="Typo.caption" Class="mb-3">@L["FileNameFormat_DateHint"]</MudText>
 
 @code {
     // Sample data for the preview — fixed so the preview is deterministic and easy to read.
     private static readonly DateTime SampleIssueDate = new(2026, 3, 15);
+    private static readonly DateTime SampleTaxDate = new(2026, 3, 10);
+    private static readonly DateTime SampleDueDate = new(2026, 3, 29);
 
     /// <summary>Current format (two-way binding). Null/empty means "inherit".</summary>
     [Parameter]
@@ -68,7 +72,7 @@
 
     /// <summary>
     /// Helper text under the field: the live preview, plus the unknown placeholders (if any)
-    /// so the user sees the typo before the server rejects the save.
+    /// so the user sees the typo (unknown key or invalid date format) before the server rejects the save.
     /// </summary>
     private string HelperText
     {
@@ -87,7 +91,7 @@
                 Value,
                 new DocumentFileNameValues(
                     DocumentType, Language, 1, "2026001", "2026001", SampleIssueDate,
-                    "Acme s.r.o.", "My Company s.r.o."),
+                    "Acme s.r.o.", "My Company s.r.o.", SampleTaxDate, SampleDueDate),
                 DocumentFileName.PdfExtension);
 
             return $"{L["FileNameFormat_Preview"]}: {preview}";

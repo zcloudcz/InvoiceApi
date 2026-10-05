@@ -49,6 +49,8 @@ public class DocumentFileNameService : IDocumentFileNameService
                 i.DocumentNumber,
                 i.VariableSymbol,
                 i.IssueDate,
+                i.TaxableSupplyDate,
+                i.DueDate,
                 ClientName = i.Client != null ? i.Client.CompanyName : null,
                 Language = i.Client != null ? i.Client.Language : null,
                 IssuerName = i.Issuer.CompanyName,
@@ -79,7 +81,8 @@ public class DocumentFileNameService : IDocumentFileNameService
                     DocumentFileName.ResolveFormat(clientFormat, issuerFormat),
                     new DocumentFileNameValues(
                         r.DocumentType, r.Language, r.Id, r.DocumentNumber, r.VariableSymbol,
-                        r.IssueDate, r.ClientName, r.IssuerName),
+                        r.IssueDate, r.ClientName, r.IssuerName,
+                        r.TaxableSupplyDate, r.DueDate),
                     extension);
             });
     }
