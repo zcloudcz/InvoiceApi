@@ -250,33 +250,48 @@ public class FakvioApiClient : IFakvioApiClient
     /// <summary>
     /// Downloads the invoice PDF as raw bytes from GET /api/invoice/{id}/pdf.
     /// </summary>
-    public async Task<byte[]> ExportInvoicePdfAsync(long id, CancellationToken ct = default)
+    public async Task<ExportedFile> ExportInvoicePdfAsync(long id, CancellationToken ct = default)
     {
         var response = await _http.GetAsync($"api/invoice/{id}/pdf", ct);
         await EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadAsByteArrayAsync(ct);
+        return await ReadExportedFileAsync(response, $"{id}.pdf", ct);
     }
 
     /// <summary>
     /// Downloads the invoice ISDOC XML as raw bytes from GET /api/invoice/{id}/isdoc.
     /// ISDOC is the Czech electronic invoice standard used by Pohoda, Money, Helios.
     /// </summary>
-    public async Task<byte[]> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default)
+    public async Task<ExportedFile> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default)
     {
         var response = await _http.GetAsync($"api/invoice/{id}/isdoc", ct);
         await EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadAsByteArrayAsync(ct);
+        return await ReadExportedFileAsync(response, $"{id}.isdoc", ct);
     }
 
     /// <summary>
     /// Downloads the invoice UBL 2.1 / Peppol BIS Billing 3.0 XML as raw bytes from
     /// GET /api/invoice/{id}/ubl (ADR 0002, F1.7).
     /// </summary>
-    public async Task<byte[]> ExportInvoiceUblAsync(long id, CancellationToken ct = default)
+    public async Task<ExportedFile> ExportInvoiceUblAsync(long id, CancellationToken ct = default)
     {
         var response = await _http.GetAsync($"api/invoice/{id}/ubl", ct);
         await EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadAsByteArrayAsync(ct);
+        return await ReadExportedFileAsync(response, $"{id}.xml", ct);
+    }
+
+    /// <summary>
+    /// Reads the body plus the server-chosen file name from Content-Disposition.
+    /// FileNameStar (RFC 5987) wins because it carries non-ASCII characters (e.g. Czech client names)
+    /// intact; the plain FileName is the fallback, and <paramref name="fallbackName"/> covers a missing header.
+    /// </summary>
+    private static async Task<ExportedFile> ReadExportedFileAsync(
+        HttpResponseMessage response, string fallbackName, CancellationToken ct)
+    {
+        var disposition = response.Content.Headers.ContentDisposition;
+        var name = disposition?.FileNameStar ?? disposition?.FileName;
+        return new ExportedFile(
+            await response.Content.ReadAsByteArrayAsync(ct),
+            string.IsNullOrWhiteSpace(name) ? fallbackName : name.Trim('"'));
     }
 
     /// <summary>

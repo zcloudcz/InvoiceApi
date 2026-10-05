@@ -66,6 +66,7 @@ public class ReminderServiceTests : IDisposable
             _interestCalculator,
             _emailService,
             _pdfExportService,
+            new DocumentFileNameService(_context),
             _contentTemplateService,
             _logger);
 

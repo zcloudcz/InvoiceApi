@@ -327,6 +327,7 @@ public class InvoiceControllerIssueFinalInvoiceTests
     private InvoiceController BuildController() => new(
         _invoiceService,
         Substitute.For<IPdfExportService>(),
+        Substitute.For<IDocumentFileNameService>(),
         Substitute.For<IIsdocExportService>(),
         Substitute.For<IUblExportService>(),
         Substitute.For<IEmailService>(),
