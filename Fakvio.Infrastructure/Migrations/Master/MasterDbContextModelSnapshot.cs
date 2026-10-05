@@ -928,12 +928,12 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             Id = 3L,
                             CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Email body when sending an invoice.",
-                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Invoice {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached invoice <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><br/><p>Thank you for your business.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Faktura {{InvoiceNumber}}</h2><p>Vážený zákazníku,</p><p>v příloze naleznete fakturu <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Celkem k úhradě:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Datum splatnosti:</strong> {{DueDate}}</p><br/><p>Děkujeme za spolupráci.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
                             IsActive = true,
                             IsDefault = true,
                             Language = "cs",
                             Name = "Default Invoice Email",
-                            Subject = "Invoice {{InvoiceNumber}} from {{CompanyName}}",
+                            Subject = "Faktura {{InvoiceNumber}} od {{CompanyName}}",
                             TemplateType = 10
                         },
                         new
@@ -941,12 +941,12 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             Id = 4L,
                             CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Email body when sending a credit note.",
-                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Credit Note {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached credit note <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><br/><p>Thank you for your business.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Dobropis {{InvoiceNumber}}</h2><p>Vážený zákazníku,</p><p>v příloze naleznete dobropis <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Celkem:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><br/><p>Děkujeme za spolupráci.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
                             IsActive = true,
                             IsDefault = true,
                             Language = "cs",
                             Name = "Default Credit Note Email",
-                            Subject = "Credit Note {{InvoiceNumber}} from {{CompanyName}}",
+                            Subject = "Dobropis {{InvoiceNumber}} od {{CompanyName}}",
                             TemplateType = 11
                         },
                         new
@@ -954,12 +954,12 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             Id = 5L,
                             CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Email sent to new users.",
-                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Welcome to {{AppName}}</h2><p>Hello <strong>{{FullName}}</strong>,</p><p>You have been invited to {{AppName}}. Please set your password by clicking the button below:</p><div style=\"text-align: center; margin: 30px 0;\"><a href=\"{{InvitationLink}}\" style=\"background-color: #1976D2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-size: 16px;\">Set Password</a></div><p style=\"color: #666; font-size: 14px;\">This link is valid for 48 hours.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{AppName}}</p></div>",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Vítejte v {{AppName}}</h2><p>Dobrý den, <strong>{{FullName}}</strong>,</p><p>byli jste pozváni do aplikace {{AppName}}. Heslo si nastavíte kliknutím na tlačítko níže:</p><div style=\"text-align: center; margin: 30px 0;\"><a href=\"{{InvitationLink}}\" style=\"background-color: #1976D2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-size: 16px;\">Nastavit heslo</a></div><p style=\"color: #666; font-size: 14px;\">Odkaz je platný 48 hodin.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{AppName}}</p></div>",
                             IsActive = true,
                             IsDefault = true,
                             Language = "cs",
                             Name = "Default Invitation Email",
-                            Subject = "Invitation to {{AppName}} — Set your password",
+                            Subject = "Pozvánka do {{AppName}} – nastavte si heslo",
                             TemplateType = 20
                         },
                         new
@@ -967,12 +967,12 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             Id = 6L,
                             CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Payment reminder for overdue invoices.",
-                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #E65100;\">Payment Reminder</h2><p>Dear customer,</p><p>This is a friendly reminder that invoice <strong>{{InvoiceNumber}}</strong> is overdue.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><p>Please arrange payment at your earliest convenience.</p><br/><p>Thank you.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #E65100;\">Upomínka k úhradě</h2><p>Vážený zákazníku,</p><p>dovolujeme si Vás upozornit, že faktura <strong>{{InvoiceNumber}}</strong> je po splatnosti.</p><p><strong>Celkem k úhradě:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Datum splatnosti:</strong> {{DueDate}}</p><p>Prosíme o úhradu v nejbližším možném termínu. Pokud jste již platbu provedli, považujte tuto upomínku za bezpředmětnou.</p><br/><p>Děkujeme.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
                             IsActive = true,
                             IsDefault = true,
                             Language = "cs",
                             Name = "Default Payment Reminder",
-                            Subject = "Payment reminder — Invoice {{InvoiceNumber}}",
+                            Subject = "Upomínka – faktura {{InvoiceNumber}} po splatnosti",
                             TemplateType = 21
                         },
                         new
@@ -1036,6 +1036,84 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             Language = "cs",
                             Name = "Default Tax Receipt for Advance Email",
                             Subject = "Daňový doklad o přijaté platbě {{InvoiceNumber}} od {{CompanyName}}",
+                            TemplateType = 13
+                        },
+                        new
+                        {
+                            Id = 12L,
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "English email body when sending an invoice to a client whose language is English.",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Invoice {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached invoice <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><br/><p>Thank you for your business.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
+                            IsActive = true,
+                            IsDefault = true,
+                            Language = "en",
+                            Name = "Default Invoice Email (EN)",
+                            Subject = "Invoice {{InvoiceNumber}} from {{CompanyName}}",
+                            TemplateType = 10
+                        },
+                        new
+                        {
+                            Id = 13L,
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "English email body when sending a credit note to a client whose language is English.",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Credit Note {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached credit note <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><br/><p>Thank you for your business.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
+                            IsActive = true,
+                            IsDefault = true,
+                            Language = "en",
+                            Name = "Default Credit Note Email (EN)",
+                            Subject = "Credit Note {{InvoiceNumber}} from {{CompanyName}}",
+                            TemplateType = 11
+                        },
+                        new
+                        {
+                            Id = 14L,
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "English email sent to new users.",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Welcome to {{AppName}}</h2><p>Hello <strong>{{FullName}}</strong>,</p><p>You have been invited to {{AppName}}. Please set your password by clicking the button below:</p><div style=\"text-align: center; margin: 30px 0;\"><a href=\"{{InvitationLink}}\" style=\"background-color: #1976D2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-size: 16px;\">Set Password</a></div><p style=\"color: #666; font-size: 14px;\">This link is valid for 48 hours.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{AppName}}</p></div>",
+                            IsActive = true,
+                            IsDefault = true,
+                            Language = "en",
+                            Name = "Default Invitation Email (EN)",
+                            Subject = "Invitation to {{AppName}} — Set your password",
+                            TemplateType = 20
+                        },
+                        new
+                        {
+                            Id = 15L,
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "English payment reminder for overdue invoices.",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #E65100;\">Payment Reminder</h2><p>Dear customer,</p><p>This is a friendly reminder that invoice <strong>{{InvoiceNumber}}</strong> is overdue.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><p>Please arrange payment at your earliest convenience.</p><br/><p>Thank you.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
+                            IsActive = true,
+                            IsDefault = true,
+                            Language = "en",
+                            Name = "Default Payment Reminder (EN)",
+                            Subject = "Payment reminder — Invoice {{InvoiceNumber}}",
+                            TemplateType = 21
+                        },
+                        new
+                        {
+                            Id = 16L,
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "English email sent with an advance invoice. Tells the recipient that it is not a tax document.",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #3D7A4A;\">Advance Invoice {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached advance invoice <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Amount due:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><br/><p>Please note that an advance invoice is not a tax document. A tax document will be issued to you once the payment is received.</p><p>Thank you.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
+                            IsActive = true,
+                            IsDefault = true,
+                            Language = "en",
+                            Name = "Default Advance Invoice Email (EN)",
+                            Subject = "Advance invoice {{InvoiceNumber}} from {{CompanyName}}",
+                            TemplateType = 12
+                        },
+                        new
+                        {
+                            Id = 17L,
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "English email sent with a tax receipt for a received advance payment.",
+                            HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #6A3D9A;\">Tax Receipt for Advance Payment {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached tax receipt for the advance payment <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Amount paid:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><br/><p>Thank you for your payment.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
+                            IsActive = true,
+                            IsDefault = true,
+                            Language = "en",
+                            Name = "Default Tax Receipt for Advance Email (EN)",
+                            Subject = "Tax receipt for advance payment {{InvoiceNumber}} from {{CompanyName}}",
                             TemplateType = 13
                         });
                 });
@@ -2051,7 +2129,7 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             AverageMonthlyWage = 43967m,
                             BasicTaxpayerCredit = 30840m,
                             Country = "CZ",
-                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             CurrencyCode = "CZK",
                             FlatRateBand1Monthly = 7498m,
                             FlatRateBand2Monthly = 16000m,
@@ -2081,7 +2159,7 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             AverageMonthlyWage = 45617m,
                             BasicTaxpayerCredit = 30840m,
                             Country = "CZ",
-                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             CurrencyCode = "CZK",
                             FlatRateBand1Monthly = 8716m,
                             FlatRateBand2Monthly = 16000m,
@@ -2111,7 +2189,7 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             AverageMonthlyWage = 1430m,
                             BasicTaxpayerCredit = 5646.48m,
                             Country = "SK",
-                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             CurrencyCode = "EUR",
                             FlatRateBand1Monthly = 0m,
                             FlatRateBand2Monthly = 0m,
@@ -2141,7 +2219,7 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             AverageMonthlyWage = 1500m,
                             BasicTaxpayerCredit = 5753.79m,
                             Country = "SK",
-                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             CurrencyCode = "EUR",
                             FlatRateBand1Monthly = 0m,
                             FlatRateBand2Monthly = 0m,
