@@ -14,6 +14,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
 using MudBlazor;
 using MudBlazor.Services;
+using Tizzani.MudBlazor.HtmlEditor;
 using NSubstitute;
 using Shouldly;
 
@@ -93,6 +94,7 @@ public class SendInvoiceEmailDialogTests : BunitContext, IAsyncLifetime
         UblIsAutomatic = true,
         UblAutoWouldAttach = false,
         DefaultSubject = "Invoice INV1",
+        DefaultHtmlBody = "<p>Dear client, invoice INV1 attached.</p>",
         StoredAttachments =
         [
             new FileAttachmentDto { Id = 41, OriginalFileName = "contract.pdf", FileSizeBytes = 2048 },
@@ -205,22 +207,99 @@ public class SendInvoiceEmailDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task Send_EditedSubjectAndMessage_AreSent()
+    public async Task Send_EditedSubject_IsSent()
     {
         var (dialog, sent) = await OpenAsync();
         var subject = dialog.FindComponents<MudTextField<string>>().Single(t => t.Instance.Label == "EmailSend_Subject");
-        var message = dialog.FindComponents<MudTextField<string>>().Single(t => t.Instance.Label == "EmailSend_Message");
         await dialog.InvokeAsync(() => subject.Instance.ValueChanged.InvokeAsync("My subject"));
-        await dialog.InvokeAsync(() => message.Instance.ValueChanged.InvokeAsync("Hello"));
 
         await dialog.InvokeAsync(() => SendButton(dialog).Find("button").Click());
 
         (await sent).ShouldBeTrue();
         _backend.Sent!.Subject.ShouldBe("My subject");
-        _backend.Sent.Message.ShouldBe("Hello");
         _backend.Sent.CcEmails.ShouldBeNull();
         _backend.Sent.FileAttachmentIds.ShouldBeNull();
         _backend.Sent.SaveAttachmentDefaults.ShouldBeFalse();
+    }
+
+    // ─── Editable e-mail body ──────────────────────────────────────────────
+
+    private static IRenderedComponent<MudHtmlEditor> Editor(IRenderedComponent<SendInvoiceEmailDialog> dialog) =>
+        dialog.FindComponent<MudHtmlEditor>();
+
+    /// <summary>Simulates the editor reporting new HTML (what Quill's text-change event does).</summary>
+    private static Task EditorReports(IRenderedComponent<SendInvoiceEmailDialog> dialog, string html) =>
+        dialog.InvokeAsync(() => Editor(dialog).Instance.HtmlChanged.InvokeAsync(html));
+
+    [Fact]
+    public async Task Body_EditorIsPrefilledWithTheRenderedTemplateBody()
+    {
+        var (dialog, _) = await OpenAsync();
+
+        Editor(dialog).Instance.Html.ShouldBe("<p>Dear client, invoice INV1 attached.</p>");
+        dialog.Markup.ShouldContain("EmailSend_BodyHint");
+    }
+
+    [Fact]
+    public async Task Body_UntouchedEditor_SendsNull_EvenWhenTheEditorNormalisesTheHtmlOnLoad()
+    {
+        var (dialog, sent) = await OpenAsync();
+        // Quill re-formats the template right after load and reports it: that is the baseline, not an edit.
+        await EditorReports(dialog, "<p>Dear client, invoice INV1 attached.</p><p><br></p>");
+
+        await dialog.InvokeAsync(() => SendButton(dialog).Find("button").Click());
+
+        (await sent).ShouldBeTrue();
+        _backend.Sent!.HtmlBody.ShouldBeNull(); // server re-renders the template and keeps its styling
+    }
+
+    [Fact]
+    public async Task Body_EditedEditor_SendsTheEditorHtml()
+    {
+        var (dialog, sent) = await OpenAsync();
+        await EditorReports(dialog, "<p>normalised</p>");
+        await EditorReports(dialog, "<p>normalised, plus my sentence</p>");
+
+        await dialog.InvokeAsync(() => SendButton(dialog).Find("button").Click());
+
+        (await sent).ShouldBeTrue();
+        _backend.Sent!.HtmlBody.ShouldBe("<p>normalised, plus my sentence</p>");
+        _backend.Sent.Message.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Body_ResetToTemplate_RestoresSubjectAndBody_AndSendsNulls()
+    {
+        var (dialog, sent) = await OpenAsync();
+        await EditorReports(dialog, "<p>normalised</p>");
+        await EditorReports(dialog, "<p>edited</p>");
+        var subject = dialog.FindComponents<MudTextField<string>>().Single(t => t.Instance.Label == "EmailSend_Subject");
+        await dialog.InvokeAsync(() => subject.Instance.ValueChanged.InvokeAsync("My subject"));
+
+        var reset = dialog.FindComponents<MudButton>().Single(b => b.Markup.Contains("EmailSend_ResetToTemplate"));
+        await dialog.InvokeAsync(() => reset.Find("button").Click());
+        await EditorReports(dialog, "<p>normalised</p>"); // the editor echoes the text that was pushed back in
+
+        dialog.FindComponents<MudTextField<string>>().Single(t => t.Instance.Label == "EmailSend_Subject")
+            .Instance.Value.ShouldBe("Invoice INV1");
+        await dialog.InvokeAsync(() => SendButton(dialog).Find("button").Click());
+
+        (await sent).ShouldBeTrue();
+        _backend.Sent!.Subject.ShouldBeNull();
+        _backend.Sent.HtmlBody.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Body_NoRenderedBody_HidesTheEditor_AndSendsNull()
+    {
+        _backend.Defaults!.DefaultHtmlBody = null;
+        var (dialog, sent) = await OpenAsync();
+
+        dialog.FindComponents<MudHtmlEditor>().ShouldBeEmpty();
+        await dialog.InvokeAsync(() => SendButton(dialog).Find("button").Click());
+
+        (await sent).ShouldBeTrue();
+        _backend.Sent!.HtmlBody.ShouldBeNull();
     }
 
     [Fact]
@@ -298,6 +377,7 @@ public class SendInvoiceEmailDialogTests : BunitContext, IAsyncLifetime
 
         dialog.Markup.ShouldContain("EmailSend_DefaultsFailed");
         Boxes(dialog).ShouldBeEmpty();
+        dialog.FindComponents<MudHtmlEditor>().ShouldBeEmpty(); // nothing rendered -> the server decides the text
 
         var to = dialog.FindComponent<MudAutocomplete<string>>();
         await dialog.InvokeAsync(() => to.Instance.TextChanged.InvokeAsync("manual@client.cz"));

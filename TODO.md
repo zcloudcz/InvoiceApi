@@ -1,5 +1,13 @@
 # Fakvio TODO
 
+## Send by e-mail: editable whole body (branch `feature/send-email-editable-body`)
+
+- [x] `InvoiceEmailDefaultsDto.DefaultHtmlBody` (one render with the subject); `SendInvoiceEmailDto/Options.HtmlBody` replaces the template body (Message ignored), placeholders filled in overrides.
+- [x] `EmailContentValidator` (256 KB, no script/iframe/object/embed/javascript:, single-line subject) -> 400 in the controller.
+- [x] Dialog: `MudHtmlEditor` prefilled from the template, `EditorEditTracker` (unedited = null), "Reset to template", wider dialog; CZ/EN resources.
+- [x] MCP: `htmlBody` on `send_invoice_email`, `defaultHtmlBody` in `get_invoice_email_options`; USERGUIDE 2.9, DEVGUIDE 4.2b.
+- [ ] Not browser-verified (Quill load normalisation assumed from the editor's JS). No PR / merge.
+
 ## Send by e-mail: recipient, CC, attachment choice, per-client defaults (branch `feature/send-email-options`)
 
 - [x] `SendInvoiceEmailDto`: optional recipient (blank = client's invoice/primary e-mail), `CcEmails` (max 10, `EmailAddressList`), `AttachPdf/Isdoc/Ubl`, `FileAttachmentIds`, `SaveAttachmentDefaults`; 20 MB total limit; stored files must belong to the invoice (400).

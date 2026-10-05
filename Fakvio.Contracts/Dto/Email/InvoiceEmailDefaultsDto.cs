@@ -35,6 +35,12 @@ public class InvoiceEmailDefaultsDto
 
     /// <summary>Subject the e-mail template would produce (editable in the dialog); null when it cannot be rendered.</summary>
     public string? DefaultSubject { get; set; }
+
+    /// <summary>
+    /// HTML body the e-mail template would produce, with all placeholders already filled in (shown and editable
+    /// in the dialog). Rendered by the same call as <see cref="DefaultSubject"/>; null when it cannot be rendered.
+    /// </summary>
+    public string? DefaultHtmlBody { get; set; }
 }
 
 /// <summary>One selectable recipient in the send dialog.</summary>

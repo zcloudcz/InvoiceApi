@@ -56,6 +56,32 @@ public class InvoiceControllerSendEmailTests
     }
 
     [Fact]
+    public async Task SendInvoiceEmail_PassesHtmlBodyToEmailService()
+    {
+        var dto = new SendInvoiceEmailDto { RecipientEmail = "client@example.com", HtmlBody = "<p>Whole mail</p>" };
+
+        var result = await BuildController().SendInvoiceEmail(7, dto, CancellationToken.None);
+
+        result.ShouldBeOfType<OkObjectResult>();
+        await _emailService.Received(1).SendInvoiceEmailAsync(
+            7, "client@example.com", Arg.Any<CancellationToken>(),
+            Arg.Is<SendInvoiceEmailOptions?>(o => o != null && o.HtmlBody == "<p>Whole mail</p>"));
+    }
+
+    [Theory]
+    [InlineData("Subject", "<p>x</p><script>alert(1)</script>")]
+    [InlineData("Two\nlines", "<p>x</p>")]
+    public async Task SendInvoiceEmail_InvalidSubjectOrBody_Returns400AndSendsNothing(string subject, string body)
+    {
+        var dto = new SendInvoiceEmailDto { RecipientEmail = "client@example.com", Subject = subject, HtmlBody = body };
+
+        var result = await BuildController().SendInvoiceEmail(7, dto, CancellationToken.None);
+
+        result.ShouldBeOfType<BadRequestObjectResult>();
+        await _emailService.DidNotReceiveWithAnyArgs().SendInvoiceEmailAsync(default, default!, default, default);
+    }
+
+    [Fact]
     public async Task SendInvoiceEmail_InvalidAttachment_Returns400AndSendsNothing()
     {
         var dto = new SendInvoiceEmailDto

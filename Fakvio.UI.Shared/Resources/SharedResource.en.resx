@@ -252,7 +252,9 @@
   <data name="EmailSend_UblAutoOff" xml:space="preserve"><value>UBL is attached automatically only for Slovak buyers and buyers with a Peppol ID. Tick it to attach it for this buyer too.</value></data>
   <data name="EmailSend_StoredAttachments" xml:space="preserve"><value>Files stored on the document</value></data>
   <data name="EmailSend_Subject" xml:space="preserve"><value>Subject</value></data>
-  <data name="EmailSend_Message" xml:space="preserve"><value>Message (shown above the e-mail text)</value></data>
+  <data name="EmailSend_Body" xml:space="preserve"><value>E-mail text</value></data>
+  <data name="EmailSend_BodyHint" xml:space="preserve"><value>The text comes from the e-mail template for the client's language. Edits apply to this e-mail only. Once edited, simplified formatting is used.</value></data>
+  <data name="EmailSend_ResetToTemplate" xml:space="preserve"><value>Reset to template</value></data>
   <data name="EmailSend_SaveDefaults" xml:space="preserve"><value>Save this attachment choice as the default for the client</value></data>
   <data name="EmailSend_DefaultsFailed" xml:space="preserve"><value>The defaults could not be loaded. You can still send the e-mail; attachments follow the client's settings.</value></data>
   <data name="FileNameFormat_EmptyHintCompany" xml:space="preserve"><value>Empty = default format, e.g. Invoice_2026001</value></data>

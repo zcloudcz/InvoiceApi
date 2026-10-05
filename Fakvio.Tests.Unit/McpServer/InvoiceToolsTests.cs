@@ -564,6 +564,33 @@ public class InvoiceToolsTests
     }
 
     [Fact]
+    public async Task SendInvoiceEmail_ForwardsHtmlBodyToApi_AndOmittedHtmlBodyStaysNull()
+    {
+        var sent = new List<SendInvoiceEmailDto>();
+        _api.SendInvoiceEmailAsync(3, Arg.Do<SendInvoiceEmailDto>(sent.Add), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        await InvoiceTools.SendInvoiceEmail(_api, 3, "test@example.com", htmlBody: "<p>Whole mail</p>");
+        await InvoiceTools.SendInvoiceEmail(_api, 3, "test@example.com");
+
+        sent[0].HtmlBody.ShouldBe("<p>Whole mail</p>");
+        sent[1].HtmlBody.ShouldBeNull(); // existing callers keep the template behaviour
+    }
+
+    [Fact]
+    public async Task GetInvoiceEmailOptions_ReturnsTheRenderedSubjectAndBody()
+    {
+        _api.GetInvoiceEmailDefaultsAsync(3, Arg.Any<CancellationToken>())
+            .Returns(new InvoiceEmailDefaultsDto { DefaultSubject = "Invoice INV1", DefaultHtmlBody = "<p>Hello INV1</p>" });
+
+        var json = await InvoiceTools.GetInvoiceEmailOptions(_api, 3);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("defaultSubject").GetString().ShouldBe("Invoice INV1");
+        doc.RootElement.GetProperty("defaultHtmlBody").GetString().ShouldBe("<p>Hello INV1</p>");
+    }
+
+    [Fact]
     public async Task SendInvoiceEmail_WithoutAttachments_SendsNullAttachments()
     {
         SendInvoiceEmailDto? sent = null;

@@ -486,6 +486,55 @@ public class EmailSendOptionsTests : IDisposable
         await Should.ThrowAsync<KeyNotFoundException>(() => _service.GetSendDefaultsAsync(999));
     }
 
+    // ─── Editable body (full HTML override) ────────────────────────────────────
+
+    [Fact]
+    public async Task HtmlBodyOverride_IsTheBodyOfTheSentMessage_AndPlaceholdersAreFilled()
+    {
+        await _service.SendInvoiceEmailAsync(InvoiceId, "to@example.com",
+            options: new SendInvoiceEmailOptions(
+                Subject: "Re: {{InvoiceNumber}}",
+                HtmlBody: "<p>Hello, invoice {{InvoiceNumber}} attached.</p>",
+                Message: "ignored intro"));
+
+        _service.Sent!.Subject.ShouldBe("Re: INV1");
+        _service.Sent.HtmlBody.ShouldBe("<p>Hello, invoice INV1 attached.</p>");
+    }
+
+    [Fact]
+    public async Task NoHtmlBodyOverride_SendsTheRenderedTemplate()
+    {
+        await _service.SendInvoiceEmailAsync(InvoiceId, "to@example.com");
+
+        _service.Sent!.HtmlBody.ShouldContain("INV1"); // built-in fallback text, placeholders resolved
+    }
+
+    [Fact]
+    public async Task Defaults_ReturnTheRenderedBody_FromTheSameRenderAsTheSubject()
+    {
+        var template = new Contracts.Dto.ContentTemplate.ContentTemplateDto { Id = 9 };
+        _templates.GetDefaultByTypeAsync(Arg.Any<EContentTemplateType>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(template);
+        _templates.RenderTemplateAsync(9, Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(("Subject INV", "<p>Body for INV1</p>"));
+
+        var defaults = await _service.GetSendDefaultsAsync(InvoiceId);
+
+        defaults.DefaultSubject.ShouldBe("Subject INV");
+        defaults.DefaultHtmlBody.ShouldBe("<p>Body for INV1</p>");
+        await _templates.Received(1).RenderTemplateAsync(9, Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Defaults_WithoutATemplate_FallBackToTheBuiltInBodyWithPlaceholdersResolved()
+    {
+        var defaults = await _service.GetSendDefaultsAsync(InvoiceId);
+
+        defaults.DefaultHtmlBody.ShouldNotBeNullOrWhiteSpace();
+        defaults.DefaultHtmlBody.ShouldContain("INV1");
+        defaults.DefaultHtmlBody.ShouldNotContain("{{");
+    }
+
     // ─── Message structure ─────────────────────────────────────────────────────
 
     [Fact]
