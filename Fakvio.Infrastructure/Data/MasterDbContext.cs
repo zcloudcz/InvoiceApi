@@ -799,6 +799,10 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
             entity.Property(e => e.CreditNoteFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
             entity.Property(e => e.ProformaFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
             entity.Property(e => e.TaxReceiptFileNameFormat).HasMaxLength(DocumentFileName.MaxFormatLength);
+            // Stored as int (0 = Inherit, 1 = Yes, 2 = No); existing rows get 0 = "no opinion", so nothing changes for them.
+            entity.Property(e => e.EmailAttachPdf).HasConversion<int>();
+            entity.Property(e => e.EmailAttachIsdoc).HasConversion<int>();
+            entity.Property(e => e.EmailAttachUbl).HasConversion<int>();
             entity.Property(e => e.DefaultPaymentMethod).HasConversion<int?>();
             entity.Property(e => e.BankAccountNumber).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(2000);

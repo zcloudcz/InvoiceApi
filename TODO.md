@@ -1,5 +1,15 @@
 # Fakvio TODO
 
+## Send by e-mail: recipient, CC, attachment choice, per-client defaults (branch `feature/send-email-options`)
+
+- [x] `SendInvoiceEmailDto`: optional recipient (blank = client's invoice/primary e-mail), `CcEmails` (max 10, `EmailAddressList`), `AttachPdf/Isdoc/Ubl`, `FileAttachmentIds`, `SaveAttachmentDefaults`; 20 MB total limit; stored files must belong to the invoice (400).
+- [x] `BillingSettings.EmailAttachPdf/Isdoc/Ubl` (enum `EEmailAttachMode` Inherit/Yes/No, migration `AddEmailAttachmentDefaults` Master + Tenant); chain client -> issuer -> system default.
+- [x] `GET /api/invoice/{id}/email-defaults`; bulk send now uses the client's default contact (was passing the client name).
+- [x] One `SendInvoiceEmailDialog` (grid + detail), `EmailAttachmentDefaultsInput` on client detail + my company; CZ/EN resources.
+- [x] MCP `send_invoice_email` extended (+ `get_invoice_email_options`, 82 tools); USERGUIDE 2.9/5.3b, DEVGUIDE 4.2b, MCP README.
+- [x] Unit + bUnit + integration tests (incl. migration on real PostgreSQL).
+- [ ] Not browser-verified. Draft PR / merge not done. Known gap: company default edited via the Master `CompanyController` is not synced to tenant copies of the issuer (pre-existing, same as file-name formats).
+
 ## Configurable document file names (branch `feature/document-file-name-format`)
 
 - [x] `DocumentFileName` builder (Contracts/Common) + `IDocumentFileNameService`; chain client -> issuer -> localized default.

@@ -274,7 +274,7 @@ else
                    Disabled="@(_invoice.Status == EInvoiceStatus.Draft || _invoice.DocumentType == EDocumentType.Proforma)"
                    OnClick="DownloadUbl">@L["Btn_ExportUbl"]</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Email"
-                   OnClick="@(() => _showEmailDialog = true)">@L["Btn_SendEmail"]</MudButton>
+                   OnClick="OpenSendEmailDialog">@L["Btn_SendEmail"]</MudButton>
     </div>
 
     @* Readiness banner (issue #215) — only while the document is still a Draft, because that
@@ -768,35 +768,6 @@ else
     <FileAttachmentManager EntityName="Invoice"
                            RecordId="_invoice.Id" />
 
-    @* Email send dialog *@
-    <MudDialog @bind-Visible="_showEmailDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true })">
-        <TitleContent>
-            <MudText Typo="Typo.h6">@L["Invoice_SendByEmail"]</MudText>
-        </TitleContent>
-        <DialogContent>
-            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
-                @L["Invoice_SendingInvoice"] <strong>@_invoice.DocumentNumber</strong> @L["Invoice_ToClient"] <strong>@_invoice.ClientName</strong>
-            </MudAlert>
-            <MudTextField @bind-Value="_emailRecipient" Label="@L["Invoice_EmailRecipient"].Value" Required="true"
-                          InputType="InputType.Email" HelperText="@L["Invoice_RecipientHelper"].Value" />
-        </DialogContent>
-        <DialogActions>
-            <MudButton OnClick="@(() => _showEmailDialog = false)">@L["Btn_Cancel"]</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SendEmail"
-                       Disabled="@(string.IsNullOrWhiteSpace(_emailRecipient) || _sendingEmail)">
-                @if (_sendingEmail)
-                {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                    <span>@L["Invoice_Sending"]</span>
-                }
-                else
-                {
-                    <span>@L["Invoice_Send"]</span>
-                }
-            </MudButton>
-        </DialogActions>
-    </MudDialog>
-
     @* ── "Issue Final Invoice" dialog — shown from the proforma detail page ── *@
     @* The user provides line items for the final invoice; advance deduction rows
        are appended automatically by the backend (proportional per VAT rate). *@
@@ -979,11 +950,6 @@ else
     // Alert state — null = no open OverpaidProforma alert for this invoice
     private AlertDto? _overpaidAlert;
     private bool _resolvingAlert = false;
-
-    // Email dialog state
-    private bool _showEmailDialog = false;
-    private bool _sendingEmail = false;
-    private string _emailRecipient = "";
 
     // Proforma cross-link state (only loaded when viewing a Proforma)
     private List<InvoiceDto> _finalInvoices = [];    // final invoices issued from this proforma
@@ -2046,30 +2012,18 @@ else
     }
 
     /// <summary>
-    /// Sends invoice by email with PDF attachment.
+    /// Opens the shared "send by e-mail" dialog (same component as the invoice grid) and refreshes the page
+    /// when the e-mail was sent, so the "sent by e-mail" status is current.
     /// </summary>
-    private async Task SendEmail()
+    private async Task OpenSendEmailDialog()
     {
-        if (_invoice == null || string.IsNullOrWhiteSpace(_emailRecipient)) return;
+        if (_invoice == null) return;
 
-        try
+        if (await SendInvoiceEmailDialog.ShowAsync(
+                DialogService, L["Invoice_SendByEmail"].Value, Id, _invoice.DocumentNumber, _invoice.ClientName))
         {
-            _sendingEmail = true;
-            var success = await InvoiceService.SendEmailAsync(Id, _emailRecipient);
-            if (success)
-            {
-                Snackbar.Add(string.Format(L["Invoice_EmailSentTo"].Value, _emailRecipient), Severity.Success);
-                _showEmailDialog = false;
-                _emailRecipient = "";
-                await LoadInvoice(); // Refresh to show updated email sent status
-            }
-            else
-            {
-                Snackbar.Add(L["Invoice_EmailFailed"].Value, Severity.Error);
-            }
+            await LoadInvoice();
         }
-        catch (Exception ex) { Snackbar.Add($"Error sending email: {ex.Message}", Severity.Error); }
-        finally { _sendingEmail = false; }
     }
 
     /// <summary>

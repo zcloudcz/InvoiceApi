@@ -231,6 +231,31 @@
   <data name="FileNameFormat_DateHint" xml:space="preserve"><value>Datum lze formátovat, např. {{IssueDate:yyyyMMdd}} nebo {{DueDate:dd.MM.yyyy}} (povoleno: y M d - _ .)</value></data>
   <data name="FileNameFormat_EmptyHintClient" xml:space="preserve"><value>Prázdné = nastavení firmy, jinak např. Faktura_2026001</value></data>
   <data name="FileNameFormat_EmptyHintCompany" xml:space="preserve"><value>Prázdné = výchozí tvar, např. Faktura_2026001</value></data>
+  <data name="EmailAttach_Title" xml:space="preserve"><value>Přílohy e-mailu s fakturou (výchozí)</value></data>
+  <data name="EmailAttach_Pdf" xml:space="preserve"><value>PDF</value></data>
+  <data name="EmailAttach_Isdoc" xml:space="preserve"><value>ISDOC</value></data>
+  <data name="EmailAttach_Ubl" xml:space="preserve"><value>UBL / Peppol</value></data>
+  <data name="EmailAttach_HintClient" xml:space="preserve"><value>Výchozí = nastavení firmy. Firemní výchozí stav: PDF a ISDOC se přikládají, UBL automaticky jen slovenským odběratelům a odběratelům s Peppol ID. Při odeslání lze volbu změnit.</value></data>
+  <data name="EmailAttach_HintCompany" xml:space="preserve"><value>Výchozí = PDF a ISDOC se přikládají, UBL automaticky jen slovenským odběratelům a odběratelům s Peppol ID. Klient může mít vlastní nastavení.</value></data>
+  <data name="EEmailAttachMode_Inherit" xml:space="preserve"><value>Výchozí</value></data>
+  <data name="EEmailAttachMode_Yes" xml:space="preserve"><value>Ano</value></data>
+  <data name="EEmailAttachMode_No" xml:space="preserve"><value>Ne</value></data>
+  <data name="EmailSend_ToInvalid" xml:space="preserve"><value>Zadejte platnou e-mailovou adresu.</value></data>
+  <data name="EmailSend_Cc" xml:space="preserve"><value>Kopie (CC)</value></data>
+  <data name="EmailSend_CcHelper" xml:space="preserve"><value>Nepovinné. Více adres oddělte čárkou nebo středníkem (nejvýše {0}).</value></data>
+  <data name="EmailSend_CcInvalid" xml:space="preserve"><value>Neplatná adresa v kopii: {0}</value></data>
+  <data name="EmailSend_CcTooMany" xml:space="preserve"><value>Kopii lze poslat nejvýše {0} adresám.</value></data>
+  <data name="EmailSend_Attachments" xml:space="preserve"><value>Přílohy</value></data>
+  <data name="EmailSend_AttachPdf" xml:space="preserve"><value>PDF faktury</value></data>
+  <data name="EmailSend_AttachIsdoc" xml:space="preserve"><value>ISDOC (XML pro účetní software)</value></data>
+  <data name="EmailSend_AttachUbl" xml:space="preserve"><value>UBL / Peppol (XML)</value></data>
+  <data name="EmailSend_UblAutoOn" xml:space="preserve"><value>UBL je přiložen automaticky: odběratel je ze Slovenska nebo má Peppol ID.</value></data>
+  <data name="EmailSend_UblAutoOff" xml:space="preserve"><value>UBL se automaticky přikládá jen slovenským odběratelům a odběratelům s Peppol ID. Zaškrtnutím ho přiložíte i tomuto odběrateli.</value></data>
+  <data name="EmailSend_StoredAttachments" xml:space="preserve"><value>Soubory uložené u dokladu</value></data>
+  <data name="EmailSend_Subject" xml:space="preserve"><value>Předmět</value></data>
+  <data name="EmailSend_Message" xml:space="preserve"><value>Zpráva (zobrazí se nad textem e-mailu)</value></data>
+  <data name="EmailSend_SaveDefaults" xml:space="preserve"><value>Uložit volbu příloh jako výchozí pro klienta</value></data>
+  <data name="EmailSend_DefaultsFailed" xml:space="preserve"><value>Výchozí nastavení se nepodařilo načíst. E-mail lze přesto odeslat, přílohy se řídí nastavením klienta.</value></data>
   <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Dní od vystavení</value></data>
   <data name="Billing_DaysFromEndOfMonth" xml:space="preserve"><value>Dní od konce měsíce</value></data>
   <data name="Billing_EndOfNextMonth" xml:space="preserve"><value>Konec příštího měsíce</value></data>

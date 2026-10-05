@@ -27,6 +27,14 @@ public class BillingSettingsDto
     public string? TaxReceiptFileNameFormat { get; set; }
 
     /// <summary>
+    /// Default e-mail attachments (Inherit = take the company setting; at company level Inherit = system
+    /// default: PDF and ISDOC attached, UBL automatic).
+    /// </summary>
+    public EEmailAttachMode EmailAttachPdf { get; set; }
+    public EEmailAttachMode EmailAttachIsdoc { get; set; }
+    public EEmailAttachMode EmailAttachUbl { get; set; }
+
+    /// <summary>
     /// Default payment method — now an enum instead of free-text string
     /// </summary>
     public EPaymentMethod? DefaultPaymentMethod { get; set; }
@@ -59,6 +67,14 @@ public class CreateBillingSettingsDto
     public string? TaxReceiptFileNameFormat { get; set; }
 
     /// <summary>
+    /// Default e-mail attachments (Inherit = take the company setting; at company level Inherit = system
+    /// default: PDF and ISDOC attached, UBL automatic).
+    /// </summary>
+    public EEmailAttachMode EmailAttachPdf { get; set; }
+    public EEmailAttachMode EmailAttachIsdoc { get; set; }
+    public EEmailAttachMode EmailAttachUbl { get; set; }
+
+    /// <summary>
     /// Default payment method — enum for type safety
     /// </summary>
     public EPaymentMethod? DefaultPaymentMethod { get; set; }
@@ -89,6 +105,14 @@ public class UpdateBillingSettingsDto
     public string? CreditNoteFileNameFormat { get; set; }
     public string? ProformaFileNameFormat { get; set; }
     public string? TaxReceiptFileNameFormat { get; set; }
+
+    /// <summary>
+    /// Default e-mail attachments: Inherit = take the company setting, Yes / No = force it.
+    /// Null = field not sent, keep the stored value (partial update); send Inherit to reset a field.
+    /// </summary>
+    public EEmailAttachMode? EmailAttachPdf { get; set; }
+    public EEmailAttachMode? EmailAttachIsdoc { get; set; }
+    public EEmailAttachMode? EmailAttachUbl { get; set; }
 
     /// <summary>
     /// Default payment method — enum for type safety

@@ -588,7 +588,7 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
    - Certificate validation s **CRL tolerance** — akceptuje self-signed pokud CRL nedostupné.
    - **SASL mechanism strip** (řádek 338-339): odstraní XOAUTH2 + NTLM kvůli Seznam.cz (jinak hlásí UnAuthenticated).
    - UTF-8 encoding pro PLAIN/LOGIN auth.
-8. Build `MimeMessage` s PDF + ISDOC (+ UBL pro SK odběratele, F1.9) attachments → `SmtpClient.SendAsync`.
+8. Build `MimeMessage` s vybranými přílohami (PDF, ISDOC, UBL, extra soubory, uložené soubory dokladu — viz §4.2b) a případným CC → `SmtpClient.SendAsync` (`SendViaSMTPAsync` je `internal virtual` = testovací seam, testy zachytí hotovou zprávu místo SMTP).
 
 **Pokud měníš SMTP/Seznam config** → ověř SASL strip + CRL tolerance, nesahej na ně bez testu proti všem tří providerům (Gmail, Outlook, Seznam).
 
@@ -624,6 +624,44 @@ názvy se pak rozjedou (původně byly v 7 místech 5 různých tvarů).
 - Nastavení se edituje komponentou `FileNameFormatInput` (klient: `ClientDetail`, firma: `MyCompany`); MCP `update_client`
   (včetně issuera) přenáší pole přes `UpdateClientDto.BillingSettings`.
 - Nový placeholder = přidat do `PlaceholderKeys` + `Render` v builderu + test v `DocumentFileNameTests` + tabulku v USERGUIDE §5.3a.
+
+### 4.2b Odeslání e-mailem — příjemce, CC, výběr příloh, výchozí nastavení klienta
+
+Jeden dialog (`SendInvoiceEmailDialog`), jeden endpoint, jedna cesta v `EmailService` pro všechny typy dokladů
+(faktura, dobropis, proforma, DPP) a pro UI, API i MCP. Připomínky/upomínky (`ReminderService`) mají vlastní e-mail a tohle se jich netýká.
+
+- **Příjemce**: `SendInvoiceEmailDto.RecipientEmail` je **volitelný**. Prázdný = `EmailService.OrderEmailContacts` vybere
+  kontakt klienta (typ `InvoiceEmail` před `Email`, pak `IsPrimary`, pak nejstarší); bez e-mailového kontaktu → `InvalidOperationException` → 400.
+  Stejnou cestou jde **hromadné odeslání** (`POST /api/invoice/bulk/send-email` posílá prázdného příjemce; dřív tam byl omylem `ClientName`) —
+  bez dialogu, ale s výchozími přílohami klienta.
+- **CC**: `CcEmails` (max `EmailAddressList.MaxCc` = 10, holé adresy). Validace žije jednou v `Fakvio.Contracts/Common/EmailAddressList.cs`
+  (`Split`/`IsValidAddress`/`ValidateCc`/`Normalize`) — používá ji server (autorita, 400) i UI (inline nápověda). CC shodné s příjemcem se vypouští.
+- **Výchozí přílohy** (`BillingSettings.EmailAttachPdf/EmailAttachIsdoc/EmailAttachUbl`, enum `EEmailAttachMode`: `Inherit`=0 / `Yes` / `No`;
+  migrace `AddEmailAttachmentDefaults` v Master i Tenant — int NOT NULL DEFAULT 0, existující řádky chování nemění).
+  Řetěz je stejný jako u `DocumentFileName`: **klient → issuer (firemní default) → systémový default** (PDF ano, ISDOC ano, UBL *automaticky*).
+  Čistá funkce `EmailAttachmentDefaults.Resolve` (Application). **Proč enum a ne `bool`/`bool?`:** částečný update (`UpdateBillingSettingsDto`,
+  „null = nepřišlo, ponech“) by neuměl vrátit pole zpět na „převezmi z firmy“, a nenullable `bool` s defaultem `true` by firemní
+  nastavení nikdy nepřebilo klienta s existujícím řádkem. `Inherit` je explicitní „reset“. UBL `Inherit` na konci řetězu = **automaticky**:
+  jen slovenský odběratel nebo odběratel s Peppol ID (`EmailService.IsPeppolReachable`).
+- **Přepsání pro jedno odeslání**: `AttachPdf/AttachIsdoc/AttachUbl` (`bool?`, null = výchozí klienta, takže stávající API/MCP volající se chovají
+  jako dřív). Explicitní `AttachUbl=true` platí pro **jakéhokoli** odběratele a když UBL nejde vygenerovat, odeslání selže (400) — uživatel nesmí
+  dostat „odesláno“ bez přílohy, kterou chtěl. Výchozí (nebo automatické) UBL, které selže, se jen přeskočí (jako dřív).
+- **Uložené soubory dokladu**: `FileAttachmentIds` → `IFileAttachmentService.DownloadSelectedAsync("Invoice", id, ids, 20 MB)`: každé id musí patřit
+  **této** faktuře (jiné/cizí/neexistující → `ArgumentException` → 400, žádný blob se nečte), velikost se ověří z metadat před stažením, nečitelný blob je chyba (ne tichý skip).
+  Názvy zůstávají původní; kolize s vygenerovanými i mezi sebou se řeší `ZipArchiveHelper.UniqueEntryName` (`name (2).ext`).
+  Vygenerované přílohy dál berou jméno z `IDocumentFileNameService` (§4.2a). Součet **všech** příloh max `EmailAttachmentValidator.MaxEmailTotalBytes` = 20 MB (jinak 400 se srozumitelnou zprávou).
+- **„Uložit jako výchozí pro klienta“**: `SaveAttachmentDefaults=true` zapíše zvolené `Attach*` do `BillingSettings` **klienta** (vytvoří řádek, když chybí) až PO úspěšném
+  odeslání, ve stejném `SaveChanges` jako `IsSentByEmail`. Pole se zapíše jen když se volba liší od dosud platné hodnoty NEBO klient už má vlastní hodnotu
+  (`EmailAttachmentDefaults.ApplyChoices`) — pouhé potvrzení zděděného nastavení klienta „nezamrazí“. Pole poslaná jako `null` se nemění.
+- **Endpoint pro dialog**: `GET /api/invoice/{id}/email-defaults` → `InvoiceEmailDefaultsDto` (kontakty seřazené nejlepší první, efektivní `AttachPdf/Isdoc/Ubl`,
+  `UblIsAutomatic`, `UblAutoWouldAttach`, `StoredAttachments`, `DefaultSubject` z téže šablony jako při odeslání — `EmailService.RenderInvoiceTemplateAsync`, žádné duplicitní renderování).
+  Jedno volání. MCP: `get_invoice_email_options` (read-only) + `send_invoice_email` s `ccEmails`, `attachPdf/attachIsdoc/attachUbl`, `fileAttachmentIds`, `saveAttachmentDefaults`.
+- **UI**: `SendInvoiceEmailDialog` (`Components/Shared`, otevírá se přes `SendInvoiceEmailDialog.ShowAsync(...)` z `InvoiceDetail` i `Invoices` — dva dřívější inline dialogy jsou pryč),
+  `EmailAttachmentDefaultsInput` (3× `EnumSelect<EEmailAttachMode>` v `ClientDetail` a `MyCompany`). Když se výchozí hodnoty nepodaří načíst, dialog funguje dál
+  (ruční příjemce) a neposílá explicitní příznaky příloh → rozhodne server podle klienta.
+- **Testy**: `EmailSendOptionsTests` (EmailService + seam `SendViaSMTPAsync`, data se zakládají přes SEPARÁTNÍ `TenantDbContext`),
+  `EmailSendOptionsSupportTests` (čisté funkce, `DownloadSelectedAsync`, `ClientService`, controller), `SendInvoiceEmailDialogTests` (bUnit).
+- Nová příloha / nový typ generovaného souboru = rozšířit `ResolveAttachmentPlan` + `EmailAttachmentDefaults` + DTO + dialog + USERGUIDE §.
 
 ### 4.3 ContentTemplate (Handlebars-like placeholders)
 
@@ -1612,7 +1650,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 55 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 81 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 82 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1648,7 +1686,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `IssueFinalInvoice` | **Write** (Draft vyúčtování, `deductionAmount?`) | `issue_final_invoice` (confirm) | ✅ | |
 | `IssueTaxReceipt` | **Write** (DPP) | `issue_tax_receipt` (confirm) | ✅ | |
 | `GetRemainingAdvance` | Read | `get_remaining_advance` | ✅ | |
-| `SendInvoiceEmail` | **Write** (odešle e-mail; PDF + ISDOC vždy, UBL pro SK/Peppol; volitelně `subject`, `message`, `attachments[]` base64 — limity viz §4.2) | `send_invoice_email` (confirm) | ✅ | chat tool zatím nepřijímá `attachments`; schéma `attachments` hlídá `ToolDiscoveryTests` (#500) |
+| `SendInvoiceEmail` | **Write** (odešle e-mail; přílohy PDF/ISDOC/UBL podle výchozího nastavení klienta, volitelně `recipientEmail` (jinak kontakt klienta), `ccEmails`, `attachPdf`/`attachIsdoc`/`attachUbl`, `fileAttachmentIds`, `saveAttachmentDefaults`, `subject`, `message`, `attachments[]` base64 — limity viz §4.2, výchozí hodnoty §4.2b) | `send_invoice_email` (confirm) | ✅ | chat tool zatím nepřijímá `attachments`, CC ani volbu příloh; schéma `attachments` hlídá `ToolDiscoveryTests` (#500) |
+| `GetInvoiceEmailOptions` | Read (kontakty klienta, výchozí přílohy, uložené soubory dokladu) | — | ❌ | chat zatím bez tasku; volá `GET /api/invoice/{id}/email-defaults` (§4.2b) |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
 | `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
 | `ExportAccounting` | Read → download | — | ❌ | export do účetnictví (§4.15) je zatím jen MCP a UI |
@@ -1724,8 +1763,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 81 MCP toolů, 55 chat toolů. Chat pokrývá 49 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 32 mezer: EPO export DPH (1 — `ExportVatEpo`, zatím bez tasku), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
+**Součty:** 82 MCP toolů, 55 chat toolů. Chat pokrývá 49 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 33 mezer: e-mailové volby faktury (1 — `GetInvoiceEmailOptions`), EPO export DPH (1 — `ExportVatEpo`, zatím bez tasku), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (3 — `ListCurrencies`, `GetExchangeRate`, `ListReverseChargeCodes`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export do účetnictví (1 — `ExportAccounting`, §4.15), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
@@ -1812,7 +1851,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **81 tools** (invoice edit: `update_invoice` upravuje jen **Draft** (`items` nahradí všechny řádky); u vystavené (Completed) faktury nic nezmění a vrátí `{"status":"requires_revert_to_draft"}` — model se musí výslovně zeptat uživatele a teprve potom zavolat `revert_invoice_to_draft` (Destructive) a `update_invoice` znovu; Paid/Creditnoted vrací chybu s odkazem na dobropis; bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` / `update_invoice` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 18 invoice + 7 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 2 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **82 tools** (invoice edit: `update_invoice` upravuje jen **Draft** (`items` nahradí všechny řádky); u vystavené (Completed) faktury nic nezmění a vrátí `{"status":"requires_revert_to_draft"}` — model se musí výslovně zeptat uživatele a teprve potom zavolat `revert_invoice_to_draft` (Destructive) a `update_invoice` znovu; Paid/Creditnoted vrací chybu s odkazem na dobropis; bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` / `update_invoice` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 19 invoice + 7 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 2 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,

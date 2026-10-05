@@ -279,11 +279,11 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (81)
+## Dostupné nástroje (82)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 18 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, DeleteInvoice, SetInvoiceBankAccount, UpdateInvoice (partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`), RevertInvoiceToDraft (only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
+| `Tools/InvoiceTools.cs` | 19 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail (optional recipient — defaults to the client's e-mail contact — plus ccEmails, attachPdf/attachIsdoc/attachUbl, fileAttachmentIds, saveAttachmentDefaults), GetInvoiceEmailOptions (read-only: client e-mail contacts, default attachments, stored invoice files), ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, DeleteInvoice, SetInvoiceBankAccount, UpdateInvoice (partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`), RevertInvoiceToDraft (only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
 | `Tools/ClientTools.cs` | 7 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, VerifyVatVies, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 8 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices, ExportVatEpo, GetOssReport (kvartální hlášení EU OSS v EUR) |

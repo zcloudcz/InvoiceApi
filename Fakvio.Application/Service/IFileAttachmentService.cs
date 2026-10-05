@@ -70,6 +70,23 @@ public interface IFileAttachmentService
         string entityName, long recordId, CancellationToken ct = default);
 
     /// <summary>
+    /// Downloads exactly the chosen attachments of one record (e.g. files a user ticked in the
+    /// "send invoice by e-mail" dialog). Unlike <see cref="DownloadByEntityAsync"/> this is strict:
+    /// a selected file that cannot be returned is an error, not something to skip silently.
+    /// </summary>
+    /// <param name="entityName">Entity type name the files must belong to (e.g. "Invoice").</param>
+    /// <param name="recordId">Primary key of that record.</param>
+    /// <param name="attachmentIds">Ids to load; duplicates are ignored.</param>
+    /// <param name="maxTotalBytes">Upper bound for the summed file size, checked from metadata BEFORE any blob is read.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Content + metadata in the order of <paramref name="attachmentIds"/>.</returns>
+    /// <exception cref="ArgumentException">An id does not exist or belongs to another record / tenant.</exception>
+    /// <exception cref="InvalidOperationException">The total size exceeds <paramref name="maxTotalBytes"/> or a blob cannot be read.</exception>
+    Task<List<(byte[] Content, FileAttachmentDto Meta)>> DownloadSelectedAsync(
+        string entityName, long recordId, IReadOnlyCollection<long> attachmentIds, long maxTotalBytes,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Deletes a file attachment — removes both the database record and the blob in storage.
     /// Blob deletion is attempted first; if it fails, the DB record is NOT deleted
     /// (prevents orphaned DB records pointing to existing blobs).
