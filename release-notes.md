@@ -20,153 +20,22 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
-## 2026.10.05.3 — 2026-10-05
+### Změny pro uživatele
+
+- **#514** — Odeslat e-mailem — výběr příjemce z kontaktů klienta, kopie (CC), volba příloh PDF/ISDOC/UBL i příloh uložených u faktury, výchozí volba příloh per klient a firma; hromadné odeslání nyní používá e-mail klienta (dříve selhávalo); totéž v MCP send_invoice_email. (PR #514, `f87aba1`)
+- **#506** — Názvy generovaných dokumentů (PDF, ISDOC, UBL) se nyní konfigurují per klient a typ dokladu s možností výchozího formátu na úrovni firmy. Formát se používá pro stažení, e-mailové přílohy a export nástrojů. Nastavit jde v UI nebo přes MCP nástroj `update_client`. (PR #506, `e54505f`)
 
 ### Opravy
 
 - **#490** — automatické vystavování pravidelných faktur a odesílání upomínek na pozadí nepracovalo se správnou firmou (dotazy mířily mimo schéma tenanta) — opraveno. (PR #490, `dffdc5c`)
-## 2026.10.05.2 — 2026-10-05
-
-### Změny pro uživatele
-
-- **#509** — Zástupné symboly pro data v názvech dokumentů ({{IssueDate}}, {{TaxDate}}, {{DueDate}}) akceptují volitelný formát — např. {{IssueDate:yyyyMMdd}} nebo {{DueDate:dd.MM.yyyy}}; bez formátu se používá výchozí yyyy-MM-dd. Přibyly symboly {{TaxDate}} (DUZP) a {{DueDate}}. (PR #509, `78e016a`)
-
-## 2026.10.05 — 2026-10-05
-
-### Změny pro uživatele
-
-- **#506** — Názvy generovaných dokumentů (PDF, ISDOC, UBL) se nyní konfigurují per klient a typ dokladu s možností výchozího formátu na úrovni firmy. Formát se používá pro stažení, e-mailové přílohy a export nástrojů. Nastavit jde v UI nebo přes MCP nástroj `update_client`. (PR #506, `e54505f`)
-
-## 2026.10.02.4 — 2026-10-02
-
-### Opravy
-
-- **#500** — ChatGPT konektor Fakvio MCP po vydání kurzů ČNB hlásil „action discovery failed" a nenačetl žádný nástroj: meze kurzu (`exchangeRate`) šly do schématu nástroje jako text místo čísla a ChatGPT takové schéma odmítne celé. Meze jsou teď číselné (validace beze změny) a nový test hlídá, aby se to neopakovalo. (PR #500, `8a07cf7`)
-
-## 2026.10.02.3 — 2026-10-02
-
-### Nové funkce
-
-- **#494** — Kurzy ČNB: Fakvio denně stahuje kurzy ČNB; faktura i přijatá faktura v cizí měně si při vystavení/schválení uloží kurz k DUZP (v konceptu lze přepsat), PDF plátce DPH uvádí kurz a rekapitulaci DPH v Kč. Přiznání, KH, přehled DPH i nástěnka přepočítávají cizí měny uloženým kurzem; exporty do Pohody/Money/Flexi nově přenášejí i doklady v cizí měně. MCP get_exchange_rate. (PR #494, `00f4847`)
-
-## 2026.10.02.2 — 2026-10-02
-
-### Nové funkce
-
-- **#493** — MCP i chat umí upravit existující fakturu (update_invoice — data, symboly, platba, účet, poznámka, položky). Koncept se upraví hned; u vystavené faktury nástroj nejdřív požádá o výslovný souhlas s vrácením do konceptu (revert_invoice_to_draft); zaplacenou fakturu měnit nelze (navrhne dobropis). (PR #493, `dfbeccd`)
-- **#491** — Kopie faktury umí posunout období v textech („Hosting 3/2026“ → „Hosting 4/2026“, „březen 2026“ → „duben 2026“, čtvrtletí, přelom roku) — volba v dialogu kopie. U opakovaných faktur se posun zapíná přepínačem „Posouvat období v textech“ (nové plány zapnuto, stávající beze změny). (PR #491, `6cd8ffc`)
-- **#492** — Import bankovních výpisů ve formátu GPC/ABO (KB, ČSOB, Fio, Raiffeisen, MONETA…) na stránce Platby: platby se založí bez duplicit (i vůči platbám už načteným z bankovních e-mailů) a hned se spárují s vydanými i přijatými fakturami. (PR #492, `6e1dbfb`)
-- **#488** — Přiznání k DPH (ř. 1/2/25), přehled DPH a kontrolní hlášení (A.1, A.4/A.5) nově započítávají dobropisy záporně v období jejich DUZP — dřív se ignorovaly a DPH vycházela vyšší. O zařazení do A.4/A.5 rozhoduje absolutní hodnota opravy (dle FAQ Finanční správy). (PR #488, `1f0121f`)
-- **#489** — Ukládání časů do databáze sjednoceno na UTC jedním převodníkem pro obě databáze (dosavadní normalizace u hodnot bez časové zóny nedělala nic); v produkci beze změny, na vývojových strojích zmizí posun o časové pásmo. (PR #489, `d34d664`)
-
-## 2026.10.02 — 2026-10-02
-
-### Nové funkce
-
-- **#478** — Faktury v EUR s IBAN nesou SEPA QR kód (EPC) místo české QR Platby, takže je zaplatí i zahraniční bankovní aplikace (nulové a záporné částky dál používají QR Platbu). U klienta lze DIČ ověřit ve VIES tlačítkem „Ověřit ve VIES“, přes chat i MCP (verify_vat_vies). (PR #478, `0638a1f`)
-- **#480** — Zálohové faktury: po zaplacení zálohy (ručně i spárováním z banky) plátci DPH automaticky vznikne daňový doklad k přijaté platbě — i při částečné platbě, bez duplicit, s DUZP = den platby (lze vypnout v Moje firma). MCP umí vystavit zálohu, vyúčtovací fakturu (issue_final_invoice), DPP (issue_tax_receipt) a zjistit zbývající zálohu. (PR #480, `865e813`)
-- **#483** — EPO: přiznání k DPH a kontrolní hlášení nově zahrnují přenesenou daňovou povinnost (DP3 ř. 10/11, 25, 43/44; KH A.1/B.1) včetně přijatých faktur v režimu PDP; přibylo souhrnné hlášení (DPHSHV) pro plnění do EU s náhledem a volbou zboží/služby, navazující řádky 20/21 přiznání a MCP nástroj export_vat_epo. (PR #483, `a2bee8e`)
-- **#484** — Režim EU OSS: plátce registrovaný k OSS (nastavení v Moje firma) může u faktury spotřebiteli z jiného státu EU zaškrtnout „Režim OSS“ — položky pak nesou sazbu DPH země odběratele, PDF to uvádí a faktura se nezapočítá do českého přiznání ani KH. Nový čtvrtletní přehled „OSS hlášení“ (CSV, MCP get_oss_report) přepočítává cizí měny kurzem ECB podle pravidel OSS. Sazby EU jsou v číselníku, který spravuje SysAdmin. (PR #484, `dea3ffb`)
-- **#479** — Export do účetnictví: vydané i přijaté faktury za zvolené období jdou stáhnout jako XML pro POHODA, Money S3 a ABRA Flexi (dialog „Export do účetnictví“ v seznamu faktur i přes MCP). Formáty jsou ověřené proti oficiálním schématům; doklady, které cílový systém neumí přijmout (např. cizí měna v Money/Flexi, nepodporovaná sazba), se přeskočí a export řekne kolik. (PR #479, `4fd5c4e`)
-- **#482** — Webhooky: v Nastavení → Webhooky si správce firmy zaregistruje URL, na kterou Fakvio posílá podepsané (HMAC-SHA256) události — vytvoření, odeslání, zaplacení a zrušení faktury, nová přijatá faktura a přijatá platba; s opakováním při výpadku, testovacím pingem a logem doručení. Ochrana proti SSRF (jen veřejné HTTPS adresy). (PR #482, `eb639f1`)
-- **#476** — Přenesená daňová povinnost (§92a) jde nastavit přímo v editoru položek — sloupec „Režim DPH“, „Kód PDP“ a přepínač pro celou fakturu; PDF nese povinnou poznámku „Daň odvede zákazník“ s kódy plnění, ISDOC posílá LocalReverseCharge a MCP/chat přijímají režim i kód (nový nástroj list_reverse_charge_codes). (PR #476, `aedec06`)
-- **#481** — Nástěnka je modulární: přes „Upravit nástěnku“ si každý uživatel zapne, vypne a seřadí moduly; přibyly grafy tržeb po měsících, příjmů vs. výdajů a stáří neuhrazených pohledávek (jen faktury v CZK). Nový průvodce prvním nastavením (/setup) provede správce firmou, bankovním účtem, číselnými řadami a pozváním kolegů. (PR #481, `58c2ecc`)
-- **#477** — Nová faktura (z aplikace, MCP, chatu, šablony i opakované faktury) bez zadaného účtu automaticky dostane výchozí bankovní účet firmy, přednostně v měně faktury; přes MCP lze účet zvolit (`bankAccountId`) i dodatečně změnit (`set_invoice_bank_account`). Opraveno míchání čísla účtu a IBAN ze dvou různých účtů při vytvoření ze šablony. (PR #477, `d83e2e5`)
-
-### Změny pro vývojáře
-
-- **#472** — Ve Fakviu je návod na připojení ChatGPT krok za krokem, včetně odkazu do nastavení aplikací a adresy MCP serveru; správce najde samostatný postup pro první nastavení. (PR #473, `4a9b4f1`)
-- **#468** — Připojení webového ChatGPT k Fakviu přes OAuth přijímá jeho registrační metadata a vrací oprávnění ve správném formátu; dokončení přihlášení a obnovení přístupu tak může fungovat. (PR #467, `0abdc55`)
-
-## 2026.10.01 — 2026-10-01
-
-- **#456** — Faktury, dobropisy a daňové doklady k záloze jdou stáhnout jako e-faktura UBL / Peppol BIS 3.0 (vedle ISDOC) — jednotlivě, hromadně i přes MCP; slovenským odběratelům se UBL přikládá k e-mailu. Příprava na povinnou e-fakturaci na Slovensku od 2027 (odesílání přes Peppol přijde ve fázi 2). (PR #456, `499e029`)
-- **#455** — Přijaté faktury umí importovat e-faktury UBL / Peppol BIS (XML) a ISDOC — z e-mailu i ručním nahráním; strukturovaná data se převezmou přesně, bez odhadu z PDF. (PR #455, `e04bacc`)
-- **#454** — Opakované faktury jdou spravovat i z AI přes MCP (výpis, založení, úprava, pozastavení, obnovení, smazání plánu); MCP server 2.2.0. (PR #454, `3e7340b`)
-- **#448** — MCP server umí přihlášení přes OAuth 2.1 (claude.ai / ChatGPT konektor jen adresou + souhlasem, volba čtení vs. zápis, správa „Připojených aplikací“, změna hesla odpojí aplikace). Za přepínačem `McpOAuth:Enabled`, výchozí vypnuto — bez nastavení se nic nemění. (PR #448, `8695c52`)
-
-## 2026.09.29 — 2026-09-29
-
-- **#452** — Neplátce DPH už nedostává DPH na faktury: formulář předvyplňoval 21 % a server sazbu převzal. Teď se u neplátce DPH vždy vynuluje (UI, MCP, šablony, opakované faktury), formulář i detail DPH nezobrazují a PDF nemá sloupec DPH, rekapitulaci, „Daňový doklad“ ani DUZP — místo toho „Dodavatel není plátcem DPH.“ Starší koncepty se opraví uložením, vystavené faktury vyžadují dobropis. (PR #452, `960b28d`)
-- **#451** — Publikace MCP serveru na nuget.org znovu funguje (rozbitý řádek ve workflow), takže vyjde `Fakvio.McpServer` 2.1.0. (PR #451, `417d631`)
-
-## 2026.09.28.2 — 2026-09-28
-
-- **#449** — Produkční UI má reCAPTCHA v3 site key, takže přihlášení, registrace, ARES lookup a zapomenuté heslo posílají token. Ověřování na serveru se zapíná až po nasazení (`Recaptcha__Enabled`). Řádek doplněn ručně při release — PR #449 byl mergnut mimo agent-ops. (PR #449, `c9580e0`)
-
-## 2026.09.28 — 2026-09-28
-
-- **#445** — Balíček `Fakvio.McpServer` se na nuget.org publikuje přes Trusted Publishing (OIDC, bez uloženého klíče); dřív publikace kvůli chybějícímu klíči tiše přeskakovala a na nuget.org zůstala verze 1.0.2. (PR #445, `9d7c9da`)
-- **#444** — Opakované faktury: plán automaticky vystaví (a volitelně odešle) fakturu podle šablony; trvale selhávající plán notifikuje jen při změně chyby. (PR #444, `2d89b73`)
-- **#444** — Hromadný import klientů z CSV s náhledem; příliš dlouhé hodnoty jsou označené jako neplatné, jeden vadný řádek už neshodí zbytek importu, duplicitní IČO se přeskočí. (PR #444, `2d89b73`)
-- **#444** — Přihlášení, 2FA, reset hesla a registrace mají rate limit podle IP; reCAPTCHA zpevněna na přihlášení a zapomenutém hesle. (PR #444, `2d89b73`)
-- **#444** — MCP server 2.1.0 (breaking): typované vstupy, anotace nástrojů, nové nástroje (měny, číselné řady, sazby DPH, firma, bankovní účet, platby, upomínky); `update_number_sequence` a `update_my_company` vyžadují potvrzení. (PR #444, `2d89b73`)
-
-## 2026.09.20 — 2026-09-20
-
-### Změny
-- **PR #441** — AI asistent zmizel z UI: pryč ikona v horní liště, položka v menu, boční chat panel, uvítání po přihlášení i odkaz na AI instrukce. AI se používá přes MCP; backend zůstal. (PR #441, `9df3444`)
-- **PR #442** — po importu faktur se už nespouští AI kontrola s hláškou „AI review failed". (PR #442, `a6c7675`)
-
-## 2026.09.14.2 — 2026-09-14
-
-### Změny
-- **MCP `upload_received_invoice_attachment`** — soubor se předává jako `fileUrl` (https odkaz, server si ho stáhne; limit 50 MB) nebo `filePath` (jen lokální stdio server); inline `base64Content` zůstává pro malé soubory. Base64 přes model nešlo použít pro reálná PDF (475 KB ≈ 650 k znaků).
-
-## 2026.09.14 — 2026-09-14
-
-### Změny
-- **PR #434** — MCP: nový nástroj `upload_received_invoice_attachment` přiloží soubor (typicky PDF dodavatele) k přijaté faktuře; `create_received_invoice` u neplatného vstupu (např. `paymentMethod: "Apple Pay"`) vrátí konkrétní `Invalid JSON format` místo anonymního `internal_error` a popis nástroje vyjmenovává platné způsoby platby. (PR #434, `5d60aad`)
-
-### Opravy
-- **PR #412** — `GET /api/company/{id}` při chybě už nevrací klientovi celý `ex.ToString()` (stack trace, interní detaily); chyba se loguje, odpověď je neutrální. (PR #412)
-
-## 2026.09.11.2 — 2026-09-11
-
-### Opravy
-- **PR #429** — přehled faktur (UI i MCP `list_invoices`) bez zvoleného řazení ukazuje nejnovější faktury podle data vystavení; dřív řadil číslo dokladu jako text, takže u dvou číselných řad celá jedna řada propadla na konec a „poslední faktury" chyběly. MCP `list_invoices` nově přijímá `sortBy` / `sortDirection`. (PR #429, `bce347f`)
-
-## 2026.09.11 — 2026-09-11
-
-### Změny
-- **#426** — testovací prostředí zrušeno (workflow `testenv_fakvio-api.yml`, `blazorui-test-deploy.yml` a job `deploy-http-test` odstraněny; Azure testovací appky smazány); certifikát PostgreSQL serveru je součástí balíčku API (`certs/fakvio-db-server.crt`) → connection string produkce běží s `Ssl Mode=VerifyCA`. (PR #426)
-
-## 2026.09.10.4 — 2026-09-10
-
-### Změny
-- **#423** — Tailscale tunel k databázi odstraněn: App Service má pevnou sadu outbound IP, PostgreSQL je dostupný přímo (TLS, allowlist 19 IP na firewallu a v `pg_hba.conf`). Pryč je i startup gate (`StartupGateMiddleware`, pole `startupDatabaseReady` v health) a `RetryAfterHandler` v UI; migrace masteru běží synchronně před prvním requestem. Produkce přepnuta 2026-09-10 večer. (PR #423)
-- **#422** — delší retry ve verify krocích deploy workflow (první start na B1 trvá až 7 min); docs: `WEBSITES_CONTAINER_START_TIME_LIMIT=900`. (PR #422)
-
-## 2026.09.10.3 — 2026-09-10
-
-### Změny
-- **#419** — hosting API a MCP HTTP hostu přesunut z Azure Functions (Flex Consumption) na Azure App Service (Linux B1, plan `asp-fakvio-b1`): jeden host `Fakvio.API`, projekty `Fakvio.Functions` a `Fakvio.Functions.Generator` smazány, Tailscale tunel a startup gate běží v API hostu, nový `ReminderWorker` (denní upomínky 06:00 UTC) nahrazuje timer trigger, `McpKeepAlive` odstraněn (Always On). Nové adresy: API `https://fakvio-api.azurewebsites.net`, test `https://fakvio-api-test.azurewebsites.net`; MCP web appky `fakvio-mcp-web(-test)`. (PR #419, `07ea98d`)
-
-## 2026.09.10.2 — 2026-09-10
-
-### Opravy
-- **#416** — uvítání asistenta pro nedokončené nastavení (#214) se nově odesílá jako součást první odpovědi konverzace (`SeedAssistantMessage`), takže asistent má kontext a může se efektivně ptát na chybějící údaje; prompt nyní jmenuje konkrétní chybějící pole (např. `NUMBER_SEQUENCE_MISSING: Invoice, CreditNote`) místo generických kódů. (PR #416, `6898311`)
-- **#364** (bezpečnostní oprava) — `UserDto` v odpovědi na listovací endpointy (`GET /api/user`, `/api/user/paged`, `/api/user/{id}`) nesl syrový `InvitationToken`, a protože `POST /api/user/set-password` ten token přijímá anonymně, šlo o přihlašovací údaj viditelný komukoli přihlášenému ve firmě. Navíc forgot-password recykluje stejné pole, takže obyčejný `User` mohl počkat, až si Admin vyžádá reset hesla, a účet mu převzít. Token je teď pryč z `UserDto` úplně; pozvánka ho vrací na vlastním `InvitedUserDto` (jen server-side, do e-mailu) a nová úzká cesta `GET /api/user/{id}/invitation-token` (jen `Admin`/`SysAdmin`) slouží pro obnovení pozvánkového odkazu. (PR #365, `18810d7`)
-
-## 2026.09.10 — 2026-09-10
-
-### Opravy
-- **#375** — za studena nastartovaná Function appka krátce po startu vracela na požadavky chybu vypadající jako rozbité DB připojení (tunel do databáze byl ve skutečnosti v pořádku, jen ještě nedoběhl); teď appka během startu odpoví `503` s automatickým opakováním na klientovi místo toho, aby request spadl do neexistujícího portu a skončil chybou. (Konfigurace PgBouncer na DB hostu, skutečná příčina zbylých výpadků, zůstává otevřená jako ruční krok správce.) (PR #407, `2b9a324a`)
-
-## 2026.09.08 — 2026-09-08
-
-Tyhle záznamy se do produkce dostaly už s release PR #406 (2026-09-08), ale sekce
-`## Nevydáno` se tehdy nepřejmenovala — datum je doplněné zpětně podle mergu #406.
-
-### Opravy
+- **PR #429** — přehled faktur (UI i MCP `list_invoices`) bez zvoleného řazení teď ukazuje nejnovější faktury podle data vystavení; dřív řadil číslo dokladu jako text, takže u dvou číselných řad jedna celá řada propadla na konec a „poslední faktury" chyběly. (PR #429, `bce347f`)
 - **#363** — při kopírování úryvku „remote" pro připojení MCP HTTP klienta se uživateli zkopírovala adresa API (`{ApiBaseUrl}/mcp`), která neexistuje — MCP HTTP host je oddělený deploy od API (od #240/#241). URL nyní vychází z nového `McpSettings:BaseUrl` config klíče; dokud se host nevystaví, zůstává prázdný a snippet místo chybné adresy zobrazí jasný placeholder. Opravena i chybová zpráva v `Fakvio.McpServer/Program.cs`, která zmínila jen JWT místo doporučeného API klíče. (PR #394, `2e2849d`)
+- **#305** — po selhání zápisu chat toolu se v DbContext nechaly neuložené změny (entity ve stavu `Added` / `Modified` / `Deleted`), které následující tool v téže konverzaci mohl neúmyslně zapsat. Nově se nepotvrzené entity automaticky detachují z change trackeru po selhání, aby příští tool pracoval s čistým kontextem. Řešeno centrálně v `ChatToolExecutor`, takže se chování upravilo pro všechny tooly (`create_invoice`, `create_client`, `update_bank_account`, ...) najednou. (PR #393, `6621928`)
 - **#306** — jazykové nastavení klienta se tichou chybou ignorovalo — MCP `UpdateClient` přijal parametr `language`, hlásil úspěch a nic neuhnul. Nově se nastavení aplikuje korektně v `CreateClientAsync` i `UpdateClientAsync` (nula = neměnit, jako u ostatních polí). (PR #383, `ecd7b0e6`)
-- **#279** — MCP server nově sanitizuje těla chyb API předtím, než je pošle externím klientům, takže neúmyslně nezuniknou interní detaily jako stack trace nebo SQL chyby. Zrušené requesty nyní správně propagují místo toho, aby se konvertovaly na falešné doménové chyby. (PR #381, `28470c96`)
-
+- **#342** — chat asistent a MCP klient dosud obdrželi u chyby `TENANT_NOT_READY` jen obecnou hlášku bez detailů, co konkrétně chybí a jak to opravit; hromadné dokončení faktury zobrazovalo anglickou technickou zprávu místo lokalizovaného popisu. Nově všechny tři kanály (API, chat tool `complete_invoice`, MCP tools) vrací strukturované tělo s kódem chyby, chybějícími poli a odkazem na stránku, kde se to doplní. Mapování `TenantNotReadyException` → 400 je teď centralizované v jednom helperu, aby se tvar nového gate nemohl zkomolovat. (PR #385, `b35ac43`)
 - **#283** — chat tooly `create_invoice` a `create_received_invoice` tichou chybou zaměňovaly chybějící výchozí sazbu DPH nulou a nekladné množství jedničkou. U neplátců DPH bylo to správné chování (0 % je legitimní sazba), ale `create_invoice` to špatně aplikoval i na plátce, kde by selhalo teprve v service s vágní hláškou o povinnosti sazby. Nově se guard podmíňuje statusem plátcovství: plátce bez výchozí sazby dostane čitelnou zprávu a možnost ji nastavit; neplátce fakturu vytvoří se správnou nulou. `create_received_invoice` zůstává bezpodmínečný (přijaté doklady jsou cizího původu). (PR #382, `e66cca8`)
 - **#257** — MCP server měl default `FAKVIO_API_URL` na `7001`, ale lokální API dle launchSettings běží na `7047`; default proto nikdy nefungoval bez explicitního nastavení env proměnné. Default je nyní `7047` shodný s API profilu; detaily zkopírované do kódu a README se teď hlídají testem, aby se nedriftovaly znovu. (PR #378, `c86de66`)
 - **#301** — chat asistent v přehledu a importu přijatých faktur odmítl data zadaná jedním číslem (`import_invoice` navíc tiše místo chybného data použil výchozí): např. „15.3.2026" se neakceptovalo, jen „15.03.2026". Nový jednolitý parser (`ChatToolDates.TryParseOptional`) podporuje obě podoby, jak je ostatní nástroje už dělají (`create_invoice`, `get_vat_report`). Import nečitelného data navíc nově vrací chybu místo tichého defaultního data — v účetnictví (ne ve filtru) je to lepší bezpečnostní chování. (PR #384, `cb1b9a6`)
-- **#269** — součet faktury na stránce se nyní sčítá jednotlivě pro každou měnu — smíšená CZK/EUR stránka místo jednoho nesmyslného čísla (`12600`) vypíše správně `12 100,00 CZK; 500,00 EUR`. (PR #379, `68dda99`)
 
 ### Změny pro vývojáře
 
@@ -184,7 +53,6 @@ Tyhle záznamy se do produkce dostaly už s release PR #406 (2026-09-08), ale se
 - **#210** — dashboard místo statického „Rychlý start" teď ukazuje živý přehled, co firmě ještě chybí k vystavení faktury — položky jsou rozdělené na blokující a doporučené (ne jen barvou, i nadpisem), každá vede přímo tam, kde se dá doplnit. Kartu jde tlačítkem „Připomenout později" sbalit na jeden řádek, ale nezmizí natrvalo — jakmile něco chybí, po dalším přihlášení se zase ukáže sama. (PR #348, `31bf00d`)
 
 ### Opravy
-- **#279** — MCP server nově sanitizuje těla chyb API předtím, než je pošle externím klientům, takže neúmyslně nezuniknou interní detaily jako stack trace nebo SQL chyby. Zrušené requesty nyní správně propagují místo toho, aby se konvertovaly na falešné doménové chyby. (PR #381, `28470c96`)
 
 - **#371** — Function App na Tailscale tunelu se v tailnetu hlásil vždy jako `fakvio-func`, takže prod a test uzel nešly v Tailscale konzoli ani v ACL rozlišit. Jméno teď dává App Setting `TAILSCALE_HOSTNAME` (výchozí `fakvio-func-prod`); TEST-ENV musí mít `fakvio-func-test`. (PR #371, `87699a2`)
 - **#239** (bezpečnostní oprava) — MCP server (`Fakvio.McpServer`) posílal na každé volání API startupem zachycený token procesu místo tokenu volajícího uživatele; pod HTTP hostingem by to znamenalo, že tool cally jednoho uživatele nesou přihlašovací údaje jiného (cross-tenant leak). Autorizace teď jde per request přes `AuthHeaderHandler`. Ve stdio režimu (aktuální provoz) se chování nemění. (PR #343, `1f98b22`)
@@ -192,3 +60,276 @@ Tyhle záznamy se do produkce dostaly už s release PR #406 (2026-09-08), ale se
 ### Změny pro vývojáře
 
 - **#241** — nový CI workflow `mcp-server.yml`: balí a publikuje `Fakvio.McpServer` (stdio distribuce) a nasazuje HTTP host. Deploy krok je zatím neaktivní — čeká na ruční založení Azure Web App (vlastní App Service plán, Flex Consumption plán Functions ho hostovat nemůže) a nastavení repo proměnné `MCP_HTTP_APP_NAME`; do té doby merge nic nenasazuje. (PR #360, `e67a5e3`)
+- **#221** — nový Playwright E2E test prochází celou výchozí cestu nové firmy bez živé AI: registrace → nastavení hesla z pozvánky → první přihlášení → doplnění chybějícího bankovního účtu přes `SetupChecklist` (#210) → kontrola, že checklist už nic neblokuje. Běží deterministicky (bez sítě, bez SMTP) a bez zásahu do produkčního kódu. (PR #361, `074cd40`)
+- **#240** — MCP server (`Fakvio.McpServer`) teď umí kromě stdia i vzdálený HTTP transport (`FAKVIO_MCP_TRANSPORT=http`, `MapMcp("/mcp")`), takže se dá připojit odjinud než z lokálního procesu. Session je stateless (žádné sdílené credentials mezi klienty) a každý request se ověřuje proti `GET /api/api-key/me` bez cache — revokace API klíče se projeví okamžitě, ne až po vypršení nějakého okna. Stdio režim (dnešní provoz) se nemění. (PR #357, `d7570b6`)
+- **#227** — AI asistent v chatu teď umí i s upomínkami a platbami: vypsat upomínky a jejich nastavení, přečíst, co platí pro konkrétního klienta, a změnit firemní nastavení upomínání (po odsouhlasení). U bankovních plateb umí vypsat seznam a zobrazit detail — spárování platby s fakturou zůstává na stránce Platby, přes chat se to záměrně nedělá. (PR #340, `b79d5c1`)
+- **#225** — AI asistent v chatu teď umí i se šablonami: vypsat šablony faktur i e-mailových/tiskových šablon dokumentů, zobrazit jejich detail a přepnout, která je výchozí. Editace obsahu šablony zůstává v UI (Quill editor je na to lepší nástroj). (PR #338, `6b249d3`)
+- **#218** — AI asistent v chatu teď umí i s přijatými fakturami: založit novou (podle diktovaných údajů, ne jen z nahraného dokladu), schválit, označit jako zaplacenou nebo smazat. Každá z těchto změn se napřed ukáže k odsouhlasení (dodavatel, částka bez DPH, případně datum úhrady) a teprve po potvrzení se zapíše. Dictovaná sazba DPH se navíc ověřuje proti sazbám, které firma skutečně má nastavené. (PR #281, `595148b`)
+- **#224** — AI asistent v chatu teď umí i číselné řady a sazby DPH: vypsat je, založit novou řadu nebo sazbu a upravit existující (název, prefix/sufix, čítač, procento, platnost, výchozí). Dřív se to dalo měnit jen v UI. Změna výchozí řady/sazby jde jen přesunout na jinou, ne zhasnout — typ dokladu bez výchozí řady by přestal číslovat. (PR #339, `2698d9d`)
+- **#238** — MCP server (Fakvio.McpServer) přešel na SDK `ModelContextProtocol` 2.2.0 (z 1.0.0, které pro `AspNetCore` transport ani neexistovalo) — čistě technický upgrade, drátový kontrakt (`protocolVersion`, `serverInfo`, 37 nástrojů) se nemění, žádná nová funkčnost pro uživatele. Odemyká HTTP transport pro story #144. (PR #337, `d64884f`)
+- **#215** — Dashboard a detail konceptu faktury teď rovnou ukazují, co firmě ještě chybí k vystavení dokladu (sídlo, IČO/DIČ, bankovní účet, číselná řada…) — banner rozlišuje blokující položky od doporučených a každá vede odkazem přímo tam, kde se dá doplnit. Dřív se to zjistilo až při odmítnutém vystavení faktury (#206) nebo dotazem v chatu (#211). Poslední kus story #148. (PR #286, `425925c`)
+- **#217** — AI asistent v chatu teď zvládne celý životní cyklus vydané faktury: zobrazit detail, vystavit koncept, označit jako zaplacenou, poslat e-mailem nebo smazat koncept. Každá z těchto změn se napřed ukáže k odsouhlasení, teprve pak se provede. Export faktury navíc nově umí kromě PDF i formát ISDOC. (PR #280, `26b284d`)
+- **e2e** — nová kategorie Playwright testů `Deployment` ověřuje nasazené prostředí tam, kde lokální běh nestačí: zapečená API URL v bundlu, deep link místo 404, CORS preflight z prohlížeče, dosažitelnost DB z nasazeného hostu a vizuální označení neprodukčního prostředí. Bez `FAKVIO_UI_URL` na https se přeskočí. (PR #335, #336)
+
+## 2026.08.25.7 — 2026-08-25
+
+### Změny pro uživatele
+
+- **UI** — testovací prostředí (test.fakvio.cz) má růžový horní panel a štítek TEST, aby se nedalo splést s produkcí. (PR #333, `8e72e39`)
+
+## 2026.08.25.6 — 2026-08-25
+
+### Změny pro vývojáře
+
+- **hotfix** — diagnostika Tailscale tunelu: milník selhání nese i prvních 40 řádků démona, `tailscaled --verbose=1`, CLI dostane 45 s na vlastní hlášku. (PR #330, `04d8b77`)
+
+## 2026.08.25.5 — 2026-08-25
+
+### Změny pro vývojáře
+
+- **hotfix** — při zaseklém `tailscale up` se do logu (`Host.Function.Console`) vypíše dosažitelnost control plane (DNS, HTTPS, `tailscale netcheck`), aby šlo odlišit blokovaný odchozí provoz od špatného klíče. (PR #328, `89c1f3f`)
+
+## 2026.08.25.4 — 2026-08-25
+
+### Opravy
+
+- **hotfix** — Tailscale bring-up na testovacím Function App blokoval start workeru, host odpovídal 502/503; tunel i startovní migrace teď běží na pozadí a při zaseklém `tailscale up` se do logu dostane důvod (výstup CLI + posledních 25 řádků démona, bez klíče). (PR #326, `8cf2c81`)
+
+## 2026.08.25.3 — 2026-08-25
+
+### Opravy
+
+- **#321** — Tailscale tunel na testovacím Function App padal hned po nasazení na `Text file busy`: Flex Consumption spouští na jedné instanci víc worker procesů a druhý přepisoval binárku, kterou první už spustil. Start je teď probe-first (běžící `tailscaled` se znovu nespouští), kopie binárek je tolerantní a forwarder nastartuje, jakmile SOCKS port žije. Milníky tunelu jdou i na stdout (`Host.Function.Console`). (PR #323, `b9eabc3`)
+
+## 2026.08.25.2 — 2026-08-25
+
+### Změny pro vývojáře
+
+- **#318** — Testovací Azure Function App (`zcloudinvoicingapi-test`) se teď umí připojit
+  k vlastní self-hosted PostgreSQL (`fakvio_test`) přes Tailscale tunel a lokální SOCKS5
+  forwarder — testovací prostředí tak konečně běží proti reálné databázi místo aby bylo
+  bez DB (uzavírá i #295). Bez nastaveného `TAILSCALE_AUTHKEY` je funkce úplně neaktivní,
+  lokální vývoj i produkce jedou beze změny. Tailscale binárky jsou pinované a stahují se
+  v CI při publish. (PR #319, `196f7fb`)
+- **#211** — AI chat asistent i MCP klient teď umí zeptat na "readiness" — jestli je
+  firma (vystavitel) připravená na vystavení dokladu, a pokud ne, co konkrétně chybí
+  a kde se to dá doplnit. Dřív bylo potřeba projít nastavení ručně nebo počkat na
+  banner v UI. (PR #273, `6474632`)
+
+## 2026.08.25 — 2026-08-25
+
+### Opravy
+
+- **#271** — AI chat asistent odmítl datum zadané jedním číslem (např. „15.3.2026")
+  v přehledu faktur i v DPH reportu — bral jen dvouciferné tvary s nulou (`15.03.2026`).
+  Nově akceptuje obě podoby, padded tvary i ISO datum se chovají stejně jako dřív.
+  (PR #296, `46fad72`)
+- **#263** — Diagnostické endpointy Azure Functions (`/api/diagnostic/migrate`,
+  `/api/diagnostic/auth`) byly dostupné bez přihlášení: kdokoli mohl vzdáleně spustit
+  DB migrace nebo si vypsat JWT konfiguraci (issuer, audience, délku secretu, claims).
+  Oba teď vyžadují přihlášeného SysAdmina — bez tokenu 401, s tokenem bez role 403.
+  (PR #270, `4f766df`)
+- **#200** — Ověření reCAPTCHA bylo fail-open: výpadek Googlu nebo chybějící `SecretKey`
+  bránu tiše propustily místo aby ji zablokovaly, a token se navíc nekontroloval proti
+  akci ani doméně, takže se dal token z jednoho formuláře přehrát jinam. Anonymní ARES
+  lookup navíc dával neomezeně rostoucí cache. Brána je nově fail-closed a ověřuje
+  action i hostname, cache ARES se čistí při každém zápisu. **Vyžaduje zásah v produkci**
+  (prázdný `SecretKey`/`SiteKey`) — viz ADMINGUIDE.md §9. (PR #246, `f968946`)
+- **#233** — Swagger UI i `swagger.json` byly dostupné na rootu API i mimo Development,
+  takže je při nasazení na klasický App Service host mohl vidět kdokoli. Nově se
+  registrují jen v Development; v Production vrátí `/` i `/swagger/v1/swagger.json` 404.
+  (PR #247, `329c588`)
+- **#192** — Pozvání dalšího uživatele do už zavedené firmy znovu spouštělo provisioning
+  tenanta, který u živého tenanta mazal a přečísloval sazby DPH, měny, číselné řady
+  šablon i obsahové šablony — vystavené doklady tak mohly tiše ztratit vazbu na svou
+  původní sazbu DPH nebo měnu. Nastavení hesla pozvaného uživatele už provisioning
+  zavedené firmy nespouští. (PR #245, `074229d`)
+- **#157** — Při registraci nové firmy se adresa dohledaná v ARES nikam neuložila —
+  firma vznikla bez sídla a vystavitel v tenantu neměl adresu vůbec, takže PDF faktury
+  měl prázdný blok vystavitele. Adresa z ARES se teď uloží a propíše do tenanta;
+  registrační formulář ji navíc rovnou předvyplní, aby šla před odesláním zkontrolovat
+  a opravit. (PR #173, `cc55ed9`)
+- **#158** — Když k DPH exportu chyběly EPO údaje (kód finančního úřadu, kontaktní osoba…),
+  `VatReport` poslal uživatele doplnit je na `/my-company` — stránku, kde tahle pole vůbec
+  nebyla. Sekce je tam nyní pro Admina a SysAdmina; běžný uživatel dostane rovnou pokyn
+  požádat administrátora, místo aby skončil na stránce bez řešení. (PR #176, `4219589`)
+- **#156** — Chat posílal uživateli do prohlížeče celý stack trace serverové výjimky.
+  Nyní dostane jen bezpečnou hlášku s referenčním ID, podle kterého se chyba dohledá
+  v `/logs`. Neznámá konverzace vrací 404 místo 500. (PR #172, `f6a4f37`)
+- **#155** — Když číselná řada chyběla nebo byla vypnutá, doklad tiše dostal náhradní
+  číslo `INV2026001` mimo řadu. Nově se akce nedokončí a uživatel se dozví, co doplnit.
+  Souběžná kolize čísel se hlásí jako přechodná s výzvou akci zopakovat. (PR #171, `d3c9b4c`)
+- **#153** — Při zakládání firmy se vystaviteli nezkopíroval bankovní účet ani fakturační
+  nastavení. (PR #170, `aa6a26c`)
+- **#134** — Každé zřízení tenanta nechávalo otevřené spojení do databáze; při rušení
+  schématu se navíc neuvolnil jeho datový zdroj. (PR #169, `4f75e39`)
+
+### Změny pro vývojáře
+
+- **#237** — Nová stránka `/settings/integrations`, kde si uživatel sám vygeneruje
+  revokovatelný API klíč pro napojení AI klientů na Fakvio (lokálně přes stdio i
+  vzdáleně přes HTTP). Klíč jde vytvořit se jménem, oprávněním (jen čtení / čtení
+  a zápis) a volitelnou expirací, zobrazí se v plném znění jen jednou hned po
+  vytvoření a jde kdykoli zrušit. Stránka rovnou nabízí hotový konfigurační snippet
+  ke zkopírování pro oba způsoby připojení. (PR #278, `737ff1d`)
+- **#160** — AI chat pro OpenAI a Gemini teď volá nástroje (vytvoření faktury, import,
+  vyhledání klienta atd.) nativním function callingem obou API místo dřívějšího
+  křehkého textového protokolu, kde model musel sám vypsat holý JSON a parser ho
+  vyřezával podřetězcem. Spolehlivější rozpoznání i menší latence (odpadá dvojí
+  průchod). Když nativní volání selže, chat se sám přepne na starou textovou cestu,
+  takže nástroje fungují dál i při výpadku. (PR #277, `62b809c`)
+- **#293** — ADMINGUIDE má novou sekci §14 „Prostředí" popisující rozdíl mezi
+  testovacím a produkčním nasazením pro SysAdmina: kde která část běží (hosting,
+  URL, větev, deploy workflow, databáze), jak se liší App Settings (vlastní
+  `JwtSettings__Secret`, takže tokeny mezi prostředími nejsou přenosné, oddělené
+  CORS a connection string), jaké chování je na testu bez vlastní databáze
+  očekávané (401/503 z healthu, ne incident) a jak probíhá promotion přes
+  `/release` a `/release-prod` včetně rotace nasazovacích secrets. (PR #311, `91f6564`)
+- **#220** — AI chat asistent teď umí zobrazit i upravit nastavení vlastní firmy
+  (název, DIČ, plátcovství DPH, jazyk dokumentů, sídlo) a spravovat bankovní účty —
+  přidat, upravit i smazat. Každá změna se nejdřív ukáže k odsouhlasení a provede se,
+  až uživatel potvrdí; při smazání výchozího účtu asistent sám určí nový výchozí
+  a řekne který. (PR #299, `eb52a97`)
+- **#291** — Release flow je teď třístupňový: `/release` nově staguje `develop` do
+  `TEST-ENV` (dřív mířil rovnou do `master`), nový příkaz `/release-prod` teprve
+  z `TEST-ENV` promuje do `master` a přesouvá karty do `Approved`. Vydání tak jde
+  nejdřív otestovat na testovacím prostředí, než se dostane k zákazníkům.
+  (PR #297, `11a3131`)
+- **#222** — AI asistent v chatu teď umí i práci s klienty: vypsat seznam s filtry
+  (vč. hledání „vystavitel" bez zvláštního tlačítka), zobrazit celý detail (adresy,
+  kontakty, bankovní účty, fakturační nastavení), upravit údaje nebo klienta smazat.
+  Úprava i smazání se nejdřív ukážou k odsouhlasení a provedou se, až uživatel potvrdí;
+  smazání je měkké (klient zmizí ze seznamů, staré faktury na něj dál odkazují) a klienta
+  s existující fakturou smazat nejde vůbec. Prázdný název firmy se odmítne a neúspěšné
+  načtení z ARESu se nahlásí jako neúspěch, ne jako tichý úspěch. (PR #298, `03a9159`)
+- **#292** — Testovací prostředí `TEST-ENV` má teď vlastní deploy i pro frontend: push do
+  větve `TEST-ENV` nasadí BlazorUI na Azure Static Web Apps (`fakvio-test-ui`), s vlastní
+  URL API backendu zapečenou do buildu (ne produkční), a s deep-linky, které na SWA
+  nevrací 404. Produkční deploy na GitHub Pages z `master` zůstal beze změny. Spolu
+  s #290 (Functions backend) umožňuje ověřit release proti testovacímu prostředí celý,
+  ne jen na backendu. (PR #302, `75d7556`)
+- **#290** — Testovací prostředí `TEST-ENV` má teď vlastní deploy pro Azure Functions
+  backend: push do větve `TEST-ENV` nasadí `Fakvio.Functions` do samostatné aplikace
+  `zcloudinvoicingapi-test` (Flex Consumption, deployment slot tu není podporovaný),
+  produkční deploy z `master` zůstal beze změny. Umožňuje ověřit release proti testovacímu
+  backendu dřív, než jde na produkci. (PR #300, `dfab4a7`)
+- **#138** — Health endpoint teď hlásí, jaký režim přihlášení k databázi (`authMode`,
+  `authModeSource`) skutečně používá — v obou hostech, API i Azure Functions, poprvé
+  stejně (API dosud žádný health endpoint nemělo). Umožňuje ověřit rollout přepínatelné
+  DB autentizace bez čtení connection stringu; secret se do odpovědi nikdy nedostane.
+  (PR #260, `17475ad`)
+- **#236** — Integrace (MCP server, budoucí externí nástroje) se teď mohou přihlásit
+  API klíčem místo běžného uživatelského přihlášení: klíč se pošle v hlavičce
+  `Authorization: ApiKey <klíč>` a nese vlastní scope (které akce smí), takže
+  nevyžaduje sdílené heslo ani plný přístup uživatele. Funguje shodně v API
+  hostu i v Azure Functions. (PR #275, `bd4ffb3`)
+- **#209** — Nový endpoint `GET /api/readiness` (i jako Azure Function) vrací, co ve
+  vystaviteli ještě chybí k vystavení faktury (sídlo, číselné řady, šablony) — základ pro
+  banner v UI (#215) a pro MCP/chat nástroje, které se teď mají o co opřít místo vlastní
+  logiky. (PR #266, `824aaec`)
+- **#228** — AI asistent v chatu teď umí nahlásit stav dashboardu (cashflow, neuhrazené a
+  po splatnosti částky, top klienti), vypsat vydané faktury a dobropisy s filtry podle
+  stavu, klienta, období nebo splatnosti a spočítat DPH report za zadané období — dřív
+  musel uživatel tyhle přehledy hledat v UI ručně. (PR #259, `c3c591f`)
+- **#212** — Zápisové nástroje AI chatu (zatím žádný neexistuje, ale #217/#218/#220/#222/
+  #224/#225/#227 na tomhle základu staví) budou mít jednotný potvrzovací mechanismus: bez
+  parametru `confirm: true` se zápis vůbec nespustí a model dostane jen náhled toho, co by
+  se stalo. Gate je centrální (`ChatToolExecutor`), takže funguje stejně napříč všemi
+  4 AI providery i textovým i nativním tool-calling flow — implementátor jednotlivého
+  nástroje ho nemusí řešit sám. DEVGUIDE §4.7 dostal i paritní tabulku chat ↔ MCP nástrojů,
+  aby bylo vidět, kolik nástrojů z MCP serveru chat ještě nepokrývá. (PR #258, `b91a94c`)
+- **#230** — AI asistent v chatu dosud odpovídal bez ponětí, kde uživatel zrovna je:
+  neznal dnešní datum, aktuální stránku ani otevřený doklad, a o nedokončeném nastavení
+  firmy (chybějící sídlo, číselné řady, šablony) nevěděl vůbec. Prompt teď dostává
+  poslední blok se situačním kontextem — datum, aktuální stránka, otevřený záznam a
+  seznam blokujících mezer v nastavení firmy s odkazem, kde je doplnit — takže asistent
+  může reagovat na to, co uživatel právě dělá, místo obecné odpovědi naslepo.
+  (PR #265, `640f7c6`)
+- **#206** — Vystavení faktury nebo dobropisu (ruční i hromadné, i automatické z
+  šablony) teď nejdřív ověří, že má vystavitel vyplněné povinné údaje (adresa, IČO,
+  bankovní účet, aktivní číselné řady). Když ne, vystavení se odmítne se srozumitelnou
+  chybou a seznamem chybějících položek — doklad zůstane rozpracovaný, nespotřebuje
+  číslo z řady a nic se neuloží napůl. Chybějící EPO nastavení vystavení neblokuje,
+  jen upozorní. (PR #267, `9ac56b6`)
+- **#235** — Základ pro strojový přístup do API bez lidského uživatelského účtu
+  (SysAdmin nástroje, budoucí Remote MCP). Přibyl `ApiKey` (v master schématu — autentizace
+  ho musí najít dřív, než zná tenanta): pojmenovaný klíč se scope read/read+write a
+  volitelnou expirací, raw hodnota se vrátí jen jednou, DB drží pouze SHA-256 hash
+  (vědomá odchylka od BCrypt — klíč je 32 B z CSPRNG, adaptivní hash by jen zbytečně
+  zatížil CPU), výpis ukazuje jen prefix. Klíč lze soft-revokovat. CRUD dostupný v obou
+  hostech (API controller i ručně psaný Functions wrapper). Zatím jen správa klíčů —
+  přihlašování pomocí nich přidají navazující tasky. (PR #256, `b9b8066`)
+- **#229** — AI chat asistent uměl v aplikaci navigovat jen na 6 natvrdo napsaných
+  stránek. Nyní zná všech 28 stránek dostupných běžnému uživateli i firemnímu
+  administrátorovi (např. přehled DPH, upomínky, číselné řady, uživatelé) včetně
+  detailu konkrétního klienta — přihlašovací a čistě sysadminovské stránky zůstávají
+  mimo dosah. Katalog cílů je odvozený přímo z routovací tabulky UI, takže nová
+  stránka bez navigačního cíle spadne na testu, dokud ji někdo nedoplní.
+  (PR #262, `c8edf27`)
+- **#161** — AI asistent byl v aplikaci prakticky neviditelný: tlačítko v AppBaru
+  splývalo s logem firmy, stav otevření se po refreshi nikdy nezapamatoval a nikde
+  jinde na chat nevedl odkaz. Na mobilu zabíral drawer napevno celou obrazovku a
+  chyběl mu CSS, takže vypadal rozbitě; markdown v odpovědích modelu (seznamy, tučné
+  písmo, tabulky) se zobrazoval jako syrový text místo naformátovaný. Nově má ikonu
+  robota na první pozici v AppBaru, položku v hlavním menu, pamatuje si otevření/zavření
+  per zařízení, je responzivní na mobilu a odpovědi renderuje jako markdown (bezpečně
+  sanitizovaný i proti odkazům typu `<javascript:…>`). Smazání konverzace teď vyžaduje
+  potvrzení. (PR #185, `64d4508`)
+- **#205** — Chybějící nastavení tenanta (adresa vystavitele, IČO, DIČ u plátce DPH,
+  bankovní účet, číselná řada dokladu…) se dosud řešilo náhodně a nekonzistentně —
+  jediný existující precedens byla EPO hlavička u DPH exportu. Nová
+  `ITenantReadinessService` na jednom místě odpoví, jestli tenant má dost nastavení
+  na fakturaci, s výčtem konkrétních chybějících položek a odkazem, kde je doplnit;
+  je to základ, na kterém teď staví gate ve vystavování faktur (#206), REST endpoint
+  (#209), chat/MCP nástroj (#211) a UI karta (#215). (PR #251, `6b978cf`)
+- **#234** — MCP server (`fakvio-mcp`, 36 nástrojů pro AI klienty typu Claude Code/Desktop)
+  neměl žádnou dokumentaci, takže napojení vlastního AI klienta vyžadovalo číst zdrojový
+  kód. Nový `Fakvio.McpServer/README.md` popisuje build, spuštění, získání JWT tokenu
+  a napojení klienta; `.mcp.json.sample` je copy-paste vzor konfigurace (reálný `.mcp.json`
+  nese token v plaintextu, verzuje se jen vzor). DEVGUIDE §4.9 opraveno z 21 na
+  aktuálních 36 nástrojů, USERGUIDE dostal novou kapitolu 20 pro koncového uživatele.
+  (PR #250, `4dd6d6a`)
+- **#232** — Šest AI/MCP nástrojů pro přijaté faktury (výpis, detail, založení, schválení,
+  označení uhrazeno, smazání) nemělo jediný test, takže regrese v chování AI asistenta
+  by prošla nepovšimnutá. Nově 21 mutačně ověřených testů; vedlejším zjištěním je
+  nekrytý `PaginationParams` — základní třída všech stránkovaných filtrů v repu —
+  který teď dostal vlastní 8 testů na clamping stránky/velikosti. (PR #248, `4f0d2a1`)
+- **#208** — Registrace firmy z ARES ukládala jen název a IČO/DIČ, sídlo se zahazovalo
+  a plátcovství DPH se nikdy nenastavilo, přestože ho ARES prozradí (DIČ přítomno).
+  Adresa z ARES se teď uloží do klienta a `IsVatPayer` se odvodí z přítomnosti DIČ;
+  registrační formulář se neměnil. (PR #249, `12b301c`)
+- **#140** — Přesun produkční databáze z Azure PostgreSQL (Entra ID) na vlastní
+  server dosud neměl žádný ověřený postup. Nový `SELFHOST-DB.md` runbook popisuje
+  celý přesun krok za krokem: pre-flight kontroly, cutover přes `pg_dump`/`pg_restore`,
+  ověření dat po schématech i migrace Data Protection key ringu, a rollback zpět na
+  Azure, kdyby přesun nevyšel. (PR #244, `e68281a`)
+- **#159** — Popis parametrů chat nástrojů pro AI asistenta byl natvrdo zadrátovaný `switch`
+  podle názvu nástroje; nástroj, na který se ve switchi zapomnělo, tiše dostal jediný
+  parametr `input` a nefungoval bez jakékoli chybové hlášky. Popis parametrů je teď
+  strukturované schéma na každém nástroji (typ, povinnost, povolené hodnoty) a switch
+  i tři ručně udržované kopie katalogu nástrojů (systémový prompt, definice pro model,
+  kontext chatu) zmizely — generují se z jednoho zdroje. Nástroj s vadným schématem
+  spadne hlasitě už při startu, ne tiše za běhu. Typy parametrů navíc přestaly být
+  jen `string` (čísla, booleany a pole se posílají jako svůj typ, ne jako escapovaný
+  text). Připravuje podklad pro nativní tool calling u OpenAI/Gemini (#160).
+  (PR #188, `4b6c3be`)
+- **#136** — `Fakvio.MigrationTool` a `DataIntegrityVerifier` mluvily s oběma databázemi přes
+  syrové connection stringy, takže je nešlo přepnout na Entra ID auth zavedené v #132. Nástroj
+  teď staví dva nezávislé data source factory (cíl i zdroj) a přebírá i přísnější sanitizaci
+  a izolaci `search_path` tenant schématu. Nástroj se nedeployuje, takže bez dopadu na provoz.
+  (PR #166, `1ce837d`)
+- **#146** — Systémový prompt AI asistenta byl napevno zadrátovaný v kódu. SysAdmin ho teď může
+  upravit (vlastní prompt i doplněk k výchozímu) přímo v UI se živým náhledem; změna se v chatu
+  projeví do 5 minut (cache). (PR #187, `824775d`)
+- **#46** — API pro položky faktury nově rozlišuje režim DPH (`EVatRegime`) a u přenesené daňové
+  povinnosti nese kód předmětu plnění (`ReverseChargeCodeId`), včetně čtecího nested DTO. Nový
+  endpoint `GET /api/reversechargecode` vrací číselník PDP kódů pro dropdown v editoru položek.
+  Připravuje podklad pro sekce A.1/B.1 kontrolního hlášení. (PR #96, `5921db5`)
+- **#178** — Výstupy source generátorů pod `Generated/` se přestaly verzovat. Každý build
+  je přepisoval a vyráběl fantomové diffy. (PR #182, `eff1f5b`)
+- **#137** — Čtyři testy připojení k databázi, které padaly v každém běhu, jsou nově za
+  bránou `FAKVIO_DB_SMOKE=1`. Lokální běh je poprvé zelený. (PR #168, `eedfeb9`)
+- **#135** — `dotnet ef` funguje proti Azure přes design-time factory. (PR #167, `b34e53f`)
+- **#133** — Composition root staví databázová spojení přes `INpgsqlDataSourceFactory`,
+  což je základ pro přepínání mezi Entra ID a heslem. (PR #143, `ad0cd1f`)
+- **#132** — `DatabaseOptions` + `INpgsqlDataSourceFactory`. (PR #142, `a88e6e4`)
