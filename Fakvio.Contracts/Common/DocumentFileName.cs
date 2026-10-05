@@ -193,18 +193,18 @@ public static class DocumentFileName
             var (key, dateFormat) = SplitToken(match.Groups[1].Value);
             return key.ToLowerInvariant() switch
             {
-            "documenttype" => DocumentTypeLabel(v.DocumentType, v.Language),
-            // Drafts have no number yet — the id keeps the name unique and identifiable.
-            "documentnumber" => string.IsNullOrWhiteSpace(v.DocumentNumber) ? v.InvoiceId.ToString() : v.DocumentNumber,
-            "variablesymbol" => v.VariableSymbol ?? "",
-            "issuedate" => FormatDate(v.IssueDate, dateFormat),
-            "taxdate" => FormatDate(v.TaxDate, dateFormat),
-            "duedate" => FormatDate(v.DueDate, dateFormat),
-            "year" => v.IssueDate?.ToString("yyyy") ?? "",
-            "month" => v.IssueDate?.ToString("MM") ?? "",
-            "clientname" => v.ClientName ?? "",
-            "issuername" => v.IssuerName ?? "",
-            _ => "" // unknown placeholder: dropped (rejected earlier at save time)
+                "documenttype" => DocumentTypeLabel(v.DocumentType, v.Language),
+                // Drafts have no number yet — the id keeps the name unique and identifiable.
+                "documentnumber" => string.IsNullOrWhiteSpace(v.DocumentNumber) ? v.InvoiceId.ToString() : v.DocumentNumber,
+                "variablesymbol" => v.VariableSymbol ?? "",
+                "issuedate" => FormatDate(v.IssueDate, dateFormat),
+                "taxdate" => FormatDate(v.TaxDate, dateFormat),
+                "duedate" => FormatDate(v.DueDate, dateFormat),
+                "year" => v.IssueDate?.ToString("yyyy") ?? "",
+                "month" => v.IssueDate?.ToString("MM") ?? "",
+                "clientname" => v.ClientName ?? "",
+                "issuername" => v.IssuerName ?? "",
+                _ => "" // unknown placeholder: dropped (rejected earlier at save time)
             };
         });
 
