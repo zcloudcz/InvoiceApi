@@ -600,10 +600,14 @@ názvy se pak rozjedou (původně byly v 7 místech 5 různých tvarů).
 
 - `Fakvio.Contracts/Common/DocumentFileName.cs` — čistý statický builder (v Contracts, ne v Application, protože ho
   sdílí i UI `FileNameFormatInput` pro živý náhled; stejný precedens jako `DueDateCalculator`).
-  `Build(format, DocumentFileNameValues, extension)`, `Validate(format)` (neznámé klíče), `ValidateFormats(...)`
+  `Build(format, DocumentFileNameValues, extension)`, `Validate(format)` (neznámé klíče / neplatné formáty), `ValidateFormats(...)`
   (zpráva pro 400), `ResolveFormat(client, issuer)`, `PlaceholderKeys`. Placeholdery `{{Key}}` (jako
-  `ContentTemplateService`): `DocumentType`, `DocumentNumber`, `VariableSymbol`, `IssueDate`, `Year`, `Month`,
-  `ClientName`, `IssuerName`. Přípona se přidává builderem, formát ji neobsahuje. Neznámý klíč se při `Build` zahodí,
+  `ContentTemplateService`): `DocumentType`, `DocumentNumber`, `VariableSymbol`, `IssueDate`, `TaxDate` (`Invoice.TaxableSupplyDate`), `DueDate`,
+  `Year`, `Month`, `ClientName`, `IssuerName`. Datumové placeholdery (`IssueDate`/`TaxDate`/`DueDate`) berou volitelný
+  formát za dvojtečkou, `{{IssueDate:yyyyMMdd}}`; povoleno jen `^[yMd._-]+$` (case-sensitive, `HH`/`:`/`/`/písmena se při
+  uložení odmítnou → 400, formát u nedatumového klíče také), `Build` s neplatným formátem nikdy nevyhodí a použije
+  `yyyy-MM-dd`. Jednopísmenný formát se předává jako `%d`, jinak ho .NET čte jako standardní (`d` = krátké datum).
+  Přípona se přidává builderem, formát ji neobsahuje. Neznámý klíč se při `Build` zahodí,
   při **uložení** nastavení se odmítne (`ClientController` create/update/billing-settings + `CompanyController` → 400).
   Sanitizace: `/ \ : * ? " < > |` a řídicí znaky → `_`, trim mezer/teček, max 150 znaků, prázdný výsledek → výchozí formát.
 - Data: `BillingSettings.{Invoice,CreditNote,Proforma,TaxReceipt}FileNameFormat` (nullable, max 200; Master i Tenant
