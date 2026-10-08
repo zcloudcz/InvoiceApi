@@ -34,6 +34,11 @@ public class SsrfSafeConnectTests
     [InlineData("fec0::1")]        // deprecated IPv6 site-local fec0::/10
     [InlineData("64:ff9b::1.1.1.1")] // well-known NAT64 prefix 64:ff9b::/96
     [InlineData("64:ff9b:1::1")]     // RFC 8215 local-use NAT64 prefix 64:ff9b:1::/48
+    [InlineData("::10.0.0.1")]       // IPv4-compatible IPv6
+    [InlineData("::8.8.8.8")]        // IPv4-compatible IPv6, even of a public v4
+    [InlineData("2002:0a00:0001::1")] // 6to4 embedding 10.0.0.1
+    [InlineData("2002:0808:0808::1")] // 6to4 2002::/16
+    [InlineData("2001:0:4136:e378:8000:63bf:3fff:fdd2")] // Teredo 2001::/32
     public void IsForbidden_BlocksPrivateAndSpecialUseAddresses(string ip)
     {
         SsrfSafeConnect.IsForbidden(IPAddress.Parse(ip)).ShouldBeTrue();
