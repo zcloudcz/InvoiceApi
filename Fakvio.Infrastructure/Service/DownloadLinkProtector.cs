@@ -11,9 +11,17 @@ namespace Fakvio.Infrastructure.Service;
 /// (see ServiceCollectionExtensions), so links survive restarts and work on every instance.
 ///
 /// The token is a bearer credential for tenant data, so our own code never writes it to a log. It does
-/// travel in the URL path, which is why the places that record request URLs redact it explicitly:
-/// <c>GlobalExceptionMiddleware</c> and <c>DownloadLinkTelemetryInitializer</c> (both via
-/// <c>DownloadLinkLogRedactor</c> in Fakvio.API). Anything new that logs a request path must do the same.
+/// travel in the URL path, and the framework records that path on its own. What is redacted where
+/// (all via <c>DownloadLinkLogRedactor</c> in Fakvio.API):
+/// - AppLog table: <c>GlobalExceptionMiddleware</c> redacts the path in its "Unhandled exception" message.
+///   Nothing else puts the path there: <c>DatabaseLogger</c> ignores logging scopes and drops everything
+///   below Warning from <c>Microsoft.AspNetCore</c> (the "Request starting ..." messages with the URL).
+/// - Application Insights: <c>DownloadLinkTelemetryInitializer</c> redacts every telemetry item - request
+///   URL and name, operation name, and on traces/exceptions the message plus all custom properties
+///   (the per-request logging scope puts the raw <c>RequestPath</c> there).
+/// Not covered: <c>Trace</c>-level MVC logging prints action arguments, i.e. the bare token without its
+/// path, so the <c>Microsoft.AspNetCore</c> log level must stay at <c>Warning</c> in production. Anything
+/// new that logs a request path must use the redactor too.
 /// </summary>
 public class DownloadLinkProtector : IDownloadLinkProtector
 {

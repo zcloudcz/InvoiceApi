@@ -298,6 +298,16 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// Download links are refused at runtime without an https public origin (see DownloadLinkController).
+// Say so once at startup, so a misconfigured deploy is visible before the first MCP export fails.
+if (!app.Environment.IsDevelopment()
+    && !Fakvio.API.Controller.DownloadLinkController.HasHttpsPublicBaseUrl(app.Configuration, out _))
+{
+    app.Logger.LogWarning(
+        "DownloadLinks:PublicBaseUrl is missing or is not an absolute https URL. " +
+        "MCP/AI export tools will fail with 500 until it is set to the public origin of this API (see ADMINGUIDE).");
+}
+
 // Webhook SSRF guard: loopback targets (http://localhost) are allowed in Development only.
 Fakvio.Infrastructure.Service.WebhookUrlGuard.AllowLoopback = app.Environment.IsDevelopment();
 

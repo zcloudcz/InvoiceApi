@@ -123,16 +123,33 @@ public class DownloadLinkController : ControllerBase
         if (request.Kind is EDownloadKind.InvoiceUbl or EDownloadKind.AccountingExport
             or EDownloadKind.VatEpoReturn or EDownloadKind.VatEpoControlStatement or EDownloadKind.VatEpoSummaryStatement)
         {
-            // The request is already tenant-scoped, so the request services are the right ones here.
-            var dryRun = await DispatchAsync(HttpContext.RequestServices, request, ct);
-            if (dryRun is not FileResult)
-                return (ActionResult)dryRun;
+            // The reused action logs as if it served a file ("EPO DPHDP3 downloaded", "UBL generated").
+            // Nothing is served here, so say so: one line for the AppLog table (DatabaseLogger ignores
+            // scopes) and a scope value that marks every line of the dry run in Application Insights
+            // (customDimensions.DownloadLinkDryRun).
+            _logger.LogInformation(
+                "Download link dry run: kind={Kind}. The export messages that follow in this request validate the export, no file is served.",
+                request.Kind);
+
+            IActionResult dryRun;
+            using (_logger.BeginScope(new Dictionary<string, object> { ["DownloadLinkDryRun"] = true }))
+            {
+                // The request is already tenant-scoped, so the request services are the right ones here.
+                dryRun = await DispatchAsync(HttpContext.RequestServices, request, ct);
+            }
 
             // The accounting export reports how many documents the target system cannot represent only
             // in this header (AccountingExportController.Export). Pass it on in the body, so the caller
             // knows the file behind the link is incomplete.
             if (int.TryParse(Response.Headers["X-Export-Skipped"], out var skipped))
                 skippedDocuments = skipped;
+
+            // Those headers describe the file, and this response is not the file: take them off again.
+            Response.Headers.Remove("X-Export-Exported");
+            Response.Headers.Remove("X-Export-Skipped");
+
+            if (dryRun is not FileResult)
+                return (ActionResult)dryRun;
         }
 
         var token = _protector.Protect(new DownloadTokenPayload(companyId, userId, request), out var expiresAt);
@@ -158,15 +175,24 @@ public class DownloadLinkController : ControllerBase
     /// </summary>
     private string? ResolvePublicBaseUrl()
     {
-        var configured = _configuration["DownloadLinks:PublicBaseUrl"]?.Trim().TrimEnd('/');
-
-        if (Uri.TryCreate(configured, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+        if (HasHttpsPublicBaseUrl(_configuration, out var configured))
             return configured;
 
         if (!_environment.IsDevelopment())
             return null;
 
         return string.IsNullOrEmpty(configured) ? $"{Request.Scheme}://{Request.Host}" : configured;
+    }
+
+    /// <summary>
+    /// True when <c>DownloadLinks:PublicBaseUrl</c> is an absolute https URL; <paramref name="configured"/> is
+    /// the trimmed value either way. Static so Program.cs can warn about a bad value at startup with the
+    /// very same rule, instead of the SysAdmin learning about it from the first failed export.
+    /// </summary>
+    public static bool HasHttpsPublicBaseUrl(IConfiguration configuration, out string? configured)
+    {
+        configured = configuration["DownloadLinks:PublicBaseUrl"]?.Trim().TrimEnd('/');
+        return Uri.TryCreate(configured, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps;
     }
 
     /// <summary>

@@ -831,6 +831,9 @@ fungovat. Je to záměr: za Azure front-endem vidí aplikace požadavek jako `ht
 `http://` odkaz a token by šel sítí nešifrovaně. V logu (`/logs`, úroveň Error) hledejte zprávu
 `Download link refused: DownloadLinks:PublicBaseUrl is missing or is not an absolute https URL`.
 Pouze v prostředí Development se při prázdné hodnotě použije adresa z požadavku (`http://localhost`).
+Na chybějící nebo neplatnou hodnotu upozorní aplikace i hned při startu (úroveň Warning, zpráva
+`DownloadLinks:PublicBaseUrl is missing or is not an absolute https URL`). Vlastní (self-hosted) instalace
+bez TLS proto exporty přes MCP používat nemůže: nejdřív je potřeba API zpřístupnit přes `https://`.
 
 **Logy.** Token se do logu nezapisuje: cesta `/api/download/<token>` se v aplikačním logu i v Application
 Insights nahrazuje `/api/download/[redacted]`. Loguje se druh souboru, ID, firma a uživatel. Odmítnuté

@@ -443,6 +443,9 @@ public class DownloadLinkEndpointTests : IClassFixture<FakvioFactory>
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await response.Content.ReadFromJsonAsync<DownloadLinkDto>())!.SkippedDocuments.ShouldBe(expectedSkipped);
+        // The count travels in the body; the dry run's file headers must not stay on this (JSON) response.
+        response.Headers.Contains("X-Export-Skipped").ShouldBeFalse();
+        response.Headers.Contains("X-Export-Exported").ShouldBeFalse();
     }
 
     // ── Other kinds end to end (each dispatch arm builds its controller by hand) ──
