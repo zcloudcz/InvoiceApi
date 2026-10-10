@@ -451,7 +451,7 @@ tokenu by jinak chybně vyvolalo detekci reuse.
 |---------|--------|-------------|----------|
 | `ApplicationDbContext` | (přechodný — postupně mizí) | Legacy single-tenant entity. Postupně se přesouvá do Master/Tenant. | Scoped |
 | `MasterDbContext` | `public` | `User`, `Company` (issuer registry), `CompanySystemSettings`, `SystemConfiguration`, `AppLog`, code tables (master copy: `VatRate`, `Currency`, `NumberSequenceFormat`, `ContentTemplate`). | Scoped |
-| `TenantDbContext` | `tenant_{companyId}` (dynamic) | `Client`, `Invoice`, `InvoiceItem`, `InvoiceTemplate`, `NumberSequence`, `Reminder`, `ReceivedInvoice`, `Notification`, `NotificationRecipient`, code tables (tenant kopie). | Scoped, **`Schema` set per-request** middlewarem. |
+| `TenantDbContext` | `tenant_{companyId}` (dynamic) | `Client`, `Invoice` (vydané i přijaté doklady, viz §5.6), `InvoiceItem`, `InvoiceTemplate`, `NumberSequence`, `Reminder`, `Notification`, `NotificationRecipient`, code tables (tenant kopie). | Scoped, **`Schema` set per-request** middlewarem. |
 
 **Klíčový trik**: `TenantModelCacheKeyFactory` (`Fakvio.Infrastructure/Data/TenantModelCacheKeyFactory.cs:24-48`). EF Core cachuje compiled model per `DbContext.Type` — bez tohoto factory by všechny tenanty sdílely jediný cached model s prvním viděným schématem. Cache key teď zahrnuje `Schema` → jeden compiled model per schéma, lazy.
 
@@ -493,7 +493,7 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 a **nedělá nic**. Není to optimalizace, ale oprava datové ztráty — krok 5 dělá
 `DELETE FROM "tenant_x"."VatRate"` + `ALTER SEQUENCE … RESTART WITH 1` (totéž pro `Currency`,
 `NumberSequenceFormat`, `ContentTemplate`), a na mazané řádky vedou FK z `Invoice.CurrencyId`,
-`ReceivedInvoice.CurrencyId`, `InvoiceItem.VatRateId`, `ReceivedInvoiceItem.VatRateId`,
+`InvoiceItem.VatRateId`,
 `Client.PreferredCurrencyId`. Volají to čtyři místa (`UserService.SetPasswordAsync`,
 `AuthService.VerifyEmail`, `CompanyController`, `AzureOperationController`), proto guard
 sedí ve službě, ne u volajících.
@@ -558,7 +558,7 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
 3. **ISDOC** (CZ standard pro elektronické faktury): `IIsdocExportService` → XML.
    `ExportInvoiceAsync` pro vydané faktury, `ExportReceivedInvoiceAsync` pro přijaté
    (supplier = dodavatel faktury, customer = tenant issuer `Client.IsIssuer = true`;
-   mapper `IsdocMapper.Map(ReceivedInvoice, Client?)` sdílí line/tax/payment buildery
+   mapper `IsdocMapper.Map(Invoice, Client?) (přijatý doklad = Invoice s DocumentType ReceivedInvoice)` sdílí line/tax/payment buildery
    s vydanými fakturami). Endpointy: `GET /api/invoice/{id}/isdoc`,
    `GET /api/invoice/bulk/isdoc?ids=`, `GET /api/received-invoice/{id}/isdoc`,
    `GET /api/received-invoice/bulk/isdoc?ids=` (bulk = ZIP `.isdoc` souborů,
@@ -2742,6 +2742,50 @@ Konfig `ExchangeRates:SyncEnabled=false` worker nezaregistruje (integrační tes
 - **AttachmentCount v grid DTO — anti-N+1 pattern**: počty příloh pro stránku
   gridu načítej JEDNÍM grouped dotazem nad ids stránky a doplň do DTO při
   mapování (viz `ReceivedInvoiceService.GetPagedAsync`). Nikdy ne per-row dotaz.
+
+### 5.6 Jedna tabulka pro všechny doklady (`Invoice`, rozlišení jen `EDocumentType`)
+
+Vydané doklady **i přijaté faktury** jsou řádky tabulky `Invoice` (položky v `InvoiceItem`); jediný rozlišovač je
+`Invoice.DocumentType`: `Invoice=1`, `CreditNote=2`, `Proforma=3`, `TaxReceiptForAdvance=4`, **`ReceivedInvoice=5`**.
+Žádný příznak směru. Entity `ReceivedInvoice` / `ReceivedInvoiceItem` neexistují (krok 1 ze 4 sjednocení; API, DTO,
+UI a MCP zatím zůstávají beze změny).
+
+| Přijatý doklad | v `Invoice` |
+|---|---|
+| dodavatel | `ClientId` |
+| naše firma | `IssuerId` = `Client` s `IsIssuer = true` (nejnižší Id) |
+| datum přijetí | `ReceivedDate` (nový sloupec, index) |
+| stav `EReceivedInvoiceStatus` | `EInvoiceStatus`: Received→Draft, Approved→Completed (částečně uhrazený = `PartiallyPaid`), Paid→Paid, Deleted→Deleted. **Rejected zrušen** (reject = soft delete). Číslo `4` se nikdy nekopíruje (u vydaných = Creditnoted) |
+| uhrazeno | `PaidAmount` (udržuje `ReceivedInvoiceService.MarkAsPaidAsync` a `PaymentMatchingService`) |
+
+- `EReceivedInvoiceStatus` zůstává jen jako DTO/contract enum; `ReceivedInvoiceService` je **fasáda** nad tabulkou
+  `Invoice` (stejné rozhraní, validační hlášky a povolené přechody). Mapování stavů: `ReceivedInvoiceService.ToLegacy`.
+- `PaymentMatch.InvoiceId` je povinné a míří na vydaný i přijatý doklad (sloupec `ReceivedInvoiceId` a CHECK
+  `CK_PaymentMatch_Target` zmizely); `InboundInvoiceEmail.InvoiceId` totéž. DTO (`ConfirmAutoMatchRequest`,
+  `TransactionAutoMatchProposalDto`, `InboundInvoiceEmailDto`) mají tvar beze změny a plní se podle `DocumentType`.
+- `FileAttachment`, `Notification`, `Alert` drží dál řetězec `'ReceivedInvoice'` (UI podle něj routuje), mění se jen id.
+- Unikátní index `IX_Invoice_DocumentNumber` se na přijaté doklady **nevztahuje** (`AND "DocumentType" <> 5`):
+  číslo dodavatele se u různých dodavatelů opakuje a může se rovnat našemu.
+
+**POVINNÉ pravidlo pro každý dotaz na `Invoice` DbSet:** zvol stranu helperem z
+`Fakvio.Application/Common/Extensions/InvoiceQueryExtensions.cs` — `.IssuedOnly()` (vše kromě přijatých) nebo
+`.ReceivedOnly()`. Zapomenutý helper = upomínky posílané dodavatelům, přijaté faktury v tržbách / DPH na výstupu,
+kolize s číselnou řadou. Hlídá to `InvoiceDbSetUsageGuardTests` (source-scan; allowlist = dva `Add(...)` nových řádků).
+Guard nevidí navigační vlastnosti (`match.Invoice`, `x.Invoice` v `InvoiceItem`/`PaymentMatch` dotazech) — tam filtruj
+`DocumentType` ručně (viz `BankTransactionQueryService`, `VatReportService`). Izolace podle id: vydaná operace s id
+přijatého dokladu = „not found" a naopak (`DocumentSideIsolationTests`).
+
+**Migrace `UnifyDocumentsInInvoiceTable`** (tenant, `Fakvio.Infrastructure/Migrations/Tenant`): ručně psané SQL
+(`UnifyDocumentsInInvoiceTableSql`) — nové id = souvislý blok z identity sekvence `Invoice` v pořadí starých id,
+uvnitř jedna transakce (EF obalí každou migraci) a self-check (`DO $$ … RAISE EXCEPTION`) porovná počty, součty,
+stavy a přemapované odkazy; při rozdílu se tenant vrátí do původního stavu. `Down()` není podporováno (restore ze zálohy).
+Staré tabulky **nejsou smazány**: `ReceivedInvoice_legacy`, `ReceivedInvoiceItem_legacy` (bez FK) a mapa
+`ReceivedInvoiceIdMap_legacy("OldId","NewId")`. **Smazat je až v pozdějším releasu**, kdy se ověří, že se nikdo nevrací
+k původním id (migrace `DROP TABLE` na tyto tři tabulky + `IF EXISTS`). Zlatý standard pro ověření „žádná změna chování":
+`GoldenMasterSnapshotTests` (`FAKVIO_GM=1`, `FAKVIO_GM_CONN`, `FAKVIO_GM_OUT`) porovná snapshoty služeb před/po na kopii produkce.
+
+Selhání migrace při lazy migraci (první request tenanta, `TenantDbContextFactory.EnsureMigratedAsync`): výjimka se
+propaguje a `TenantContextMiddleware` vrací HTTP 503 — požadavek **nepokračuje** na starém schématu.
 
 ---
 

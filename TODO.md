@@ -1,5 +1,13 @@
 # Fakvio TODO
 
+## One table for all documents - step 1 of 4: persistence (branch `feature/unify-documents-db`, issue #526)
+
+- [x] `EDocumentType.ReceivedInvoice = 5`, `Invoice.ReceivedDate`, entities `ReceivedInvoice`/`ReceivedInvoiceItem` removed; `PaymentMatch.InvoiceId` required, `InboundInvoiceEmail.InvoiceId` only.
+- [x] Tenant migration `UnifyDocumentsInInvoiceTable` (data move + in-transaction self-check, legacy tables parked); real-PostgreSQL tests incl. rollback.
+- [x] `IssuedOnly()` / `ReceivedOnly()` at every `Invoice` DbSet query + `InvoiceDbSetUsageGuardTests`; by-id isolation tests.
+- [x] `ReceivedInvoiceService` = facade over `Invoice` (Reject now soft-deletes); golden master on a production copy identical.
+- [ ] Later steps: unify API/DTO/UI/MCP (2-4); drop `*_legacy` tables in a later release.
+
 ## Send by e-mail: editable whole body (branch `feature/send-email-editable-body`)
 
 - [x] `InvoiceEmailDefaultsDto.DefaultHtmlBody` (one render with the subject); `SendInvoiceEmailDto/Options.HtmlBody` replaces the template body (Message ignored), placeholders filled in overrides.

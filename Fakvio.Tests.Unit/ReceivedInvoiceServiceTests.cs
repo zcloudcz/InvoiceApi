@@ -352,6 +352,51 @@ public class ReceivedInvoiceServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_StoresAnInvoiceRow_OfTypeReceivedInvoice_WithOurCompanyAsIssuer()
+    {
+        var id = await CreateInvoiceInDb();
+
+        var row = await _context.Invoice.AsNoTracking().SingleAsync(i => i.Id == id);
+        row.DocumentType.ShouldBe(EDocumentType.ReceivedInvoice);
+        row.Status.ShouldBe(EInvoiceStatus.Draft);   // legacy "Received"
+        row.ClientId.ShouldBe(1);                    // the supplier
+        row.IssuerId.ShouldBe(99);                   // our own company (IsIssuer client)
+        row.ReceivedDate.ShouldNotBeNull();
+        row.PaidAmount.ShouldBe(0m);
+        (await _context.InvoiceItem.CountAsync(i => i.InvoiceId == id)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Lifecycle_StoresUnifiedStatuses_AndKeepsPaidAmountInStep()
+    {
+        var id = await CreateInvoiceInDb();
+
+        await _service.ApproveAsync(id);
+        (await _context.Invoice.AsNoTracking().SingleAsync(i => i.Id == id)).Status.ShouldBe(EInvoiceStatus.Completed);
+
+        await _service.MarkAsPaidAsync(id);
+        var paid = await _context.Invoice.AsNoTracking().SingleAsync(i => i.Id == id);
+        paid.Status.ShouldBe(EInvoiceStatus.Paid);
+        paid.PaidAmount.ShouldBe(paid.TotalWithVat);
+        paid.PaidAt.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task PartiallyPaid_IsReportedAsApproved_AndStillEditableAndPayable()
+    {
+        var id = await CreateInvoiceInDb();
+        await _service.ApproveAsync(id);
+        var row = await _context.Invoice.SingleAsync(i => i.Id == id);
+        row.Status = EInvoiceStatus.PartiallyPaid; // a payment was matched, the rest is open
+        row.PaidAmount = 10m;
+        await _context.SaveChangesAsync();
+
+        (await _service.GetByIdAsync(id))!.Status.ShouldBe(EReceivedInvoiceStatus.Approved);
+        (await _service.GetAllAsync(EReceivedInvoiceStatus.Approved)).Select(r => r.Id).ShouldContain(id);
+        (await _service.MarkAsPaidAsync(id))!.Status.ShouldBe(EReceivedInvoiceStatus.Paid);
+    }
+
+    [Fact]
     public async Task DeleteAsync_ApprovedInvoice_ThrowsInvalidOperation()
     {
         var id = await CreateInvoiceInDb();

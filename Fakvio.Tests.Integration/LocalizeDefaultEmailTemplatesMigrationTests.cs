@@ -176,7 +176,11 @@ public class LocalizeDefaultEmailTemplatesMigrationTests
     {
         await RunAsync(isTenant, async env =>
         {
-            await env.MigrateToLatestAsync();
+            // Tenant: stop at THIS migration - the later UnifyDocumentsInInvoiceTable migration cannot be reverted by design.
+            if (isTenant)
+                await env.MigrateAsync("20261005184918_LocalizeDefaultEmailTemplates");
+            else
+                await env.MigrateToLatestAsync();
 
             // After the upgrade the user edits the Czech reminder and the English credit-note e-mail.
             await env.ExecAsync($"UPDATE {env.Table} SET \"Subject\" = 'Vlastní upomínka' WHERE \"TemplateType\" = 21 AND \"Language\" = 'cs'");

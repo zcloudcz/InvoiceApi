@@ -549,6 +549,24 @@ public class ReminderServiceTests : IDisposable
     }
 
     /// <summary>
+    /// A RECEIVED (supplier) invoice lives in the same table and can be "Completed and overdue" too -
+    /// it must never get a payment reminder (we would be dunning our own supplier).
+    /// </summary>
+    [Fact]
+    public async Task ProcessOverdueInvoicesAsync_OverdueReceivedInvoice_IsIgnored()
+    {
+        var received = CreateOverdueInvoice();
+        received.DocumentType = EDocumentType.ReceivedInvoice;
+        _context.Invoice.Add(received);
+        await _context.SaveChangesAsync();
+
+        var created = await _service.ProcessOverdueInvoicesAsync();
+
+        created.ShouldBe(0);
+        (await _context.Reminder.CountAsync()).ShouldBe(0);
+    }
+
+    /// <summary>
     /// ProcessOverdueInvoicesAsync should skip invoices when the effective settings
     /// have IsEnabled=false.
     /// </summary>
