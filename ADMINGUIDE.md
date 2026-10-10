@@ -808,6 +808,42 @@ Limit je společný pro všechny anonymní endpointy dohromady (jedna IP, jedno 
 je potřeba jemnější granularita (např. samostatný limit pro 2FA), rozdělit politiku
 `auth-anon` na víc pojmenovaných politik v `Program.cs`.
 
+### Odkazy ke stažení pro AI klienty (DownloadLinks)
+
+AI klient (MCP) nedostává soubory (PDF, ISDOC, UBL, účetní a EPO exporty, přílohy, ZIP) jako data, ale
+jako **krátce platný podepsaný odkaz** `https://<api>/api/download/<token>`. Odkaz funguje **bez
+přihlášení**: kdo ho má, soubor stáhne. Proto platí jen pár minut, jen pro jednu firmu a jeden konkrétní
+soubor a při každém stažení se znovu ověří, že uživatel, který si ho vyžádal, je stále aktivní a stále
+patří do dané firmy (jinak 404).
+
+| Klíč | Výchozí | Popis |
+|------|---------|-------|
+| `DownloadLinks:PublicBaseUrl` | *(prázdné)* | Veřejná adresa API, na které se odkaz sestaví, např. `https://api.fakvio.cz`. **Mimo Development povinné a musí být `https://`.** |
+| `DownloadLinks:LifetimeMinutes` | `10` | Platnost odkazu v minutách. Hodnota se ořízne do rozsahu **1 až 60**. |
+| `RateLimiting:DownloadLink:PermitLimit` | `30` | Kolik stažení smí jedna IP adresa provést za okno. |
+| `RateLimiting:DownloadLink:WindowSeconds` | `60` | Délka okna ve vteřinách (fixed window, vlastní politika `download-link`). |
+
+V Azure App Service se klíče zadávají s dvojitým podtržítkem, např. `DownloadLinks__PublicBaseUrl`.
+
+**Bez platného `PublicBaseUrl` se odkazy nevydávají.** Když hodnota chybí, není absolutní URL nebo
+nezačíná `https://`, `POST /api/download-links` odpoví **500** a AI nástroje pro export přestanou
+fungovat. Je to záměr: za Azure front-endem vidí aplikace požadavek jako `http`, takže by jinak vydala
+`http://` odkaz a token by šel sítí nešifrovaně. V logu (`/logs`, úroveň Error) hledejte zprávu
+`Download link refused: DownloadLinks:PublicBaseUrl is missing or is not an absolute https URL`.
+Pouze v prostředí Development se při prázdné hodnotě použije adresa z požadavku (`http://localhost`).
+Na chybějící nebo neplatnou hodnotu upozorní aplikace i hned při startu (úroveň Warning, zpráva
+`DownloadLinks:PublicBaseUrl is missing or is not an absolute https URL`). Vlastní (self-hosted) instalace
+bez TLS proto exporty přes MCP používat nemůže: nejdřív je potřeba API zpřístupnit přes `https://`.
+
+**Logy.** Token se do logu nezapisuje: cesta `/api/download/<token>` se v aplikačním logu i v Application
+Insights nahrazuje `/api/download/[redacted]`. Loguje se druh souboru, ID, firma a uživatel. Odmítnuté
+stažení kvůli deaktivovanému uživateli nebo zrušenému členství je v logu jako Warning
+`Download link refused: user ... is no longer active in company ...`.
+
+**Read-only API klíče** odkazy vydávat smějí (je to čtení, nic se neukládá).
+
+Po překročení limitu stažení server odpoví **429** s hlavičkou `Retry-After`.
+
 ### OAuth (Social login)
 
 Dostupní poskytovatelé: Google, Microsoft, Facebook, Seznam.cz

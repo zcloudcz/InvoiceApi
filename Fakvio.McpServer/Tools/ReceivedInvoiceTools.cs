@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
@@ -220,6 +221,64 @@ public static class ReceivedInvoiceTools
         {
             await api.DeleteReceivedInvoiceAsync(id, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Received invoice {id} deleted." }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Exports a received invoice as ISDOC 6.0.2 XML, returned as a short-lived download link.
+    /// </summary>
+    [McpServerTool(Title = "Export received invoice as ISDOC", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Export a received (incoming) invoice as ISDOC 6.0.2 XML for import into accounting software. " +
+        "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation.")]
+    public static async Task<string> ExportReceivedInvoiceIsdoc(
+        IFakvioApiClient api,
+        [Description("The received invoice ID")] long id,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var link = await api.CreateDownloadLinkAsync(
+                new CreateDownloadLinkDto { Kind = EDownloadKind.ReceivedInvoiceIsdoc, Id = id }, ct);
+            return DownloadLinkResult.ToJson(link, "application/xml");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// All stored attachments of several received invoices as one ZIP, returned as a download link.
+    /// </summary>
+    [McpServerTool(Title = "Download received invoices attachments as ZIP", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Download the stored attachments (e.g. supplier PDFs) of several received invoices (max 100) as ONE ZIP, one folder per invoice. " +
+        "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
+        "Invoices without attachments are skipped; the link fails when none of them has any.")]
+    public static async Task<string> DownloadReceivedInvoicesAttachments(
+        IFakvioApiClient api,
+        [Description("Received invoice IDs (1-100)")] long[] ids,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            if (ids is null || ids.Length == 0)
+                return JsonSerializer.Serialize(new { error = "Provide at least one received invoice ID." }, JsonOptions);
+
+            var link = await api.CreateDownloadLinkAsync(
+                new CreateDownloadLinkDto { Kind = EDownloadKind.ReceivedInvoiceBulkAttachments, Ids = ids.ToList() }, ct);
+            return DownloadLinkResult.ToJson(link, "application/zip");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
