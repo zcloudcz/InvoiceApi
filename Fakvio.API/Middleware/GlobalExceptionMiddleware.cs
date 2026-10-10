@@ -19,6 +19,7 @@
 
 using System.Net;
 using System.Text.Json;
+using Fakvio.API.Telemetry;
 
 namespace Fakvio.API.Middleware;
 
@@ -63,7 +64,8 @@ public class GlobalExceptionMiddleware
                 "Unhandled exception [{CorrelationId}] {Method} {Path}: {ErrorType}: {ErrorMessage}",
                 correlationId,
                 context.Request.Method,
-                context.Request.Path,
+                // Not the raw path: /api/download/{token} carries a bearer credential in it.
+                DownloadLinkLogRedactor.RedactPath(context.Request.Path),
                 ex.GetType().Name,
                 ex.Message);
 
