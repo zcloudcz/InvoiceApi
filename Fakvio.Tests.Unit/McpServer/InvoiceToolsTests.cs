@@ -3,6 +3,7 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Dashboard;
+using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
@@ -672,28 +673,71 @@ public class InvoiceToolsTests
     // ── ExportInvoicePdf tests ──────────────────────────────────────────
 
     [Fact]
-    public async Task ExportInvoicePdf_ReturnsBase64Content()
+    public async Task ExportInvoicePdf_ReturnsDownloadLink_NotBase64()
     {
-        // Arrange — invoice exists and PDF bytes are returned
+        // Arrange - invoice exists; the API mints a signed link
         var invoice = new InvoiceDto
         {
             Id = 42, DocumentNumber = "FV-2024-0001",
             DocumentType = EDocumentType.Invoice
         };
         _api.GetInvoiceByIdAsync(42, Arg.Any<CancellationToken>()).Returns(invoice);
-        _api.ExportInvoicePdfAsync(42, Arg.Any<CancellationToken>())
-            .Returns(new ExportedFile(new byte[] { 0x25, 0x50, 0x44, 0x46 }, "Invoice_FV-2024-0001.pdf")); // %PDF header
+        _api.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
+            .Returns(new DownloadLinkDto { Url = "https://api.example/api/download/tok", ExpiresAt = new DateTime(2026, 10, 10, 12, 0, 0, DateTimeKind.Utc) });
 
         // Act
         var json = await InvoiceTools.ExportInvoicePdf(_api, 42);
 
-        // Assert — should contain base64 content and correct file name
+        // Assert - link and expiry instead of file bytes
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().ShouldBeTrue();
-        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("Invoice_FV-2024-0001.pdf");
         doc.RootElement.GetProperty("mimeType").GetString().ShouldBe("application/pdf");
-        doc.RootElement.GetProperty("base64Content").GetString().ShouldNotBeNullOrEmpty();
-        doc.RootElement.GetProperty("sizeBytes").GetInt32().ShouldBe(4);
+        doc.RootElement.GetProperty("downloadUrl").GetString().ShouldBe("https://api.example/api/download/tok");
+        doc.RootElement.GetProperty("expiresAt").GetDateTime().ShouldBe(new DateTime(2026, 10, 10, 12, 0, 0, DateTimeKind.Utc));
+        doc.RootElement.TryGetProperty("base64Content", out _).ShouldBeFalse();
+        await _api.Received(1).CreateDownloadLinkAsync(
+            Arg.Is<CreateDownloadLinkDto>(r => r.Kind == EDownloadKind.InvoicePdf && r.Id == 42),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ExportInvoicesZip_PassesIdsAndFormatKind()
+    {
+        _api.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
+            .Returns(new DownloadLinkDto { Url = "https://api.example/api/download/zip", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
+
+        var json = await InvoiceTools.ExportInvoicesZip(_api, [1, 2, 3], "isdoc");
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("mimeType").GetString().ShouldBe("application/zip");
+        await _api.Received(1).CreateDownloadLinkAsync(
+            Arg.Is<CreateDownloadLinkDto>(r => r.Kind == EDownloadKind.InvoiceBulkIsdoc && r.Ids!.SequenceEqual(new long[] { 1, 2, 3 })),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ExportInvoicesZip_UnknownFormat_ReturnsErrorWithoutCallingApi()
+    {
+        var json = await InvoiceTools.ExportInvoicesZip(_api, [1], "docx");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("docx");
+        await _api.DidNotReceiveWithAnyArgs().CreateDownloadLinkAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task ExportAccounting_ReturnsDownloadLinkWithFileName()
+    {
+        _api.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
+            .Returns(new DownloadLinkDto { Url = "https://api.example/api/download/acc", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
+
+        var json = await InvoiceTools.ExportAccounting(_api, "Pohoda", "2026-03-01", "2026-03-31");
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("Pohoda_20260301-20260331.xml");
+        doc.RootElement.TryGetProperty("base64Content", out _).ShouldBeFalse();
+        await _api.Received(1).CreateDownloadLinkAsync(
+            Arg.Is<CreateDownloadLinkDto>(r => r.Kind == EDownloadKind.AccountingExport && r.AccountingSystem == EAccountingSystem.Pohoda),
+            Arg.Any<CancellationToken>());
     }
 
 

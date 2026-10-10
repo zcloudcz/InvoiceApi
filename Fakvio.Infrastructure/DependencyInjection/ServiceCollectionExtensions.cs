@@ -137,6 +137,12 @@ public static class ServiceCollectionExtensions
         // IDataProtector is thread-safe and the purpose string never changes.
         services.AddSingleton<ICredentialProtector, CredentialProtector>();
 
+        // Signed download links (MCP/AI clients get a URL instead of base64 file content). Singleton like the
+        // other protectors; lifetime comes from "DownloadLinks:LifetimeMinutes" (default 10 minutes).
+        services.AddSingleton<IDownloadLinkProtector>(sp => new DownloadLinkProtector(
+            sp.GetRequiredService<IDataProtectionProvider>(),
+            TimeSpan.FromMinutes(configuration.GetValue("DownloadLinks:LifetimeMinutes", 10d))));
+
         // ── Application Services (with automatic logging proxy) ──────────────
         // AddScopedWithLogging wraps each service in LoggingProxy which automatically
         // logs ENTER/EXIT/FAILED with elapsed time for every method call.

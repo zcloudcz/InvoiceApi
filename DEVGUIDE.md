@@ -245,6 +245,34 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 **Pravidlo**: NIKDY neodstraňuj `PersistKeysToDbContext` ani neměň `ApplicationName`. Pokud musíš změnit ApplicationName, je to ekvivalent ztráty všech zašifrovaných dat — plánuj migrační okno.
 
+### 2.7a Signed download links (MCP/AI exporty bez base64)
+
+MCP exportní tooly **nevrací bajty souboru**. AI klient z base64 textu nevyrobí soubor a 100 kB PDF by spálilo ~130 k znaků kontextu. Místo toho tool vrátí `downloadUrl` + `expiresAt` a model dá odkaz uživateli.
+
+| Krok | Kde |
+|------|-----|
+| `POST /api/download-links` (`[Authorize]`, tenant middleware jako všude) — validuje whitelisted `EDownloadKind` + parametry, vrátí `{ url, expiresAt }` | `DownloadLinkController.CreateLink` |
+| `GET /api/download/{token}` (`[AllowAnonymous]`) — token je credential; sestaví tenant kontext z tokenu a spustí **tutéž controller akci**, kterou používá autorizovaný endpoint | `DownloadLinkController.Download` / `DispatchAsync` |
+| Token: `ITimeLimitedDataProtector`, purpose `Fakvio.DownloadLink.v1`, payload = `CompanyId`, `UserId`, kind + parametry | `DownloadLinkProtector` (Infrastructure), `IDownloadLinkProtector` (Application) |
+| Closed enum všech povolených souborů (žádná cesta ani URL od klienta) | `EDownloadKind` (Domain) |
+| MCP: `IFakvioApiClient.CreateDownloadLinkAsync` + společný tvar odpovědi | `Fakvio.McpServer/Tools/DownloadLinkResult.cs` |
+
+**Konfigurace** (`appsettings.json`, sekce `DownloadLinks`): `LifetimeMinutes` (výchozí 10) a `PublicBaseUrl` (externí origin API; prázdné = z requestu — za TLS-terminujícím proxy to může být `http`, v produkci proto nastav).
+
+**Klíče**: stejný key ring jako §2.7 (PostgreSQL, `SetApplicationName("Fakvio")`), takže odkazy přežijí restart a fungují na všech instancích. Purpose string změň jen vědomě — zneplatní všechny rozdané odkazy (žijí 10 minut, takže to nevadí).
+
+**Tenant na anonymním endpointu**: žádná druhá cesta rozlišení tenantu. Download vytvoří scope přes `TenantScope.CreateTenantScopeAsync(companyId)` (stejný mechanismus jako workery) a requestu nastaví `HttpContext.User` s claimy `CompanyId`/`UserId`, které by měl JWT daného uživatele — služby čtoucí `ITenantResolver` tak fungují beze změny. Token vystavený pro tenanta A proto nikdy nepřečte data tenanta B: ID z cizího tenanta v schématu A prostě neexistuje (404).
+
+**Bezpečnostní pravidla** (anonymní endpoint nad produkčními daty):
+- token se **nikdy nelogguje** (loguje se kind, ids, company, user);
+- `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Disposition: attachment` (z `File(...)` v akci);
+- prošlý / pozměněný / cizí-purpose / neexistující tenant = holé **404** bez detailu;
+- parametry se validují při vystavení **i** při použití (`DownloadLinkController.Validate`).
+
+**Nový soubor ke stažení** = nová hodnota `EDownloadKind` (nikdy nepřečíslovat — číslo je v tokenech) + větev ve `Validate` a `DispatchAsync` (volá existující controller akci, export logiku nekopíruj) + test.
+
+**Známé důsledky**: chyba exportu (např. UBL `TENANT_NOT_READY`, EPO `EPO_HEADER_INCOMPLETE`) se projeví až při otevření odkazu (JSON 400 z původní akce), ne v odpovědi MCP toolu. Počet přeskočených dokladů z účetního exportu (`X-Export-Skipped`) MCP tool už nevidí.
+
 ### 2.8 reCAPTCHA gate (issue #200)
 
 `CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) chrání čtyři anonymní endpointy — `/api/auth/login`, `/api/auth/register`, ARES proxy `/api/auth/ares/{ico}` a od RC.3 i `/api/user/forgot-password`. Od RC.4 je nad ním ještě per-IP rate limiting (`AddRateLimiter`, politika `auth-anon`, viz §11.3 a ADMINGUIDE §9) — nezávislá druhá vrstva, funguje i když je reCAPTCHA vypnutá.
@@ -1661,7 +1689,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 55 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 82 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 88 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1774,8 +1802,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 82 MCP toolů, 55 chat toolů. Chat pokrývá 49 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 33 mezer: e-mailové volby faktury (1 — `GetInvoiceEmailOptions`), EPO export DPH (1 — `ExportVatEpo`, zatím bez tasku), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
+**Součty:** 88 MCP toolů, 55 chat toolů. Chat pokrývá 49 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 39 mezer: přílohy a hromadné ZIP exporty přes download linky (6 — `AttachmentTools` ×3, `ExportInvoicesZip`, `ExportReceivedInvoiceIsdoc`, `DownloadReceivedInvoicesAttachments`, §2.7a), e-mailové volby faktury (1 — `GetInvoiceEmailOptions`), EPO export DPH (1 — `ExportVatEpo`, zatím bez tasku), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (3 — `ListCurrencies`, `GetExchangeRate`, `ListReverseChargeCodes`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export do účetnictví (1 — `ExportAccounting`, §4.15), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
@@ -1862,7 +1890,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **82 tools** (invoice edit: `update_invoice` upravuje jen **Draft** (`items` nahradí všechny řádky); u vystavené (Completed) faktury nic nezmění a vrátí `{"status":"requires_revert_to_draft"}` — model se musí výslovně zeptat uživatele a teprve potom zavolat `revert_invoice_to_draft` (Destructive) a `update_invoice` znovu; Paid/Creditnoted vrací chybu s odkazem na dobropis; bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` / `update_invoice` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 19 invoice + 7 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 2 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **88 tools** (file downloads: každý exportní tool vrací `downloadUrl` + `expiresAt` místo base64, viz §2.7a; invoice edit: `update_invoice` upravuje jen **Draft** (`items` nahradí všechny řádky); u vystavené (Completed) faktury nic nezmění a vrátí `{"status":"requires_revert_to_draft"}` — model se musí výslovně zeptat uživatele a teprve potom zavolat `revert_invoice_to_draft` (Destructive) a `update_invoice` znovu; Paid/Creditnoted vrací chybu s odkazem na dobropis; bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` / `update_invoice` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 20 invoice + 7 client + 9 received invoice + 3 attachment + 6 reporting + 5 tax + 3 template + 1 readiness + 2 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -2481,8 +2509,8 @@ Jeden XML soubor se **vydanými i přijatými** doklady za období, ve formátu 
   `AbraFlexiAccountingExporter`, společné helpery v `AccountingExportCommon`). Nový systém = nová
   hodnota enumu + nový exporter registrovaný v DI.
 - **UI:** `AccountingExportDialog.razor` otevřený tlačítkem „Export do účetnictví" na `Invoices.razor`
-  a `ReceivedInvoices.razor` (klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (base64 XML jako
-  `ExportInvoiceIsdoc`).
+  a `ReceivedInvoices.razor` (klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (vrací odkaz ke stažení
+  jako `ExportInvoiceIsdoc`, §2.7a).
 - **Mapování:** číslo dokladu, VS, data (vystavení / DUZP / splatnost), partner (IČO, DIČ, adresa),
   způsob úhrady (jen Pohoda), položky (popis, množství, MJ, cena, sazba DPH), rozpad DPH. Dobropis má ve Fakvio
   záporné položky: **Pohoda** je dostane beze změny (`issuedCreditNotice`), **Money S3** (`Dobropis=1`) a
@@ -3728,6 +3756,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Změna release flow / promotion větví (`/release`, `/release-prod`) | §9.6 |
 | Změna tvaru konfigurace DB autentizace nebo obsahu health endpointu | §9.5 |
 | Změna Data Protection persistence / ApplicationName | §2.7 |
+| Nový soubor ke stažení přes MCP / `EDownloadKind` / purpose nebo TTL download linků | §2.7a |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
 | Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
 | Nové readiness pravidlo / nový readiness kód / nový readiness gate | §4.12 (tabulka pravidel + tabulka zapojení!) |

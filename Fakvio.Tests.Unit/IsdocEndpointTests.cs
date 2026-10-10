@@ -1,6 +1,7 @@
 using Fakvio.Contracts.Common;
 using Fakvio.API.Controller;
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
@@ -141,31 +142,32 @@ public class IsdocEndpointTests
     // ── MCP tool tests ────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ExportInvoiceIsdoc_ReturnsBase64EncodedXml()
+    public async Task ExportInvoiceIsdoc_ReturnsDownloadLink_NotFileContent()
     {
-        // Arrange — mock API client returning known ISDOC bytes
+        // Arrange - the tool must ask the API for a signed link instead of downloading the bytes
         var apiClient = Substitute.For<IFakvioApiClient>();
         var invoiceId = 5L;
-        var xmlString = "<?xml version=\"1.0\"?><ISDOC>invoice data</ISDOC>";
-        var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xmlString);
+        var expires = DateTime.UtcNow.AddMinutes(10);
 
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(MakeInvoiceDto(invoiceId, "INV2026005"));
-        apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new ExportedFile(xmlBytes, "Invoice_INV2026005.isdoc"));
+        apiClient.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
+            .Returns(new DownloadLinkDto { Url = "https://api.example/api/download/tok", ExpiresAt = expires });
 
         // Act
         var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
 
-        // Assert — the MCP tool should return a JSON object with base64-encoded content
+        // Assert
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().ShouldBeTrue();
         doc.RootElement.GetProperty("mimeType").GetString().ShouldBe("application/xml");
-        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("Invoice_INV2026005.isdoc");
-
-        // Base64 decode must round-trip to the original bytes
-        var base64 = doc.RootElement.GetProperty("base64Content").GetString()!;
-        Convert.FromBase64String(base64).ShouldBe(xmlBytes);
+        doc.RootElement.GetProperty("downloadUrl").GetString().ShouldBe("https://api.example/api/download/tok");
+        doc.RootElement.TryGetProperty("expiresAt", out _).ShouldBeTrue();
+        doc.RootElement.TryGetProperty("base64Content", out _).ShouldBeFalse();
+        await apiClient.Received(1).CreateDownloadLinkAsync(
+            Arg.Is<CreateDownloadLinkDto>(r => r.Kind == EDownloadKind.InvoiceIsdoc && r.Id == invoiceId),
+            Arg.Any<CancellationToken>());
+        await apiClient.DidNotReceive().ExportInvoiceIsdocAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -195,7 +197,7 @@ public class IsdocEndpointTests
 
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(MakeInvoiceDto(invoiceId, "INV003"));
-        apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
+        apiClient.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
             .Throws(new HttpRequestException("Connection refused"));
 
         // Act
@@ -210,27 +212,26 @@ public class IsdocEndpointTests
     // ── MCP tool tests — ExportInvoiceUbl (ADR 0002, F1.7) ─────────────────────
 
     [Fact]
-    public async Task ExportInvoiceUbl_ReturnsBase64EncodedXml()
+    public async Task ExportInvoiceUbl_ReturnsDownloadLink_NotFileContent()
     {
         var apiClient = Substitute.For<IFakvioApiClient>();
         var invoiceId = 5L;
-        var xmlString = "<?xml version=\"1.0\"?><Invoice>ubl data</Invoice>";
-        var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xmlString);
 
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(MakeInvoiceDto(invoiceId, "INV2026005"));
-        apiClient.ExportInvoiceUblAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new ExportedFile(xmlBytes, "Invoice_INV2026005.xml"));
+        apiClient.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
+            .Returns(new DownloadLinkDto { Url = "https://api.example/api/download/tok", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
 
         var json = await InvoiceTools.ExportInvoiceUbl(apiClient, invoiceId);
 
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().ShouldBeTrue();
         doc.RootElement.GetProperty("mimeType").GetString().ShouldBe("application/xml");
-        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("Invoice_INV2026005.xml");
-
-        var base64 = doc.RootElement.GetProperty("base64Content").GetString()!;
-        Convert.FromBase64String(base64).ShouldBe(xmlBytes);
+        doc.RootElement.GetProperty("downloadUrl").GetString().ShouldBe("https://api.example/api/download/tok");
+        doc.RootElement.TryGetProperty("base64Content", out _).ShouldBeFalse();
+        await apiClient.Received(1).CreateDownloadLinkAsync(
+            Arg.Is<CreateDownloadLinkDto>(r => r.Kind == EDownloadKind.InvoiceUbl && r.Id == invoiceId),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -248,29 +249,5 @@ public class IsdocEndpointTests
         doc.RootElement.GetProperty("error").GetString().ShouldContain(missingId.ToString());
     }
 
-    [Fact]
-    public async Task ExportInvoiceUbl_TenantNotReady_ReturnsStructuredIssues_NotStackTrace()
-    {
-        // Simulates the API's 400 TENANT_NOT_READY response — FakvioApiClient.EnsureSuccessAsync
-        // parses that shape into TenantNotReadyApiException (mirrors CompleteInvoice, #342) so
-        // the tool can hand back the readable EINVOICE_* codes instead of a stack trace.
-        var apiClient = Substitute.For<IFakvioApiClient>();
-        var invoiceId = 8L;
-
-        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(MakeInvoiceDto(invoiceId, "INV2026008"));
-        apiClient.ExportInvoiceUblAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Throws(new TenantNotReadyApiException(
-                "Tenant is not ready. Unresolved blocking issue(s): EINVOICE_DRAFT.",
-                missingFields: [],
-                issues: [new ReadinessIssueDto { Code = "EINVOICE_DRAFT", Severity = EReadinessSeverity.Blocking }]));
-
-        var json = await InvoiceTools.ExportInvoiceUbl(apiClient, invoiceId);
-
-        var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("code").GetString().ShouldBe("TENANT_NOT_READY");
-        doc.RootElement.GetProperty("issues")[0].GetProperty("code").GetString().ShouldBe("EINVOICE_DRAFT");
-        doc.RootElement.TryGetProperty("stackTrace", out _).ShouldBeFalse();
-    }
 
 }

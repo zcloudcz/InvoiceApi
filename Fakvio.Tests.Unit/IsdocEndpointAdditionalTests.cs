@@ -17,6 +17,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using Fakvio.API.Controller;
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
@@ -254,51 +255,7 @@ public class IsdocEndpointEdgeCaseTests
 
     // ── MCP tool: sizeBytes field matches actual byte length ─────────────
 
-    [Fact]
-    public async Task ExportInvoiceIsdoc_SizeBytes_MatchesActualByteLength()
-    {
-        // Arrange — use a known-size byte array
-        var apiClient = Substitute.For<IFakvioApiClient>();
-        const long invoiceId = 9L;
-        var xmlBytes = new byte[137]; // arbitrary known length
-        new Random(42).NextBytes(xmlBytes); // fill with pseudo-random bytes
 
-        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new InvoiceDto { Id = invoiceId, DocumentNumber = "INV009", DocumentType = EDocumentType.Invoice });
-        apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new ExportedFile(xmlBytes, "Invoice_12.isdoc"));
-
-        // Act
-        var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
-
-        // Assert — sizeBytes must equal the actual byte array length
-        var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("sizeBytes").GetInt32().ShouldBe(137);
-    }
-
-    [Fact]
-    public async Task ExportInvoiceIsdoc_ZeroByteResponse_SizeIsZero()
-    {
-        // Edge case: API returns empty byte array (e.g. service bug returns nothing).
-        // The tool should report sizeBytes = 0 and still return success JSON.
-        var apiClient = Substitute.For<IFakvioApiClient>();
-        const long invoiceId = 10L;
-        var emptyBytes = Array.Empty<byte>();
-
-        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new InvoiceDto { Id = invoiceId, DocumentNumber = "INV010", DocumentType = EDocumentType.Invoice });
-        apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new ExportedFile(emptyBytes, "Invoice_12.isdoc"));
-
-        // Act
-        var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
-
-        // Assert
-        var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("success").GetBoolean().ShouldBeTrue();
-        doc.RootElement.GetProperty("sizeBytes").GetInt32().ShouldBe(0);
-        doc.RootElement.GetProperty("base64Content").GetString().ShouldBe(""); // empty base64
-    }
 
     // ── MCP tool: null DocumentNumber → fallback to id in file name ──────
 
@@ -306,33 +263,24 @@ public class IsdocEndpointEdgeCaseTests
     // ── MCP tool: JSON envelope shape mirrors ExportInvoicePdf ───────────
 
     [Fact]
-    public async Task ExportInvoiceIsdoc_EnvelopeShape_ContainsAllRequiredFields()
+    public async Task ExportInvoiceIsdoc_EnvelopeShape_ContainsLinkFieldsAndNoFileContent()
     {
-        // Arrange — verify every field that ExportInvoicePdf returns is also present
-        // in ExportInvoiceIsdoc (mirrors the sibling tool for consistency).
         var apiClient = Substitute.For<IFakvioApiClient>();
         const long invoiceId = 12L;
-        var xmlBytes = "<?xml?>"u8.ToArray();
 
         apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto { Id = invoiceId, DocumentNumber = "FAK012", DocumentType = EDocumentType.Invoice });
-        apiClient.ExportInvoiceIsdocAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new ExportedFile(xmlBytes, "Invoice_12.isdoc"));
+        apiClient.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
+            .Returns(new DownloadLinkDto { Url = "https://api.example/api/download/tok", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
 
-        // Act
         var json = await InvoiceTools.ExportInvoiceIsdoc(apiClient, invoiceId);
 
-        // Assert — all five fields from ExportInvoicePdf envelope must exist
         var doc = JsonDocument.Parse(json);
         doc.RootElement.TryGetProperty("success", out _).ShouldBeTrue("'success' field missing");
-        doc.RootElement.TryGetProperty("fileName", out _).ShouldBeTrue("'fileName' field missing");
+        doc.RootElement.TryGetProperty("downloadUrl", out _).ShouldBeTrue("'downloadUrl' field missing");
+        doc.RootElement.TryGetProperty("expiresAt", out _).ShouldBeTrue("'expiresAt' field missing");
         doc.RootElement.TryGetProperty("mimeType", out _).ShouldBeTrue("'mimeType' field missing");
-        doc.RootElement.TryGetProperty("sizeBytes", out _).ShouldBeTrue("'sizeBytes' field missing");
-        doc.RootElement.TryGetProperty("base64Content", out _).ShouldBeTrue("'base64Content' field missing");
-
-        // ISDOC-specific: mimeType must be application/xml (not application/pdf)
+        doc.RootElement.TryGetProperty("base64Content", out _).ShouldBeFalse("file bytes must never be inlined");
         doc.RootElement.GetProperty("mimeType").GetString().ShouldBe("application/xml");
-        // file extension must be .isdoc (not .pdf)
-        doc.RootElement.GetProperty("fileName").GetString().ShouldEndWith(".isdoc");
     }
 }
