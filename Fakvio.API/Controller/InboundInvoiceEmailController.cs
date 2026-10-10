@@ -69,8 +69,9 @@ public class InboundInvoiceEmailController : ControllerBase
                 Direction = e.Direction,
                 ClassificationConfidence = e.ClassificationConfidence,
                 StatusError = e.StatusError,
-                ReceivedInvoiceId = e.ReceivedInvoiceId,
-                InvoiceId = e.InvoiceId,
+                // One Invoice table: the linked document's type decides which of the two DTO ids is filled.
+                ReceivedInvoiceId = e.Invoice != null && e.Invoice.DocumentType == EDocumentType.ReceivedInvoice ? e.InvoiceId : null,
+                InvoiceId = e.Invoice != null && e.Invoice.DocumentType == EDocumentType.ReceivedInvoice ? null : e.InvoiceId,
                 AttachmentCount = e.AttachmentCount,
                 HasPdf = e.HasPdf,
                 HasIsdoc = e.HasIsdoc,
@@ -88,6 +89,7 @@ public class InboundInvoiceEmailController : ControllerBase
     {
         var e = await _context.InboundInvoiceEmail
             .AsNoTracking()
+            .Include(x => x.Invoice)
             .FirstOrDefaultAsync(x => x.Id == id, ct);
 
         if (e == null) return NotFound();
@@ -104,8 +106,8 @@ public class InboundInvoiceEmailController : ControllerBase
             Direction = e.Direction,
             ClassificationConfidence = e.ClassificationConfidence,
             StatusError = e.StatusError,
-            ReceivedInvoiceId = e.ReceivedInvoiceId,
-            InvoiceId = e.InvoiceId,
+            ReceivedInvoiceId = e.Invoice != null && e.Invoice.DocumentType == EDocumentType.ReceivedInvoice ? e.InvoiceId : null,
+            InvoiceId = e.Invoice != null && e.Invoice.DocumentType == EDocumentType.ReceivedInvoice ? null : e.InvoiceId,
             AttachmentCount = e.AttachmentCount,
             HasPdf = e.HasPdf,
             HasIsdoc = e.HasIsdoc,
@@ -145,7 +147,6 @@ public class InboundInvoiceEmailController : ControllerBase
         email.StatusError = null;
         email.Direction = null;
         email.ClassificationConfidence = null;
-        email.ReceivedInvoiceId = null;
         email.InvoiceId = null;
         await _context.SaveChangesAsync(ct);
 

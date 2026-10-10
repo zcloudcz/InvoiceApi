@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
@@ -77,22 +78,22 @@ public class ChatContextBuilder : IChatContextBuilder
                 .Where(c => !c.IsIssuer && c.IsActive)
                 .CountAsync(ct);
 
-            var openInvoices = await _context.Invoice
+            var openInvoices = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .Where(i => i.Status == EInvoiceStatus.Completed)
                 .CountAsync(ct);
 
-            var openInvoicesTotal = await _context.Invoice
+            var openInvoicesTotal = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .Where(i => i.Status == EInvoiceStatus.Completed)
                 .SumAsync(i => i.TotalWithVat, ct);
 
-            var overdueInvoices = await _context.Invoice
+            var overdueInvoices = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .Where(i => i.Status == EInvoiceStatus.Completed && i.DueDate < DateTime.UtcNow)
                 .CountAsync(ct);
 
-            var paidInvoicesCount = await _context.Invoice
+            var paidInvoicesCount = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .Where(i => i.Status == EInvoiceStatus.Paid)
                 .CountAsync(ct);

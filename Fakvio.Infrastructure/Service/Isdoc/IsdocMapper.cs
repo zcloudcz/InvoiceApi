@@ -44,7 +44,7 @@ internal static class IsdocMapper
     /// ISDOC itself has no incoming/outgoing distinction — the direction is implied
     /// by the parties, so accounting software imports this as a received invoice.
     /// </summary>
-    internal static XDocument Map(ReceivedInvoice invoice, Client? customer)
+    internal static XDocument Map(Invoice invoice, Client? customer)
     {
         var root = new XElement(Ns + "Invoice",
             new XAttribute("version", IsdocVersion));
@@ -120,7 +120,7 @@ internal static class IsdocMapper
     // Header — received (incoming) invoice
     // --------------------------------------------------------------------------
 
-    private static IEnumerable<object> MapReceivedHeader(ReceivedInvoice invoice, Client? customer)
+    private static IEnumerable<object> MapReceivedHeader(Invoice invoice, Client? customer)
     {
         var currencyCode = invoice.Currency?.Code ?? "CZK";
         var isCzk = currencyCode.Equals("CZK", StringComparison.OrdinalIgnoreCase);
@@ -143,7 +143,7 @@ internal static class IsdocMapper
 
         // --- VATApplicable (required) — the document issuer is the supplier ---
         yield return new XElement(Ns + "VATApplicable",
-            (invoice.Supplier?.IsVatPayer == true).ToString().ToLowerInvariant());
+            (invoice.Client?.IsVatPayer == true).ToString().ToLowerInvariant());
 
         // --- ElectronicPossibilityAgreementReference (required) ---
         yield return new XElement(Ns + "ElectronicPossibilityAgreementReference",
@@ -166,7 +166,7 @@ internal static class IsdocMapper
         yield return new XElement(Ns + "RefCurrRate", FormatDecimal(1));
 
         // --- Parties — supplier issued the document, our company receives it ---
-        yield return MapSupplierParty(invoice.Supplier);
+        yield return MapSupplierParty(invoice.Client);
         yield return MapCustomerParty(customer);
 
         // --- Lines (wrapped in InvoiceLines container) ---
@@ -298,11 +298,11 @@ internal static class IsdocMapper
         }
     }
 
-    private static IEnumerable<XElement> MapReceivedInvoiceLines(ReceivedInvoice invoice)
+    private static IEnumerable<XElement> MapReceivedInvoiceLines(Invoice invoice)
     {
-        var items = invoice.Items?
+        var items = invoice.InvoiceItem?
             .OrderBy(i => i.OrderIndex)
-            .ToList() ?? new List<ReceivedInvoiceItem>();
+            .ToList() ?? new List<InvoiceItem>();
 
         for (int i = 0; i < items.Count; i++)
         {
@@ -392,9 +392,9 @@ internal static class IsdocMapper
         return BuildTaxTotal(taxGroups, invoice.TotalVat);
     }
 
-    private static XElement MapReceivedTaxTotal(ReceivedInvoice invoice)
+    private static XElement MapReceivedTaxTotal(Invoice invoice)
     {
-        var taxGroups = (invoice.Items ?? Enumerable.Empty<ReceivedInvoiceItem>())
+        var taxGroups = (invoice.InvoiceItem ?? Enumerable.Empty<InvoiceItem>())
             .GroupBy(i => i.VatRatePercentage)
             .Select(g => (
                 Rate: g.Key,
@@ -481,7 +481,7 @@ internal static class IsdocMapper
             invoice.BankAccountNumber, invoice.IBAN, invoice.SWIFT,
             invoice.VariableSymbol, invoice.ConstantSymbol, invoice.SpecificSymbol);
 
-    private static XElement? MapReceivedPaymentMeans(ReceivedInvoice invoice)
+    private static XElement? MapReceivedPaymentMeans(Invoice invoice)
         // ReceivedInvoice stores only the variable symbol — constant/specific symbols
         // are not captured for incoming documents.
         => BuildPaymentMeans(invoice.PaymentMethod, invoice.TotalWithVat, invoice.DueDate,

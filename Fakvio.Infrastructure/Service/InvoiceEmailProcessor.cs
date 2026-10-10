@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using System.Security.Cryptography;
 using System.Text;
 using Fakvio.Application.QrPayment;
@@ -164,6 +165,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             var importedCount = 0;
             var failedCount = 0;
             var docNumbers = new List<string>();
+            EInvoiceDirection? linkedDirection = null; // direction of the document stored in email.InvoiceId
 
             foreach (var att in invoiceAttachments)
             {
@@ -178,10 +180,12 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
                         docNumbers.Add(result.docNumber ?? $"#{result.createdId}");
 
                         // Store first created ID on the email record for navigation
-                        if (result.direction == EInvoiceDirection.Received && email.ReceivedInvoiceId == null)
-                            email.ReceivedInvoiceId = result.createdId;
-                        else if (result.direction == EInvoiceDirection.Issued && email.InvoiceId == null)
+                        // Received and issued documents share the Invoice table, so one link is enough.
+                        if (email.InvoiceId == null)
+                        {
                             email.InvoiceId = result.createdId;
+                            linkedDirection = result.direction;
+                        }
 
                         if (email.Direction == null)
                             email.Direction = result.direction;
@@ -226,10 +230,10 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
                         : ENotificationType.InvoiceEmailImported,
                     importedCount == 1 ? "Faktura importována" : $"{importedCount} faktur importováno",
                     summary,
-                    email.ReceivedInvoiceId ?? email.InvoiceId ?? email.Id,
+                    email.InvoiceId ?? email.Id,
                     companyId, ct,
-                    email.ReceivedInvoiceId.HasValue ? "ReceivedInvoice"
-                        : email.InvoiceId.HasValue ? "Invoice"
+                    email.InvoiceId.HasValue
+                        ? (linkedDirection == EInvoiceDirection.Received ? "ReceivedInvoice" : "Invoice")
                         : "InboundInvoiceEmail");
             }
 
@@ -381,15 +385,15 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
 
         if (direction == EInvoiceDirection.Received)
         {
-            var query = _context.Set<ReceivedInvoice>()
+            var query = _context.Invoice.ReceivedOnly()
                 .AsNoTracking()
                 .Where(r => r.DocumentNumber == data.DocumentNumber);
 
             // Narrow by supplier IČO if available
             if (!string.IsNullOrEmpty(data.IssuerRegistrationNumber))
             {
-                query = query.Where(r => r.Supplier != null
-                    && r.Supplier.RegistrationNumber == data.IssuerRegistrationNumber);
+                query = query.Where(r => r.Client != null
+                    && r.Client.RegistrationNumber == data.IssuerRegistrationNumber);
             }
 
             var existing = await query.Select(r => r.Id).FirstOrDefaultAsync(ct);
@@ -397,7 +401,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         }
         else
         {
-            var existing = await _context.Invoice
+            var existing = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .Where(i => i.DocumentNumber == data.DocumentNumber
                          && i.Status != EInvoiceStatus.Deleted)

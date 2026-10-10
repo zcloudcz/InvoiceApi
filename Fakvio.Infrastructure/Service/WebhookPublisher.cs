@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Webhook;
 using Fakvio.Domain.Entities;
@@ -167,9 +168,9 @@ public class WebhookPublisher : IWebhookPublisher
     /// <inheritdoc />
     public async Task PublishReceivedInvoiceEventAsync(string eventType, long receivedInvoiceId, CancellationToken ct = default)
     {
-        var invoice = await _context.ReceivedInvoice
+        var invoice = await _context.Invoice.ReceivedOnly()
             .AsNoTracking()
-            .Include(r => r.Supplier)
+            .Include(r => r.Client)
             .Include(r => r.Currency)
             .FirstOrDefaultAsync(r => r.Id == receivedInvoiceId, ct);
 
@@ -181,9 +182,9 @@ public class WebhookPublisher : IWebhookPublisher
             Id = invoice.Id,
             Number = invoice.DocumentNumber,
             Type = "ReceivedInvoice",
-            Status = invoice.Status.ToString(),
-            ClientName = invoice.Supplier?.CompanyName ?? string.Empty,
-            ClientIco = invoice.Supplier?.RegistrationNumber,
+            Status = ReceivedInvoiceService.ToLegacy(invoice.Status).ToString(),
+            ClientName = invoice.Client?.CompanyName ?? string.Empty,
+            ClientIco = invoice.Client?.RegistrationNumber,
             Total = invoice.TotalWithVat,
             Currency = invoice.Currency?.Code ?? string.Empty,
             DueDate = invoice.DueDate,
@@ -205,7 +206,7 @@ public class WebhookPublisher : IWebhookPublisher
 
     private async Task<WebhookDocumentSummaryDto?> BuildInvoiceSummaryAsync(long invoiceId, CancellationToken ct)
     {
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Currency)

@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -58,7 +59,7 @@ public class AccountingExportService : IAccountingExportService
         var issuedInvoices = new List<Domain.Entities.Invoice>();
         if (includeIssued)
         {
-            var query = _db.Invoice
+            var query = _db.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .AsSplitQuery()
                 .Where(i => i.Status != EInvoiceStatus.Draft && i.Status != EInvoiceStatus.Deleted);
@@ -75,17 +76,17 @@ public class AccountingExportService : IAccountingExportService
                 .ToListAsync(ct);
         }
 
-        var receivedInvoices = new List<Domain.Entities.ReceivedInvoice>();
+        var receivedInvoices = new List<Domain.Entities.Invoice>();
         if (includeReceived)
         {
-            receivedInvoices = await _db.ReceivedInvoice
+            receivedInvoices = await _db.Invoice.ReceivedOnly()
                 .AsNoTracking()
                 .AsSplitQuery()
-                .Where(i => i.Status != EReceivedInvoiceStatus.Deleted && i.Status != EReceivedInvoiceStatus.Rejected)
+                .Where(i => i.Status != EInvoiceStatus.Deleted) // the old "Rejected" is Deleted now
                 .Where(i => i.IssueDate != null && i.IssueDate >= fromDate && i.IssueDate <= toDate)
                 .Include(i => i.Currency)
-                .Include(i => i.Items)
-                .Include(i => i.Supplier).ThenInclude(c => c.Address)
+                .Include(i => i.InvoiceItem)
+                .Include(i => i.Client).ThenInclude(c => c!.Address)
                 .OrderBy(i => i.IssueDate)
                 .ToListAsync(ct);
         }
@@ -96,10 +97,10 @@ public class AccountingExportService : IAccountingExportService
 
         // Leave out documents the target system cannot represent correctly (see IAccountingExporter.CanExport).
         var skipped = issuedInvoices.Where(i => !exporter.CanExport(i)).Select(i => i.DocumentNumber ?? $"#{i.Id}")
-            .Concat(receivedInvoices.Where(i => !exporter.CanExport(i)).Select(i => i.DocumentNumber ?? $"#{i.Id}"))
+            .Concat(receivedInvoices.Where(i => !exporter.CanExportReceived(i)).Select(i => i.DocumentNumber ?? $"#{i.Id}"))
             .ToList();
         var exportable = issuedInvoices.Where(exporter.CanExport).ToList();
-        var exportableReceived = receivedInvoices.Where(exporter.CanExport).ToList();
+        var exportableReceived = receivedInvoices.Where(exporter.CanExportReceived).ToList();
         if (skipped.Count > 0)
             _logger.LogWarning("Accounting export ({System}) skipped {Count} unsupported document(s)", system, skipped.Count);
 

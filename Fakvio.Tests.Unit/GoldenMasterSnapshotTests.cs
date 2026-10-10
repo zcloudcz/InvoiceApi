@@ -84,6 +84,52 @@ public sealed class GoldenMasterSnapshotTests
             await SnapshotSchemaAsync(conn, schema, Path.Combine(outDir, schema));
     }
 
+    [AttributeUsage(AttributeTargets.Method)]
+    private sealed class GoldenMasterMigrateFactAttribute : FactAttribute
+    {
+        public override string? Skip
+        {
+            get => Environment.GetEnvironmentVariable("FAKVIO_GM_MIGRATE") == "1"
+                ? base.Skip
+                : "Set FAKVIO_GM_MIGRATE=1 and FAKVIO_GM_CONN to migrate every tenant schema of a throw-away database copy.";
+            set => base.Skip = value;
+        }
+    }
+
+    /// <summary>
+    /// Applies the pending tenant migrations to every tenant schema of the database in FAKVIO_GM_CONN - the same
+    /// call (<c>Database.MigrateAsync</c>) the application makes on the first request of a tenant. Used to produce the
+    /// "after" database of the golden-master comparison. A failing migration (e.g. its self-check) throws here.
+    /// </summary>
+    [GoldenMasterMigrateFact]
+    public async Task MigrateTenantSchemas()
+    {
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+        var conn = Environment.GetEnvironmentVariable("FAKVIO_GM_CONN")
+                   ?? throw new InvalidOperationException("FAKVIO_GM_CONN is not set.");
+        await using var root = new NpgsqlConnection(conn);
+        await root.OpenAsync();
+        var schemas = new List<string>();
+        await using (var cmd = new NpgsqlCommand(
+            "SELECT nspname FROM pg_namespace WHERE nspname ~ '^tenant_[0-9]+$' ORDER BY nspname", root))
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync()) schemas.Add(r.GetString(0));
+
+        foreach (var schema in schemas)
+        {
+            var scoped = new NpgsqlConnectionStringBuilder(conn) { SearchPath = schema }.ConnectionString;
+            await using var db = new TenantDbContext(new DbContextOptionsBuilder<TenantDbContext>()
+                .UseNpgsql(scoped, b =>
+                {
+                    b.MigrationsAssembly("Fakvio.Infrastructure");
+                    b.MigrationsHistoryTable("__EFMigrationsHistory", schema);
+                })
+                .ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>()
+                .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)).Options) { Schema = schema };
+            await db.Database.MigrateAsync();
+        }
+    }
+
     private static async Task SnapshotSchemaAsync(string conn, string schema, string dir)
     {
         Directory.CreateDirectory(dir);

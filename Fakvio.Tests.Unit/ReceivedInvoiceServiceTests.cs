@@ -47,6 +47,11 @@ public class ReceivedInvoiceServiceTests : IDisposable
     {
         _context.Client.Add(new Client
         {
+            Id = 99, CompanyName = "Our company", RegistrationNumber = "OWN001",
+            IsIssuer = true, IsActive = true
+        });
+        _context.Client.Add(new Client
+        {
             Id = 1, CompanyName = "Supplier A", RegistrationNumber = "SUP001",
             IsIssuer = false, IsActive = true
         });
@@ -110,8 +115,8 @@ public class ReceivedInvoiceServiceTests : IDisposable
         var result = await _service.CreateAsync(CreateValidDto());
         if (overrideStatus.HasValue && overrideStatus != EReceivedInvoiceStatus.Received)
         {
-            var entity = await _context.ReceivedInvoice.FindAsync(result.Id);
-            entity!.Status = overrideStatus.Value;
+            var entity = await _context.Invoice.FindAsync(result.Id);
+            entity!.Status = overrideStatus.Value.ToStored();
             await _context.SaveChangesAsync();
         }
         return result.Id;
@@ -304,14 +309,14 @@ public class ReceivedInvoiceServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RejectAsync_ReceivedInvoice_ChangesStatusToRejected()
+    public async Task RejectAsync_ReceivedInvoice_SoftDeletes_BecauseRejectedIsAbolished()
     {
         var id = await CreateInvoiceInDb();
 
         var result = await _service.RejectAsync(id);
 
         result.ShouldNotBeNull();
-        result!.Status.ShouldBe(EReceivedInvoiceStatus.Rejected);
+        result!.Status.ShouldBe(EReceivedInvoiceStatus.Deleted);
     }
 
     [Fact]
@@ -332,19 +337,18 @@ public class ReceivedInvoiceServiceTests : IDisposable
         var result = await _service.DeleteAsync(id);
 
         result.ShouldBeTrue();
-        var entity = await _context.ReceivedInvoice.FindAsync(id);
-        entity!.Status.ShouldBe(EReceivedInvoiceStatus.Deleted);
+        var entity = await _context.Invoice.FindAsync(id);
+        entity!.Status.ShouldBe(EInvoiceStatus.Deleted);
     }
 
     [Fact]
-    public async Task DeleteAsync_RejectedInvoice_SoftDeletes()
+    public async Task DeleteAsync_RejectedInvoice_IsAlreadyDeleted_ThrowsInvalidOperation()
     {
+        // "Rejected" no longer exists as a separate state: reject soft-deletes, a second delete is refused.
         var id = await CreateInvoiceInDb();
         await _service.RejectAsync(id);
 
-        var result = await _service.DeleteAsync(id);
-
-        result.ShouldBeTrue();
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.DeleteAsync(id));
     }
 
     [Fact]
@@ -571,8 +575,8 @@ public class ReceivedInvoiceServiceTests : IDisposable
         second.DocumentNumber = "FAK-2026-002";
         var secondId = (await _service.CreateAsync(second)).Id;
 
-        AddAttachment(nameof(ReceivedInvoice), firstId, "scan.pdf");
-        AddAttachment(nameof(ReceivedInvoice), firstId, "photo.jpg");
+        AddAttachment("ReceivedInvoice", firstId, "scan.pdf");
+        AddAttachment("ReceivedInvoice", firstId, "photo.jpg");
         // secondId gets no attachments
 
         var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto());
@@ -588,7 +592,7 @@ public class ReceivedInvoiceServiceTests : IDisposable
 
         // Same RecordId but different EntityName — must NOT be counted
         AddAttachment("Invoice", id, "unrelated.pdf");
-        AddAttachment(nameof(ReceivedInvoice), id, "mine.pdf");
+        AddAttachment("ReceivedInvoice", id, "mine.pdf");
 
         var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto());
 

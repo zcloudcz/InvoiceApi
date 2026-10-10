@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using System.Globalization;
 using System.Text;
 using Fakvio.Application.Service;
@@ -35,7 +36,7 @@ public class OssReportService : IOssReportService
         var toUtc = DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc); // exclusive
 
         // Only real tax documents: invoices, advance tax receipts and credit notes. Drafts/deleted never count.
-        var invoices = await _context.Invoice
+        var invoices = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Where(i => i.OssCountryCode != null
                 && i.TaxableSupplyDate >= fromUtc && i.TaxableSupplyDate < toUtc

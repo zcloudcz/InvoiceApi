@@ -136,7 +136,7 @@ public class InvoiceService : IInvoiceService
         CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only query — no entity modifications needed
-        var query = _context.Invoice
+        var query = _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -180,7 +180,7 @@ public class InvoiceService : IInvoiceService
             filter.Page, filter.PageSize, filter.Search);
 
         // AsNoTracking: read-only paged query — results are mapped to DTOs
-        var query = _context.Invoice
+        var query = _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -299,7 +299,7 @@ public class InvoiceService : IInvoiceService
     public async Task<InvoiceDto?> GetInvoiceByIdAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only lookup — result is mapped to DTO
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -319,7 +319,7 @@ public class InvoiceService : IInvoiceService
     public async Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(string documentNumber, CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only lookup — result is mapped to DTO
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -367,7 +367,7 @@ public class InvoiceService : IInvoiceService
             if (!createDto.OriginalInvoiceId.HasValue)
                 throw new InvalidOperationException("OriginalInvoiceId is required for credit notes");
 
-            var originalInvoice = await _context.Invoice.FindAsync(new object[] { createDto.OriginalInvoiceId.Value }, cancellationToken);
+            var originalInvoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == createDto.OriginalInvoiceId.Value, cancellationToken);
             if (originalInvoice == null)
                 throw new InvalidOperationException($"Original invoice with ID {createDto.OriginalInvoiceId} not found");
 
@@ -385,7 +385,7 @@ public class InvoiceService : IInvoiceService
         // check further down handles the auto-derived value correctly.
         if (createDto.VariableSymbolIsManualOverride && !string.IsNullOrEmpty(createDto.VariableSymbol))
         {
-            var preDuplicateExists = await _context.Invoice
+            var preDuplicateExists = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .AnyAsync(i => i.VariableSymbol == createDto.VariableSymbol
                     && i.Status != EInvoiceStatus.Deleted,
@@ -595,7 +595,7 @@ public class InvoiceService : IInvoiceService
         // payment matching issues (bank can't tell which invoice was paid).
         if (!string.IsNullOrEmpty(invoice.VariableSymbol))
         {
-            var duplicateExists = await _context.Invoice
+            var duplicateExists = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .AnyAsync(i => i.Id != invoice.Id
                     && i.VariableSymbol == invoice.VariableSymbol
@@ -714,7 +714,7 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDto?> UpdateInvoiceAsync(long invoiceId, UpdateInvoiceDto updateDto, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .Include(i => i.InvoiceItem)
             .FirstOrDefaultAsync(i => i.Id == invoiceId && i.Status != EInvoiceStatus.Deleted, cancellationToken);
 
@@ -928,14 +928,14 @@ public class InvoiceService : IInvoiceService
             return;
 
         var proformaId = invoice.OriginalInvoiceId.Value;
-        var source = await _context.Invoice.AsNoTracking()
+        var source = await _context.Invoice.IssuedOnly().AsNoTracking()
             .Where(i => i.Id == proformaId && i.DocumentType == EDocumentType.Proforma)
             .Select(i => new { i.PaidAmount, i.TotalWithVat })
             .FirstOrDefaultAsync(ct);
         if (source == null)
             return;
 
-        var covered = await _context.Invoice.AsNoTracking()
+        var covered = await _context.Invoice.IssuedOnly().AsNoTracking()
             .Where(i => i.OriginalInvoiceId == proformaId
                      && i.DocumentType == EDocumentType.TaxReceiptForAdvance
                      && i.Status != EInvoiceStatus.Deleted
@@ -950,7 +950,7 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDto?> CompleteInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .Include(i => i.Issuer)
                 .ThenInclude(issuer => issuer.BillingSettings)
             .Include(i => i.Currency)
@@ -993,7 +993,7 @@ public class InvoiceService : IInvoiceService
         // Same guard as in CreateInvoiceAsync — prevents duplicate VS on legacy DRAFT invoices.
         if (!string.IsNullOrEmpty(invoice.VariableSymbol))
         {
-            var duplicateExists = await _context.Invoice
+            var duplicateExists = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .AnyAsync(i => i.Id != invoice.Id
                     && i.VariableSymbol == invoice.VariableSymbol
@@ -1050,7 +1050,7 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDto?> MarkAsPaidAsync(long invoiceId, DateTime? paidAt = null, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.FindAsync(new object[] { invoiceId }, cancellationToken);
+        var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return null;
@@ -1084,7 +1084,7 @@ public class InvoiceService : IInvoiceService
 
     public async Task<bool> DeleteInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.FindAsync(new object[] { invoiceId }, cancellationToken);
+        var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return false;
@@ -1146,7 +1146,7 @@ public class InvoiceService : IInvoiceService
     /// </summary>
     private async Task<bool> IsLastIssuedInvoiceAsync(Invoice invoice, CancellationToken ct)
     {
-        var lastId = await _context.Invoice
+        var lastId = await _context.Invoice.IssuedOnly()
             .Where(i => i.DocumentType == invoice.DocumentType
                      && i.Status != EInvoiceStatus.Deleted)
             .MaxAsync(i => (long?)i.Id, ct);
@@ -1167,7 +1167,7 @@ public class InvoiceService : IInvoiceService
     public async Task<InvoiceDto?> RestoreInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
         // FindAsync uses the primary key — no need for a LINQ query.
-        var invoice = await _context.Invoice.FindAsync(new object[] { invoiceId }, cancellationToken);
+        var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return null;
@@ -1194,7 +1194,7 @@ public class InvoiceService : IInvoiceService
     /// </summary>
     public async Task<InvoiceDto?> RevertToDraftAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.FindAsync(new object[] { invoiceId }, cancellationToken);
+        var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return null;
@@ -1213,7 +1213,7 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDto> CreateCreditNoteAsync(long originalInvoiceId, CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
     {
-        var originalInvoice = await _context.Invoice
+        var originalInvoice = await _context.Invoice.IssuedOnly()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
             .FirstOrDefaultAsync(i => i.Id == originalInvoiceId, cancellationToken);
@@ -1242,7 +1242,7 @@ public class InvoiceService : IInvoiceService
         if (originalInvoice.ExchangeRate != null && originalInvoice.ExchangeRateDate != null
             && createDto.ExchangeRate == originalInvoice.ExchangeRate)
         {
-            var created = await _context.Invoice.FirstAsync(i => i.Id == creditNote.Id, cancellationToken);
+            var created = await _context.Invoice.IssuedOnly().FirstAsync(i => i.Id == creditNote.Id, cancellationToken);
             created.ExchangeRateDate = originalInvoice.ExchangeRateDate;
         }
 
@@ -1256,7 +1256,7 @@ public class InvoiceService : IInvoiceService
     public async Task<List<InvoiceDto>> GetCreditNotesForInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only list query — results are mapped to DTOs
-        var creditNotes = await _context.Invoice
+        var creditNotes = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -1279,7 +1279,7 @@ public class InvoiceService : IInvoiceService
     {
         // Return all standard Invoices whose OriginalInvoiceId points to this proforma.
         // These are the final invoices issued against the advance payment.
-        var items = await _context.Invoice
+        var items = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -1302,7 +1302,7 @@ public class InvoiceService : IInvoiceService
     {
         // Return all TaxReceiptForAdvance documents whose OriginalInvoiceId points to this proforma.
         // These are auto-issued (or manually issued) DPP documents.
-        var items = await _context.Invoice
+        var items = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -1328,7 +1328,7 @@ public class InvoiceService : IInvoiceService
         CancellationToken cancellationToken = default)
     {
         // Load the proforma with all related data we need for validation and VAT breakdown.
-        var proforma = await _context.Invoice
+        var proforma = await _context.Invoice.IssuedOnly()
             .Include(i => i.InvoiceItem)
             .Include(i => i.Client)
                 .ThenInclude(c => c!.BillingSettings)
@@ -1435,7 +1435,7 @@ public class InvoiceService : IInvoiceService
     /// <inheritdoc />
     public async Task<decimal> GetRemainingAdvanceAsync(long proformaId, CancellationToken cancellationToken = default)
     {
-        var proforma = await _context.Invoice
+        var proforma = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == proformaId && i.DocumentType == EDocumentType.Proforma, cancellationToken);
 
@@ -1518,7 +1518,7 @@ public class InvoiceService : IInvoiceService
         decimal? amount,
         CancellationToken cancellationToken)
     {
-        var proforma = await _context.Invoice
+        var proforma = await _context.Invoice.IssuedOnly()
             .Include(i => i.InvoiceItem)
             .Include(i => i.Issuer)
             .FirstOrDefaultAsync(i => i.Id == proformaId, cancellationToken);
@@ -1545,7 +1545,7 @@ public class InvoiceService : IInvoiceService
         // Idempotency guard: never cover more of the advance than has actually been received.
         // Sums every non-deleted DPP already linked to this proforma, so a retry (double bank
         // import, re-running matching, calling this twice) clamps to zero rather than double-booking.
-        var alreadyIssued = await _context.Invoice
+        var alreadyIssued = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Where(i => i.OriginalInvoiceId == proformaId
                      && i.DocumentType == EDocumentType.TaxReceiptForAdvance
@@ -1636,7 +1636,7 @@ public class InvoiceService : IInvoiceService
 
         try
         {
-            var proforma = await _context.Invoice
+            var proforma = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .Include(i => i.Issuer)
                 .FirstOrDefaultAsync(i => i.Id == proformaId, cancellationToken);
@@ -1991,7 +1991,7 @@ public class InvoiceService : IInvoiceService
     {
         // Load the invoice with its PaymentMatch rows so we can unlink them.
         // Include BankTransaction via PaymentMatch so we can recalculate the transaction's MatchStatus.
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .Include(i => i.PaymentMatch)
                 .ThenInclude(m => m.BankTransaction)
                     .ThenInclude(t => t.PaymentMatch)
@@ -2062,7 +2062,7 @@ public class InvoiceService : IInvoiceService
         // Load source invoice with all related data needed for the deep copy.
         // AsNoTracking: we're building a new entity from scratch, so we don't want
         // EF to track the source and accidentally propagate changes to it.
-        var source = await _context.Invoice
+        var source = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
             .Include(i => i.Client)
@@ -2191,7 +2191,7 @@ public class InvoiceService : IInvoiceService
     private async Task<DateTime> GetOssRateCheckDateAsync(EDocumentType type, long? originalInvoiceId, DateTime ownDuzp, CancellationToken ct)
     {
         if (type != EDocumentType.CreditNote || !originalInvoiceId.HasValue) return ownDuzp;
-        var originalDuzp = await _context.Invoice.AsNoTracking()
+        var originalDuzp = await _context.Invoice.IssuedOnly().AsNoTracking()
             .Where(i => i.Id == originalInvoiceId.Value)
             .Select(i => i.TaxableSupplyDate)
             .FirstOrDefaultAsync(ct);
@@ -2252,7 +2252,7 @@ public class InvoiceService : IInvoiceService
         if (documentType == EDocumentType.CreditNote)
         {
             if (!originalInvoiceId.HasValue) return null;
-            var original = await _context.Invoice
+            var original = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(i => i.Id == originalInvoiceId.Value, ct);
             return original?.OssCountryCode;

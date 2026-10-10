@@ -559,7 +559,7 @@ public class InvoiceTemplateService : IInvoiceTemplateService
         _logger.LogInformation("Creating template from invoice {InvoiceId}", invoiceId);
 
         // Load invoice
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .Include(i => i.InvoiceItem)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 

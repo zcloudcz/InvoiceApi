@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
@@ -45,7 +46,7 @@ public class UblExportService : IUblExportService
         // Same loading strategy as IsdocExportService: read-only, split query (avoids a
         // cartesian explosion across the Issuer/Client Address+Contact collections), soft-deleted
         // invoices excluded.
-        var invoice = await _db.Invoice
+        var invoice = await _db.Invoice.IssuedOnly()
             .AsNoTracking()
             .AsSplitQuery()
             .Where(i => i.Status != EInvoiceStatus.Deleted)
@@ -110,7 +111,7 @@ public class UblExportService : IUblExportService
         // Excludes Draft explicitly (not just "DocumentNumber != null" as a proxy for it) —
         // a draft tax receipt is not "already issued" yet even on the rare path where it somehow
         // carries a document number.
-        var taxReceiptNumbers = await _db.Invoice
+        var taxReceiptNumbers = await _db.Invoice.IssuedOnly()
             .AsNoTracking()
             .Where(i => i.OriginalInvoiceId == invoice.OriginalInvoiceId
                      && i.DocumentType == EDocumentType.TaxReceiptForAdvance

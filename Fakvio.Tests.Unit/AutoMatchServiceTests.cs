@@ -261,17 +261,17 @@ public class FindAutoMatchForReceivedInvoice_Tests : IDisposable
         return tx;
     }
 
-    private ReceivedInvoice MakeReceivedInvoice(
-        EReceivedInvoiceStatus status = EReceivedInvoiceStatus.Approved,
+    private Invoice MakeReceivedInvoice(
+        EInvoiceStatus status = EInvoiceStatus.Completed,
         string? vs = "111111",
         decimal total = 1210m,
         DateTime? dueDate = null)
     {
-        var ri = new ReceivedInvoice
+        var ri = new Invoice
         {
             DocumentNumber = "RI-TEST",
             Status = status,
-            SupplierId = 1,
+            DocumentType = EDocumentType.ReceivedInvoice, ClientId = 1, IssuerId = 1,
             CurrencyId = 1,
             TotalWithVat = total,
             TotalBeforeVat = total,
@@ -279,7 +279,7 @@ public class FindAutoMatchForReceivedInvoice_Tests : IDisposable
             VariableSymbol = vs,
             DueDate = dueDate,
         };
-        _context.ReceivedInvoice.Add(ri);
+        _context.Invoice.Add(ri);
         _context.SaveChanges();
         return ri;
     }
@@ -307,7 +307,7 @@ public class FindAutoMatchForReceivedInvoice_Tests : IDisposable
     {
         // Arrange — received invoice with Paid status
         MakeTx(vs: "111111", amount: 1210m);
-        var ri = MakeReceivedInvoice(vs: "111111", status: EReceivedInvoiceStatus.Paid);
+        var ri = MakeReceivedInvoice(vs: "111111", status: EInvoiceStatus.Paid);
 
         // Act
         var result = await _service.FindAutoMatchForReceivedInvoiceAsync(ri.Id);
@@ -514,14 +514,14 @@ public class ConfirmAutoMatch_ReceivedInvoice_Tests : IDisposable
     public async Task ConfirmAutoMatch_ReceivedInvoice_FullPayment_SetsStatusPaid()
     {
         // Arrange
-        var ri = new ReceivedInvoice
+        var ri = new Invoice
         {
             DocumentNumber = "RI001",
-            Status = EReceivedInvoiceStatus.Approved,
-            SupplierId = 1, CurrencyId = 1,
+            Status = EInvoiceStatus.Completed,
+            DocumentType = EDocumentType.ReceivedInvoice, ClientId = 1, IssuerId = 1, CurrencyId = 1,
             TotalWithVat = 1210m, TotalBeforeVat = 1000m, TotalVat = 210m,
         };
-        _context.ReceivedInvoice.Add(ri);
+        _context.Invoice.Add(ri);
 
         var tx = new BankTransaction
         {
@@ -542,14 +542,13 @@ public class ConfirmAutoMatch_ReceivedInvoice_Tests : IDisposable
 
         // PaymentMatch links to ReceivedInvoice
         var match = await _context.PaymentMatch.SingleAsync();
-        match.ReceivedInvoiceId.ShouldBe(ri.Id);
-        match.InvoiceId.ShouldBeNull();
+        match.InvoiceId.ShouldBe(ri.Id);
         match.MatchedAmount.ShouldBe(1210m);
         match.MatchedBy.ShouldBe(EMatchType.Auto);
 
         // ReceivedInvoice status → Paid
-        var updated = await _context.ReceivedInvoice.FindAsync(ri.Id);
-        updated!.Status.ShouldBe(EReceivedInvoiceStatus.Paid);
+        var updated = await _context.Invoice.FindAsync(ri.Id);
+        updated!.Status.ShouldBe(EInvoiceStatus.Paid);
     }
 }
 
@@ -602,14 +601,14 @@ public class GetPaymentsForReceivedInvoice_Tests : IDisposable
     public async Task GetPayments_ReceivedInvoice_ReturnsMatchList()
     {
         // Arrange — received invoice with one PaymentMatch
-        var ri = new ReceivedInvoice
+        var ri = new Invoice
         {
             DocumentNumber = "RI-PAY001",
-            Status = EReceivedInvoiceStatus.Paid,
-            SupplierId = 1, CurrencyId = 1,
+            Status = EInvoiceStatus.Paid,
+            DocumentType = EDocumentType.ReceivedInvoice, ClientId = 1, IssuerId = 1, CurrencyId = 1,
             TotalWithVat = 500m, TotalBeforeVat = 500m, TotalVat = 0m,
         };
-        _context.ReceivedInvoice.Add(ri);
+        _context.Invoice.Add(ri);
 
         var tx = new BankTransaction
         {
@@ -624,7 +623,7 @@ public class GetPaymentsForReceivedInvoice_Tests : IDisposable
         var match = new PaymentMatch
         {
             BankTransactionId = tx.Id,
-            ReceivedInvoiceId = ri.Id,
+            InvoiceId = ri.Id,
             MatchedAmount = 500m,
             MatchedBy = EMatchType.Auto,
             MatchedAt = DateTime.UtcNow,
@@ -647,14 +646,14 @@ public class GetPaymentsForReceivedInvoice_Tests : IDisposable
     public async Task GetPayments_ReceivedInvoice_NoMatches_ReturnsEmpty()
     {
         // Arrange — received invoice with no PaymentMatch rows
-        var ri = new ReceivedInvoice
+        var ri = new Invoice
         {
             DocumentNumber = "RI-EMPTY",
-            Status = EReceivedInvoiceStatus.Approved,
-            SupplierId = 1, CurrencyId = 1,
+            Status = EInvoiceStatus.Completed,
+            DocumentType = EDocumentType.ReceivedInvoice, ClientId = 1, IssuerId = 1, CurrencyId = 1,
             TotalWithVat = 300m, TotalBeforeVat = 300m, TotalVat = 0m,
         };
-        _context.ReceivedInvoice.Add(ri);
+        _context.Invoice.Add(ri);
         await _context.SaveChangesAsync();
 
         // Act

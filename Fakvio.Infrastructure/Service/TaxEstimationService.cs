@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Domain.Entities;
@@ -644,7 +645,7 @@ public class TaxEstimationService : ITaxEstimationService
         // and have an IssueDate in the requested year.
         var validStatuses = new[] { EInvoiceStatus.Completed, EInvoiceStatus.Paid };
 
-        var invoices = await _tenantContext.Set<Invoice>()
+        var invoices = await _tenantContext.Set<Invoice>().IssuedOnly()
             .AsNoTracking()
             .Where(i =>
                 i.DocumentType == EDocumentType.Invoice &&

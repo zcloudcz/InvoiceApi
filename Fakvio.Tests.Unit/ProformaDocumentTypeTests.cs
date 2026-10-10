@@ -68,6 +68,12 @@ public class ProformaDocumentTypeTests : IDisposable
         ((int)EDocumentType.TaxReceiptForAdvance).ShouldBe(4);
     }
 
+    [Fact]
+    public void EDocumentType_ReceivedInvoice_HasValue5()
+    {
+        ((int)EDocumentType.ReceivedInvoice).ShouldBe(5);
+    }
+
     // ─── EF Core model / FK configuration tests ───────────────────────────────
 
     [Fact]
@@ -169,12 +175,12 @@ public class ProformaDocumentTypeTests : IDisposable
     // ─── Enum completeness / regression guard ─────────────────────────────────
 
     [Fact]
-    public void EDocumentType_HasExactlyFourValues()
+    public void EDocumentType_HasExactlyFiveValues()
     {
         // Guard against accidental additions that skip the integer-pinning rule.
         // Every new value MUST also get a pinned-integer test above.
         var values = Enum.GetValues<EDocumentType>();
-        values.Length.ShouldBe(4, "Add a new pinned-integer test when extending EDocumentType");
+        values.Length.ShouldBe(5,"Add a new pinned-integer test when extending EDocumentType");
     }
 
     // ─── Seed data tests ──────────────────────────────────────────────────────

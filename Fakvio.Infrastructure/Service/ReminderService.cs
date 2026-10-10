@@ -1,4 +1,5 @@
 ﻿using Fakvio.Contracts.Common;
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Reminder;
@@ -464,7 +465,7 @@ public class ReminderService : IReminderService
         var remindersCreated = 0;
 
         // Get all overdue invoices: Completed status, past due date, not paid.
-        var overdueInvoices = await _context.Invoice
+        var overdueInvoices = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
                 .ThenInclude(c => c.Contact)
@@ -615,7 +616,7 @@ public class ReminderService : IReminderService
         var allReminders = await _context.Reminder.AsNoTracking().ToListAsync(ct);
 
         // Overdue invoices: Completed, past due, not paid.
-        var overdueInvoices = await _context.Invoice
+        var overdueInvoices = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Where(i => i.Status == EInvoiceStatus.Completed
                         && i.DueDate.HasValue
