@@ -47,4 +47,10 @@ public class DownloadLinkDto
 
     /// <summary>UTC moment after which the link stops working.</summary>
     public DateTime ExpiresAt { get; set; }
+
+    /// <summary>
+    /// Accounting export only: how many documents the target system cannot represent and are therefore
+    /// missing from the file. Null for every other kind.
+    /// </summary>
+    public int? SkippedDocuments { get; set; }
 }

@@ -253,13 +253,6 @@ public class IsdocEndpointEdgeCaseTests
             () => _controller.ExportIsdoc(1L, cts.Token));
     }
 
-    // ── MCP tool: sizeBytes field matches actual byte length ─────────────
-
-
-
-    // ── MCP tool: null DocumentNumber → fallback to id in file name ──────
-
-
     // ── MCP tool: JSON envelope shape mirrors ExportInvoicePdf ───────────
 
     [Fact]

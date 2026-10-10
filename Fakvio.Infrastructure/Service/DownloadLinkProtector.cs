@@ -10,7 +10,10 @@ namespace Fakvio.Infrastructure.Service;
 /// feature can never be accepted by another. The key ring is the one persisted to PostgreSQL
 /// (see ServiceCollectionExtensions), so links survive restarts and work on every instance.
 ///
-/// The token is deliberately NEVER logged anywhere - it is a bearer credential for tenant data.
+/// The token is a bearer credential for tenant data, so our own code never writes it to a log. It does
+/// travel in the URL path, which is why the places that record request URLs redact it explicitly:
+/// <c>GlobalExceptionMiddleware</c> and <c>DownloadLinkTelemetryInitializer</c> (both via
+/// <c>DownloadLinkLogRedactor</c> in Fakvio.API). Anything new that logs a request path must do the same.
 /// </summary>
 public class DownloadLinkProtector : IDownloadLinkProtector
 {

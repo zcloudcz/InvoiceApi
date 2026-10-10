@@ -230,6 +230,34 @@ public class GlobalExceptionMiddlewareTests : IDisposable
             Arg.Any<Func<object, Exception?, string>>());
     }
 
+    /// <summary>
+    /// GET /api/download/{token}: the token is a bearer credential that sits in the path. When the
+    /// export behind the link throws, the log line (→ AppLog, visible in the SysAdmin log viewer)
+    /// must not contain it.
+    /// </summary>
+    [Fact]
+    public async Task InvokeAsync_DownloadLinkThrows_DoesNotLogTheToken()
+    {
+        const string token = "CfDJ8-secret-download-token";
+        var context = CreateContext("download-corr-id");
+        context.Request.Method = "GET";
+        context.Request.Path = $"/api/download/{token}";
+
+        var middleware = new GlobalExceptionMiddleware(
+            next: _ => throw new InvalidOperationException("PDF render failed"),
+            logger: _logger,
+            env: CreateEnv("Production"));
+
+        await middleware.InvokeAsync(context);
+
+        // The formatted message is what the logger providers store - render it and look inside.
+        var logCall = _logger.ReceivedCalls().Single(c => c.GetMethodInfo().Name == nameof(ILogger.Log));
+        var message = logCall.GetArguments()[2]!.ToString()!;
+        message.ShouldNotContain(token);
+        message.ShouldContain("/api/download/[redacted]");
+        (await ReadResponseBodyAsync(context)).ShouldNotContain(token);
+    }
+
     // ────────────────────────────────────────────────────────────────────────────
     // Edge case: response already started
     // ────────────────────────────────────────────────────────────────────────────

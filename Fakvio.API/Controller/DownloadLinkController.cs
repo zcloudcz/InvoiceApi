@@ -4,12 +4,15 @@ using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.AccountingExport;
 using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 
 namespace Fakvio.API.Controller;
 
@@ -20,8 +23,9 @@ namespace Fakvio.API.Controller;
 /// Flow: <c>POST /api/download-links</c> (authenticated, tenant-scoped like every other endpoint) validates a
 /// whitelisted <see cref="EDownloadKind"/> + parameters and returns a URL holding an opaque Data Protection
 /// token (company, user, kind, parameters; 10 minutes by default). <c>GET /api/download/{token}</c> is
-/// anonymous: the token IS the credential. It rebuilds the caller's tenant context from the token and runs the
-/// SAME controller action the authenticated endpoint uses, so export logic exists exactly once.
+/// anonymous: the token IS the credential. It re-checks that the user who minted the link is still active and
+/// still belongs to the company, rebuilds that tenant context from the token and runs the SAME controller
+/// action the authenticated endpoint uses, so export logic exists exactly once.
 /// </summary>
 [ApiController]
 [Route("api")]
@@ -30,37 +34,61 @@ public class DownloadLinkController : ControllerBase
     /// <summary>Same cap as ReceivedInvoiceController.MaxBulkAttachmentIds (the grid's max page size).</summary>
     public const int MaxBulkIds = 100;
 
+    /// <summary>
+    /// Most VAT ids accepted in <c>Goods</c>. The list travels inside the token, i.e. inside the URL, so an
+    /// unbounded list would produce a link longer than browsers and proxies accept.
+    /// </summary>
+    public const int MaxGoods = 100;
+
+    /// <summary>Longest single <c>Goods</c> entry - a VAT id is at most 14 characters, this leaves headroom.</summary>
+    public const int MaxGoodsLength = 20;
+
+    /// <summary>Name of the per-IP rate limiter policy of the anonymous download endpoint (registered in Program.cs).</summary>
+    public const string RateLimitPolicy = "download-link";
+
     // Entity names are plain identifiers ("Invoice", "ReceivedInvoice"); anything else is not a legitimate kind of record.
     private static readonly Regex EntityNamePattern = new("^[A-Za-z]{1,50}$", RegexOptions.Compiled);
 
     private readonly IDownloadLinkProtector _protector;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _environment;
+    private readonly MasterDbContext _masterDb;
     private readonly ILogger<DownloadLinkController> _logger;
 
     public DownloadLinkController(
         IDownloadLinkProtector protector,
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
+        IHostEnvironment environment,
+        MasterDbContext masterDb,
         ILogger<DownloadLinkController> logger)
     {
         _protector = protector;
         _scopeFactory = scopeFactory;
         _configuration = configuration;
+        _environment = environment;
+        _masterDb = masterDb;
         _logger = logger;
     }
 
     /// <summary>
     /// Mints a download link. Authorization is the normal pipeline: JWT / API key / OAuth token plus
     /// TenantContextMiddleware, so the link can only ever point into the caller's own tenant.
+    /// Nothing is persisted, which is why a read-only API key may call it (see ApiKeyRequestGuard).
     /// </summary>
     /// <response code="200">Link created.</response>
-    /// <response code="400">Missing or invalid parameters for the requested kind.</response>
+    /// <response code="400">
+    /// Missing or invalid parameters for the requested kind, or the export itself is refused - then the body
+    /// is exactly the one the export endpoint returns (e.g. <c>TENANT_NOT_READY</c>, <c>EPO_HEADER_INCOMPLETE</c>).
+    /// </response>
+    /// <response code="500">The server has no usable <c>DownloadLinks:PublicBaseUrl</c>.</response>
     [HttpPost("download-links")]
     [Authorize]
     [ProducesResponseType(typeof(DownloadLinkDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public ActionResult<DownloadLinkDto> CreateLink([FromBody] CreateDownloadLinkDto request)
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<DownloadLinkDto>> CreateLink([FromBody] CreateDownloadLinkDto request, CancellationToken ct)
     {
         var error = Validate(request);
         if (error != null)
@@ -73,6 +101,40 @@ public class DownloadLinkController : ControllerBase
         if (!long.TryParse(userIdRaw, out var userId))
             return Forbid();
 
+        var baseUrl = ResolvePublicBaseUrl();
+        if (baseUrl == null)
+        {
+            // A misconfigured server must not hand out an http:// link: the token in it is a bearer
+            // credential and would travel in clear text. Fail loudly so the SysAdmin sees it in the log.
+            _logger.LogError(
+                "Download link refused: DownloadLinks:PublicBaseUrl is missing or is not an absolute https URL. " +
+                "Set it to the public origin of this API (see ADMINGUIDE).");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "Download links are not configured on this server. Contact the administrator." });
+        }
+
+        // Some exports can be refused for a reason the caller can fix (invoice not ready for UBL, EPO
+        // header incomplete, no issuer, ...). The person opening the link would only see raw JSON in the
+        // browser, and the AI that asked would never learn why. So run the SAME action once now and, when
+        // it does not produce a file, answer with its own error body. Running the action (instead of a
+        // separate "can I export" check) keeps the rules in one place; the price is that these exports are
+        // generated twice, here and when the link is opened.
+        int? skippedDocuments = null;
+        if (request.Kind is EDownloadKind.InvoiceUbl or EDownloadKind.AccountingExport
+            or EDownloadKind.VatEpoReturn or EDownloadKind.VatEpoControlStatement or EDownloadKind.VatEpoSummaryStatement)
+        {
+            // The request is already tenant-scoped, so the request services are the right ones here.
+            var dryRun = await DispatchAsync(HttpContext.RequestServices, request, ct);
+            if (dryRun is not FileResult)
+                return (ActionResult)dryRun;
+
+            // The accounting export reports how many documents the target system cannot represent only
+            // in this header (AccountingExportController.Export). Pass it on in the body, so the caller
+            // knows the file behind the link is incomplete.
+            if (int.TryParse(Response.Headers["X-Export-Skipped"], out var skipped))
+                skippedDocuments = skipped;
+        }
+
         var token = _protector.Protect(new DownloadTokenPayload(companyId, userId, request), out var expiresAt);
 
         // Log what was requested, never the token (it is a bearer credential).
@@ -80,22 +142,48 @@ public class DownloadLinkController : ControllerBase
             "Download link created: kind={Kind}, company={CompanyId}, user={UserId}, ids={Ids}, expires={ExpiresAt:O}",
             request.Kind, companyId, userId, FormatIds(request), expiresAt);
 
-        // Behind the Azure edge Request.Scheme can be "http", so production should set DownloadLinks:PublicBaseUrl.
-        var baseUrl = _configuration["DownloadLinks:PublicBaseUrl"]?.TrimEnd('/');
-        if (string.IsNullOrWhiteSpace(baseUrl))
-            baseUrl = $"{Request.Scheme}://{Request.Host}";
-
-        return Ok(new DownloadLinkDto { Url = $"{baseUrl}/api/download/{token}", ExpiresAt = expiresAt });
+        return Ok(new DownloadLinkDto
+        {
+            Url = $"{baseUrl}/api/download/{token}",
+            ExpiresAt = expiresAt,
+            SkippedDocuments = skippedDocuments
+        });
     }
 
     /// <summary>
-    /// Redeems a download link. Anonymous by design; every failure (garbage, tampered, expired, wrong
-    /// purpose, tenant gone) answers an identical bare 404 so nothing about the token is revealed.
+    /// Origin the link is built on, or null when this server must not issue links at all.
+    /// Outside Development only an absolute https <c>DownloadLinks:PublicBaseUrl</c> is accepted - behind the
+    /// Azure edge <c>Request.Scheme</c> is "http", so the request itself cannot be trusted to say "https".
+    /// Development may fall back to the request (local http://localhost).
     /// </summary>
+    private string? ResolvePublicBaseUrl()
+    {
+        var configured = _configuration["DownloadLinks:PublicBaseUrl"]?.Trim().TrimEnd('/');
+
+        if (Uri.TryCreate(configured, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+            return configured;
+
+        if (!_environment.IsDevelopment())
+            return null;
+
+        return string.IsNullOrEmpty(configured) ? $"{Request.Scheme}://{Request.Host}" : configured;
+    }
+
+    /// <summary>
+    /// Redeems a download link. Anonymous by design; every failure of the link itself (garbage, tampered,
+    /// expired, wrong purpose, tenant gone, user deactivated or removed from the company) answers an identical
+    /// bare 404 so nothing about the token is revealed. Once the link is accepted, the response is whatever
+    /// the export action returns - the file, or that action's own 400/404 body.
+    /// </summary>
+    /// <response code="200">The file (binary, <c>Content-Disposition: attachment</c>).</response>
+    /// <response code="404">The link is not valid (any more), or the requested record does not exist.</response>
+    /// <response code="429">Too many downloads from this IP address.</response>
     [HttpGet("download/{token}")]
     [AllowAnonymous]
-    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [EnableRateLimiting(RateLimitPolicy)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Download(string token, CancellationToken ct)
     {
         // Set first so that even error responses are never cached by a proxy or the browser.
@@ -107,6 +195,24 @@ public class DownloadLinkController : ControllerBase
         // a parameter combination the mint endpoint would have rejected.
         if (payload == null || Validate(payload.Parameters) != null)
             return NotFound();
+
+        // The token proves who minted the link, not that this person may still see the data. Every
+        // authenticated request re-checks that in CompanyMembershipMiddleware; an anonymous request never
+        // gets there, so the same rule is applied here: the user must still be active and either be a
+        // SysAdmin or still hold an active membership in the token's company. One master-DB query.
+        var stillAllowed = await _masterDb.User.AsNoTracking().AnyAsync(u =>
+            u.Id == payload.UserId && u.IsActive &&
+            (u.Role == EUserRole.SysAdmin || _masterDb.UserCompanyMembership.Any(m =>
+                m.UserId == u.Id && m.CompanyId == payload.CompanyId && m.IsActive &&
+                m.Company.IsActive && m.Company.IsIssuer &&
+                (m.Role == EUserRole.User || m.Role == EUserRole.Admin))), ct);
+        if (!stillAllowed)
+        {
+            _logger.LogWarning(
+                "Download link refused: user {UserId} is no longer active in company {CompanyId}",
+                payload.UserId, payload.CompanyId);
+            return NotFound();
+        }
 
         _logger.LogInformation(
             "Download link redeemed: kind={Kind}, company={CompanyId}, user={UserId}, ids={Ids}",
@@ -228,9 +334,18 @@ public class DownloadLinkController : ControllerBase
                     ? null
                     : "AccountingSystem, From and To are required.";
             default: // the three VAT EPO kinds
-                return p.Year.HasValue && p.Period.HasValue && p.PeriodType is { } type && Enum.IsDefined(type)
-                    ? null
-                    : "Year, Period and PeriodType are required.";
+                if (p.PeriodType is not { } type || !Enum.IsDefined(type))
+                    return "Year, Period and PeriodType are required.";
+                // Only the shape is checked here; which years actually have data is the export's business.
+                if (p.Year is not (>= 2000 and <= 2100))
+                    return "Year must be between 2000 and 2100.";
+                var maxPeriod = type == EVatPeriodType.Monthly ? 12 : 4;
+                if (p.Period is not { } period || period < 1 || period > maxPeriod)
+                    return $"Period must be between 1 and {maxPeriod} for {type} reporting.";
+                if (p.Goods is { } goods && (goods.Count > MaxGoods
+                        || goods.Any(g => string.IsNullOrWhiteSpace(g) || g.Length > MaxGoodsLength)))
+                    return $"Goods accepts at most {MaxGoods} VAT ids of at most {MaxGoodsLength} characters each.";
+                return null;
         }
     }
 

@@ -62,6 +62,8 @@ builder.Services.AddHostedService<OAuthCleanupService>();
 builder.Services.AddApplicationInsightsTelemetry();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<ITelemetryInitializer, CorrelationIdTelemetryInitializer>();
+// Keeps the download-link token (a bearer credential in the URL path) out of request telemetry.
+builder.Services.AddSingleton<ITelemetryInitializer, DownloadLinkTelemetryInitializer>();
 
 // ── API-specific: Controllers ───────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -214,6 +216,15 @@ var oauthConsentRateLimitConfig = builder.Configuration.GetSection("RateLimiting
 var oauthConsentPermitLimit = oauthConsentRateLimitConfig.GetValue("PermitLimit", 30);
 var oauthConsentWindowSeconds = oauthConsentRateLimitConfig.GetValue("WindowSeconds", 60);
 
+// ── Rate limiting for signed download links (GET /api/download/{token}) ──────
+// The endpoint is anonymous and a valid link can be redeemed any number of times until it
+// expires; a bulk kind builds a whole ZIP in memory on every call. A person opens a link once
+// or twice, so a low per-IP ceiling costs legitimate users nothing and bounds a replay loop.
+// Own policy on purpose - "auth-anon" is tuned for login attempts and shares its bucket with them.
+var downloadLinkRateLimitConfig = builder.Configuration.GetSection("RateLimiting:DownloadLink");
+var downloadLinkPermitLimit = downloadLinkRateLimitConfig.GetValue("PermitLimit", 30);
+var downloadLinkWindowSeconds = downloadLinkRateLimitConfig.GetValue("WindowSeconds", 60);
+
 builder.Services.AddRateLimiter(options =>
 {
     // 429 + Retry-After (RFC 6585) — the Blazor UI checks for 429 specifically to show
@@ -261,6 +272,16 @@ builder.Services.AddRateLimiter(options =>
             {
                 PermitLimit = oauthAuthorizePermitLimit,
                 Window = TimeSpan.FromSeconds(oauthAuthorizeWindowSeconds),
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy(Fakvio.API.Controller.DownloadLinkController.RateLimitPolicy, context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientIpPartitionKey(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = downloadLinkPermitLimit,
+                Window = TimeSpan.FromSeconds(downloadLinkWindowSeconds),
                 QueueLimit = 0
             }));
 

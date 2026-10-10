@@ -249,5 +249,32 @@ public class IsdocEndpointTests
         doc.RootElement.GetProperty("error").GetString().ShouldContain(missingId.ToString());
     }
 
+    [Fact]
+    public async Task ExportInvoiceUbl_TenantNotReady_ReturnsStructuredIssues_NotStackTrace()
+    {
+        // Simulates the API's 400 TENANT_NOT_READY response — FakvioApiClient.EnsureSuccessAsync
+        // parses that shape into TenantNotReadyApiException (mirrors CompleteInvoice, #342) so
+        // the tool can hand back the readable EINVOICE_* codes instead of a stack trace.
+        // The readiness check now runs when the link is minted (POST /api/download-links), so
+        // that is the call that is refused.
+        var apiClient = Substitute.For<IFakvioApiClient>();
+        var invoiceId = 8L;
+
+        apiClient.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
+            .Returns(MakeInvoiceDto(invoiceId, "INV2026008"));
+        apiClient.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
+            .Throws(new TenantNotReadyApiException(
+                "Tenant is not ready. Unresolved blocking issue(s): EINVOICE_DRAFT.",
+                missingFields: [],
+                issues: [new ReadinessIssueDto { Code = "EINVOICE_DRAFT", Severity = EReadinessSeverity.Blocking }]));
+
+        var json = await InvoiceTools.ExportInvoiceUbl(apiClient, invoiceId);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("code").GetString().ShouldBe("TENANT_NOT_READY");
+        doc.RootElement.GetProperty("issues")[0].GetProperty("code").GetString().ShouldBe("EINVOICE_DRAFT");
+        doc.RootElement.TryGetProperty("stackTrace", out _).ShouldBeFalse();
+        doc.RootElement.TryGetProperty("downloadUrl", out _).ShouldBeFalse();
+    }
 
 }

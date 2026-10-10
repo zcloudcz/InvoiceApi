@@ -706,9 +706,9 @@ public static class InvoiceTools
     /// <summary>
     /// Exports an invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML, returned as a short-lived
     /// download link (ADR 0002, F1.7). Aimed at SK e-invoicing from 2027 — the exported XML can be
-    /// uploaded into a Peppol "digital courier" application. The link is minted without generating
-    /// the file, so "not ready for eInvoice export" (Draft, pro-forma, missing Peppol ID, …) shows up
-    /// when the link is opened, not here.
+    /// uploaded into a Peppol "digital courier" application. When the invoice is not ready for
+    /// eInvoice export (still a Draft, a pro-forma, missing Peppol ID, …), the API refuses to mint
+    /// the link with 400 and the error JSON carries the readable EINVOICE_* codes instead of a stack trace.
     /// </summary>
     [McpServerTool(Title = "Export invoice as UBL/Peppol eInvoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Export an invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-invoicing 2027, Peppol network). " +
@@ -736,6 +736,20 @@ public static class InvoiceTools
         {
             throw;
         }
+        catch (TenantNotReadyApiException ex)
+        {
+            // Caught separately (#342, mirrors CompleteInvoice) so the MCP client gets the
+            // structured EINVOICE_* payload — code, missingFields, issues (each with its fix
+            // route) — instead of the flattened "internal_error" the generic catch below would
+            // produce. This is the whole point of the tool call when export is refused.
+            return JsonSerializer.Serialize(new
+            {
+                error = ex.Message,
+                code = TenantNotReadyApiException.ErrorCode,
+                missingFields = ex.MissingFields,
+                issues = ex.Issues
+            }, JsonOptions);
+        }
         catch (Exception ex)
         {
             return McpToolError.ToJson(ex);
@@ -756,7 +770,7 @@ public static class InvoiceTools
         "or wants a batch/period handover to their accountant — not for a single invoice " +
         "(use ExportInvoiceIsdoc/ExportInvoiceUbl for that). Documents the target system cannot represent " +
         "(foreign currency for Money S3/ABRA Flexi, proformas for ABRA Flexi, advance-payment tax receipts, VAT rates other than 21/12/0 %) " +
-        "are left out of the file (the app's export dialog shows how many).")]
+        "are left out; skippedDocuments in the result says how many.")]
     public static async Task<string> ExportAccounting(
         IFakvioApiClient api,
         [Description("Target accounting system: 'Pohoda', 'MoneyS3' or 'AbraFlexi'")] string system,

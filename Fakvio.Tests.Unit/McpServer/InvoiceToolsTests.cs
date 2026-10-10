@@ -728,12 +728,14 @@ public class InvoiceToolsTests
     public async Task ExportAccounting_ReturnsDownloadLinkWithFileName()
     {
         _api.CreateDownloadLinkAsync(Arg.Any<CreateDownloadLinkDto>(), Arg.Any<CancellationToken>())
-            .Returns(new DownloadLinkDto { Url = "https://api.example/api/download/acc", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
+            .Returns(new DownloadLinkDto { Url = "https://api.example/api/download/acc", ExpiresAt = DateTime.UtcNow.AddMinutes(10), SkippedDocuments = 2 });
 
         var json = await InvoiceTools.ExportAccounting(_api, "Pohoda", "2026-03-01", "2026-03-31");
 
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("fileName").GetString().ShouldBe("Pohoda_20260301-20260331.xml");
+        // The file behind the link is incomplete - the AI must be able to say so.
+        doc.RootElement.GetProperty("skippedDocuments").GetInt32().ShouldBe(2);
         doc.RootElement.TryGetProperty("base64Content", out _).ShouldBeFalse();
         await _api.Received(1).CreateDownloadLinkAsync(
             Arg.Is<CreateDownloadLinkDto>(r => r.Kind == EDownloadKind.AccountingExport && r.AccountingSystem == EAccountingSystem.Pohoda),

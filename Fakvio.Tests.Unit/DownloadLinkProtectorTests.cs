@@ -131,4 +131,32 @@ public class DownloadLinkProtectorTests
             Kind = EDownloadKind.VatEpoReturn, Year = 2026, Period = 3, PeriodType = EVatPeriodType.Monthly
         }).ShouldBeNull();
     }
+
+    [Theory]
+    [InlineData(1999, 3, EVatPeriodType.Monthly)]
+    [InlineData(2101, 3, EVatPeriodType.Monthly)]
+    [InlineData(2026, 0, EVatPeriodType.Monthly)]
+    [InlineData(2026, 13, EVatPeriodType.Monthly)]
+    [InlineData(2026, 5, EVatPeriodType.Quarterly)] // a quarter is 1-4
+    public void Validate_VatEpo_RejectsYearOrPeriodOutOfRange(int year, int period, EVatPeriodType type)
+        => DownloadLinkController.Validate(new()
+        {
+            Kind = EDownloadKind.VatEpoSummaryStatement, Year = year, Period = period, PeriodType = type
+        }).ShouldNotBeNull();
+
+    [Fact]
+    public void Validate_VatEpo_CapsGoods()
+    {
+        // Goods travels inside the token and therefore inside the URL - it must stay bounded.
+        CreateDownloadLinkDto WithGoods(List<string> goods) => new()
+        {
+            Kind = EDownloadKind.VatEpoReturn, Year = 2026, Period = 3, PeriodType = EVatPeriodType.Monthly, Goods = goods
+        };
+
+        DownloadLinkController.Validate(WithGoods(["DE123456789"])).ShouldBeNull();
+        DownloadLinkController.Validate(WithGoods(
+            Enumerable.Range(0, DownloadLinkController.MaxGoods + 1).Select(i => $"DE{i:D9}").ToList())).ShouldNotBeNull();
+        DownloadLinkController.Validate(WithGoods([new string('X', DownloadLinkController.MaxGoodsLength + 1)])).ShouldNotBeNull();
+        DownloadLinkController.Validate(WithGoods([""])).ShouldNotBeNull();
+    }
 }

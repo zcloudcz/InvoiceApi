@@ -251,27 +251,35 @@ MCP exportní tooly **nevrací bajty souboru**. AI klient z base64 textu nevyrob
 
 | Krok | Kde |
 |------|-----|
-| `POST /api/download-links` (`[Authorize]`, tenant middleware jako všude) — validuje whitelisted `EDownloadKind` + parametry, vrátí `{ url, expiresAt }` | `DownloadLinkController.CreateLink` |
-| `GET /api/download/{token}` (`[AllowAnonymous]`) — token je credential; sestaví tenant kontext z tokenu a spustí **tutéž controller akci**, kterou používá autorizovaný endpoint | `DownloadLinkController.Download` / `DispatchAsync` |
+| `POST /api/download-links` (`[Authorize]`, tenant middleware jako všude) — validuje whitelisted `EDownloadKind` + parametry, u odmítnutelných exportů je jednou spustí nanečisto (viz níže), vrátí `{ url, expiresAt, skippedDocuments? }` | `DownloadLinkController.CreateLink` |
+| `GET /api/download/{token}` (`[AllowAnonymous]`, rate limit `download-link`) — token je credential; znovu ověří uživatele a členství, sestaví tenant kontext z tokenu a spustí **tutéž controller akci**, kterou používá autorizovaný endpoint | `DownloadLinkController.Download` / `DispatchAsync` |
 | Token: `ITimeLimitedDataProtector`, purpose `Fakvio.DownloadLink.v1`, payload = `CompanyId`, `UserId`, kind + parametry | `DownloadLinkProtector` (Infrastructure), `IDownloadLinkProtector` (Application) |
 | Closed enum všech povolených souborů (žádná cesta ani URL od klienta) | `EDownloadKind` (Domain) |
 | MCP: `IFakvioApiClient.CreateDownloadLinkAsync` + společný tvar odpovědi | `Fakvio.McpServer/Tools/DownloadLinkResult.cs` |
 
-**Konfigurace** (`appsettings.json`, sekce `DownloadLinks`): `LifetimeMinutes` (výchozí 10) a `PublicBaseUrl` (externí origin API; prázdné = z requestu — za TLS-terminujícím proxy to může být `http`, v produkci proto nastav).
+**Konfigurace** (`appsettings.json`, sekce `DownloadLinks`, popis pro SysAdmina v ADMINGUIDE): `LifetimeMinutes` (výchozí 10, ořezává se na 1 až 60 v `ServiceCollectionExtensions`) a `PublicBaseUrl` (externí origin API). **Mimo Development musí být `PublicBaseUrl` absolutní `https://` URL**, jinak `CreateLink` zaloguje Error a vrátí 500. Na `Request.Scheme` se spoléhat nesmí: za Azure front-endem je `http` (ForwardedHeaders přebírá jen `X-Forwarded-For`). Fallback na adresu z requestu existuje jen v Development. Integrační testy běží jako `Testing`, proto `FakvioFactory` nastavuje `https://localhost`.
 
 **Klíče**: stejný key ring jako §2.7 (PostgreSQL, `SetApplicationName("Fakvio")`), takže odkazy přežijí restart a fungují na všech instancích. Purpose string změň jen vědomě — zneplatní všechny rozdané odkazy (žijí 10 minut, takže to nevadí).
 
-**Tenant na anonymním endpointu**: žádná druhá cesta rozlišení tenantu. Download vytvoří scope přes `TenantScope.CreateTenantScopeAsync(companyId)` (stejný mechanismus jako workery) a requestu nastaví `HttpContext.User` s claimy `CompanyId`/`UserId`, které by měl JWT daného uživatele — služby čtoucí `ITenantResolver` tak fungují beze změny. Token vystavený pro tenanta A proto nikdy nepřečte data tenanta B: ID z cizího tenanta v schématu A prostě neexistuje (404).
+**Read-only klíče**: `POST /api/download-links` nic neukládá a každý kind je čtení, proto je cesta v `ApiKeyRequestGuard.SafeMethodOverridePaths`. Bez toho by read-only API klíč nebo OAuth read token přišel o všechny exporty (dřív to byly GETy).
+
+**Ověření uživatele při použití odkazu**: anonymní request neprojde `CompanyMembershipMiddleware`, takže `Download` dělá totéž jedním dotazem do MasterDb: uživatel `IsActive` a zároveň (SysAdmin nebo aktivní členství s rolí User/Admin v aktivní issuer firmě z tokenu). Jinak 404. Deaktivovaný uživatel nebo zrušené členství tedy odkaz okamžitě zneplatní.
+
+**Tenant na anonymním endpointu**: žádná druhá cesta rozlišení tenantu. Download vytvoří scope přes `TenantScope.CreateTenantScopeAsync(companyId)` (stejný mechanismus jako workery) a requestu nastaví `HttpContext.User` s claimy `CompanyId`/`UserId`, které by měl JWT daného uživatele — služby čtoucí `ITenantResolver` tak fungují beze změny. Token vystavený pro tenanta A proto nikdy nepřečte data tenanta B: ID z cizího tenanta v schématu A prostě neexistuje (404), ověřuje `DownloadLinkCrossTenantDatabaseTests` (reálný PostgreSQL). Cesta `/api/download/` je v `TenantContextMiddleware.MasterOnlyPaths`, aby případný cizí JWT v hlavičce `Authorization` tenant neovlivnil (rozhoduje jen token; `/api/download-links` tam záměrně není).
 
 **Bezpečnostní pravidla** (anonymní endpoint nad produkčními daty):
-- token se **nikdy nelogguje** (loguje se kind, ids, company, user);
+- náš kód token **neloguje** (loguje se kind, ids, company, user). Token je ale v cestě URL, takže místa, která cestu zapisují, ji musí redigovat přes `DownloadLinkLogRedactor` (`Fakvio.API/Telemetry`): `GlobalExceptionMiddleware` (→ AppLog) a `DownloadLinkTelemetryInitializer` (Application Insights request URL). Nový kód, který loguje `Request.Path`, to musí udělat taky;
+- odkazy jsou **jen `https://`** (viz Konfigurace);
+- per-IP rate limit `download-link` (`RateLimiting:DownloadLink`, výchozí 30/60 s), vlastní politika, ne `auth-anon`;
 - `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Disposition: attachment` (z `File(...)` v akci);
-- prošlý / pozměněný / cizí-purpose / neexistující tenant = holé **404** bez detailu;
-- parametry se validují při vystavení **i** při použití (`DownloadLinkController.Validate`).
+- prošlý / pozměněný / cizí-purpose / neexistující tenant / neaktivní uživatel = holé **404** bez detailu (po přijetí tokenu už odpovídá původní akce, včetně jejích vlastních 400/404);
+- parametry se validují při vystavení **i** při použití (`DownloadLinkController.Validate`), včetně rozsahů `Year`/`Period` a stropu `Goods` (seznam je součástí tokenu, tedy URL).
 
 **Nový soubor ke stažení** = nová hodnota `EDownloadKind` (nikdy nepřečíslovat — číslo je v tokenech) + větev ve `Validate` a `DispatchAsync` (volá existující controller akci, export logiku nekopíruj) + test.
 
-**Známé důsledky**: chyba exportu (např. UBL `TENANT_NOT_READY`, EPO `EPO_HEADER_INCOMPLETE`) se projeví až při otevření odkazu (JSON 400 z původní akce), ne v odpovědi MCP toolu. Počet přeskočených dokladů z účetního exportu (`X-Export-Skipped`) MCP tool už nevidí.
+**Chyby exportu se hlásí už při vystavení odkazu.** Pro `InvoiceUbl`, `AccountingExport` a tři `VatEpo*` kinds spustí `CreateLink` stejnou akci jednou nanečisto (`DispatchAsync` nad request scope). Když akce nevrátí soubor, vrátí se její odpověď beze změny: UBL `TENANT_NOT_READY` s `EINVOICE_*` issues (#342), EPO `EPO_HEADER_INCOMPLETE` / `VAT_PAYER_REQUIRED` / `CONFIGURATION_ERROR`, účetní export 400. MCP tool tak modelu řekne, co je špatně (`ExportInvoiceUbl` chytá `TenantNotReadyApiException`), místo aby uživatel otevřel odkaz na syrový JSON. U účetního exportu se z hlavičky `X-Export-Skipped` převezme počet vynechaných dokladů do `DownloadLinkDto.SkippedDocuments` → `skippedDocuments` ve výsledku toolu.
+
+Cena: tyto exporty se generují dvakrát (při vystavení a při otevření odkazu). Je to vědomá volba místo samostatných „preflight" metod: pravidla zůstávají na jednom místě (v akci a její službě) a u všech pěti kinds tvoří většinu práce načtení dat, které by preflight potřeboval taky. Ostatní kinds (PDF, ISDOC, přílohy, ZIP) se nanečisto nespouštějí, tam chyba (typicky 404) přijde až při otevření odkazu. Pokud by dvojí generování někdy vadilo, řešením je cache výsledku mezi vystavením a stažením, ne druhá kopie pravidel.
 
 ### 2.8 reCAPTCHA gate (issue #200)
 

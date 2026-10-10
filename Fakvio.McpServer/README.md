@@ -338,8 +338,10 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   `DownloadReceivedInvoicesAttachments` a přílohové tooly vrací krátce platný podepsaný odkaz:
   `downloadUrl` + `expiresAt` (výchozí platnost 10 minut) a `mimeType` (`fileName` jen tam, kde je
   znám předem). Odkaz funguje bez přihlášení do vypršení; model ho má dát uživateli a obsah souboru
-  nenačítat do konverzace. Mechanismus: DEVGUIDE §2.7a. Chyba samotného exportu (např. UBL u nepřipravené
-  faktury) se projeví až při otevření odkazu.
+  nenačítat do konverzace. Mechanismus: DEVGUIDE §2.7a. Odmítnutý export se hlásí hned, ne až při
+  otevření odkazu: `ExportInvoiceUbl` vrátí strukturované `TENANT_NOT_READY` s `EINVOICE_*` issues,
+  `ExportVatEpo` chybu hlavičky EPO a `ExportAccounting` má ve výsledku `skippedDocuments` (počet dokladů,
+  které v souboru chybí). Read-only API klíč na tyto tooly stačí.
 - Logy jdou **výhradně na stderr** (`LogToStandardErrorThreshold = Trace`).
   Stdout je vyhrazený pro JSON-RPC — jakýkoli zápis do stdout protokol rozbije.
 - **Vstup nikdy není „JSON string of …Dto" (N2.5).** Parametr typu DTO (`CreateClientDto client`,

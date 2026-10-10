@@ -145,6 +145,13 @@ public class FakvioFactory : WebApplicationFactory<Program>
         builder.UseSetting("RateLimiting:OAuthToken:PermitLimit", "1000000");
         builder.UseSetting("RateLimiting:OAuthAuthorize:PermitLimit", "1000000");
         builder.UseSetting("RateLimiting:OAuthConsent:PermitLimit", "1000000");
+        // ...and for "download-link" (GET /api/download/{token}); DownloadLinkEndpointTests overrides it back down.
+        builder.UseSetting("RateLimiting:DownloadLink:PermitLimit", "1000000");
+
+        // ── Signed download links need a public https origin outside Development ──
+        // The host runs as "Testing", so without this POST /api/download-links answers 500 (it must never
+        // fall back to the request's http scheme). TestServer ignores the host name, only the path matters.
+        builder.UseSetting("DownloadLinks:PublicBaseUrl", "https://localhost");
 
         // ── Configure database auth mode for AddDatabaseContexts ──────────────
         // AddDatabaseContexts now builds its NpgsqlDataSource singleton EAGERLY (inside
@@ -275,7 +282,7 @@ public class FakvioFactory : WebApplicationFactory<Program>
     /// This method removes ALL descriptors whose service type references TContext,
     /// catching all EF Core internal registrations regardless of their exact type name.
     /// </summary>
-    private static void RemoveDbContextRegistrations<TContext>(IServiceCollection services)
+    protected static void RemoveDbContextRegistrations<TContext>(IServiceCollection services)
         where TContext : DbContext
     {
         // Find all descriptors that reference TContext in their service type.

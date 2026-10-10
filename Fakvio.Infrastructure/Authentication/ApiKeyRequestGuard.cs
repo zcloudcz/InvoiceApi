@@ -25,7 +25,11 @@ public static class ApiKeyRequestGuard
     /// </summary>
     private static readonly string[] SafeMethodOverridePaths =
     [
-        "/api/tax/estimate" // pure calculation over the posted figures — TaxController.Estimate
+        "/api/tax/estimate", // pure calculation over the posted figures — TaxController.Estimate
+        // Mints a signed download link for an export — DownloadLinkController.CreateLink. Nothing is
+        // stored (the link is a self-contained signed token) and every downloadable kind is itself a
+        // read, so this is "export", which a read-only key could always do while exports were GETs.
+        "/api/download-links"
     ];
 
     /// <summary>
