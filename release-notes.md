@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Změny pro uživatele
+
+- **#524** — MCP exporty a přílohy už nevracejí soubory přímo v odpovědi (base64), ale podepsaný odkaz ke stažení; velké soubory tak nezatěžují konverzaci. Před nasazením nastavit `DownloadLinks__PublicBaseUrl` na veřejný https původ API, jinak exporty vrací 500. (PR #525, `2be0193`)
+
 ## 2026.10.05.6 — 2026-10-05
 
 ### Změny pro uživatele
