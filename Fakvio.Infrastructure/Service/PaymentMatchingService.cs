@@ -204,7 +204,16 @@ public class PaymentMatchingService : IPaymentMatchingService
 
         // One Invoice table for both sides: the document type decides which status rules apply.
         if (match.Invoice.DocumentType == EDocumentType.ReceivedInvoice)
-            RecalculateReceivedInvoice(match.Invoice, delta: -match.MatchedAmount, match.BankTransaction.TransactionDate);
+        {
+            // Recompute from the matches that REMAIN instead of subtracting this one. A received document can be
+            // Paid with PaidAmount = total while its matches sum to less (rows migrated from the old table, where
+            // any match meant Paid, or "mark as paid" by hand). Subtracting would leave e.g. 1000 - 600 = 400 and
+            // a PartiallyPaid document with no payment behind it.
+            var remainingOnInvoice = await _context.PaymentMatch
+                .Where(m => m.InvoiceId == match.InvoiceId && m.Id != match.Id)
+                .SumAsync(m => (decimal?)m.MatchedAmount, ct) ?? 0m;
+            RevertReceivedInvoice(match.Invoice, remainingOnInvoice);
+        }
         else
             RecalculateInvoice(match.Invoice, delta: -match.MatchedAmount, match.BankTransaction.TransactionDate);
 
@@ -749,7 +758,7 @@ public class PaymentMatchingService : IPaymentMatchingService
             // Invoice match wins over registry categorization — drop any recognition.
             tx.RecognizedCounterpartyId = null;
 
-            RecalculateReceivedInvoice(receivedInvoice, delta: matched, tx.TransactionDate);
+            RecalculateReceivedInvoice(receivedInvoice, matched, tx.TransactionDate);
             RecalculateTransactionStatus(tx, alreadyAssigned + matched);
 
             await _context.SaveChangesAsync(ct);
@@ -974,7 +983,7 @@ public class PaymentMatchingService : IPaymentMatchingService
             MatchedAt = DateTime.UtcNow,
         });
 
-        RecalculateReceivedInvoice(receivedInvoice, delta: matched, tx.TransactionDate);
+        RecalculateReceivedInvoice(receivedInvoice, matched, tx.TransactionDate);
         RecalculateTransactionStatus(tx, matched);
 
         _logger.LogInformation(
@@ -1008,28 +1017,28 @@ public class PaymentMatchingService : IPaymentMatchingService
     }
 
     /// <summary>
-    /// Applies a payment delta to a received invoice and recomputes PaidAmount + Status + PaidAt.
+    /// Applies a payment to a received invoice and recomputes PaidAmount + Status + PaidAt.
     /// Status behaviour is unchanged from the old ReceivedInvoice table: any applied payment marks the
-    /// document Paid, removing one reverts it to the last pre-paid state. PaidAmount now follows the
-    /// sum of the PaymentMatch rows (same denormalisation as for issued invoices).
+    /// document Paid. PaidAmount follows the sum of the PaymentMatch rows (same denormalisation as for
+    /// issued invoices). Removing a payment is handled by <see cref="RevertReceivedInvoice"/>.
     /// </summary>
-    private static void RecalculateReceivedInvoice(Invoice receivedInvoice, decimal delta, DateTime txDate)
+    private static void RecalculateReceivedInvoice(Invoice receivedInvoice, decimal matched, DateTime txDate)
     {
-        receivedInvoice.PaidAmount = Math.Max(0m, receivedInvoice.PaidAmount + delta);
+        receivedInvoice.PaidAmount += matched;
+        receivedInvoice.Status = EInvoiceStatus.Paid;
+        receivedInvoice.PaidAt ??= DateTime.SpecifyKind(txDate, DateTimeKind.Utc);
+    }
 
-        if (delta > 0)
-        {
-            // Payment applied: mark as Paid.
-            receivedInvoice.Status = EInvoiceStatus.Paid;
-            receivedInvoice.PaidAt ??= DateTime.SpecifyKind(txDate, DateTimeKind.Utc);
-        }
-        else
-        {
-            // Payment removed (unmatch): revert to the last pre-paid state ("Approved" in the old received
-            // vocabulary = Completed here; PartiallyPaid also maps to Approved when other matches remain).
-            receivedInvoice.Status = receivedInvoice.PaidAmount > 0 ? EInvoiceStatus.PartiallyPaid : EInvoiceStatus.Completed;
-            receivedInvoice.PaidAt = null;
-        }
+    /// <summary>
+    /// A payment was removed (unmatch): the received invoice goes back to the last pre-paid state.
+    /// "Approved" in the old received vocabulary = Completed here; PartiallyPaid also maps to Approved and is
+    /// used while other matches remain. <paramref name="remainingMatched"/> is the sum of the matches that stay.
+    /// </summary>
+    private static void RevertReceivedInvoice(Invoice receivedInvoice, decimal remainingMatched)
+    {
+        receivedInvoice.PaidAmount = remainingMatched;
+        receivedInvoice.Status = remainingMatched > 0 ? EInvoiceStatus.PartiallyPaid : EInvoiceStatus.Completed;
+        receivedInvoice.PaidAt = null;
     }
 
     /// <summary>Sets BankTransaction.MatchStatus based on how much is assigned to invoices.</summary>

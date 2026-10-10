@@ -16,7 +16,10 @@ namespace Fakvio.Tests.Integration;
 ///    Rejected->Deleted - the number 4 is never copied);
 ///  * PaidAmount, ids, payment matches, attachments, notifications and inbound e-mails are remapped;
 ///  * supplier numbers may repeat (also equal to one of OUR numbers) while issued numbers stay unique;
-///  * an empty tenant and a brand-new tenant migrate; a failing self-check rolls the WHOLE migration back.
+///  * an empty tenant and a brand-new tenant migrate; a failing self-check rolls the WHOLE migration back;
+///  * messy but legitimate data does NOT stop the migration (a failed migration = HTTP 503 for the tenant):
+///    an inbound e-mail linked to both sides, pointers to a received invoice that never existed;
+///  * a new id never equals an OLD received id (a stale id must not resolve to a different document).
 /// Skipped when FAKVIO_TEST_POSTGRES is not set (same convention as the other migration tests).
 /// </summary>
 [Collection(RealPostgreSqlCollection.Name)]
@@ -64,14 +67,20 @@ public class UnifyDocumentsMigrationTests
                     (3,3,1,NULL,121,1,now(),now());   -- an ISSUED invoice payment must not move
                 INSERT INTO "FileAttachment" ("Id","EntityName","RecordId","FileGuid","OriginalFileName","ContentType","FileSizeBytes","BlobPath","CreatedAt") VALUES
                     (1,'ReceivedInvoice',2,gen_random_uuid(),'a.pdf','application/pdf',1,'p/1',now()),
-                    (2,'Invoice',2,gen_random_uuid(),'issued.pdf','application/pdf',1,'p/2',now());
+                    (2,'Invoice',2,gen_random_uuid(),'issued.pdf','application/pdf',1,'p/2',now()),
+                    -- Orphans (ids 3 of each table below): the upload endpoint never validated the target, so a pointer
+                    -- to a received invoice that does not exist is legitimate old data and must not stop the migration.
+                    (3,'ReceivedInvoice',999,gen_random_uuid(),'orphan.pdf','application/pdf',1,'p/3',now());
                 INSERT INTO "Notification" ("Id","Type","Title","Message","RelatedEntityId","RelatedEntityType","CreatedAt") VALUES
-                    (1,1,'t','m',2,'ReceivedInvoice',now()), (2,1,'t','m',2,'Invoice',now());
-                INSERT INTO "Alert" ("Id","Type","RelatedEntityId","RelatedEntityType","Message","CreatedAt") VALUES (1,1,3,'ReceivedInvoice','m',now());
+                    (1,1,'t','m',2,'ReceivedInvoice',now()), (2,1,'t','m',2,'Invoice',now()), (3,1,'t','m',999,'ReceivedInvoice',now());
+                INSERT INTO "Alert" ("Id","Type","RelatedEntityId","RelatedEntityType","Message","CreatedAt") VALUES
+                    (1,1,3,'ReceivedInvoice','m',now()), (3,1,999,'ReceivedInvoice','m',now());
                 INSERT INTO "InvoiceMailbox" ("Id","InboundAlias","IsActive","ActiveFrom","EmailsReceivedCount","CreatedAt") VALUES (1,'fak-x',TRUE,now(),0,now());
                 INSERT INTO "InboundInvoiceEmail" ("Id","InvoiceMailboxId","MessageId","ServerReceivedAt","FromAddress","ToAddress","BodyTruncated","DeduplicationHash","Status","ProcessAttempts","AttachmentCount","HasPdf","HasIsdoc","CreatedAt","ReceivedInvoiceId","InvoiceId") VALUES
                     (1,1,'m1',now(),'a@b.cz','fak-x@z.cz',FALSE,'d1',1,1,1,TRUE,FALSE,now(),4,NULL),
-                    (2,1,'m2',now(),'a@b.cz','fak-x@z.cz',FALSE,'d2',1,1,1,TRUE,FALSE,now(),NULL,2);
+                    (2,1,'m2',now(),'a@b.cz','fak-x@z.cz',FALSE,'d2',1,1,1,TRUE,FALSE,now(),NULL,2),
+                    -- One e-mail with an issued AND a received attachment: the old processor filled both links.
+                    (3,1,'m3',now(),'a@b.cz','fak-x@z.cz',FALSE,'d3',1,1,2,TRUE,FALSE,now(),1,1);
                 """);
 
             await env.MigrateToLatestAsync();
@@ -84,13 +93,16 @@ public class UnifyDocumentsMigrationTests
             // ... and their foreign keys are gone, so they cannot block deletes elsewhere.
             (await env.CountAsync("SELECT COUNT(*) FROM pg_constraint WHERE contype = 'f' AND conrelid IN ('\"ReceivedInvoice_legacy\"'::regclass, '\"ReceivedInvoiceItem_legacy\"'::regclass)")).ShouldBe(0);
 
-            // ── ids: deterministic block, in order of the old ids, never colliding with issued ids 1 and 2 ──
+            // ── ids: deterministic block, in order of the old ids, never colliding with issued ids 1 and 2
+            //    NOR with the old received ids 1..6 (a stale old id must not resolve to another document) ──
             var map = await env.RowsAsync("SELECT \"OldId\", \"NewId\" FROM \"ReceivedInvoiceIdMap_legacy\" ORDER BY \"OldId\"");
             map.Select(r => (long)r[0]!).ShouldBe([1L, 2, 3, 4, 5, 6]);
             var newIds = map.Select(r => (long)r[1]!).ToArray();
             newIds.Distinct().Count().ShouldBe(6);
-            newIds.ShouldAllBe(id => id > 2);
+            newIds.ShouldAllBe(id => id > 6);
             newIds.Zip(newIds.Skip(1)).ShouldAllBe(p => p.Second == p.First + 1);
+            // Old received ids now answer "not found" on the received side: they are an issued document or nothing.
+            (await env.CountAsync("SELECT COUNT(*) FROM \"Invoice\" WHERE \"Id\" BETWEEN 1 AND 6 AND \"DocumentType\" = 5")).ShouldBe(0);
 
             // ── statuses / PaidAmount (4 = Rejected is NEVER copied: it would mean Creditnoted) ──
             var docs = (await env.RowsAsync(
@@ -129,6 +141,17 @@ public class UnifyDocumentsMigrationTests
             (await env.ScalarAsync("SELECT \"InvoiceId\" FROM \"InboundInvoiceEmail\" WHERE \"Id\" = 1")).ShouldBe(newIds[3]);
             (await env.ScalarAsync("SELECT \"InvoiceId\" FROM \"InboundInvoiceEmail\" WHERE \"Id\" = 2")).ShouldBe(2L);
 
+            // ── e-mail linked to both sides: the issued link is kept, the received one is parked for audit ──
+            (await env.ScalarAsync("SELECT \"InvoiceId\" FROM \"InboundInvoiceEmail\" WHERE \"Id\" = 3")).ShouldBe(1L);
+            var parked = await env.RowsAsync("SELECT \"InboundInvoiceEmailId\", \"OldReceivedInvoiceId\", \"NewInvoiceId\" FROM \"InboundInvoiceEmailReceivedLink_legacy\"");
+            parked.Count.ShouldBe(1);
+            parked[0].Select(v => (long)v!).ShouldBe([3L, 1L, newIds[0]]);
+
+            // ── orphan pointers are left exactly as they were ──
+            (await env.ScalarAsync("SELECT \"RecordId\" FROM \"FileAttachment\" WHERE \"Id\" = 3")).ShouldBe(999L);
+            (await env.ScalarAsync("SELECT \"RelatedEntityId\" FROM \"Notification\" WHERE \"Id\" = 3")).ShouldBe(999L);
+            (await env.ScalarAsync("SELECT \"RelatedEntityId\" FROM \"Alert\" WHERE \"Id\" = 3")).ShouldBe(999L);
+
             // ── the old pointer columns and the check constraint are gone; InvoiceId is required ──
             (await env.CountAsync("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND column_name = 'ReceivedInvoiceId' AND table_name IN ('PaymentMatch','InboundInvoiceEmail')")).ShouldBe(0);
             (await env.CountAsync("SELECT COUNT(*) FROM pg_constraint WHERE conname = 'CK_PaymentMatch_Target'")).ShouldBe(0);
@@ -140,6 +163,31 @@ public class UnifyDocumentsMigrationTests
                 "INSERT INTO \"Invoice\" (\"DocumentType\",\"Status\",\"DocumentNumber\",\"IssuerId\",\"CurrencyId\",\"TotalBeforeVat\",\"TotalVat\",\"TotalWithVat\",\"IsExported\",\"IsSentByEmail\",\"InvoiceType\",\"CreatedAt\") " +
                 "VALUES (1,2,'2026001',10,1,1,0,1,FALSE,FALSE,'Invoice',now())"));
             duplicateIssued.SqlState.ShouldBe("23505");
+
+            // ── the identity sequence ends above the block: the next document cannot reuse a moved id ──
+            var nextId = (long)(await env.ScalarAsync(
+                "INSERT INTO \"Invoice\" (\"DocumentType\",\"Status\",\"DocumentNumber\",\"IssuerId\",\"CurrencyId\",\"TotalBeforeVat\",\"TotalVat\",\"TotalWithVat\",\"IsExported\",\"IsSentByEmail\",\"InvoiceType\",\"CreatedAt\") " +
+                "VALUES (1,2,'2026003',10,1,1,0,1,FALSE,FALSE,'Invoice',now()) RETURNING \"Id\""))!;
+            nextId.ShouldBeGreaterThan(newIds.Max());
+        });
+    }
+
+    [SkippableFact]
+    public async Task Up_WithOnlyOrphanPointers_AndNoReceivedInvoice_Succeeds()
+    {
+        await RunAsync(async env =>
+        {
+            // No received invoice at all, yet an attachment claims to belong to one: the data move is skipped,
+            // and the final check must not treat the old orphan as something the migration broke.
+            await env.ExecAsync("""
+                INSERT INTO "FileAttachment" ("Id","EntityName","RecordId","FileGuid","OriginalFileName","ContentType","FileSizeBytes","BlobPath","CreatedAt")
+                    VALUES (1,'ReceivedInvoice',999,gen_random_uuid(),'a.pdf','application/pdf',1,'p/1',now());
+                """);
+
+            await env.MigrateToLatestAsync();
+
+            (await env.ScalarAsync("SELECT \"RecordId\" FROM \"FileAttachment\" WHERE \"Id\" = 1")).ShouldBe(999L);
+            (await env.CountAsync("SELECT COUNT(*) FROM \"Invoice\" WHERE \"DocumentType\" = 5")).ShouldBe(0);
         });
     }
 
@@ -169,11 +217,28 @@ public class UnifyDocumentsMigrationTests
         }, migrateToPrevious: false);
     }
 
-    [SkippableFact]
-    public async Task Up_WhenSelfCheckFails_RollsTheWholeMigrationBack()
+    /// <summary>
+    /// The self-check is exercised with a simulated bug in the data move: a trigger in the disposable schema
+    /// changes every received row while it is being inserted. (An orphan pointer used to be the trigger here,
+    /// but that is legitimate old data and no longer stops the migration.)
+    /// The first case changes a total, which the count/sum comparison sees. The second one swaps nothing but a
+    /// document number - sums stay equal, only the row-by-row comparison through the id map can catch it.
+    /// </summary>
+    [SkippableTheory]
+    [InlineData("NEW.\"TotalWithVat\" := NEW.\"TotalWithVat\" + 1", "after")]
+    [InlineData("NEW.\"DocumentNumber\" := NEW.\"DocumentNumber\" || '-x'", "differ from their source row")]
+    public async Task Up_WhenSelfCheckFails_RollsTheWholeMigrationBack(string tamper, string expectedMessage)
     {
         await RunAsync(async env =>
         {
+            await env.ExecAsync($$"""
+                CREATE FUNCTION tamper_received() RETURNS trigger LANGUAGE plpgsql AS $t$
+                BEGIN
+                    IF NEW."DocumentType" = 5 THEN {{tamper}}; END IF;
+                    RETURN NEW;
+                END $t$;
+                CREATE TRIGGER tamper_received BEFORE INSERT ON "Invoice" FOR EACH ROW EXECUTE FUNCTION tamper_received();
+                """);
             await env.ExecAsync("""
                 INSERT INTO "Currency" ("Id","Code","Name","Symbol","DecimalPlaces","IsActive","SortOrder","CreatedAt") VALUES (1,'CZK','Koruna','Kc',2,TRUE,1,now()) ON CONFLICT DO NOTHING;
                 INSERT INTO "Client" ("Id","RegistrationNumber","CompanyName","IsVatPayer","IsIssuer","IsActive","IsMainActivity","CreatedAt") VALUES
@@ -185,22 +250,23 @@ public class UnifyDocumentsMigrationTests
                 INSERT INTO "BankAccount" ("Id","ClientId","AccountNumber","IsDefault","CreatedAt") VALUES (1,10,'123/0100',TRUE,now());
                 INSERT INTO "BankTransaction" ("Id","BankAccountId","DeduplicationHash","TransactionDate","Amount","CurrencyCode","Direction","ImportSource","MatchStatus","CreatedAt")
                     VALUES (1,1,'h1',now(),121,'CZK',2,0,1,now());
-                -- An orphan pointer (no such received invoice): the remap cannot cover it -> the self-check must stop the migration.
                 INSERT INTO "FileAttachment" ("Id","EntityName","RecordId","FileGuid","OriginalFileName","ContentType","FileSizeBytes","BlobPath","CreatedAt")
-                    VALUES (1,'ReceivedInvoice',999,gen_random_uuid(),'a.pdf','application/pdf',1,'p/1',now());
+                    VALUES (1,'ReceivedInvoice',1,gen_random_uuid(),'a.pdf','application/pdf',1,'p/1',now());
                 """);
 
             var ex = await Should.ThrowAsync<Exception>(() => env.MigrateToLatestAsync());
             ex.ToString().ShouldContain("UnifyDocuments");
+            ex.ToString().ShouldContain(expectedMessage);
 
             // Nothing of the migration survived: same tables, same columns, no history row, data untouched.
             (await env.FlagAsync("SELECT to_regclass('\"ReceivedInvoice\"') IS NOT NULL")).ShouldBe(true);
             (await env.FlagAsync("SELECT to_regclass('\"ReceivedInvoiceIdMap_legacy\"') IS NULL")).ShouldBe(true);
+            (await env.FlagAsync("SELECT to_regclass('\"InboundInvoiceEmailReceivedLink_legacy\"') IS NULL")).ShouldBe(true);
             (await env.CountAsync("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'Invoice' AND column_name = 'ReceivedDate'")).ShouldBe(0);
             (await env.CountAsync($"SELECT COUNT(*) FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\" = '{UnifyMigration}'")).ShouldBe(0);
             (await env.CountAsync("SELECT COUNT(*) FROM \"Invoice\"")).ShouldBe(1);
             (await env.CountAsync("SELECT COUNT(*) FROM \"ReceivedInvoice\"")).ShouldBe(1);
-            (await env.ScalarAsync("SELECT \"RecordId\" FROM \"FileAttachment\" WHERE \"Id\" = 1")).ShouldBe(999L);
+            (await env.ScalarAsync("SELECT \"RecordId\" FROM \"FileAttachment\" WHERE \"Id\" = 1")).ShouldBe(1L);
         });
     }
 

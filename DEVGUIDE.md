@@ -2756,7 +2756,7 @@ UI a MCP zatím zůstávají beze změny).
 | naše firma | `IssuerId` = `Client` s `IsIssuer = true` (nejnižší Id) |
 | datum přijetí | `ReceivedDate` (nový sloupec, index) |
 | stav `EReceivedInvoiceStatus` | `EInvoiceStatus`: Received→Draft, Approved→Completed (částečně uhrazený = `PartiallyPaid`), Paid→Paid, Deleted→Deleted. **Rejected zrušen** (reject = soft delete). Číslo `4` se nikdy nekopíruje (u vydaných = Creditnoted) |
-| uhrazeno | `PaidAmount` (udržuje `ReceivedInvoiceService.MarkAsPaidAsync` a `PaymentMatchingService`) |
+| uhrazeno | `PaidAmount` (udržuje `ReceivedInvoiceService.MarkAsPaidAsync` a `PaymentMatchingService`; při unmatch se **přepočítá ze zbylých `PaymentMatch`**, neodečítá se) |
 
 - `EReceivedInvoiceStatus` zůstává jen jako DTO/contract enum; `ReceivedInvoiceService` je **fasáda** nad tabulkou
   `Invoice` (stejné rozhraní, validační hlášky a povolené přechody). Mapování stavů: `ReceivedInvoiceService.ToLegacy`.
@@ -2775,13 +2775,27 @@ Guard nevidí navigační vlastnosti (`match.Invoice`, `x.Invoice` v `InvoiceIte
 `DocumentType` ručně (viz `BankTransactionQueryService`, `VatReportService`). Izolace podle id: vydaná operace s id
 přijatého dokladu = „not found" a naopak (`DocumentSideIsolationTests`).
 
+**Zápis: `ReceivedInvoice` nesmí projít vydanou cestou.** Typ je ve stejném enumu, takže každá *vydaná* zápisová
+hranice ho odmítá dřív, než cokoli uloží: `IssuedDocumentTypes.EnsureIssued(...)` (`Fakvio.Domain/Enums`) v
+`InvoiceService.CreateInvoiceCoreAsync` (jediný vstup pro create / copy / šablonu / finální fakturu / DPP / import),
+`InvoiceTemplateService.CreateTemplateAsync` a `NumberSequenceService.CreateSequenceAsync`. Nástroje (MCP, chat) parsují
+přes `IssuedDocumentTypes.TryParse` a nabízejí `IssuedDocumentTypes.Names`, **nikdy `Enum.GetNames<EDocumentType>()`
+ani holé `Enum.TryParse`** (bere i číslo `"5"`). Testy: `IssuedDocumentTypeBoundaryTests`.
+
 **Migrace `UnifyDocumentsInInvoiceTable`** (tenant, `Fakvio.Infrastructure/Migrations/Tenant`): ručně psané SQL
 (`UnifyDocumentsInInvoiceTableSql`) — nové id = souvislý blok z identity sekvence `Invoice` v pořadí starých id,
-uvnitř jedna transakce (EF obalí každou migraci) a self-check (`DO $$ … RAISE EXCEPTION`) porovná počty, součty,
-stavy a přemapované odkazy; při rozdílu se tenant vrátí do původního stavu. `Down()` není podporováno (restore ze zálohy).
-Staré tabulky **nejsou smazány**: `ReceivedInvoice_legacy`, `ReceivedInvoiceItem_legacy` (bez FK) a mapa
-`ReceivedInvoiceIdMap_legacy("OldId","NewId")`. **Smazat je až v pozdějším releasu**, kdy se ověří, že se nikdo nevrací
-k původním id (migrace `DROP TABLE` na tyto tři tabulky + `IF EXISTS`). Zlatý standard pro ověření „žádná změna chování":
+začínající **nad** `MAX(Invoice.Id)` i `MAX(ReceivedInvoice.Id)` (staré id přijaté faktury tak nikdy neukáže na jiný
+přijatý doklad). Uvnitř jedna transakce (EF obalí každou migraci) a self-check (`DO $$ … RAISE EXCEPTION`) porovná počty,
+součty, stavy, přemapované odkazy a **řádek po řádku přes mapu** (`EXCEPT ALL` hlaviček i položek); při rozdílu se tenant
+vrátí do původního stavu. `Down()` není podporováno (restore ze zálohy).
+Self-check smí selhat jen na tom, co mohla rozbít sama migrace: selhání = 503 pro celého tenanta. Legitimní starý
+nepořádek proto prochází: `InboundInvoiceEmail` s vydanou **i** přijatou vazbou (vydaná `InvoiceId` zůstává, přijatá jde do
+`InboundInvoiceEmailReceivedLink_legacy`) a osiřelé polymorfní odkazy (`FileAttachment` / `Notification` / `Alert` typu
+`'ReceivedInvoice'` na neexistující id, zůstávají beze změny, kontrola je odečítá).
+Staré tabulky **nejsou smazány**: `ReceivedInvoice_legacy`, `ReceivedInvoiceItem_legacy` (bez FK), mapa
+`ReceivedInvoiceIdMap_legacy("OldId","NewId")` a `InboundInvoiceEmailReceivedLink_legacy`. **Smazat je až v pozdějším
+releasu**, kdy se ověří, že se nikdo nevrací k původním id (migrace `DROP TABLE IF EXISTS` na tyto čtyři tabulky).
+Provozní pohled (záloha, 503, id) je v ADMINGUIDE §13.2. Zlatý standard pro ověření „žádná změna chování":
 `GoldenMasterSnapshotTests` (`FAKVIO_GM=1`, `FAKVIO_GM_CONN`, `FAKVIO_GM_OUT`) porovná snapshoty služeb před/po na kopii produkce.
 
 Selhání migrace při lazy migraci (první request tenanta, `TenantDbContextFactory.EnsureMigratedAsync`): výjimka se

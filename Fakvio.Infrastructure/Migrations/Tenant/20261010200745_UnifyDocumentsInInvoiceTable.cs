@@ -22,8 +22,14 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
     /// Table names are unqualified on purpose: they resolve to the tenant schema through search_path.
     ///
     /// Old tables are NOT dropped: they are renamed to <c>*_legacy</c> (FKs removed, so they cannot block deletes)
-    /// together with the persistent map <c>ReceivedInvoiceIdMap_legacy("OldId","NewId")</c>. A later release drops
+    /// together with the persistent map <c>ReceivedInvoiceIdMap_legacy("OldId","NewId")</c> and
+    /// <c>InboundInvoiceEmailReceivedLink_legacy</c> (links that could not be kept). A later release drops
     /// them (see DEVGUIDE "One table for all documents").
+    ///
+    /// A failed tenant migration means HTTP 503 for the whole tenant, so the self-check only stops on what THIS
+    /// migration could have broken. Messy data that existed before (an inbound e-mail linked to both an issued and
+    /// a received document, attachments / notifications / alerts pointing to a received invoice that never existed)
+    /// is tolerated and documented in <see cref="UnifyDocumentsInInvoiceTableSql"/>.
     /// </summary>
     public partial class UnifyDocumentsInInvoiceTable : Migration
     {
@@ -56,6 +62,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
             // 2. Id map + data move + self-check (one plpgsql block; any RAISE EXCEPTION rolls everything back).
             migrationBuilder.Sql(UnifyDocumentsInInvoiceTableSql.CreateIdMap);
+            migrationBuilder.Sql(UnifyDocumentsInInvoiceTableSql.CreateDroppedEmailLinks);
             migrationBuilder.Sql(UnifyDocumentsInInvoiceTableSql.MoveDataAndSelfCheck);
 
             // 3. Structural clean-up: the old pointers are no longer needed (data is already in InvoiceId).
@@ -131,6 +138,20 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
             )
             """;
 
+        /// <summary>
+        /// Audit copy of the received links that could not be kept: the old e-mail processor could fill BOTH
+        /// <c>InvoiceId</c> (issued) and <c>ReceivedInvoiceId</c> on one inbound e-mail, the new model has a single
+        /// <c>InvoiceId</c>. The issued link stays; the received one is written here (with its new id).
+        /// </summary>
+        public const string CreateDroppedEmailLinks = """
+            CREATE TABLE "InboundInvoiceEmailReceivedLink_legacy" (
+                "InboundInvoiceEmailId" bigint NOT NULL,
+                "OldReceivedInvoiceId"  bigint NOT NULL,
+                "NewInvoiceId"          bigint NOT NULL,
+                CONSTRAINT "PK_InboundInvoiceEmailReceivedLink_legacy" PRIMARY KEY ("InboundInvoiceEmailId")
+            )
+            """;
+
         public const string MoveDataAndSelfCheck = """
             DO $unify$
             DECLARE
@@ -146,9 +167,13 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                 b_items_sum  numeric;
                 b_pm         bigint;
                 b_inbound    bigint;
+                b_both       bigint;
                 b_files      bigint;
                 b_notif      bigint;
                 b_alerts     bigint;
+                o_files      bigint;
+                o_notif      bigint;
+                o_alerts     bigint;
                 b_received   bigint;
                 b_approved   bigint;
                 b_paid       bigint;
@@ -162,17 +187,30 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                   FROM "ReceivedInvoice";
                 SELECT COUNT(*), COALESCE(SUM("TotalWithVat"), 0) INTO b_items, b_items_sum FROM "ReceivedInvoiceItem";
                 SELECT COUNT(*) INTO b_pm      FROM "PaymentMatch"        WHERE "ReceivedInvoiceId" IS NOT NULL;
-                SELECT COUNT(*) INTO b_inbound FROM "InboundInvoiceEmail" WHERE "ReceivedInvoiceId" IS NOT NULL;
-                SELECT COUNT(*) INTO b_files   FROM "FileAttachment"      WHERE "EntityName" = 'ReceivedInvoice';
-                SELECT COUNT(*) INTO b_notif   FROM "Notification"        WHERE "RelatedEntityType" = 'ReceivedInvoice';
-                SELECT COUNT(*) INTO b_alerts  FROM "Alert"               WHERE "RelatedEntityType" = 'ReceivedInvoice';
+                -- Inbound e-mails: b_inbound = received link only (will be remapped), b_both = BOTH links filled.
+                -- The old processor set the two columns independently (one e-mail with an issued and a received
+                -- attachment), so "both" is legitimate data: the issued link is kept, the received one is parked.
+                SELECT COUNT(*) FILTER (WHERE "InvoiceId" IS NULL), COUNT(*) FILTER (WHERE "InvoiceId" IS NOT NULL)
+                  INTO b_inbound, b_both
+                  FROM "InboundInvoiceEmail" WHERE "ReceivedInvoiceId" IS NOT NULL;
 
-                -- Rows that cannot be represented with a single InvoiceId: stop instead of silently losing a link.
+                -- Polymorphic pointers have NO foreign key and the upload endpoint never validated the target, so a
+                -- row may point to a received invoice that does not exist (an orphan). b_* = rows that CAN be
+                -- remapped, o_* = orphans. Orphans were there before, this migration leaves them exactly as they are.
+                SELECT COUNT(r."Id"), COUNT(*) - COUNT(r."Id") INTO b_files, o_files
+                  FROM "FileAttachment" x LEFT JOIN "ReceivedInvoice" r ON r."Id" = x."RecordId"
+                 WHERE x."EntityName" = 'ReceivedInvoice';
+                SELECT COUNT(r."Id"), COUNT(*) - COUNT(r."Id") INTO b_notif, o_notif
+                  FROM "Notification" x LEFT JOIN "ReceivedInvoice" r ON r."Id" = x."RelatedEntityId"
+                 WHERE x."RelatedEntityType" = 'ReceivedInvoice';
+                SELECT COUNT(r."Id"), COUNT(*) - COUNT(r."Id") INTO b_alerts, o_alerts
+                  FROM "Alert" x LEFT JOIN "ReceivedInvoice" r ON r."Id" = x."RelatedEntityId"
+                 WHERE x."RelatedEntityType" = 'ReceivedInvoice';
+
+                -- A payment cannot be split between two documents: stop instead of silently losing a link.
+                -- (Unlike the e-mail case no code path ever produced this, CK_PaymentMatch_Target forbids it.)
                 IF EXISTS (SELECT 1 FROM "PaymentMatch" WHERE "ReceivedInvoiceId" IS NOT NULL AND "InvoiceId" IS NOT NULL) THEN
                     RAISE EXCEPTION 'UnifyDocuments: PaymentMatch rows point to both an issued and a received invoice';
-                END IF;
-                IF EXISTS (SELECT 1 FROM "InboundInvoiceEmail" WHERE "ReceivedInvoiceId" IS NOT NULL AND "InvoiceId" IS NOT NULL) THEN
-                    RAISE EXCEPTION 'UnifyDocuments: InboundInvoiceEmail rows link both an issued and a received invoice';
                 END IF;
 
                 -- ===== MOVE (only when there is something to move: empty and brand-new tenants skip it) =====
@@ -185,8 +223,16 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     -- Deterministic ids: reserve ONE contiguous block from the Invoice identity sequence and give the
                     -- received rows the ids base, base+1, ... in order of their old Id (never below the current max Id).
+                    -- The block also starts ABOVE every OLD received id. Otherwise an old id would silently resolve
+                    -- to a DIFFERENT supplier invoice (2 issued + 6 received: old id 4 would become the document that
+                    -- used to be id 2) for anything that still holds it: stored webhook payloads that are retried,
+                    -- API / MCP clients, an open browser tab. Above the block an old id is either unused or an issued
+                    -- document, and the received endpoints answer "not found" for both.
                     v_seq  := pg_get_serial_sequence('"Invoice"', 'Id');
-                    v_base := GREATEST(nextval(v_seq), (SELECT COALESCE(MAX("Id"), 0) FROM "Invoice") + 1);
+                    v_base := GREATEST(nextval(v_seq),
+                                       (SELECT COALESCE(MAX("Id"), 0) FROM "Invoice") + 1,
+                                       (SELECT MAX("Id") FROM "ReceivedInvoice") + 1);
+                    -- The sequence now stands on the LAST id of the block: the next new document gets block end + 1.
                     PERFORM setval(v_seq, v_base + b_docs - 1);
 
                     INSERT INTO "ReceivedInvoiceIdMap_legacy" ("OldId", "NewId")
@@ -241,12 +287,22 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     GET DIAGNOSTICS v_rows = ROW_COUNT;
                     IF v_rows <> b_pm THEN RAISE EXCEPTION 'UnifyDocuments: PaymentMatch remapped % of % rows', v_rows, b_pm; END IF;
 
+                    -- E-mails linked to BOTH sides keep the issued InvoiceId (deterministic rule); the received link
+                    -- is copied to the audit table before the ReceivedInvoiceId column is dropped.
+                    INSERT INTO "InboundInvoiceEmailReceivedLink_legacy" ("InboundInvoiceEmailId", "OldReceivedInvoiceId", "NewInvoiceId")
+                    SELECT x."Id", m."OldId", m."NewId"
+                      FROM "InboundInvoiceEmail" x JOIN "ReceivedInvoiceIdMap_legacy" m ON m."OldId" = x."ReceivedInvoiceId"
+                     WHERE x."InvoiceId" IS NOT NULL;
+                    GET DIAGNOSTICS v_rows = ROW_COUNT;
+                    IF v_rows <> b_both THEN RAISE EXCEPTION 'UnifyDocuments: InboundInvoiceEmail parked % of % double links', v_rows, b_both; END IF;
+
                     UPDATE "InboundInvoiceEmail" x SET "InvoiceId" = m."NewId"
-                      FROM "ReceivedInvoiceIdMap_legacy" m WHERE x."ReceivedInvoiceId" = m."OldId";
+                      FROM "ReceivedInvoiceIdMap_legacy" m WHERE x."ReceivedInvoiceId" = m."OldId" AND x."InvoiceId" IS NULL;
                     GET DIAGNOSTICS v_rows = ROW_COUNT;
                     IF v_rows <> b_inbound THEN RAISE EXCEPTION 'UnifyDocuments: InboundInvoiceEmail remapped % of % rows', v_rows, b_inbound; END IF;
 
                     -- Polymorphic pointers keep the type string 'ReceivedInvoice' (the UI still routes by it).
+                    -- Orphans do not join the map, so they are not touched (and not counted in b_*).
                     UPDATE "FileAttachment" x SET "RecordId" = m."NewId"
                       FROM "ReceivedInvoiceIdMap_legacy" m WHERE x."EntityName" = 'ReceivedInvoice' AND x."RecordId" = m."OldId";
                     GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -278,6 +334,40 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     RAISE EXCEPTION 'UnifyDocuments: items % / total % after, % / % before', v_n, v_num, b_items, b_items_sum;
                 END IF;
 
+                -- Row by row through the id map: counts and sums cannot see a wrong join (two documents swapped,
+                -- an item under the wrong document). EXCEPT ALL returns the OLD rows that have no identical NEW row
+                -- (NULL = NULL here); with the equal counts above, an empty result means the two sets are identical.
+                -- Status is compared in the mapped form (PartiallyPaid 6 is "Approved with a payment" = 2).
+                SELECT COUNT(*) INTO v_n FROM (
+                    SELECT m."NewId", r."DocumentNumber", r."IssueDate", r."DueDate", r."TaxableSupplyDate", r."ReceivedDate",
+                           r."SupplierId", r."VariableSymbol", r."BankAccountNumber", r."IBAN", r."SWIFT", r."PaymentMethod",
+                           r."TotalBeforeVat", r."TotalVat", r."TotalWithVat", r."CurrencyId", r."Notes", r."PaidAt",
+                           r."ExchangeRate", r."ExchangeRateDate", r."CreatedAt", r."UpdatedAt", r."CreatedByUserId", r."UpdatedByUserId",
+                           CASE r."Status" WHEN 4 THEN 5 ELSE r."Status" END
+                      FROM "ReceivedInvoice" r JOIN "ReceivedInvoiceIdMap_legacy" m ON m."OldId" = r."Id"
+                    EXCEPT ALL
+                    SELECT i."Id", i."DocumentNumber", i."IssueDate", i."DueDate", i."TaxableSupplyDate", i."ReceivedDate",
+                           i."ClientId", i."VariableSymbol", i."BankAccountNumber", i."IBAN", i."SWIFT", i."PaymentMethod",
+                           i."TotalBeforeVat", i."TotalVat", i."TotalWithVat", i."CurrencyId", i."Notes", i."PaidAt",
+                           i."ExchangeRate", i."ExchangeRateDate", i."CreatedAt", i."UpdatedAt", i."CreatedByUserId", i."UpdatedByUserId",
+                           CASE i."Status" WHEN 6 THEN 2 ELSE i."Status" END
+                      FROM "Invoice" i WHERE i."DocumentType" = 5) d;
+                IF v_n <> 0 THEN RAISE EXCEPTION 'UnifyDocuments: % received documents differ from their source row', v_n; END IF;
+
+                SELECT COUNT(*) INTO v_n FROM (
+                    SELECT m."NewId", o."OrderIndex", o."Description", o."Quantity", o."Unit", o."UnitPrice", o."VatRateId",
+                           o."VatRatePercentage", o."TotalBeforeVat", o."VatAmount", o."TotalWithVat", o."VatRegime",
+                           o."ReverseChargeCodeId", o."InformationalVatAmount", o."ProductCode", o."Notes",
+                           o."CreatedAt", o."UpdatedAt", o."CreatedByUserId", o."UpdatedByUserId"
+                      FROM "ReceivedInvoiceItem" o JOIN "ReceivedInvoiceIdMap_legacy" m ON m."OldId" = o."ReceivedInvoiceId"
+                    EXCEPT ALL
+                    SELECT it."InvoiceId", it."OrderIndex", it."Description", it."Quantity", it."Unit", it."UnitPrice", it."VatRateId",
+                           it."VatRatePercentage", it."TotalBeforeVat", it."VatAmount", it."TotalWithVat", it."VatRegime",
+                           it."ReverseChargeCodeId", it."InformationalVatAmount", it."ProductCode", it."Notes",
+                           it."CreatedAt", it."UpdatedAt", it."CreatedByUserId", it."UpdatedByUserId"
+                      FROM "InvoiceItem" it JOIN "Invoice" inv ON inv."Id" = it."InvoiceId" WHERE inv."DocumentType" = 5) d;
+                IF v_n <> 0 THEN RAISE EXCEPTION 'UnifyDocuments: % received items differ from their source row', v_n; END IF;
+
                 -- status mapping (4 is never copied): Received=Draft, Approved=Completed+PartiallyPaid, Paid=Paid, Rejected+Deleted=Deleted
                 SELECT COUNT(*) INTO v_n FROM "Invoice" WHERE "DocumentType" = 5 AND "Status" NOT IN (1, 2, 3, 5, 6);
                 IF v_n <> 0 THEN RAISE EXCEPTION 'UnifyDocuments: % received documents have an invalid status', v_n; END IF;
@@ -290,24 +380,31 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                 SELECT COUNT(*) INTO v_n FROM "Invoice" WHERE "DocumentType" = 5 AND "Status" = 5;
                 IF v_n <> b_deleted THEN RAISE EXCEPTION 'UnifyDocuments: Deleted % <> Rejected+Deleted %', v_n, b_deleted; END IF;
 
-                -- pointers: same number of rows now point to received documents, and none points to an unmapped id
+                -- pointers: same number of rows now point to received documents ...
                 SELECT COUNT(*) INTO v_n FROM "PaymentMatch" pm JOIN "Invoice" inv ON inv."Id" = pm."InvoiceId" WHERE inv."DocumentType" = 5;
                 IF v_n <> b_pm THEN RAISE EXCEPTION 'UnifyDocuments: % payment matches point to received documents, expected %', v_n, b_pm; END IF;
                 SELECT COUNT(*) INTO v_n FROM "InboundInvoiceEmail" e JOIN "Invoice" inv ON inv."Id" = e."InvoiceId" WHERE inv."DocumentType" = 5;
                 IF v_n <> b_inbound THEN RAISE EXCEPTION 'UnifyDocuments: % inbound e-mails link received documents, expected %', v_n, b_inbound; END IF;
 
+                -- ... the parked double links are all there ...
+                SELECT COUNT(*) INTO v_n FROM "InboundInvoiceEmailReceivedLink_legacy";
+                IF v_n <> b_both THEN RAISE EXCEPTION 'UnifyDocuments: % parked e-mail links, expected %', v_n, b_both; END IF;
+
+                -- ... and no polymorphic pointer ended on an id that is not a received document, EXCEPT the orphans
+                -- that already pointed nowhere before (o_*). "Greater than", not "different": the remap moved exactly
+                -- b_* rows (ROW_COUNT checks above), so anything above o_* is a row this migration sent to a wrong id.
                 SELECT COUNT(*) INTO v_n FROM "FileAttachment" f
                  WHERE f."EntityName" = 'ReceivedInvoice'
                    AND NOT EXISTS (SELECT 1 FROM "Invoice" inv WHERE inv."Id" = f."RecordId" AND inv."DocumentType" = 5);
-                IF v_n <> 0 THEN RAISE EXCEPTION 'UnifyDocuments: % file attachments point to an unmapped id', v_n; END IF;
+                IF v_n > o_files THEN RAISE EXCEPTION 'UnifyDocuments: % file attachments point to an unmapped id (% orphans before)', v_n, o_files; END IF;
                 SELECT COUNT(*) INTO v_n FROM "Notification" f
                  WHERE f."RelatedEntityType" = 'ReceivedInvoice'
                    AND NOT EXISTS (SELECT 1 FROM "Invoice" inv WHERE inv."Id" = f."RelatedEntityId" AND inv."DocumentType" = 5);
-                IF v_n <> 0 THEN RAISE EXCEPTION 'UnifyDocuments: % notifications point to an unmapped id', v_n; END IF;
+                IF v_n > o_notif THEN RAISE EXCEPTION 'UnifyDocuments: % notifications point to an unmapped id (% orphans before)', v_n, o_notif; END IF;
                 SELECT COUNT(*) INTO v_n FROM "Alert" f
                  WHERE f."RelatedEntityType" = 'ReceivedInvoice'
                    AND NOT EXISTS (SELECT 1 FROM "Invoice" inv WHERE inv."Id" = f."RelatedEntityId" AND inv."DocumentType" = 5);
-                IF v_n <> 0 THEN RAISE EXCEPTION 'UnifyDocuments: % alerts point to an unmapped id', v_n; END IF;
+                IF v_n > o_alerts THEN RAISE EXCEPTION 'UnifyDocuments: % alerts point to an unmapped id (% orphans before)', v_n, o_alerts; END IF;
             END
             $unify$
             """;

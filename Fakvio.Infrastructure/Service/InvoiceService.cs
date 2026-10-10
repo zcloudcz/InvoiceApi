@@ -350,6 +350,11 @@ public class InvoiceService : IInvoiceService
     private async Task<InvoiceDto> CreateInvoiceCoreAsync(
         CreateInvoiceDto createDto, bool applyBankAccountDefaulting, CancellationToken cancellationToken = default)
     {
+        // One table holds issued AND received documents. This is the single entry of every issued create path
+        // (API, copy, template, proforma -> final invoice, tax receipt, import, recurring), so the received type is
+        // refused here, before anything is read or saved.
+        IssuedDocumentTypes.EnsureIssued(createDto.DocumentType);
+
         _logger.LogInformation("Creating new {DocumentType}", createDto.DocumentType);
 
         // Validate client and issuer exist

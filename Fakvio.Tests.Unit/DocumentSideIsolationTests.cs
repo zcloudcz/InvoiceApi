@@ -196,4 +196,45 @@ public class DocumentSideIsolationTests : IDisposable
         reverted.PaidAmount.ShouldBe(0m);
         reverted.PaidAt.ShouldBeNull();
     }
+
+    /// <summary>
+    /// A row migrated from the old table: Paid with PaidAmount = total, although its only match covers less
+    /// (the old matcher marked a received invoice Paid on ANY match). Subtracting the match on unmatch would
+    /// leave 1210 - 600 = 610 "paid" and a PartiallyPaid document with no payment behind it.
+    /// </summary>
+    [Fact]
+    public async Task Unmatch_Received_RecomputesPaidAmountFromRemainingMatches()
+    {
+        var received = await _db.Invoice.SingleAsync(i => i.Id == _receivedId);
+        received.Status = EInvoiceStatus.Paid;
+        received.PaidAmount = 1210m;
+        received.PaidAt = DateTime.UtcNow;
+        var tx2 = new BankTransaction
+        {
+            BankAccountId = 1, Amount = 100m, CurrencyCode = "CZK", Direction = EPaymentDirection.Outgoing,
+            MatchStatus = EMatchStatus.Matched, TransactionDate = DateTime.UtcNow, DeduplicationHash = "h2"
+        };
+        _db.BankTransaction.Add(tx2);
+        var big = new PaymentMatch { BankTransactionId = _txId, InvoiceId = _receivedId, MatchedAmount = 600m, MatchedAt = DateTime.UtcNow };
+        var small = new PaymentMatch { BankTransaction = tx2, InvoiceId = _receivedId, MatchedAmount = 100m, MatchedAt = DateTime.UtcNow };
+        _db.PaymentMatch.AddRange(big, small);
+        await _db.SaveChangesAsync();
+
+        // One match remains: PaidAmount is exactly that match, the legacy status is "Approved" as before.
+        await _matching.UnmatchAsync(big.Id, null, null);
+
+        var partly = await _db.Invoice.AsNoTracking().SingleAsync(i => i.Id == _receivedId);
+        partly.PaidAmount.ShouldBe(100m);
+        partly.Status.ShouldBe(EInvoiceStatus.PartiallyPaid);
+        (await _received.GetByIdAsync(_receivedId))!.Status.ShouldBe(EReceivedInvoiceStatus.Approved);
+
+        // No match remains: nothing is paid, never "PartiallyPaid with zero matches".
+        await _matching.UnmatchAsync(small.Id, null, null);
+
+        var unpaid = await _db.Invoice.AsNoTracking().SingleAsync(i => i.Id == _receivedId);
+        unpaid.PaidAmount.ShouldBe(0m);
+        unpaid.Status.ShouldBe(EInvoiceStatus.Completed);
+        unpaid.PaidAt.ShouldBeNull();
+        (await _received.GetByIdAsync(_receivedId))!.Status.ShouldBe(EReceivedInvoiceStatus.Approved);
+    }
 }
