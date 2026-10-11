@@ -297,6 +297,18 @@ public class InvoiceController : ControllerBase
     {
         _logger.LogInformation("PUT /api/invoice/{Id}", id);
 
+        // "Digits only, max 10" applies to ISSUED documents only (a received invoice keeps the supplier's symbol
+        // as printed), and the type comes from the stored row, so the DTO attributes cannot decide it. The answer
+        // is the same validation 400 the DTO attribute used to produce. The type is looked up only for a symbol
+        // that breaks the issued rule, so a normal update costs no extra query; an unknown id falls through to 404.
+        if (!IssuedDocumentTypes.IsValidVariableSymbol(updateDto.VariableSymbol)
+            && await _invoiceService.GetDocumentTypeAsync(id, cancellationToken) is { } storedType
+            && storedType != EDocumentType.ReceivedInvoice)
+        {
+            ModelState.AddModelError(nameof(updateDto.VariableSymbol), IssuedDocumentTypes.VariableSymbolError);
+            return ValidationProblem(ModelState);
+        }
+
         try
         {
             var invoice = await _invoiceService.UpdateInvoiceAsync(id, updateDto, cancellationToken);

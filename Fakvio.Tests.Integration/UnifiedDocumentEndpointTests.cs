@@ -64,7 +64,7 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         tenantDb.SaveChanges();
     }
 
-    private long SeedDoc(EDocumentType type, EInvoiceStatus status, decimal paidAmount = 0m)
+    private long SeedDoc(EDocumentType type, EInvoiceStatus status, decimal paidAmount = 0m, string? variableSymbol = null)
     {
         using var scope = _factory.Services.CreateScope();
         var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
@@ -73,7 +73,7 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         {
             DocumentNumber = $"UD-{Guid.NewGuid():N}"[..14],
             DocumentType = type, Status = status, ClientId = SupplierId, IssuerId = CompanyId, CurrencyId = CurrencyId,
-            VariableSymbol = Random.Shared.NextInt64(1_000_000_000, 9_999_999_999).ToString(),
+            VariableSymbol = variableSymbol ?? Random.Shared.NextInt64(1_000_000_000, 9_999_999_999).ToString(),
             IssueDate = DateTime.UtcNow.AddDays(-5), DueDate = DateTime.UtcNow.AddDays(10), TaxableSupplyDate = DateTime.UtcNow.AddDays(-5),
             ReceivedDate = type == EDocumentType.ReceivedInvoice ? DateTime.UtcNow : null,
             TotalBeforeVat = 100m, TotalVat = 21m, TotalWithVat = 121m, PaidAmount = paidAmount,
@@ -170,6 +170,70 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await JsonOf(response)).GetProperty("message").GetString()!.ShouldContain("Supplier");
+    }
+
+    // ─── Variable symbol: free text for a received invoice, "digits, max 10" for an issued one ───
+
+    private const string SupplierSymbol = "INV-2026-0042"; // not numeric and longer than 10: legal on a supplier's invoice
+
+    private string? VariableSymbolOf(long id)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<TenantDbContext>().Invoice.Single(i => i.Id == id).VariableSymbol;
+    }
+
+    /// <summary>
+    /// A form round-trips every field on save. A received invoice stored with the supplier's own symbol must stay
+    /// saveable when the user changed only the note (PR #537 review: the issued "max 10 digits" rule blocked it).
+    /// </summary>
+    [Fact]
+    public async Task ReceivedDocument_WithSuppliersNonNumericVariableSymbol_CanBeUpdatedAndCreated()
+    {
+        var id = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft, variableSymbol: SupplierSymbol);
+        var client = await CreateAuthenticatedClientAsync();
+
+        var update = await client.PutAsJsonAsync($"/api/invoice/{id}", new { variableSymbol = SupplierSymbol, notes = "only the note changed" });
+
+        update.StatusCode.ShouldBe(HttpStatusCode.OK);
+        RowOf(id).Notes.ShouldBe("only the note changed");
+        VariableSymbolOf(id).ShouldBe(SupplierSymbol);
+
+        var create = await client.PostAsJsonAsync("/api/invoice", new
+        {
+            documentType = (int)EDocumentType.ReceivedInvoice, clientId = SupplierId, issuerId = 0, currencyId = CurrencyId,
+            customDocumentNumber = $"SUP-{Guid.NewGuid():N}"[..12], variableSymbol = SupplierSymbol,
+            invoiceItem = new[] { new { description = "Hosting", quantity = 1, unit = "ks", unitPrice = 100, vatRatePercentage = 21 } }
+        });
+
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        (await JsonOf(create)).GetProperty("variableSymbol").GetString().ShouldBe(SupplierSymbol);
+    }
+
+    /// <summary>Issued documents keep the old rule, the old message and the old validation-400 shape.</summary>
+    [Theory]
+    [InlineData("INV-2026-0042")] // not digits
+    [InlineData("12345678901")]   // 11 digits
+    public async Task IssuedDocument_RefusesAVariableSymbolThatIsNotMax10Digits_OnCreateAndUpdate(string symbol)
+    {
+        var id = SeedDoc(EDocumentType.Invoice, EInvoiceStatus.Draft);
+        var before = VariableSymbolOf(id);
+        var client = await CreateAuthenticatedClientAsync();
+
+        var update = await client.PutAsJsonAsync($"/api/invoice/{id}", new { variableSymbol = symbol });
+        var create = await client.PostAsJsonAsync("/api/invoice", new
+        {
+            documentType = (int)EDocumentType.Invoice, clientId = SupplierId, issuerId = CompanyId, currencyId = CurrencyId,
+            variableSymbol = symbol, variableSymbolIsManualOverride = true,
+            invoiceItem = new[] { new { description = "Hosting", quantity = 1, unit = "ks", unitPrice = 100, vatRatePercentage = 21 } }
+        });
+
+        foreach (var response in new[] { update, create })
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            (await JsonOf(response)).GetProperty("errors").GetProperty("VariableSymbol")[0].GetString()
+                .ShouldBe("Variable symbol must contain only digits (max 10)");
+        }
+        VariableSymbolOf(id).ShouldBe(before);
     }
 
     // ─── Transitions ─────────────────────────────────────────────────────────

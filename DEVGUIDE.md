@@ -2939,6 +2939,7 @@ legacy DTO na `CreateInvoiceDto` / `UpdateInvoiceDto` a volá totéž, takže ob
 | `IssuerId` | z DTO, musí být `IsIssuer` | **vždy server**: naše firma = `Client` s `IsIssuer`, nejnižší Id (hodnota z DTO se ignoruje) |
 | číslo dokladu | z číselné řady / `CustomDocumentNumber` | `CustomDocumentNumber` = číslo dodavatele (může chybět na konceptu), upravitelné přes `UpdateInvoiceDto.DocumentNumber`, **nikdy se negeneruje ani neuvolňuje** |
 | `ReceivedDate` | zakázáno (400) | nastavitelné (výchozí: teď), upravitelné |
+| variabilní symbol | jen číslice, max 10 (validační 400 se stejnou hláškou jako dřív; pravidlo `IssuedDocumentTypes.IsValidVariableSymbol`, create: `CreateInvoiceDto.Validate`, update: `InvoiceController.UpdateInvoice` podle **uloženého** typu) | symbol dodavatele tak, jak je na faktuře: libovolné znaky, max 50 (délka sloupce), např. `INV-2026-0042` |
 | data | normalizace na UTC půlnoc, splatnost z fakturačního nastavení | uloženo tak, jak přišlo (data dodavatele) |
 | editace | Draft i Completed; kurz jen v Draftu | Draft, Completed a PartiallyPaid; **kurz jen v Draftu** (před schválením); Paid / Deleted = 400 |
 | odmítnuté pole | - | `NumberSequenceId`, `OriginalInvoiceId`, `BankAccountId`, `ApplyOss`, textové řádky položek = 400 |
