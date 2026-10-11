@@ -74,8 +74,12 @@ public interface IFakvioApiClient
     /// <summary>GET /api/invoice/{id} — single invoice by ID.</summary>
     Task<InvoiceDto?> GetInvoiceByIdAsync(long id, CancellationToken ct = default);
 
-    /// <summary>GET /api/invoice/by-number/{documentNumber} — find invoice by document number.</summary>
-    Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(string documentNumber, CancellationToken ct = default);
+    /// <summary>
+    /// GET /api/invoice/by-number/{documentNumber} — find invoice by document number. Without
+    /// <paramref name="documentType"/> only issued documents are searched (supplier numbers are not unique).
+    /// The type is the LAST parameter so existing callers that pass the token second keep compiling.
+    /// </summary>
+    Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(string documentNumber, CancellationToken ct = default, EDocumentType? documentType = null);
 
     /// <summary>POST /api/invoice — create a new invoice or credit note.</summary>
     Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto dto, CancellationToken ct = default);
@@ -88,6 +92,12 @@ public interface IFakvioApiClient
 
     /// <summary>POST /api/invoice/{id}/revert-to-draft — switch a Completed invoice back to Draft (null when not found).</summary>
     Task<InvoiceDto?> RevertInvoiceToDraftAsync(long id, CancellationToken ct = default);
+
+    /// <summary>POST /api/invoice/{id}/mark-unpaid — cancel the payment of a Paid / PartiallyPaid document (null when not found).</summary>
+    Task<InvoiceDto?> MarkInvoiceAsUnpaidAsync(long id, CancellationToken ct = default);
+
+    /// <summary>POST /api/invoice/{id}/restore — bring a Deleted document back to Draft (null when not found).</summary>
+    Task<InvoiceDto?> RestoreInvoiceAsync(long id, CancellationToken ct = default);
 
     /// <summary>POST /api/invoice/{id}/complete — issue a draft invoice (generates doc number).</summary>
     Task<InvoiceDto> CompleteInvoiceAsync(long id, CancellationToken ct = default);

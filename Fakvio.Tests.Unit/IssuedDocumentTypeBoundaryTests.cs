@@ -106,12 +106,13 @@ public class IssuedDocumentTypeBoundaryTests : IDisposable
         (await _db.NumberSequenceFormat.CountAsync()).ShouldBe(0);
     }
 
-    // ─── Tools: the value is neither accepted nor offered ────────────────────
+    // ─── Tools: no raw type numbers; number sequences neither accept nor offer the received type ───
 
+    // Step 4: create_invoice now ACCEPTS the name "ReceivedInvoice" (it is THE document tool); the API applies the
+    // received policy. A raw number is still refused, so only "5" remains here.
     [Theory]
-    [InlineData("ReceivedInvoice")]
     [InlineData("5")]
-    public async Task McpCreateInvoice_WithReceivedType_ReturnsErrorWithoutCallingApi(string documentType)
+    public async Task McpCreateInvoice_WithRawNumericDocumentType_ReturnsErrorWithoutCallingApi(string documentType)
     {
         var api = Substitute.For<IFakvioApiClient>();
         var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };

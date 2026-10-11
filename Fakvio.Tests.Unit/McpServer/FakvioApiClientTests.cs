@@ -157,6 +157,52 @@ public class FakvioApiClientTests : IDisposable
     }
 
     [Fact]
+    public async Task GetInvoiceByDocumentNumberAsync_WithType_SendsTheTypeScope()
+    {
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "Not found" });
+
+        await _sut.GetInvoiceByDocumentNumberAsync("SUP-1", documentType: EDocumentType.ReceivedInvoice);
+
+        _handler.LastRequestUri!.Query.ShouldBe("?documentType=ReceivedInvoice");
+    }
+
+    [Fact]
+    public async Task GetInvoiceByDocumentNumberAsync_WithoutType_SendsNoQuery()
+    {
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "Not found" });
+
+        await _sut.GetInvoiceByDocumentNumberAsync("FAK1");
+
+        _handler.LastRequestUri!.Query.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("mark-unpaid")]
+    [InlineData("restore")]
+    public async Task UnpaidAndRestore_PostToTheSharedTransitionEndpoints(string action)
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new InvoiceDto { Id = 9, Status = EInvoiceStatus.Completed });
+
+        var result = action == "restore" ? await _sut.RestoreInvoiceAsync(9) : await _sut.MarkInvoiceAsUnpaidAsync(9);
+
+        result!.Id.ShouldBe(9);
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Post);
+        _handler.LastRequestUri!.AbsolutePath.ShouldBe($"/api/invoice/9/{action}");
+    }
+
+    [Theory]
+    [InlineData("mark-unpaid")]
+    [InlineData("restore")]
+    public async Task UnpaidAndRestore_NotFound_ReturnNull(string action)
+    {
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "Not found" });
+
+        var result = action == "restore" ? await _sut.RestoreInvoiceAsync(9) : await _sut.MarkInvoiceAsUnpaidAsync(9);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task UploadFileAttachmentAsync_SendsMultipartWithExpectedFields()
     {
         _handler.SetupResponse(HttpStatusCode.OK, new FileAttachmentDto { Id = 9 });
