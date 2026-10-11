@@ -14,9 +14,8 @@ public interface IDashboardService
     /// unpaid totals, VAT rate counts, recent invoices, and overdue invoices.
     /// </summary>
     /// <param name="companyId">
-    /// Optional company (issuer) ID to filter dashboard data by.
-    /// When provided, only invoices belonging to this issuer are counted.
-    /// Null = show all invoices (for SysAdmin without impersonation).
+    /// Company ID of the caller, used for logging only. It is NOT a filter: the tenant schema already
+    /// holds just this company's documents, and a company id (master DB) is not an issuer client id.
     /// </param>
     /// <param name="ct">Cancellation token for async operation.</param>
     /// <returns>DashboardDto containing all aggregated statistics.</returns>

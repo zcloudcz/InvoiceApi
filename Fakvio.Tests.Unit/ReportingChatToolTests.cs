@@ -66,22 +66,17 @@ public class ReportingChatToolTests
 
     /// <summary>
     /// Builds a ListInvoicesTool over mocks and hands back the mocks so the test can assert
-    /// on the filter the tool built. <paramref name="companyId"/> is what the tenant resolver
-    /// reports for the signed-in user.
+    /// on the filter the tool built.
     /// </summary>
     private static (ListInvoicesTool Tool, IInvoiceService Service) CreateListTool(
-        PagedResult<InvoiceDto>? page = null,
-        long? companyId = 42)
+        PagedResult<InvoiceDto>? page = null)
     {
         var service = Substitute.For<IInvoiceService>();
         service
             .GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
             .Returns(page ?? new PagedResult<InvoiceDto>([BuildInvoice()], 1, 1, 10));
 
-        var tenantResolver = Substitute.For<ITenantResolver>();
-        tenantResolver.GetCurrentCompanyId().Returns(companyId);
-
-        return (new ListInvoicesTool(service, tenantResolver, Substitute.For<ILogger<ListInvoicesTool>>()), service);
+        return (new ListInvoicesTool(service, Substitute.For<ILogger<ListInvoicesTool>>()), service);
     }
 
     /// <summary>
@@ -265,10 +260,12 @@ public class ReportingChatToolTests
 
     /// <summary>
     /// No parameters at all is a valid call — the model uses it for "ukaž mi faktury".
-    /// Defaults: first page, ten rows, scoped to the signed-in issuer.
+    /// Defaults: first page, ten rows, and NO issuer filter - the tenant schema is the company scope;
+    /// the company id is not an issuer client id, so filtering by it hid every document of a tenant
+    /// whose two ids differ.
     /// </summary>
     [Fact]
-    public async Task ListInvoicesTool_NoParameters_UsesDefaultsAndScopesToCompany()
+    public async Task ListInvoicesTool_NoParameters_UsesDefaultsAndDoesNotFilterByIssuer()
     {
         var (tool, service) = CreateListTool();
 
@@ -279,7 +276,7 @@ public class ReportingChatToolTests
         var filter = CapturedFilter(service);
         filter.Page.ShouldBe(1);
         filter.PageSize.ShouldBe(10);
-        filter.IssuerId.ShouldBe(42);
+        filter.IssuerId.ShouldBeNull();
         filter.Status.ShouldBeNull();
         filter.IsOverdue.ShouldBeNull();
     }

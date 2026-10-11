@@ -279,13 +279,13 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (88)
+## Dostupné nástroje (90)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 20 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail (optional recipient — defaults to the client's e-mail contact — plus ccEmails, attachPdf/attachIsdoc/attachUbl, fileAttachmentIds, saveAttachmentDefaults), GetInvoiceEmailOptions (read-only: client e-mail contacts, default attachments, stored invoice files), ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, ExportInvoicesZip (hromadné ZIP: ids + `format` pdf/isdoc/ubl), DeleteInvoice, SetInvoiceBankAccount, UpdateInvoice (partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`), RevertInvoiceToDraft (only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
+| `Tools/InvoiceTools.cs` | 22 | **Nástroje pro VŠECHNY typy dokladů** (viz „Jeden proces pro všechny doklady“ níže): ListInvoices (`documentType` = jakýkoli `EDocumentType` vč. `ReceivedInvoice`, výchozí vydané), GetInvoice, FindInvoiceByNumber (`documentType?`), CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId; volitelně `taxableSupplyDate`, `exchangeRate`; pro `ReceivedInvoice` navíc `documentNumber`, `receivedDate` a účet dodavatele `bankAccountNumber` / `iban` / `swift` — see below), CompleteInvoice (u přijaté = schválení), MarkInvoicePaid, **MarkInvoiceUnpaid** (zruší úhradu, smaže spárování plateb), **RestoreInvoice** (smazaný → Draft), SendInvoiceEmail (optional recipient — defaults to the client's e-mail contact — plus ccEmails, attachPdf/attachIsdoc/attachUbl, fileAttachmentIds, saveAttachmentDefaults), GetInvoiceEmailOptions (read-only: client e-mail contacts, default attachments, stored invoice files), ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, ExportInvoicesZip (hromadné ZIP: ids + `format` pdf/isdoc/ubl), DeleteInvoice (jakýkoli typ), SetInvoiceBankAccount (jen vydané), UpdateInvoice (jakýkoli typ; partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`; volitelně `exchangeRate`; u přijaté i `documentNumber`, `receivedDate`, `bankAccountNumber` / `iban` / `swift`), RevertInvoiceToDraft (jakýkoli typ; only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance. **Jen vydané doklady:** SendInvoiceEmail, GetInvoiceEmailOptions, ExportInvoicePdf/Isdoc/Ubl, ExportInvoicesZip, SetInvoiceBankAccount, IssueFinalInvoice, IssueTaxReceipt, GetRemainingAdvance |
 | `Tools/ClientTools.cs` | 7 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, VerifyVatVies, GetIssuer |
-| `Tools/ReceivedInvoiceTools.cs` | 9 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment, ExportReceivedInvoiceIsdoc, DownloadReceivedInvoicesAttachments (ZIP příloh více přijatých faktur) |
+| `Tools/ReceivedInvoiceTools.cs` | 9 | **legacy** (stejné názvy a chování, jen popis odkazuje na nástroj dokladů): ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice; **plnohodnotné** (bez protějšku v nástrojích dokladů): UploadReceivedInvoiceAttachment, ExportReceivedInvoiceIsdoc, DownloadReceivedInvoicesAttachments (ZIP příloh více přijatých faktur) |
 | `Tools/AttachmentTools.cs` | 3 | ListAttachments (metadata příloh záznamu), GetAttachmentDownloadLink, GetRecordAttachmentsZipLink |
 | `Tools/ReportingTools.cs` | 8 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices, ExportVatEpo, GetOssReport (kvartální hlášení EU OSS v EUR) |
 | `Tools/TaxTools.cs` | 5 | EstimateTax, CompareTaxRegimes, GetAnnualIncome, GetInsuranceAdvance, GetTaxConfig |
@@ -303,6 +303,51 @@ Zdroj pravdy je vždy kód — atributy `[McpServerTool]` v `Tools/`:
 ```bash
 grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 ```
+
+### Jeden proces pro všechny doklady
+
+Nástroje z `InvoiceTools` jsou **sada nástrojů pro všechny doklady**; doklady se liší jen typem
+(`EDocumentType`): vydané `Invoice`, `CreditNote`, `Proforma`, `TaxReceiptForAdvance` a přijaté
+`ReceivedInvoice`. Typ u operací nad jedním dokladem (get, update, complete, mark paid, mark unpaid,
+revert, delete, restore) bere API z uloženého dokladu; seznamy a hledání mají **explicitní rozsah**
+(`documentType` u `list_invoices`, `find_invoice_by_number`, `get_overdue_invoices`; bez něj jen vydané).
+Neznámý `documentType` vrátí chybu se seznamem platných názvů (číslo jako `"5"` se nepřijímá).
+
+- **Přijatá faktura přes tyto nástroje:** `create_invoice(documentType='ReceivedInvoice', clientId=<dodavatel>,
+  documentNumber=<číslo dodavatele>, receivedDate?, items)`; `issuerId` se vynechá (server použije
+  naši firmu). Vstupy jen pro vydané (`originalInvoiceId`, `bankAccountId`, `applyOss`, textové řádky)
+  odmítne API a jeho hláška se vrátí modelu. `complete_invoice` = schválení.
+- **Co se u přijaté faktury liší od vydané:**
+
+  | Parametr (`create_invoice`) | Vydaný doklad | Přijatá faktura |
+  |---|---|---|
+  | `issueDate` | vynechané = dnes | uloží se, co přišlo (vynechané = prázdné) |
+  | `dueDate` | vynechané = podle nastavení klienta | uloží se, co přišlo; **bez něj se faktura nikdy neukáže jako po splatnosti** |
+  | `variableSymbol` | max 10 číslic, vynechaný = z čísla dokladu | symbol dodavatele, max 50 znaků, nic se negeneruje |
+  | `paymentMethod` | vynechané = výchozí klienta | uloží se, co přišlo |
+  | `taxableSupplyDate` | vynechané = `issueDate` | vynechané = `issueDate` |
+  | `exchangeRate` | ruční kurz (CZK za jednotku); vynechaný = kurz ČNB při vystavení | totéž; kurz ČNB při schválení |
+  | `bankAccountNumber`, `iban`, `swift` | **odmítne nástroj** (použij `bankAccountId`) | účet dodavatele, na který se platí |
+  | `documentNumber` | **odmítne nástroj** (číslo dává číselná řada) | číslo dodavatele |
+  | `receivedDate` | odmítne API | vynechané = teď |
+  | `vatRatePercentage` položky | u plátce DPH musí odpovídat aktivní sazbě (dohledá se `vatRateId`) | sazba dodavatele, uloží se jak přišla (i zahraniční 19 % nebo stará sazba) |
+  | `bankAccountId`, `originalInvoiceId`, `applyOss`, textové řádky | beze změny | odmítne API |
+
+  `update_invoice` má totéž pro `exchangeRate`, `bankAccountNumber` / `iban` / `swift` (`""` = smazat), `documentNumber`,
+  `receivedDate` a sazbu položek; rozhoduje typ **uloženého** dokladu.
+- **Cesta zpět u zaplaceného dokladu (jakýkoli typ):** `mark_invoice_unpaid` → `revert_invoice_to_draft`
+  → `delete_invoice` (`restore_invoice` smazání vrátí). Jednotlivou bankovní platbu lze odpárovat
+  přímo jen tehdy, když byl doklad uhrazen výhradně spárovanými platbami; při ručním doplacení slouží
+  `mark_invoice_unpaid`.
+- **Jen vydané doklady:** PDF / vydané ISDOC / UBL exporty, hromadné ZIP, odeslání e-mailem a jeho
+  volby, nastavení bankovního účtu, finální faktura z proformy, DPP, zbývající záloha. Přijatý doklad
+  vrátí jasnou chybu `validation_error` ("Document N is a received invoice. This operation is
+  available only for issued documents.") – exporty a ZIP ji hlásí hned, ne až otevřením odkazu
+  (ZIP s libovolným přijatým id se odmítne celý). Přijatý ISDOC a ZIP příloh zůstávají
+  `export_received_invoice_isdoc` a `download_received_invoices_attachments`.
+- **Legacy `ReceivedInvoiceTools`:** staré nástroje (list, get, create, approve, mark paid, delete)
+  fungují beze změny a mají v popisu `LEGACY` s odkazem na nástroj dokladů. Nová integrace má používat
+  nástroje dokladů s `documentType: ReceivedInvoice`.
 
 ### Chování nástrojů
 

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Infrastructure.Service.ChatTools;
 
@@ -72,13 +73,15 @@ internal static class InvoiceLookup
                 return (null, $"Invalid id: '{rawId}'. It must be a numeric database ID.");
 
             var byId = await invoiceService.GetInvoiceByIdAsync(id, ct);
-            return byId is null
+            // The lookup answers for ISSUED invoices only (received ones have their own tools); get-by-id now finds
+            // any document, so a received id must still read as "not found" here.
+            return byId is null || byId.DocumentType == EDocumentType.ReceivedInvoice
                 ? (null, $"Issued invoice with ID {id} not found.")
                 : (byId, null);
         }
 
         var documentNumber = rawDocumentNumber!.Trim();
-        var byNumber = await invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, ct);
+        var byNumber = await invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, cancellationToken: ct);
 
         return byNumber is null
             ? (null, $"Issued invoice with document number '{documentNumber}' not found.")

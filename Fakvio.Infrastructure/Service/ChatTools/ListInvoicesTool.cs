@@ -26,16 +26,13 @@ public class ListInvoicesTool : IChatTool
     private const int DefaultPageSize = 10;
 
     private readonly IInvoiceService _invoiceService;
-    private readonly ITenantResolver _tenantResolver;
     private readonly ILogger<ListInvoicesTool> _logger;
 
     public ListInvoicesTool(
         IInvoiceService invoiceService,
-        ITenantResolver tenantResolver,
         ILogger<ListInvoicesTool> logger)
     {
         _invoiceService = invoiceService;
-        _tenantResolver = tenantResolver;
         _logger = logger;
     }
 
@@ -133,9 +130,8 @@ public class ListInvoicesTool : IChatTool
             Page = ParsePositiveInt(parameters, "page", 1),
             PageSize = Math.Min(ParsePositiveInt(parameters, "page_size", DefaultPageSize), MaxPageSize),
 
-            // Scope to the signed-in issuer, exactly like InvoiceController does. Null
-            // (SysAdmin without impersonation) leaves the query at tenant scope.
-            IssuerId = _tenantResolver.GetCurrentCompanyId(),
+            // No IssuerId: the tenant schema already holds only this company's documents, and the
+            // company id (master DB) is not an issuer client id (tenant schema) - see InvoiceController.
 
             IssueDateFrom = issueDateFrom,
             IssueDateTo = issueDateTo

@@ -39,4 +39,15 @@ public static class IssuedDocumentTypes
             throw new InvalidOperationException(
                 $"Document type '{type}' cannot be used here. Valid values: {string.Join(", ", Names)}.");
     }
+
+    /// <summary>Validation message for <see cref="IsValidVariableSymbol"/> (the text API clients already know).</summary>
+    public const string VariableSymbolError = "Variable symbol must contain only digits (max 10)";
+
+    /// <summary>
+    /// Variable symbol rule of the documents WE issue: digits only, at most 10 (Czech banking). Null / empty is
+    /// fine (the symbol is then derived from the document number). It deliberately does NOT apply to a received
+    /// invoice: that symbol is whatever the supplier printed (e.g. <c>INV-2026-0042</c>), we only store it.
+    /// </summary>
+    public static bool IsValidVariableSymbol(string? variableSymbol) =>
+        variableSymbol is null || System.Text.RegularExpressions.Regex.IsMatch(variableSymbol, @"^\d{0,10}\z");
 }

@@ -60,15 +60,27 @@ public static class ReportingTools
     /// Sorted by due date ascending (most overdue first).
     /// </summary>
     [McpServerTool(Title = "Get overdue invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "Get all overdue invoices (completed but unpaid, past due date). " +
+        "Get all overdue documents (completed but unpaid, past due date). " +
+        "Without documentType only ISSUED documents (what customers owe you); pass documentType='ReceivedInvoice' " +
+        "for received supplier invoices (what you owe). " +
         "Sorted by due date ascending — most overdue first. " +
         "Useful for payment follow-up and collections.")]
     public static async Task<string> GetOverdueInvoices(
         IFakvioApiClient api,
         [Description("Page number (1-based, default 1)")] int page = 1,
         [Description("Items per page (default 50, max 100)")] int pageSize = 50,
+        [Description("Type scope: 'Invoice', 'CreditNote', 'Proforma', 'TaxReceiptForAdvance' or 'ReceivedInvoice'. Omit for issued documents.")] string? documentType = null,
         CancellationToken ct = default)
     {
+        // Same validation as list_invoices: a wrong type must not silently fall back to issued documents.
+        EDocumentType? parsedDocumentType = null;
+        if (!string.IsNullOrWhiteSpace(documentType))
+        {
+            if (!InvoiceTools.TryParseDocumentType(documentType, out var dt))
+                return JsonSerializer.Serialize(new { error = InvoiceTools.UnknownDocumentTypeMessage(documentType) + InvoiceTools.OmitDocumentTypeHint }, JsonOptions);
+            parsedDocumentType = dt;
+        }
+
         try
         {
             // Filter for completed (unpaid) invoices that are overdue
@@ -76,6 +88,7 @@ public static class ReportingTools
             {
                 Page = page,
                 PageSize = Math.Min(pageSize, 100),
+                DocumentType = parsedDocumentType,
                 Status = EInvoiceStatus.Completed,
                 IsOverdue = true,
                 SortBy = "DueDate",

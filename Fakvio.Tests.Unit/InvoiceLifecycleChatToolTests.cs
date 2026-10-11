@@ -86,7 +86,7 @@ public class InvoiceLifecycleChatToolTests
         if (invoice.DocumentNumber is not null)
         {
             _invoiceService
-                .GetInvoiceByDocumentNumberAsync(invoice.DocumentNumber, Arg.Any<CancellationToken>())
+                .GetInvoiceByDocumentNumberAsync(invoice.DocumentNumber, Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
                 .Returns(invoice);
         }
     }
@@ -163,7 +163,7 @@ public class InvoiceLifecycleChatToolTests
         // The id is exact; a document number is only unique per number sequence.
         await _invoiceService.Received(1).GetInvoiceByIdAsync(42, Arg.Any<CancellationToken>());
         await _invoiceService.DidNotReceive()
-            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public class InvoiceLifecycleChatToolTests
     public async Task GetInvoice_UnknownDocumentNumber_ReportsTheNumberBack()
     {
         _invoiceService
-            .GetInvoiceByDocumentNumberAsync("FAK-9999", Arg.Any<CancellationToken>())
+            .GetInvoiceByDocumentNumberAsync("FAK-9999", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns((InvoiceDto?)null);
 
         var result = await GetTool().ExecuteAsync(
@@ -218,7 +218,7 @@ public class InvoiceLifecycleChatToolTests
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("abc");
         await _invoiceService.DidNotReceive()
-            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>());
     }
 
     // ─── complete_invoice ─────────────────────────────────────────────────
@@ -540,7 +540,7 @@ public class InvoiceLifecycleChatToolTests
 
         result.IsSuccess.ShouldBeTrue();
         await _invoiceService.Received(1)
-            .GetInvoiceByDocumentNumberAsync("FAK-2026-001", Arg.Any<CancellationToken>());
+            .GetInvoiceByDocumentNumberAsync("FAK-2026-001", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>());
     }
 
     // ─── The write itself came back empty (the record vanished meanwhile) ─
