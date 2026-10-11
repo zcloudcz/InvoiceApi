@@ -235,8 +235,8 @@ public class InvoiceController : ControllerBase
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<InvoiceDto>> GetInvoiceByDocumentNumber(
         string documentNumber,
-        [FromQuery] EDocumentType? documentType = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [FromQuery] EDocumentType? documentType = null)
     {
         _logger.LogInformation("GET /api/invoice/by-number/{DocumentNumber} - documentType: {DocumentType}", documentNumber, documentType);
 
