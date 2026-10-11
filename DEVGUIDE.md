@@ -2965,7 +2965,9 @@ závislou), hromadný ZIP příloh, AI import, `approve` / `reject`). Služby vy
 `IssuedOnly()`; 400 vzniká v kontroleru dřív, než se zavolají. Filtr se ptá **jedním dotazem** na všechna id požadavku
 (`IInvoiceService.FindReceivedDocumentIdAsync`) a `bulk/pdf|isdoc|ubl?ids=` přijme nejvýš 100 různých id
 (`DownloadLinkController.MaxBulkIds`, stejný limit jako odkazy ke stažení; víc = 400). Přidáváš-li do `InvoiceController` akci jen pro vydané
-doklady, označ ji `[IssuedDocumentOnly]` a doplň ji do `IssuedDocumentOnlyAttributeTests.IssuedOnlyActions`.
+doklady, označ ji `[IssuedDocumentOnly]` a doplň ji do `IssuedDocumentOnlyAttributeTests.IssuedOnlyActions`; akci, která
+má fungovat i pro přijatý doklad (nebo žádné id nedostává), zapiš do `EveryTypeActions`. Test si akce kontroleru zjistí
+reflexí a **nová nezařazená akce ho shodí**.
 
 *Co se změnilo pro stávající volající* (MCP, chat a Blazor se v kroku 3a **neměnily**, ale volají `api/invoice`, které
 teď zná i přijaté doklady; dřív přijaté id znamenalo všude 404 / „not found"):

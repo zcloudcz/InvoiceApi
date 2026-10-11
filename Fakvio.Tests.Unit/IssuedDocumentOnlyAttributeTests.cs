@@ -34,30 +34,67 @@ public class IssuedDocumentOnlyAttributeTests
         nameof(InvoiceController.GetTaxReceiptsForProforma),
     ];
 
+    // Actions that work for EVERY document type, or that never receive a document id at all (lists, create,
+    // previews). Putting an action here is a decision: "a received invoice may go through this action".
+    private static readonly string[] EveryTypeActions =
+    [
+        nameof(InvoiceController.GetAllInvoices), nameof(InvoiceController.GetInvoicesPaged),
+        nameof(InvoiceController.GetInvoiceById), nameof(InvoiceController.GetInvoiceByDocumentNumber),
+        nameof(InvoiceController.CreateInvoice), nameof(InvoiceController.UpdateInvoice), nameof(InvoiceController.CompleteInvoice),
+        nameof(InvoiceController.MarkAsPaid), nameof(InvoiceController.MarkAsUnpaid), nameof(InvoiceController.RevertToDraft),
+        nameof(InvoiceController.DeleteInvoice), nameof(InvoiceController.RestoreInvoice), nameof(InvoiceController.CopyInvoice),
+        nameof(InvoiceController.GetPayments), nameof(InvoiceController.FindAutoMatch),
+        nameof(InvoiceController.BulkComplete), nameof(InvoiceController.BulkMarkAsPaid), nameof(InvoiceController.BulkDelete),
+        // No document id at all: previews the OSS country for a client + issuer pair.
+        nameof(InvoiceController.GetOssCountry),
+        // Ids arrive in the BODY and each one is answered separately: a received id does not fail the whole
+        // request, its own item fails with a clear message (see the operation matrix).
+        nameof(InvoiceController.BulkSendEmail),
+    ];
+
+    /// <summary>
+    /// Every HTTP action of the controller, found by reflection (a public method declared on the controller that
+    /// carries an [HttpGet] / [HttpPost] / ... attribute), so a NEW action cannot slip past the lists above.
+    /// </summary>
+    private static readonly MethodInfo[] ControllerActions = typeof(InvoiceController)
+        .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+        .Where(m => m.GetCustomAttributes<Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute>().Any())
+        .ToArray();
+
+    /// <summary>
+    /// The completeness check: each action is classified EXACTLY once. A new action fails here until somebody
+    /// decides whether a received invoice may reach it - the question that is easy to forget otherwise.
+    /// </summary>
     [Fact]
-    public void EveryIssuedOnlyAction_CarriesTheGuard()
+    public void EveryControllerAction_IsClassified_AsIssuedOnlyOrEveryType()
     {
-        foreach (var name in IssuedOnlyActions)
-        {
-            typeof(InvoiceController).GetMethod(name)!
-                .GetCustomAttribute<IssuedDocumentOnlyAttribute>()
-                .ShouldNotBeNull($"{name} must refuse a received document");
-        }
+        ControllerActions.Length.ShouldBeGreaterThan(0);
+        // Overloads would make the name-based lists ambiguous.
+        ControllerActions.Select(m => m.Name).ShouldBeUnique();
+
+        var unclassified = ControllerActions.Select(m => m.Name)
+            .Where(name => !IssuedOnlyActions.Contains(name) && !EveryTypeActions.Contains(name));
+        unclassified.ShouldBeEmpty(
+            "Classify each new InvoiceController action: add [IssuedDocumentOnly] and list it in IssuedOnlyActions, " +
+            "or list it in EveryTypeActions when it must work for a received invoice too (DEVGUIDE 5.6).");
+
+        IssuedOnlyActions.Intersect(EveryTypeActions).ShouldBeEmpty("an action cannot be in both lists");
+
+        // No stale names: a renamed or removed action must leave the lists too.
+        IssuedOnlyActions.Concat(EveryTypeActions).Except(ControllerActions.Select(m => m.Name)).ShouldBeEmpty();
     }
 
+    /// <summary>The lists and the attribute must agree: issued-only = guarded, every-type = not guarded.</summary>
     [Fact]
-    public void TheUnifiedActions_DoNotCarryTheGuard()
+    public void TheGuard_IsOnExactlyTheIssuedOnlyActions()
     {
-        string[] unified =
-        [
-            nameof(InvoiceController.GetInvoiceById), nameof(InvoiceController.UpdateInvoice), nameof(InvoiceController.CompleteInvoice),
-            nameof(InvoiceController.MarkAsPaid), nameof(InvoiceController.MarkAsUnpaid), nameof(InvoiceController.RevertToDraft),
-            nameof(InvoiceController.DeleteInvoice), nameof(InvoiceController.RestoreInvoice), nameof(InvoiceController.CopyInvoice),
-            nameof(InvoiceController.GetPayments), nameof(InvoiceController.FindAutoMatch),
-            nameof(InvoiceController.BulkComplete), nameof(InvoiceController.BulkMarkAsPaid), nameof(InvoiceController.BulkDelete),
-        ];
-        foreach (var name in unified)
-            typeof(InvoiceController).GetMethod(name)!.GetCustomAttribute<IssuedDocumentOnlyAttribute>().ShouldBeNull(name);
+        foreach (var action in ControllerActions)
+        {
+            var guarded = action.GetCustomAttribute<IssuedDocumentOnlyAttribute>() is not null;
+
+            guarded.ShouldBe(IssuedOnlyActions.Contains(action.Name),
+                $"{action.Name}: [IssuedDocumentOnly] must be present exactly on the actions listed in IssuedOnlyActions");
+        }
     }
 
     [Fact]
