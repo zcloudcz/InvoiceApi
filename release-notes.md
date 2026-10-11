@@ -20,6 +20,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.11.3 — 2026-10-11
+
+### Změny pro uživatele
+
+- **#538** — MCP: nástroje pro faktury pracují se všemi typy dokladů včetně přijatých faktur (seznam, hledání, založení, úprava, přechody stavu); nové nástroje `mark_invoice_unpaid` (zrušit úhradu) a `restore_invoice` (obnovit smazaný doklad). Exporty PDF/ISDOC/UBL přijatý doklad rovnou odmítnou. Dosavadní nástroje pro přijaté faktury fungují beze změny. (PR #539, `2c4fd71`)
+- **#536** — Oprava: seznam faktur a dashboard filtrovaly podle ID firmy místo ID vlastní firmy v datech tenanta, takže firmy založené později než první neviděly své doklady. API `api/invoice` nově obsluhuje všechny typy dokladů (příprava na jednotný grid a detail); přijatá faktura může mít variabilní symbol dodavatele až 50 znaků. (PR #537, `2a91445`)
+
 ## 2026.10.11.2 — 2026-10-11
 
 ### Změny pro uživatele
