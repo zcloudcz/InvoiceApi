@@ -1,5 +1,6 @@
 using Fakvio.Application.Common.Extensions;
 using Fakvio.Contracts.Common.Pagination;
+using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
@@ -26,15 +27,15 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 {
     private readonly TenantDbContext _context;
     private readonly ILogger<ReceivedInvoiceService> _logger;
-    private readonly IWebhookPublisher? _webhookPublisher;
     private readonly DocumentTransitions _transitions; // the ONE state machine shared with InvoiceService
+    private readonly ReceivedDocumentWriter _writer; // the ONE create/update rule set shared with InvoiceService
 
     public ReceivedInvoiceService(TenantDbContext context, ILogger<ReceivedInvoiceService> logger, IWebhookPublisher? webhookPublisher = null,
         IExchangeRateService? exchangeRateService = null)
     {
         _context = context;
         _logger = logger;
-        _webhookPublisher = webhookPublisher;
+        _writer = new ReceivedDocumentWriter(context, webhookPublisher, logger);
         // Received policy: no number sequence and no invoice webhooks (null), the exchange rate is shared (§4.17).
         _transitions = new DocumentTransitions(context, null, exchangeRateService, null, logger);
     }
@@ -289,110 +290,30 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     /// <inheritdoc />
     public async Task<ReceivedInvoiceDto> CreateAsync(CreateReceivedInvoiceDto dto, CancellationToken ct = default)
     {
-        _logger.LogInformation("Creating received invoice from supplier {SupplierId}", dto.SupplierId);
-
-        // Validate supplier exists
-        var supplier = await _context.Client
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == dto.SupplierId && c.IsActive, ct);
-
-        if (supplier is null)
-            throw new InvalidOperationException($"Supplier with ID {dto.SupplierId} not found or inactive.");
-
-        ValidateReverseChargeCodes(dto.Items);
-
-        // IssuerId is NOT NULL on Invoice: for a received document it is OUR company (the IsIssuer client).
-        // Lowest Id wins - the same rule the data migration used for the existing rows.
-        var issuerId = await _context.Client
-            .AsNoTracking()
-            .Where(c => c.IsIssuer)
-            .OrderBy(c => c.Id)
-            .Select(c => (long?)c.Id)
-            .FirstOrDefaultAsync(ct)
-            ?? throw new InvalidOperationException("Tenant has no issuer company (Client with IsIssuer = true) configured.");
-
-        // Create entity
-        var entity = new Invoice
+        // The create rules live in ONE place (ReceivedDocumentWriter, shared with the unified document API);
+        // this facade only translates the legacy DTO.
+        var id = await _writer.CreateAsync(new CreateInvoiceDto
         {
             DocumentType = EDocumentType.ReceivedInvoice,
-            DocumentNumber = dto.DocumentNumber,
-            Status = EInvoiceStatus.Draft, // legacy "Received"
             ClientId = dto.SupplierId,
-            IssuerId = issuerId,
+            CustomDocumentNumber = dto.DocumentNumber,
             IssueDate = dto.IssueDate,
-            ReceivedDate = dto.ReceivedDate ?? DateTime.UtcNow,
+            ReceivedDate = dto.ReceivedDate,
             DueDate = dto.DueDate,
-            TaxableSupplyDate = dto.TaxableSupplyDate ?? dto.IssueDate,
+            TaxableSupplyDate = dto.TaxableSupplyDate,
             VariableSymbol = dto.VariableSymbol,
             CurrencyId = dto.CurrencyId,
-            ExchangeRate = dto.ExchangeRate, // manual override (null = ČNB rate is assigned on approval)
+            ExchangeRate = dto.ExchangeRate,
             PaymentMethod = dto.PaymentMethod,
             BankAccountNumber = dto.BankAccountNumber,
             IBAN = dto.IBAN,
             SWIFT = dto.SWIFT,
-            Notes = dto.Notes
-        };
-
-        // Process line items and calculate totals
-        decimal totalBeforeVat = 0;
-        decimal totalVat = 0;
-
-        foreach (var itemDto in dto.Items)
-        {
-            var vatPercentage = itemDto.VatRatePercentage;
-
-            // If VatRateId provided, fetch the actual percentage from DB
-            if (itemDto.VatRateId.HasValue)
-            {
-                var vatRate = await _context.VatRate
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(v => v.Id == itemDto.VatRateId.Value, ct);
-
-                if (vatRate is not null)
-                    vatPercentage = vatRate.Rate;
-            }
-
-            var itemTotalBeforeVat = itemDto.Quantity * itemDto.UnitPrice;
-
-            var item = new InvoiceItem
-            {
-                OrderIndex = itemDto.OrderIndex,
-                Description = itemDto.Description,
-                Quantity = itemDto.Quantity,
-                Unit = itemDto.Unit,
-                UnitPrice = itemDto.UnitPrice,
-                VatRateId = itemDto.VatRateId,
-                VatRatePercentage = vatPercentage,
-                TotalBeforeVat = itemTotalBeforeVat,
-                VatRegime = itemDto.VatRegime,
-                ReverseChargeCodeId = itemDto.ReverseChargeCodeId,
-                ProductCode = itemDto.ProductCode,
-                Notes = itemDto.Notes
-            };
-            CalculateItemVat(item);
-
-            entity.InvoiceItem.Add(item);
-            totalBeforeVat += itemTotalBeforeVat;
-            totalVat += item.VatAmount;
-        }
-
-        entity.TotalBeforeVat = totalBeforeVat;
-        entity.TotalVat = totalVat;
-        entity.TotalWithVat = totalBeforeVat + totalVat;
-
-        _context.Invoice.Add(entity);
-        await _context.SaveChangesAsync(ct);
-
-        _logger.LogInformation("Created received invoice ID {Id} from supplier {SupplierId}, total {Total}",
-            entity.Id, entity.ClientId, entity.TotalWithVat);
-
-        // "received_invoice.created" webhook — never throws (see IWebhookPublisher).
-        if (_webhookPublisher != null)
-            await _webhookPublisher.PublishReceivedInvoiceEventAsync(
-                Contracts.Dto.Webhook.WebhookEventCatalog.ReceivedInvoiceCreated, entity.Id, ct);
+            Notes = dto.Notes,
+            InvoiceItem = ToUnifiedItems(dto.Items)
+        }, ct);
 
         // Reload with includes to return full DTO
-        return (await GetByIdAsync(entity.Id, ct))!;
+        return (await GetByIdAsync(id, ct))!;
     }
 
     /// <inheritdoc />
@@ -405,98 +326,44 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 
         if (entity is null) return null;
 
-        // Only allow updates in Received or Approved status (legacy vocabulary)
-        var status = ToLegacy(entity.Status);
-        if (status != EReceivedInvoiceStatus.Received &&
-            status != EReceivedInvoiceStatus.Approved)
+        // Same single rule set as the unified API (ReceivedDocumentWriter): status gate, exchange-rate rule, items.
+        await _writer.UpdateAsync(entity, new UpdateInvoiceDto
         {
-            throw new InvalidOperationException(
-                $"Cannot update received invoice in {status} status. Only Received or Approved allowed.");
-        }
+            DocumentNumber = dto.DocumentNumber,
+            IssueDate = dto.IssueDate,
+            ReceivedDate = dto.ReceivedDate,
+            DueDate = dto.DueDate,
+            TaxableSupplyDate = dto.TaxableSupplyDate,
+            VariableSymbol = dto.VariableSymbol,
+            CurrencyId = dto.CurrencyId,
+            ExchangeRate = dto.ExchangeRate,
+            PaymentMethod = dto.PaymentMethod,
+            BankAccountNumber = dto.BankAccountNumber,
+            IBAN = dto.IBAN,
+            SWIFT = dto.SWIFT,
+            Notes = dto.Notes,
+            InvoiceItem = dto.Items is null ? null : ToUnifiedItems(dto.Items)
+        }, ct);
 
-        // Update simple fields (only if provided)
-        if (dto.DocumentNumber is not null) entity.DocumentNumber = dto.DocumentNumber;
-        if (dto.IssueDate.HasValue) entity.IssueDate = dto.IssueDate;
-        if (dto.ReceivedDate.HasValue) entity.ReceivedDate = dto.ReceivedDate;
-        if (dto.DueDate.HasValue) entity.DueDate = dto.DueDate;
-        if (dto.TaxableSupplyDate.HasValue) entity.TaxableSupplyDate = dto.TaxableSupplyDate;
-        if (dto.VariableSymbol is not null) entity.VariableSymbol = dto.VariableSymbol;
-        if (dto.CurrencyId.HasValue) entity.CurrencyId = dto.CurrencyId.Value;
-        if (dto.ExchangeRate.HasValue)
-        {
-            // Like an issued invoice: the rate is fixed once the document is approved.
-            if (status != EReceivedInvoiceStatus.Received)
-                throw new InvalidOperationException("The exchange rate can be changed only before the invoice is approved.");
-            entity.ExchangeRate = dto.ExchangeRate.Value;
-            entity.ExchangeRateDate = null; // manual rate has no ČNB date
-        }
-        if (dto.PaymentMethod.HasValue) entity.PaymentMethod = dto.PaymentMethod;
-        if (dto.BankAccountNumber is not null) entity.BankAccountNumber = dto.BankAccountNumber;
-        if (dto.IBAN is not null) entity.IBAN = dto.IBAN;
-        if (dto.SWIFT is not null) entity.SWIFT = dto.SWIFT;
-        if (dto.Notes is not null) entity.Notes = dto.Notes;
-
-        // If items provided, replace all existing items
-        if (dto.Items is not null)
-        {
-            ValidateReverseChargeCodes(dto.Items);
-
-            // Remove old items
-            _context.InvoiceItem.RemoveRange(entity.InvoiceItem);
-
-            // Add new items and recalculate totals
-            decimal totalBeforeVat = 0;
-            decimal totalVat = 0;
-
-            foreach (var itemDto in dto.Items)
-            {
-                var vatPercentage = itemDto.VatRatePercentage;
-
-                if (itemDto.VatRateId.HasValue)
-                {
-                    var vatRate = await _context.VatRate
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(v => v.Id == itemDto.VatRateId.Value, ct);
-
-                    if (vatRate is not null)
-                        vatPercentage = vatRate.Rate;
-                }
-
-                var itemTotalBeforeVat = itemDto.Quantity * itemDto.UnitPrice;
-
-                var item = new InvoiceItem
-                {
-                    InvoiceId = entity.Id,
-                    OrderIndex = itemDto.OrderIndex,
-                    Description = itemDto.Description,
-                    Quantity = itemDto.Quantity,
-                    Unit = itemDto.Unit,
-                    UnitPrice = itemDto.UnitPrice,
-                    VatRateId = itemDto.VatRateId,
-                    VatRatePercentage = vatPercentage,
-                    TotalBeforeVat = itemTotalBeforeVat,
-                    VatRegime = itemDto.VatRegime,
-                    ReverseChargeCodeId = itemDto.ReverseChargeCodeId,
-                    ProductCode = itemDto.ProductCode,
-                    Notes = itemDto.Notes
-                };
-                CalculateItemVat(item);
-
-                _context.InvoiceItem.Add(item);
-                totalBeforeVat += itemTotalBeforeVat;
-                totalVat += item.VatAmount;
-            }
-
-            entity.TotalBeforeVat = totalBeforeVat;
-            entity.TotalVat = totalVat;
-            entity.TotalWithVat = totalBeforeVat + totalVat;
-        }
-
-        await _context.SaveChangesAsync(ct);
-
-        _logger.LogInformation("Updated received invoice ID {Id}", id);
         return await GetByIdAsync(id, ct);
     }
+
+    /// <summary>Legacy received item DTO -> unified item DTO (the same fields; a received item is never a text row).</summary>
+    private static List<CreateInvoiceItemDto> ToUnifiedItems(IEnumerable<CreateReceivedInvoiceItemDto> items) =>
+        items.Select(i => new CreateInvoiceItemDto
+        {
+            OrderIndex = i.OrderIndex,
+            Description = i.Description,
+            Quantity = i.Quantity,
+            Unit = i.Unit,
+            UnitPrice = i.UnitPrice,
+            VatRateId = i.VatRateId,
+            VatRatePercentage = i.VatRatePercentage,
+            VatRegime = i.VatRegime,
+            ReverseChargeCodeId = i.ReverseChargeCodeId,
+            ProductCode = i.ProductCode,
+            Notes = i.Notes
+        }).ToList();
 
     /// <inheritdoc />
     public async Task<ReceivedInvoiceDto?> ApproveAsync(long id, CancellationToken ct = default)
@@ -589,85 +456,5 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 
         _logger.LogInformation("Soft-deleted received invoice ID {Id}", id);
         return true;
-    }
-
-    // ─── Private Helpers — Reverse Charge (mirrors InvoiceService) ─────────────
-
-    /// <summary>
-    /// Validates Reverse Charge code consistency for a list of item DTOs.
-    /// Same rules as InvoiceService.ValidateReverseChargeCodes (issue epo-vat-reporting):
-    /// 1. VatRegime == ReverseCharge requires ReverseChargeCodeId to be set.
-    /// 2. Any other regime requires ReverseChargeCodeId to be null.
-    /// </summary>
-    private static void ValidateReverseChargeCodes(IEnumerable<CreateReceivedInvoiceItemDto> items)
-    {
-        foreach (var item in items)
-        {
-            // JSON clients (MCP/API) can send an undefined numeric enum value; reject it up front.
-            if (!Enum.IsDefined(item.VatRegime))
-                throw new InvalidOperationException(
-                    $"Received invoice item '{item.Description}' has an invalid VatRegime value '{(int)item.VatRegime}'.");
-
-            if (item.VatRegime == EVatRegime.ReverseCharge && !item.ReverseChargeCodeId.HasValue)
-                throw new InvalidOperationException(
-                    $"Received invoice item '{item.Description}' has VatRegime=ReverseCharge but no ReverseChargeCodeId. " +
-                    "A reverse charge code (kód předmětu plnění) is required for PDP items.");
-
-            if (item.VatRegime != EVatRegime.ReverseCharge && item.ReverseChargeCodeId.HasValue)
-                throw new InvalidOperationException(
-                    $"Received invoice item '{item.Description}' has ReverseChargeCodeId set but VatRegime={item.VatRegime}. " +
-                    "ReverseChargeCodeId must only be set for ReverseCharge items.");
-        }
-    }
-
-    /// <summary>
-    /// Calculates VatAmount, InformationalVatAmount, and TotalWithVat for a received invoice
-    /// item, applying the correct logic per the item's VatRegime.
-    ///
-    /// Unlike the issued-invoice side, "VatAmount" here is money WE actually owe to the
-    /// supplier — for ReverseCharge it stays 0 because the supplier's invoice itself does
-    /// not bill VAT. InformationalVatAmount instead holds the self-assessed amount we must
-    /// declare as both output tax (we owe it) and input tax (we may deduct it) — see
-    /// VatReportService rows 10/11 and 43/44 of DPHDP3.
-    ///
-    /// TotalBeforeVat must be set on the item before calling this method.
-    /// </summary>
-    private static void CalculateItemVat(InvoiceItem item)
-    {
-        switch (item.VatRegime)
-        {
-            case EVatRegime.Standard:
-                item.VatAmount = Math.Round(
-                    item.TotalBeforeVat * (item.VatRatePercentage / 100m),
-                    2, MidpointRounding.AwayFromZero);
-                item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
-                item.InformationalVatAmount = 0;
-                break;
-
-            case EVatRegime.ReverseCharge:
-                // PDP: supplier billed 0 VAT — WE self-assess it (§92a ZDPH). A 0 % rate would
-                // silently drop the supply from the VAT filings, so reject it.
-                if (item.VatRatePercentage <= 0m)
-                    throw new InvalidOperationException(
-                        $"Received invoice item '{item.Description}' uses reverse charge, so it needs the VAT rate that applies " +
-                        "in the Czech Republic (VatRatePercentage > 0).");
-                item.VatAmount = 0;
-                item.TotalWithVat = item.TotalBeforeVat;
-                item.InformationalVatAmount = Math.Round(
-                    item.TotalBeforeVat * (item.VatRatePercentage / 100m),
-                    2, MidpointRounding.AwayFromZero);
-                break;
-
-            case EVatRegime.Exempt:
-            case EVatRegime.OutOfScope:
-                item.VatAmount = 0;
-                item.TotalWithVat = item.TotalBeforeVat;
-                item.InformationalVatAmount = 0;
-                break;
-
-            default:
-                throw new ArgumentOutOfRangeException(nameof(item.VatRegime),
-                    item.VatRegime, "Unhandled VatRegime value in CalculateItemVat.");
-        }
     }
 }

@@ -235,13 +235,15 @@ public class InvoiceController : ControllerBase
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<InvoiceDto>> GetInvoiceByDocumentNumber(
         string documentNumber,
+        [FromQuery] EDocumentType? documentType = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("GET /api/invoice/by-number/{DocumentNumber}", documentNumber);
+        _logger.LogInformation("GET /api/invoice/by-number/{DocumentNumber} - documentType: {DocumentType}", documentNumber, documentType);
 
         try
         {
-            var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, cancellationToken);
+            // Search scope: issued documents unless a type is asked for (supplier numbers are not unique).
+            var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, cancellationToken, documentType);
 
             if (invoice == null)
             {
@@ -376,6 +378,8 @@ public class InvoiceController : ControllerBase
 
             // Auto-upload PDF to enabled cloud storage providers (non-blocking).
             // Failures are logged as warnings but don't affect the completion response.
+            // A received (supplier) invoice has no PDF of ours to upload.
+            if (invoice.DocumentType != EDocumentType.ReceivedInvoice)
             try
             {
                 var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, null, cancellationToken);
@@ -677,6 +681,7 @@ public class InvoiceController : ControllerBase
     /// <response code="201">Final invoice created successfully</response>
     /// <response code="400">Validation error (wrong document type, deduction exceeds advance, etc.)</response>
     /// <response code="404">Proforma not found</response>
+    [IssuedDocumentOnly]
     [HttpPost("{proformaId:long}/issue-final")]
     [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -724,6 +729,7 @@ public class InvoiceController : ControllerBase
     /// <response code="200">Remaining advance amount (decimal)</response>
     /// <response code="404">Proforma not found</response>
     /// <response code="500">Internal server error — check logs for details</response>
+    [IssuedDocumentOnly]
     [HttpGet("{proformaId:long}/remaining-advance")]
     [ProducesResponseType(typeof(decimal), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -758,6 +764,7 @@ public class InvoiceController : ControllerBase
     /// <response code="201">Credit note created successfully</response>
     /// <response code="404">Original invoice not found</response>
     /// <response code="400">Invalid request or cannot create credit note</response>
+    [IssuedDocumentOnly]
     [HttpPost("{invoiceId}/credit-note")]
     [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -795,6 +802,7 @@ public class InvoiceController : ControllerBase
     /// <returns>List of credit notes</returns>
     /// <response code="200">Returns list of credit notes</response>
     /// <response code="500">Internal server error — check logs for details</response>
+    [IssuedDocumentOnly]
     [HttpGet("{invoiceId}/credit-notes")]
     [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -825,6 +833,7 @@ public class InvoiceController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of linked final invoices (may be empty)</returns>
     /// <response code="500">Internal server error — check logs for details</response>
+    [IssuedDocumentOnly]
     [HttpGet("{proformaId:long}/final-invoices")]
     [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -858,6 +867,7 @@ public class InvoiceController : ControllerBase
     /// <response code="201">DPP issued</response>
     /// <response code="400">Not a proforma, issuer is not a VAT payer, or nothing left to cover</response>
     /// <response code="404">Proforma not found</response>
+    [IssuedDocumentOnly]
     [HttpPost("{proformaId:long}/issue-tax-receipt")]
     [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -900,6 +910,7 @@ public class InvoiceController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of linked tax receipts (may be empty)</returns>
     /// <response code="500">Internal server error — check logs for details</response>
+    [IssuedDocumentOnly]
     [HttpGet("{proformaId:long}/tax-receipts")]
     [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -935,6 +946,7 @@ public class InvoiceController : ControllerBase
     /// <returns>PDF file content</returns>
     /// <response code="200">Returns PDF file</response>
     /// <response code="404">Invoice not found</response>
+    [IssuedDocumentOnly]
     [HttpGet("{id}/pdf")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -987,6 +999,15 @@ public class InvoiceController : ControllerBase
 
         try
         {
+            // The unified endpoint serves every document type: a received (supplier) invoice has its own ISDOC mapping
+            // and file name (the same output as GET /api/received-invoice/{id}/isdoc).
+            if (await _invoiceService.GetDocumentTypeAsync(id, cancellationToken) == EDocumentType.ReceivedInvoice)
+            {
+                var receivedBytes = await _isdocExportService.ExportReceivedInvoiceAsync(id, cancellationToken);
+                var received = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
+                return File(receivedBytes, "application/xml", $"ReceivedInvoice_{received?.DocumentNumber ?? id.ToString()}.isdoc");
+            }
+
             // Generate the ISDOC XML bytes via the export service
             var isdocBytes = await _isdocExportService.ExportInvoiceAsync(id, cancellationToken);
 
@@ -1017,6 +1038,7 @@ public class InvoiceController : ControllerBase
     /// <response code="200">Email sent successfully</response>
     /// <response code="404">Invoice not found</response>
     /// <response code="400">Invalid email request</response>
+    [IssuedDocumentOnly]
     [HttpPost("{id}/send-email")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1100,6 +1122,7 @@ public class InvoiceController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <response code="200">Defaults for the dialog</response>
     /// <response code="404">Invoice not found</response>
+    [IssuedDocumentOnly]
     [HttpGet("{id:long}/email-defaults")]
     [ProducesResponseType(typeof(InvoiceEmailDefaultsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1129,6 +1152,7 @@ public class InvoiceController : ControllerBase
     /// <param name="size">QR module size in pixels (default 10, range 5-20)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>PNG image of the QR code</returns>
+    [IssuedDocumentOnly]
     [HttpGet("{id}/qr")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1161,6 +1185,7 @@ public class InvoiceController : ControllerBase
     /// <param name="id">Invoice ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>SIND string</returns>
+    [IssuedDocumentOnly]
     [HttpGet("{id}/qr/sind")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1189,6 +1214,7 @@ public class InvoiceController : ControllerBase
     /// <param name="id">Invoice ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>SPD or SIND string</returns>
+    [IssuedDocumentOnly]
     [HttpGet("{id}/qr/spd")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1296,6 +1322,18 @@ public class InvoiceController : ControllerBase
                     continue;
                 }
 
+                // E-mailing is for documents we issue; say so instead of letting the sender report "not found".
+                if (invoice.DocumentType == EDocumentType.ReceivedInvoice)
+                {
+                    result.FailedCount++;
+                    result.Errors.Add(new BulkOperationError
+                    {
+                        InvoiceId = id,
+                        Error = "A received invoice cannot be sent by e-mail. This operation is available only for issued documents."
+                    });
+                    continue;
+                }
+
                 // A blank recipient makes EmailService use the client's default e-mail contact and the client's
                 // default attachments - the same code path as a single send, just without the dialog's overrides.
                 // (This used to pass invoice.ClientName, which is not an e-mail address and always failed.)
@@ -1333,11 +1371,37 @@ public class InvoiceController : ControllerBase
     {
         _logger.LogInformation("POST /api/invoice/{Id}/auto-match", id);
 
-        var proposal = await _paymentMatcher.FindAutoMatchForInvoiceAsync(id, cancellationToken);
+        // The matcher differs by side (incoming payment for an issued document, outgoing for a received one);
+        // the side comes from the stored document.
+        var proposal = await _invoiceService.GetDocumentTypeAsync(id, cancellationToken) == EDocumentType.ReceivedInvoice
+            ? await _paymentMatcher.FindAutoMatchForReceivedInvoiceAsync(id, cancellationToken)
+            : await _paymentMatcher.FindAutoMatchForInvoiceAsync(id, cancellationToken);
         if (proposal == null)
             return NoContent();
 
         return Ok(proposal);
+    }
+
+    /// <summary>
+    /// Payments (PaymentMatch rows) linked to a document of ANY type. The matcher variant is chosen from the
+    /// stored document: an issued document includes its proforma / tax-receipt cross-links, a received one is flat.
+    /// </summary>
+    /// <response code="200">Matched payments (may be empty)</response>
+    /// <response code="404">Document not found</response>
+    [HttpGet("{id:long}/payments")]
+    [ProducesResponseType(typeof(IReadOnlyList<PaymentMatchDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<PaymentMatchDto>>> GetPayments(long id, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET /api/invoice/{Id}/payments", id);
+
+        var type = await _invoiceService.GetDocumentTypeAsync(id, cancellationToken);
+        if (type == null)
+            return NotFound(new { message = $"Invoice with ID {id} not found" });
+
+        return Ok(type == EDocumentType.ReceivedInvoice
+            ? await _paymentMatcher.GetPaymentsForReceivedInvoiceAsync(id, cancellationToken)
+            : await _paymentMatcher.GetPaymentsForInvoiceAsync(id, cancellationToken));
     }
 
     /// <summary>
@@ -1347,6 +1411,7 @@ public class InvoiceController : ControllerBase
     /// <param name="ids">Comma-separated list of invoice IDs</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>ZIP file containing individual PDF files</returns>
+    [IssuedDocumentOnly]
     [HttpGet("bulk/pdf")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     public async Task<IActionResult> BulkExportPdf(
@@ -1407,6 +1472,7 @@ public class InvoiceController : ControllerBase
     /// <param name="ids">Comma-separated list of invoice IDs</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>ZIP file containing individual .isdoc files</returns>
+    [IssuedDocumentOnly]
     [HttpGet("bulk/isdoc")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     public async Task<IActionResult> BulkExportIsdoc(
@@ -1463,6 +1529,7 @@ public class InvoiceController : ControllerBase
     /// <response code="200">Returns .xml file</response>
     /// <response code="404">Invoice not found</response>
     /// <response code="400">Invoice is not ready for eInvoice export — see <c>issues</c> in the body</response>
+    [IssuedDocumentOnly]
     [HttpGet("{id:long}/ubl")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1504,6 +1571,7 @@ public class InvoiceController : ControllerBase
     /// <param name="ids">Comma-separated list of invoice IDs</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>ZIP file containing individual .xml files</returns>
+    [IssuedDocumentOnly]
     [HttpGet("bulk/ubl")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     public async Task<IActionResult> BulkExportUbl(

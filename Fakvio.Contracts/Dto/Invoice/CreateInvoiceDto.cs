@@ -56,6 +56,11 @@ public class CreateInvoiceDto
     public DateTime? TaxableSupplyDate { get; set; }
 
     /// <summary>
+    /// RECEIVED documents only: the date the document arrived at our company (default: now). Not allowed for issued types.
+    /// </summary>
+    public DateTime? ReceivedDate { get; set; }
+
+    /// <summary>
     /// For credit notes: reference to original invoice
     /// Required if DocumentType = CreditNote
     /// </summary>
@@ -155,6 +160,7 @@ public class CreateInvoiceDto
     /// Custom document number
     /// If not provided, generated automatically from number sequence
     /// Only allowed in Draft status
+    /// RECEIVED documents: this is the SUPPLIER's number (never generated; may stay empty on a draft).
     /// </summary>
     [StringLength(100)]
     public string? CustomDocumentNumber { get; set; }

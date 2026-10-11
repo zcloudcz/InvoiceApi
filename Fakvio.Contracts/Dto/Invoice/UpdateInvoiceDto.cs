@@ -20,6 +20,18 @@ public class UpdateInvoiceDto
     public DateTime? IssueDate { get; set; }
 
     /// <summary>
+    /// RECEIVED documents only: the supplier's own document number (editable). Issued numbers come from the
+    /// number sequence and cannot be changed here - sending it for an issued document is refused.
+    /// </summary>
+    [StringLength(100)]
+    public string? DocumentNumber { get; set; }
+
+    /// <summary>
+    /// RECEIVED documents only: the date the document arrived at our company. Refused for issued documents.
+    /// </summary>
+    public DateTime? ReceivedDate { get; set; }
+
+    /// <summary>
     /// Due date - when payment is due
     /// </summary>
     public DateTime? DueDate { get; set; }

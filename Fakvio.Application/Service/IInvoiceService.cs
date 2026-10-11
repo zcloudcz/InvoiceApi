@@ -13,7 +13,8 @@ public interface IInvoiceService
     /// <summary>
     /// Gets all invoices/credit notes with optional filtering
     /// </summary>
-    /// <param name="documentType">Filter by document type (null = all)</param>
+    /// <param name="documentType">Filter by document type (null = all ISSUED types; pass
+    /// <c>ReceivedInvoice</c> to list received documents - the list scope is ISSUED unless a type is asked for)</param>
     /// <param name="status">Filter by status (null = all)</param>
     /// <param name="clientId">Filter by client ID (null = all)</param>
     /// <param name="issuerId">Filter by issuer ID (null = all)</param>
@@ -27,7 +28,8 @@ public interface IInvoiceService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets paginated, filtered and sorted invoices
+    /// Gets paginated, filtered and sorted invoices. Scope: <c>filter.DocumentTypes</c> / <c>filter.DocumentType</c>;
+    /// when neither is set only ISSUED documents are returned.
     /// </summary>
     Task<PagedResult<InvoiceDto>> GetInvoicesPagedAsync(
         InvoiceFilterDto filter,
@@ -46,8 +48,17 @@ public interface IInvoiceService
     /// </summary>
     /// <param name="documentNumber">Document number</param>
     /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="documentType">Search scope: null = ISSUED documents only (as before); a type (e.g.
+    /// <c>ReceivedInvoice</c>) searches that type. Supplier numbers are not unique, hence the explicit scope.</param>
     /// <returns>Invoice data or null if not found</returns>
-    Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(string documentNumber, CancellationToken cancellationToken = default);
+    Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(
+        string documentNumber, CancellationToken cancellationToken = default, EDocumentType? documentType = null);
+
+    /// <summary>
+    /// Type of a stored document of ANY kind (issued or received), null when no such document exists.
+    /// Lets callers (the controller's "issued only" guard) take the type from the stored row.
+    /// </summary>
+    Task<EDocumentType?> GetDocumentTypeAsync(long invoiceId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a new invoice or credit note

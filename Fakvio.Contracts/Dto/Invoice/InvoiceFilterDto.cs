@@ -31,6 +31,14 @@ public class InvoiceFilterDto : PaginationParams
     public EDocumentType? DocumentType { get; set; }
 
     /// <summary>
+    /// Document SCOPE of the list: the set of document types to return (e.g. <c>ReceivedInvoice</c> for the received
+    /// grid, or several issued types). Together with <see cref="DocumentType"/> it forms the requested set.
+    /// When neither is given the list contains ISSUED documents only (invoice, credit note, proforma, tax receipt),
+    /// exactly as before received documents shared the API - so existing callers are unaffected.
+    /// </summary>
+    public List<EDocumentType>? DocumentTypes { get; set; }
+
+    /// <summary>
     /// Filter by status
     /// </summary>
     public EInvoiceStatus? Status { get; set; }

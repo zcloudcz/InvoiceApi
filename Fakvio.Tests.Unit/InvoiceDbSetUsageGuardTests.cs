@@ -5,7 +5,8 @@ namespace Fakvio.Tests.Unit;
 
 /// <summary>
 /// Guard for the "one table for all documents" model: the <c>Invoice</c> DbSet holds issued AND received
-/// (supplier) documents, so every query on it must pick a side with <c>.IssuedOnly()</c> or <c>.ReceivedOnly()</c>.
+/// (supplier) documents, so every query on it must state its scope with <c>.IssuedOnly()</c>, <c>.ReceivedOnly()</c> or - only
+/// for the unified document-by-id operations and scoped lists - <c>.AnyDocument()</c> (any type, still without templates).
 /// A forgotten helper is severe (payment reminders e-mailed to suppliers, supplier invoices counted as revenue
 /// or output VAT, number-sequence checks tripping over supplier numbers).
 ///
@@ -24,7 +25,7 @@ public class InvoiceDbSetUsageGuardTests
     // `<receiver>.Invoice` where the receiver looks like a DbContext, or Set<Invoice>(), NOT followed by a helper.
     private static readonly Regex Unfiltered = new(
         @"(?:\b_?(?:context|db|dbContext|tenantContext|tenantCtx|tenantDb|ctx)\.Invoice\b|Set<(?:Domain\.Entities\.)?Invoice>\(\))" +
-        @"(?!\s*\.\s*(?:IssuedOnly|ReceivedOnly)\s*\()",
+        @"(?!\s*\.\s*(?:IssuedOnly|ReceivedOnly|AnyDocument)\s*\()",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -34,7 +35,7 @@ public class InvoiceDbSetUsageGuardTests
     private static readonly (string File, string LineContains)[] Allowlist =
     [
         ("InvoiceService.cs", "_context.Invoice.Add(invoice);"),
-        ("ReceivedInvoiceService.cs", "_context.Invoice.Add(entity);"),
+        ("ReceivedDocumentWriter.cs", "_context.Invoice.Add(entity);"),
     ];
 
     [Fact]
@@ -65,7 +66,7 @@ public class InvoiceDbSetUsageGuardTests
         }
 
         offenders.ShouldBeEmpty(
-            "These queries read the Invoice table without .IssuedOnly() / .ReceivedOnly() - they would mix issued " +
+            "These queries read the Invoice table without .IssuedOnly() / .ReceivedOnly() / .AnyDocument() - they would mix issued " +
             "documents with received supplier invoices:\n" + string.Join("\n", offenders));
     }
 
@@ -75,6 +76,7 @@ public class InvoiceDbSetUsageGuardTests
     [InlineData("var q = _tenantContext.Set<Invoice>().Where(x => true);", true)]
     [InlineData("var q = _context.Invoice.IssuedOnly().AsNoTracking();", false)]
     [InlineData("var q = _context.Invoice\n    .ReceivedOnly()\n    .AsNoTracking();", false)]
+    [InlineData("var q = _context.Invoice.AnyDocument().AsNoTracking();", false)]
     [InlineData("var items = _context.InvoiceItem.Where(x => true);", false)]
     [InlineData("var n = match.Invoice.DocumentNumber;", false)]
     public void GuardRegex_RecognisesUnfilteredQueries(string code, bool shouldBeFlagged)
