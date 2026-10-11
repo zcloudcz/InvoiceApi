@@ -365,6 +365,20 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
+    /// ISDOC ZIP for RECEIVED invoices. Received ISDOC stays on the legacy controller
+    /// (the unified /api/invoice/bulk/isdoc refuses received ids).
+    /// </summary>
+    public async Task<byte[]?> BulkExportReceivedIsdocAsync(IEnumerable<long> ids)
+        => await GetBytesAsync($"/api/received-invoice/bulk/isdoc?ids={string.Join(',', ids)}");
+
+    /// <summary>
+    /// ZIP with the attachments of several received invoices (folder per invoice).
+    /// Throws ApiException (404) when none of them has an attachment.
+    /// </summary>
+    public async Task<byte[]?> BulkDownloadReceivedAttachmentsAsync(IEnumerable<long> ids)
+        => await GetBytesAsync($"/api/received-invoice/bulk/attachments?ids={string.Join(',', ids)}");
+
+    /// <summary>
     /// Downloads a ZIP archive containing PDFs for multiple invoices.
     /// Returns the ZIP as a byte array for client-side download via JS interop.
     /// </summary>
