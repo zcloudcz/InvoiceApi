@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Domain.Enums;
@@ -632,11 +633,12 @@ public static class InvoiceTools
     }
 
     /// <summary>
-    /// Exports an invoice as a PDF file, returned as a base64-encoded string.
-    /// The AI client can save this to a file or present it to the user.
+    /// Exports an invoice as a PDF file, returned as a short-lived download link
+    /// (never as file content - AI clients cannot turn base64 text into a file).
     /// </summary>
     [McpServerTool(Title = "Export invoice as PDF", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "Export an invoice as PDF. Returns the PDF as a base64-encoded string. " +
+        "Export an invoice as PDF. Returns a short-lived download link (downloadUrl) - give that link to the user " +
+        "and do NOT fetch it or load the file contents into the conversation. " +
         "Use this when the user asks to download, export, print, or get a PDF of an invoice. " +
         "You can find the invoice ID using FindInvoiceByNumber first.")]
     public static async Task<string> ExportInvoicePdf(
@@ -651,18 +653,10 @@ public static class InvoiceTools
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the PDF; the file name is chosen by the server (client's file name format)
-            var (pdfBytes, fileName) = await api.ExportInvoicePdfAsync(invoiceId, ct);
-
-            // Return base64-encoded PDF with metadata — AI client saves the file
-            return JsonSerializer.Serialize(new
-            {
-                success = true,
-                fileName,
-                mimeType = "application/pdf",
-                sizeBytes = pdfBytes.Length,
-                base64Content = Convert.ToBase64String(pdfBytes)
-            }, JsonOptions);
+            // The file itself is generated when the user opens the link; the server picks the file name then.
+            var link = await api.CreateDownloadLinkAsync(
+                new CreateDownloadLinkDto { Kind = EDownloadKind.InvoicePdf, Id = invoiceId }, ct);
+            return DownloadLinkResult.ToJson(link, "application/pdf");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -675,13 +669,12 @@ public static class InvoiceTools
     }
 
     /// <summary>
-    /// Exports an invoice as ISDOC 6.0.2 XML, returned as a base64-encoded string.
+    /// Exports an invoice as ISDOC 6.0.2 XML, returned as a short-lived download link.
     /// ISDOC is the Czech electronic invoice standard importable by Pohoda, Money S3, Helios.
-    /// The AI client can save this to a file with the .isdoc extension.
     /// </summary>
     [McpServerTool(Title = "Export invoice as ISDOC", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Export an invoice as ISDOC 6.0.2 XML (Czech electronic invoice standard). " +
-        "Returns the XML as a base64-encoded string. " +
+        "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "Use this when the user asks to download or export an invoice as ISDOC for import into accounting software. " +
         "You can find the invoice ID using FindInvoiceByNumber first.")]
     public static async Task<string> ExportInvoiceIsdoc(
@@ -696,18 +689,9 @@ public static class InvoiceTools
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the ISDOC XML; the file name is chosen by the server (client's file name format)
-            var (isdocBytes, fileName) = await api.ExportInvoiceIsdocAsync(invoiceId, ct);
-
-            // Return base64-encoded XML with metadata — AI client saves the file
-            return JsonSerializer.Serialize(new
-            {
-                success = true,
-                fileName,
-                mimeType = "application/xml",
-                sizeBytes = isdocBytes.Length,
-                base64Content = Convert.ToBase64String(isdocBytes)
-            }, JsonOptions);
+            var link = await api.CreateDownloadLinkAsync(
+                new CreateDownloadLinkDto { Kind = EDownloadKind.InvoiceIsdoc, Id = invoiceId }, ct);
+            return DownloadLinkResult.ToJson(link, "application/xml");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -720,15 +704,15 @@ public static class InvoiceTools
     }
 
     /// <summary>
-    /// Exports an invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML, returned as a base64-encoded
-    /// string (ADR 0002, F1.7). Aimed at SK e-invoicing from 2027 — the exported XML can be
+    /// Exports an invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML, returned as a short-lived
+    /// download link (ADR 0002, F1.7). Aimed at SK e-invoicing from 2027 — the exported XML can be
     /// uploaded into a Peppol "digital courier" application. When the invoice is not ready for
-    /// eInvoice export (still a Draft, a pro-forma, missing Peppol ID, …), the API answers 400
-    /// and the error JSON carries the readable EINVOICE_* codes instead of a stack trace.
+    /// eInvoice export (still a Draft, a pro-forma, missing Peppol ID, …), the API refuses to mint
+    /// the link with 400 and the error JSON carries the readable EINVOICE_* codes instead of a stack trace.
     /// </summary>
     [McpServerTool(Title = "Export invoice as UBL/Peppol eInvoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Export an invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-invoicing 2027, Peppol network). " +
-        "Returns the XML as a base64-encoded string. " +
+        "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "Use this instead of ExportInvoiceIsdoc when the user asks for a Peppol / UBL / SK eFaktura export, " +
         "or wants a file to upload into a Peppol digital courier application. " +
         "You can find the invoice ID using FindInvoiceByNumber first.")]
@@ -744,18 +728,9 @@ public static class InvoiceTools
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
 
-            // Download the UBL XML; the file name is chosen by the server (client's file name format)
-            var (ublBytes, fileName) = await api.ExportInvoiceUblAsync(invoiceId, ct);
-
-            // Return base64-encoded XML with metadata — AI client saves the file
-            return JsonSerializer.Serialize(new
-            {
-                success = true,
-                fileName,
-                mimeType = "application/xml",
-                sizeBytes = ublBytes.Length,
-                base64Content = Convert.ToBase64String(ublBytes)
-            }, JsonOptions);
+            var link = await api.CreateDownloadLinkAsync(
+                new CreateDownloadLinkDto { Kind = EDownloadKind.InvoiceUbl, Id = invoiceId }, ct);
+            return DownloadLinkResult.ToJson(link, "application/xml");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -783,13 +758,15 @@ public static class InvoiceTools
 
     /// <summary>
     /// Exports issued and/or received invoices for a date range as a single XML file formatted
-    /// for a Czech accounting system (Pohoda / Money S3 / ABRA Flexi) — "Export do účetnictví".
+    /// for a Czech accounting system (Pohoda / Money S3 / ABRA Flexi) — "Export do účetnictví",
+    /// returned as a short-lived download link.
     /// Unlike ExportInvoiceIsdoc/ExportInvoiceUbl this covers many invoices in one file, so it's
     /// the right tool when the user wants a whole month/period handed to their accountant.
     /// </summary>
     [McpServerTool(Title = "Export accounting period", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Export issued and/or received invoices for a date range as one XML file for an accounting " +
-        "system. Use this when the user asks to export invoices to Pohoda, Money S3 or ABRA Flexi, " +
+        "system. Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
+        "Use this when the user asks to export invoices to Pohoda, Money S3 or ABRA Flexi, " +
         "or wants a batch/period handover to their accountant — not for a single invoice " +
         "(use ExportInvoiceIsdoc/ExportInvoiceUbl for that). Documents the target system cannot represent " +
         "(foreign currency for Money S3/ABRA Flexi, proformas for ABRA Flexi, advance-payment tax receipts, VAT rates other than 21/12/0 %) " +
@@ -814,18 +791,59 @@ public static class InvoiceTools
             if (!DateTime.TryParse(dateTo, out var parsedTo))
                 return JsonSerializer.Serialize(new { error = $"Invalid dateTo format: '{dateTo}'. Use ISO 8601 (e.g., '2026-01-31')." }, JsonOptions);
 
-            var (xmlBytes, skipped) = await api.ExportAccountingAsync(parsedSystem, parsedFrom, parsedTo, includeIssued, includeReceived, ct);
-            var fileName = $"{parsedSystem}_{parsedFrom:yyyyMMdd}-{parsedTo:yyyyMMdd}.xml";
-
-            return JsonSerializer.Serialize(new
+            var link = await api.CreateDownloadLinkAsync(new CreateDownloadLinkDto
             {
-                success = true,
-                fileName,
-                mimeType = "application/xml",
-                sizeBytes = xmlBytes.Length,
-                skippedDocuments = skipped,
-                base64Content = Convert.ToBase64String(xmlBytes)
-            }, JsonOptions);
+                Kind = EDownloadKind.AccountingExport,
+                AccountingSystem = parsedSystem,
+                From = parsedFrom,
+                To = parsedTo,
+                IncludeIssued = includeIssued,
+                IncludeReceived = includeReceived
+            }, ct);
+            // Same name the export endpoint gives the file.
+            return DownloadLinkResult.ToJson(link, "application/xml",
+                $"{parsedSystem}_{parsedFrom:yyyyMMdd}-{parsedTo:yyyyMMdd}.xml");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Bulk export of several invoices as one ZIP (PDF, ISDOC or UBL), returned as a download link.
+    /// </summary>
+    [McpServerTool(Title = "Export several invoices as ZIP", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+        "Export several invoices (max 100) as ONE ZIP archive in the chosen format: 'pdf', 'isdoc' or 'ubl'. " +
+        "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
+        "Invoices that cannot be exported are left out of the ZIP. For a single invoice use ExportInvoicePdf / ExportInvoiceIsdoc / ExportInvoiceUbl.")]
+    public static async Task<string> ExportInvoicesZip(
+        IFakvioApiClient api,
+        [Description("Invoice IDs to include (1-100)")] long[] invoiceIds,
+        [Description("File format inside the ZIP: 'pdf', 'isdoc' or 'ubl'")] string format = "pdf",
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var kind = format?.Trim().ToLowerInvariant() switch
+            {
+                "pdf" => EDownloadKind.InvoiceBulkPdf,
+                "isdoc" => EDownloadKind.InvoiceBulkIsdoc,
+                "ubl" => EDownloadKind.InvoiceBulkUbl,
+                _ => (EDownloadKind?)null
+            };
+            if (kind is null)
+                return JsonSerializer.Serialize(new { error = $"Invalid format '{format}'. Use 'pdf', 'isdoc' or 'ubl'." }, JsonOptions);
+            if (invoiceIds is null || invoiceIds.Length == 0)
+                return JsonSerializer.Serialize(new { error = "Provide at least one invoice ID." }, JsonOptions);
+
+            var link = await api.CreateDownloadLinkAsync(
+                new CreateDownloadLinkDto { Kind = kind.Value, Ids = invoiceIds.ToList() }, ct);
+            return DownloadLinkResult.ToJson(link, "application/zip");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

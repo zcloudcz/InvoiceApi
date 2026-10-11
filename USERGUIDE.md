@@ -1373,7 +1373,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 82 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 88 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1511,15 +1511,17 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 
 | Oblast | Příklady |
 |--------|---------|
-| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, odeslat emailem (příjemce, kopie, volba příloh, uložené soubory dokladu), zobrazit možnosti odeslání, stáhnout PDF nebo ISDOC, smazat koncept |
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, odeslat emailem (příjemce, kopie, volba příloh, uložené soubory dokladu), zobrazit možnosti odeslání, stáhnout PDF, ISDOC nebo UBL (i více faktur najednou jako ZIP), smazat koncept |
 | Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES, zjistit vystavitele |
-| Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
+| Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat, stáhnout ISDOC, stáhnout přílohy (jednu, všechny u záznamu nebo u více faktur najednou jako ZIP) |
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
 | Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné, daňové nastavení |
 | Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
 | Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury, vypsat platné měny (pro vystavení faktury v cizí měně), vypsat i založit/upravit číselné řady, vypsat platné sazby DPH, upravit údaje o firmě a adresu, přidat bankovní účet |
 | Platby a upomínky | Vypsat bankovní platby a jejich stav spárování, zobrazit detail platby, vypsat odeslané upomínky (i k jedné faktuře), zobrazit nastavení upomínek |
 | Opakované faktury | Vypsat a zobrazit plány (i pro konkrétní šablonu), založit nový plán, upravit frekvenci/datum/limity, pozastavit a obnovit, smazat |
+
+**Stahování souborů.** AI soubory (PDF, ISDOC, UBL, exporty pro účetnictví a EPO, přílohy, ZIP) **nevkládá do konverzace**, ale pošle vám **odkaz ke stažení**. Otevřete ho v prohlížeči a soubor se stáhne; přihlášení nepotřebujete. Odkaz je z bezpečnostních důvodů **platný jen 10 minut** a funguje jen pro vaši firmu. Po vypršení požádejte AI o nový. Odkaz nikomu nepředávejte, kdo ho má, může soubor stáhnout. Pokud export není možný (například UBL u konceptu nebo chybějící údaje pro EPO), AI odkaz nevydá a rovnou vám řekne, co je potřeba doplnit. U exportu do účetnictví AI také uvede, kolik dokladů v souboru chybí, protože je cílový systém neumí zpracovat. Odkaz přestane fungovat i tehdy, když je váš účet deaktivován nebo ztratíte přístup do firmy.
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“, „Změň splatnost konceptu FAK-2026-002 na 30. 6.“

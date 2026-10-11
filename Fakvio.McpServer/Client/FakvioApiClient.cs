@@ -17,6 +17,7 @@ using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
+using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.ReverseChargeCode;
@@ -630,6 +631,23 @@ public class FakvioApiClient : IFakvioApiClient
         var response = await _http.PostAsync("api/file-attachment/upload", form, ct);
         await EnsureSuccessAsync(response, ct);
         return (await response.Content.ReadFromJsonAsync<FileAttachmentDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<List<FileAttachmentDto>> GetFileAttachmentsAsync(string entityName, long recordId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/file-attachment/{Uri.EscapeDataString(entityName)}/{recordId}", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<List<FileAttachmentDto>>(JsonOptions, ct) ?? [];
+    }
+
+    // ── Download links ───────────────────────────────────────────────────
+
+    public async Task<DownloadLinkDto> CreateDownloadLinkAsync(CreateDownloadLinkDto request, CancellationToken ct = default)
+    {
+        // The API's default JSON setup reads enums as integers, so JsonOptions (no string-enum converter) is right here.
+        var response = await _http.PostAsJsonAsync("api/download-links", request, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<DownloadLinkDto>(JsonOptions, ct))!;
     }
 
     // ── VAT Report endpoints ─────────────────────────────────────────────

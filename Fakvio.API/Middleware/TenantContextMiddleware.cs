@@ -55,6 +55,9 @@ public class TenantContextMiddleware
         "/api/diagnostic",           // Deployment diagnostics — master DB only; a SysAdmin must be
                                      // able to ask "is the database reachable" without first
                                      // impersonating a company that may not even exist yet
+        "/api/download/",            // Signed download links — anonymous; the tenant comes from the token
+                                     // (DownloadLinkController), never from a JWT that happens to be sent along.
+                                     // Trailing slash on purpose: /api/download-links (minting) IS tenant-scoped.
         "/swagger",
         "/health"
     ];
