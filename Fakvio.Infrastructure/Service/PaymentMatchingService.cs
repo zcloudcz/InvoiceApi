@@ -669,7 +669,7 @@ public class PaymentMatchingService : IPaymentMatchingService
             DocumentNumber = ri.DocumentNumber ?? string.Empty,
             ClientName = ri.Client?.CompanyName,
             TotalWithVat = ri.TotalWithVat,
-            PaidAmount = 0,
+            PaidAmount = ri.PaidAmount,
             Remaining = ri.TotalWithVat - ri.PaidAmount,
             CurrencyCode = ri.Currency?.Code ?? "CZK",
             DueDate = ri.DueDate,

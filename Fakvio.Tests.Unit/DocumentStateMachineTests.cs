@@ -546,4 +546,22 @@ public class DocumentStateMachineTests
         using var check = NewDb();
         check.PaymentMatch.Count(m => m.InvoiceId == id).ShouldBe(2);
     }
+
+    [Fact]
+    public async Task ReceivedProposal_ForPartiallyPaidDocument_ReportsWhatIsAlreadyPaid()
+    {
+        // 1210 total, 400 already matched: the dialog must show Paid 400 / Remaining 810, not Paid 0.
+        var id = SeedDoc(Side.Received, EInvoiceStatus.Completed, vs: "7770003");
+        await ConfirmAsync(Side.Received, SeedTx(Side.Received, 400m), id);
+        var incomingTx = SeedTx(Side.Received, 810m, vs: "7770003", direction: EPaymentDirection.Incoming);
+
+        using var db = NewDb();
+        var proposal = await Matching(db).FindAutoMatchForTransactionAsync(incomingTx);
+
+        proposal.ShouldNotBeNull();
+        proposal.ReceivedInvoiceId.ShouldBe(id);
+        proposal.TotalWithVat.ShouldBe(1210m);
+        proposal.PaidAmount.ShouldBe(400m);
+        proposal.Remaining.ShouldBe(810m);
+    }
 }
