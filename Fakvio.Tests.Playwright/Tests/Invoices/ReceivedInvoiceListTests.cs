@@ -42,24 +42,21 @@ public class ReceivedInvoiceListTests : FakvioPageTest
     [Test]
     public async Task ReceivedInvoiceList_ImportEntry_IsInTheDropdown()
     {
-        await Page.Locator(".mud-button-group .mud-menu button").First.ClickAsync();
+        await Page.Locator(".mud-button-group-root .mud-menu button").First.ClickAsync();
 
-        var importItem = Page.Locator(".mud-popover-open .mud-menu-item").Filter(new() { HasText = "Import PDF" });
+        var importItem = Page.Locator(".mud-popover-open").GetByText("Import PDF");
         await Expect(importItem).ToBeVisibleAsync();
 
         // Received invoices have no "create from template" entry
-        var templateItems = Page.Locator(".mud-popover-open .mud-menu-item")
-            .Filter(new() { HasText = "šablon" })
-            .Or(Page.Locator(".mud-popover-open .mud-menu-item").Filter(new() { HasText = "template" }));
-        Assert.That(await templateItems.CountAsync(), Is.EqualTo(0),
-            "Received invoices must not offer 'new from template'");
+        // The popover is open, so a missing entry is a real absence, not a not-yet-rendered one.
+        await Expect(Page.Locator(".mud-popover-open").GetByText("šablon")).ToHaveCountAsync(0);
     }
 
     [Test]
     public async Task ReceivedInvoiceList_ImportEntry_NavigatesToImport()
     {
-        await Page.Locator(".mud-button-group .mud-menu button").First.ClickAsync();
-        await Page.Locator(".mud-popover-open .mud-menu-item").Filter(new() { HasText = "Import PDF" }).ClickAsync();
+        await Page.Locator(".mud-button-group-root .mud-menu button").First.ClickAsync();
+        await Page.Locator(".mud-popover-open").GetByText("Import PDF").ClickAsync();
 
         // Should navigate to the import page
         await Page.WaitForURLAsync("**/received-invoices/import**", new() { Timeout = 10_000 });
