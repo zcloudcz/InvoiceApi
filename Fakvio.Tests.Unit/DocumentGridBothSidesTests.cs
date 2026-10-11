@@ -81,6 +81,35 @@ public class DocumentGridBothSidesTests : BunitContext, IAsyncLifetime
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
+    /// <summary>
+    /// Regression: the grid mounts while the page is still loading its reference data. Its very
+    /// first request must already carry the document type, otherwise the list shows every issued
+    /// type mixed together (an untyped request = "all issued") and nothing reloads it afterwards.
+    /// </summary>
+    [Theory]
+    [InlineData("/invoices", "Invoice")]
+    [InlineData("/invoices?type=Proforma", "Proforma")]
+    [InlineData("/received-invoices", "ReceivedInvoice")]
+    public async Task First_grid_request_already_carries_the_document_type(string path, string expectedType)
+    {
+        _api.ReferenceDataDelay = TimeSpan.FromMilliseconds(150);
+
+        var cut = RenderAt(path);
+        cut.WaitForAssertion(() => PagedRequestTypes().ShouldNotBeEmpty());
+
+        // Let the delayed reference data arrive, so a (wrong) late reload would be recorded too.
+        await Task.Delay(600);
+
+        PagedRequestTypes().ShouldAllBe(t => t == expectedType);
+    }
+
+    /// <summary>DocumentType of EVERY paged request, "" when the request had none.</summary>
+    private IReadOnlyList<string> PagedRequestTypes() =>
+        _api.Requests
+            .Where(r => r.Uri.AbsolutePath.Contains("/api/invoice/paged", StringComparison.Ordinal))
+            .Select(r => System.Web.HttpUtility.ParseQueryString(r.Uri.Query)["DocumentType"] ?? "")
+            .ToList();
+
     // ── helpers ─────────────────────────────────────────────────────────────
 
     private IStringLocalizer<SharedResource> L => Services.GetRequiredService<IStringLocalizer<SharedResource>>();
@@ -507,6 +536,9 @@ public class DocumentGridBothSidesTests : BunitContext, IAsyncLifetime
         /// <summary>Attachments returned for a single-record attachment listing.</summary>
         public List<FileAttachmentDto> Attachments { get; set; } = [];
 
+        /// <summary>Delay of every request except the paged list (see SendAsync).</summary>
+        public TimeSpan ReferenceDataDelay { get; set; }
+
         public IReadOnlyList<RecordedRequest> Requests
         {
             get { lock (_requests) return _requests.ToList(); }
@@ -520,6 +552,11 @@ public class DocumentGridBothSidesTests : BunitContext, IAsyncLifetime
             lock (_requests) _requests.Add(new RecordedRequest(request.Method, uri, body));
 
             var path = uri.AbsolutePath;
+
+            // Reference data answers late when a test asks for it, so the page renders (and the
+            // grid mounts) while OnInitializedAsync is still waiting - as it does in the browser.
+            if (ReferenceDataDelay > TimeSpan.Zero && !path.Contains("/api/invoice/paged", StringComparison.Ordinal))
+                await Task.Delay(ReferenceDataDelay, cancellationToken);
 
             // Binary downloads (attachment file, ZIPs).
             if (path.EndsWith("/download", StringComparison.Ordinal)

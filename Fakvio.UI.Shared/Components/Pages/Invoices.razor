@@ -136,7 +136,8 @@
         <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" SortBy="x => x.DocumentNumber">
             <CellTemplate>
                 <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
-                    @context.Item.DocumentNumber
+                    @* A received draft may not have the supplier's number yet. *@
+                    @(context.Item.DocumentNumber ?? "-")
                 </MudChip>
             </CellTemplate>
         </PropertyColumn>
@@ -476,22 +477,34 @@
         // Load clients, templates, PDF templates, issuer info, and alert IDs in parallel.
         // None of these depend on the document type, so they are loaded once per component
         // instance. The type filter itself is resolved in OnParametersSetAsync below.
-        // The PDF templates depend on the document type, so they are loaded in ApplyRouteAsync.
-        await Task.WhenAll(
-            LoadClients(), LoadTemplates(), LoadIssuerAsync(), LoadAlertedIdsAsync());
+        //
+        // The document type MUST be resolved before the first await: Blazor renders the page at
+        // that await, the grid mounts and immediately asks for its first page. With the type
+        // still unknown that request went out without a DocumentType and the grid showed every
+        // issued type mixed together. A non-list url (only possible in tests) = plain invoices.
+        var uri = new Uri(Navigation.Uri);
+        _policy = DocumentTypeUiPolicy.ForListRoute(uri.AbsolutePath, TypeFromQuery(uri))
+                  ?? DocumentTypeUiPolicy.For(EDocumentType.Invoice);
+        _filterDocumentType = _policy.Type;
 
         // Navigating /invoices <-> /received-invoices (or between ?type= values) reuses this
         // component instance and may not re-run OnParametersSet (no parameter value changes when
-        // only the path differs), so the location itself is observed too.
+        // only the path differs), so the location itself is observed too. Subscribed before the
+        // first await so Dispose() always finds the handler it has to remove.
         Navigation.LocationChanged += OnLocationChanged;
+
+        await Task.WhenAll(
+            LoadClients(), LoadTemplates(), LoadPdfTemplates(), LoadIssuerAsync(), LoadAlertedIdsAsync());
     }
+
+    private static string? TypeFromQuery(Uri uri) => System.Web.HttpUtility.ParseQueryString(uri.Query)["type"];
 
     public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         // Read the query ourselves: the [SupplyParameterFromQuery] value may not be updated yet.
-        var type = System.Web.HttpUtility.ParseQueryString(new Uri(Navigation.Uri).Query)["type"];
+        var type = TypeFromQuery(new Uri(Navigation.Uri));
         _ = InvokeAsync(async () =>
         {
             await ApplyRouteAsync(type);
@@ -523,8 +536,7 @@
         if (policy is null || policy.Type == _filterDocumentType)
             return;
 
-        var firstPass = _filterDocumentType is null;
-        var sideChanged = !firstPass && policy.IsReceived != _policy.IsReceived;
+        var sideChanged = policy.IsReceived != _policy.IsReceived;
 
         _policy = policy;
         _filterDocumentType = policy.Type;
@@ -532,14 +544,16 @@
         // The selection belongs to the previous view (other type, other bulk rules).
         _selectedInvoices = new HashSet<InvoiceDto>();
 
-        await LoadPdfTemplates();
+        // Started first, awaited last: the rows must not wait for the PDF template list.
+        var pdfTemplates = LoadPdfTemplates();
 
-        // On the very first pass the grid does not exist yet and fetches its own first
-        // page once rendered. When the side changes, the grid gets a new @key (issued and
-        // received grids keep separate column state), so the NEW grid instance loads by itself;
-        // reloading the old one would only fire a request with the old settings.
-        if (!firstPass && !sideChanged && _dataGrid != null)
+        // When the side changes, the grid gets a new @key (issued and received grids keep
+        // separate column state), so the NEW grid instance loads by itself; reloading the old
+        // one would only fire a request with the old settings.
+        if (!sideChanged && _dataGrid != null)
             await _dataGrid.ReloadAsync();
+
+        await pdfTemplates;
     }
 
     /// <summary>
@@ -601,12 +615,18 @@
         try
         {
             // Received invoices have no PDF (null type) - nothing to load.
-            if (_policy.PdfTemplateType is not { } templateType)
+            var policy = _policy;
+            if (policy.PdfTemplateType is not { } templateType)
             {
                 _pdfTemplates = new();
                 return;
             }
-            _pdfTemplates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
+            var templates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
+
+            // The user may have switched to another type while this was loading; a late answer
+            // must not put the previous type's templates into the current view.
+            if (ReferenceEquals(policy, _policy))
+                _pdfTemplates = templates;
         }
         catch (Exception ex) { Snackbar.Add($"Error loading PDF templates: {ex.Message}", Severity.Error); }
     }
