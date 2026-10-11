@@ -156,28 +156,20 @@ public class IssuedDocumentOnlyAttributeTests
         await service.DidNotReceive().GetDocumentTypeAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
-    /// <summary>Same limit as the download links (100). Over it: 400 without touching the database.</summary>
+    /// <summary>
+    /// No cap on these routes: the invoice grid keeps its selection across pages, so a yearly export for the
+    /// accountant can carry more than 100 ids. (The 100 limit belongs to download links only.)
+    /// </summary>
     [Fact]
-    public async Task BulkIds_OverTheLimit_Return400_WithoutAnyQuery()
+    public async Task BulkIds_MoreThan100_AreStillCheckedWithASingleQuery()
     {
-        var ids = string.Join(',', Enumerable.Range(1, DownloadLinkController.MaxBulkIds + 1));
+        var ids = Enumerable.Range(1, DownloadLinkController.MaxBulkIds + 50).Select(i => (long)i).ToList();
 
-        var (result, nextCalled, service) = await RunWithServiceAsync(routeId: null, ids: ids, types: new());
-
-        nextCalled.ShouldBeFalse();
-        result.ShouldBeOfType<BadRequestObjectResult>().Value!.ToString()!.ShouldContain("maximum is 100");
-        service.ReceivedCalls().ShouldBeEmpty();
-    }
-
-    /// <summary>Repeated ids are one document: 101 copies of the same id are not "too many".</summary>
-    [Fact]
-    public async Task BulkIds_DuplicatesDoNotCountTowardsTheLimit()
-    {
-        var ids = string.Join(',', Enumerable.Repeat(7, DownloadLinkController.MaxBulkIds + 1));
-
-        var (_, nextCalled) = await RunAsync(routeId: null, ids: ids, types: new() { [7] = EDocumentType.Invoice });
+        var (_, nextCalled, service) = await RunWithServiceAsync(routeId: null, ids: string.Join(',', ids),
+            types: ids.ToDictionary(i => i, _ => EDocumentType.Invoice));
 
         nextCalled.ShouldBeTrue();
+        await service.Received(1).FindReceivedDocumentIdAsync(Arg.Any<IReadOnlyCollection<long>>(), Arg.Any<CancellationToken>());
     }
 
     private static async Task<(IActionResult? Result, bool NextCalled)> RunAsync(

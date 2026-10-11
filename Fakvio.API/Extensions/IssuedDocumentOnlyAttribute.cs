@@ -1,4 +1,3 @@
-using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -16,9 +15,8 @@ namespace Fakvio.API.Extensions;
 /// <c>invoiceId</c> or <c>proformaId</c>) and, for bulk actions, from the <c>ids</c> query string (comma separated);
 /// a request that carries neither is left alone. An unknown id is not our business here - the action answers it.
 ///
-/// Cost: ONE query for all ids of the request (not one per id). Because the <c>ids</c> list goes into that query
-/// (and then into the export itself), it is capped at <see cref="DownloadLinkController.MaxBulkIds"/> - the same
-/// limit the download links apply to the very same bulk exports; more ids answer 400.
+/// Cost: ONE query for all ids of the request (not one per id). The list is deliberately NOT capped here: the
+/// invoice grid keeps its selection across pages, so a bulk export can carry more than 100 ids.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class IssuedDocumentOnlyAttribute : Attribute, IAsyncActionFilter
@@ -40,18 +38,6 @@ public sealed class IssuedDocumentOnlyAttribute : Attribute, IAsyncActionFilter
                 .Where(id => id > 0)
                 .Distinct()
                 .ToList();
-
-            // Refused before any database work: an unbounded list would become an unbounded IN (...) below and an
-            // unbounded ZIP in the action.
-            if (bulkIds.Count > DownloadLinkController.MaxBulkIds)
-            {
-                context.Result = new BadRequestObjectResult(new
-                {
-                    message = $"Too many ids: maximum is {DownloadLinkController.MaxBulkIds}."
-                });
-                return;
-            }
-
             ids.AddRange(bulkIds);
         }
 
