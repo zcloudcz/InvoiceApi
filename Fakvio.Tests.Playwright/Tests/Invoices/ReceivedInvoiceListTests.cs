@@ -35,20 +35,28 @@ public class ReceivedInvoiceListTests : FakvioPageTest
         await Expect(newButton).ToBeVisibleAsync();
     }
 
+    /// <summary>
+    /// The list is the unified invoice grid: Import PDF lives in the dropdown next to the
+    /// "New" button (split button), there is no separate import button any more.
+    /// </summary>
     [Test]
-    public async Task ReceivedInvoiceList_HasImportButton()
+    public async Task ReceivedInvoiceList_ImportEntry_IsInTheDropdown()
     {
-        // Import PDF button should be present (outlined variant)
-        var importButton = Page.Locator(".mud-button-outlined").Filter(new() { HasText = "Import PDF" });
-        await Expect(importButton).ToBeVisibleAsync();
+        await Page.Locator(".mud-button-group-root .mud-menu button").First.ClickAsync();
+
+        var importItem = Page.Locator(".mud-popover-open").GetByText("Import PDF");
+        await Expect(importItem).ToBeVisibleAsync();
+
+        // Received invoices have no "create from template" entry
+        // The popover is open, so a missing entry is a real absence, not a not-yet-rendered one.
+        await Expect(Page.Locator(".mud-popover-open").GetByText("šablon")).ToHaveCountAsync(0);
     }
 
     [Test]
-    public async Task ReceivedInvoiceList_ImportButton_NavigatesToImport()
+    public async Task ReceivedInvoiceList_ImportEntry_NavigatesToImport()
     {
-        // Click Import PDF button
-        var importButton = Page.Locator(".mud-button-outlined").Filter(new() { HasText = "Import PDF" });
-        await importButton.ClickAsync();
+        await Page.Locator(".mud-button-group-root .mud-menu button").First.ClickAsync();
+        await Page.Locator(".mud-popover-open").GetByText("Import PDF").ClickAsync();
 
         // Should navigate to the import page
         await Page.WaitForURLAsync("**/received-invoices/import**", new() { Timeout = 10_000 });
@@ -56,17 +64,17 @@ public class ReceivedInvoiceListTests : FakvioPageTest
     }
 
     [Test]
-    public async Task ReceivedInvoiceList_HasFilterControls()
+    public async Task ReceivedInvoiceList_HasSearchField_AndNoPageLevelStatusDropdown()
     {
-        // Search field
+        // Global search field in the grid toolbar
         var searchInputs = Page.Locator(".mud-input input");
         var count = await searchInputs.CountAsync();
-        Assert.That(count, Is.GreaterThanOrEqualTo(1), "Should have search/filter inputs");
+        Assert.That(count, Is.GreaterThanOrEqualTo(1), "Should have a search input");
 
-        // Date pickers
-        var datePickers = Page.Locator(".mud-picker");
-        var dateCount = await datePickers.CountAsync();
-        Assert.That(dateCount, Is.GreaterThanOrEqualTo(2), "Should have 2 date pickers (from/to)");
+        // The old page-level status dropdown is gone: status is filtered in the column header only.
+        var pageLevelSelects = Page.Locator("h4 ~ .mud-paper .mud-select");
+        Assert.That(await pageLevelSelects.CountAsync(), Is.EqualTo(0),
+            "Status is filtered in the Status column header, not by a page-level dropdown");
     }
 
     [Test]

@@ -91,6 +91,23 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         return (row.Status, row.DocumentNumber, row.Notes);
     }
 
+    /// <summary>Adds one FileAttachment metadata row to a received document (the list only counts rows).</summary>
+    private void SeedReceivedAttachment(long recordId, string fileName)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+        tenantDb.FileAttachment.Add(new FileAttachment
+        {
+            EntityName = "ReceivedInvoice",
+            RecordId = recordId,
+            OriginalFileName = fileName,
+            ContentType = "application/pdf",
+            FileSizeBytes = 1,
+            BlobPath = $"{CompanyId}/{Guid.NewGuid()}.pdf"
+        });
+        tenantDb.SaveChanges();
+    }
+
     private async Task<HttpClient> CreateAuthenticatedClientAsync()
     {
         var client = _factory.CreateClient();
@@ -288,6 +305,59 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         result.GetProperty("successCount").GetInt32().ShouldBe(2);
         RowOf(received).Status.ShouldBe(EInvoiceStatus.Paid);
         RowOf(issued).Status.ShouldBe(EInvoiceStatus.Paid);
+    }
+
+    // The unified grid (Invoices.razor on /received-invoices, #542) drives a received list through these bulk routes.
+
+    [Fact]
+    public async Task BulkComplete_ApprovesDraftReceivedDocuments()
+    {
+        var draft = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var client = await CreateAuthenticatedClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/invoice/bulk/complete", new { invoiceIds = new[] { draft } });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await JsonOf(response)).GetProperty("successCount").GetInt32().ShouldBe(1);
+        RowOf(draft).Status.ShouldBe(EInvoiceStatus.Completed); // "approved"
+    }
+
+    [Fact]
+    public async Task BulkDelete_DeletesDraftReceivedDocuments_AndReportsTheOnesThatCannotBeDeleted()
+    {
+        var draft = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var completed = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Completed); // a received document needs a revert first
+        var client = await CreateAuthenticatedClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/invoice/bulk/delete", new { invoiceIds = new[] { draft, completed } });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var result = await JsonOf(response);
+        result.GetProperty("successCount").GetInt32().ShouldBe(1);
+        result.GetProperty("failedCount").GetInt32().ShouldBe(1);
+        RowOf(draft).Status.ShouldBe(EInvoiceStatus.Deleted);
+        RowOf(completed).Status.ShouldBe(EInvoiceStatus.Completed);
+    }
+
+    [Fact]
+    public async Task PagedList_WithDocumentTypeReceivedInvoice_ReturnsReceivedRowsWithAttachmentCount()
+    {
+        var withFiles = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var withoutFiles = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var issued = SeedDoc(EDocumentType.Invoice, EInvoiceStatus.Draft);
+        SeedReceivedAttachment(withFiles, "a.pdf");
+        SeedReceivedAttachment(withFiles, "b.pdf");
+        var client = await CreateAuthenticatedClientAsync();
+
+        // The grid sends the singular "DocumentType" filter by name.
+        var list = await JsonOf(await client.GetAsync("/api/invoice/paged?pageSize=100&DocumentType=ReceivedInvoice"));
+
+        var rows = list.GetProperty("items").EnumerateArray().ToDictionary(r => r.GetProperty("id").GetInt64());
+        rows.ShouldContainKey(withFiles);
+        rows.ShouldContainKey(withoutFiles);
+        rows.ShouldNotContainKey(issued);
+        rows[withFiles].GetProperty("attachmentCount").GetInt32().ShouldBe(2);
+        rows[withoutFiles].GetProperty("attachmentCount").GetInt32().ShouldBe(0);
     }
 
     [Fact]

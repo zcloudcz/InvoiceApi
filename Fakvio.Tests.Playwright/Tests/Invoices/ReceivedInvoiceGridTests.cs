@@ -167,4 +167,24 @@ public class ReceivedInvoiceGridTests : FakvioPageTest
             await checkboxes.First.ClickAsync();
         }
     }
+
+    /// <summary>
+    /// A Draft ("Received") row offers the approve action in the actions column, and no
+    /// "Reject" action exists any more. Inconclusive when no draft received invoice exists.
+    /// </summary>
+    [Test]
+    public async Task Grid_DraftRow_ShowsApproveAction()
+    {
+        var approve = Page.Locator(".mud-table-body button[title='Schválit'], .mud-table-body button[title='Approve']");
+        if (await approve.CountAsync() == 0)
+        {
+            Assert.Inconclusive("No draft received invoice - cannot verify the approve action");
+            return;
+        }
+
+        await Expect(approve.First).ToBeVisibleAsync();
+
+        var reject = Page.Locator(".mud-table-body button[title='Zamítnout'], .mud-table-body button[title='Reject']");
+        Assert.That(await reject.CountAsync(), Is.EqualTo(0), "The Reject action was removed (reject = delete)");
+    }
 }

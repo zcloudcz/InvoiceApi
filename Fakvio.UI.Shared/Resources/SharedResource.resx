@@ -142,6 +142,7 @@
   <data name="Invoice_StatusIssued" xml:space="preserve"><value>Vystavena</value></data>
   <data name="Invoice_StatusSent" xml:space="preserve"><value>Odesláno</value></data>
   <data name="Invoice_StatusPaid" xml:space="preserve"><value>Zaplaceno</value></data>
+  <data name="Invoice_StatusPartiallyPaid" xml:space="preserve"><value>Částečně uhrazeno</value></data>
   <data name="Invoice_StatusOverdue" xml:space="preserve"><value>Po splatnosti</value></data>
   <data name="Invoice_StatusCancelled" xml:space="preserve"><value>Stornováno</value></data>
   <data name="Invoice_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat tuto fakturu?</value></data>

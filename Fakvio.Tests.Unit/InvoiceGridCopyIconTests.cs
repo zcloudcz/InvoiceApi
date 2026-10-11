@@ -1,5 +1,6 @@
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Domain.Enums;
+using Fakvio.UI.Shared.Models;
 using Shouldly;
 
 namespace Fakvio.Tests.Unit;
@@ -7,24 +8,21 @@ namespace Fakvio.Tests.Unit;
 /// <summary>
 /// Unit tests for the Copy icon visibility logic used in the Invoices grid.
 ///
-/// The rule (mirrored from Invoices.razor) is:
-///   Show copy icon when DocumentType != CreditNote AND Status != Deleted
-///
-/// These tests verify all relevant Status × DocumentType combinations without
-/// spinning up a full Blazor component (no bUnit available in this project).
+/// The rule lives in DocumentTypeUiPolicy (SupportsCopy: not for CreditNote, not for received
+/// invoices); the grid additionally hides the icon for Deleted rows. These tests verify all
+/// relevant Status x DocumentType combinations without spinning up a full Blazor component.
 /// </summary>
 public class InvoiceGridCopyIconTests
 {
     // ── helper ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Mirrors the Razor condition that guards the Copy icon in the grid row template.
-    /// Must stay in sync with Invoices.razor:
-    ///   @if (context.Item.DocumentType != EDocumentType.CreditNote
-    ///        &amp;&amp; context.Item.Status != EInvoiceStatus.Deleted)
+    /// Mirrors the Razor condition that guards the Copy icon in the grid row template, using the
+    /// real policy instead of a copied rule. Must stay in sync with Invoices.razor:
+    ///   @if (_policy.SupportsCopy &amp;&amp; context.Item.Status != EInvoiceStatus.Deleted)
     /// </summary>
     private static bool ShouldShowCopyIcon(InvoiceDto item)
-        => item.DocumentType != EDocumentType.CreditNote
+        => DocumentTypeUiPolicy.For(item.DocumentType).SupportsCopy
            && item.Status != EInvoiceStatus.Deleted;
 
     private static InvoiceDto MakeDto(EDocumentType type, EInvoiceStatus status)
