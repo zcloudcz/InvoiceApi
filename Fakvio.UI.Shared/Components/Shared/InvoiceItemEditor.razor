@@ -21,10 +21,14 @@
                    OnClick="AddNewRow" StartIcon="@Icons.Material.Filled.Add">
             @L["Btn_AddItem"]
         </MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
-                   OnClick="AddTextRow" StartIcon="@Icons.Material.Filled.Notes">
-            @L["Btn_AddTextRow"]
-        </MudButton>
+        @* A received invoice has no text-only rows (the API refuses them) *@
+        @if (!IsReceived)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                       OnClick="AddTextRow" StartIcon="@Icons.Material.Filled.Notes">
+                @L["Btn_AddTextRow"]
+            </MudButton>
+        }
     </MudStack>
 </div>
 
@@ -145,12 +149,18 @@
                     }
                     else
                     {
-                        <MudSelect T="long?" Value="@context.VatRateId"
+                        <MudSelect T="long?" Value="@RateSelectValue(context)"
                                    ValueChanged="@(v => OnVatRateChanged(context, v))"
                                    Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
                             @foreach (var vr in _vatRates)
                             {
                                 <MudSelectItem T="long?" Value="@((long?)vr.Id)">@vr.Rate%</MudSelectItem>
+                            }
+                            @* The row carries a percentage that is not (or no longer) in the VAT rate list, e.g. 15 %
+                               on a received invoice. Show it as it is; picking it again changes nothing. *@
+                            @if (RateSelectValue(context) == CustomRateOption)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)CustomRateOption)">@context.VatRatePercentage.ToString("0.##")%</MudSelectItem>
                             }
                         </MudSelect>
                     }
@@ -251,7 +261,29 @@
     [Parameter]
     public string? OssCountryCode { get; set; }
 
+    /// <summary>
+    /// True for a RECEIVED (supplier) invoice. VAT there is whatever the supplier billed, so (a) our own VAT
+    /// payer status is not looked up and never rewrites the rows to 0 %, and (b) text-only rows are not offered
+    /// because the API refuses them for a received invoice.
+    /// </summary>
+    [Parameter]
+    public bool IsReceived { get; set; }
+
     private List<VatRateDto> _vatRates = new();
+
+    /// <summary>
+    /// Select value standing for "the percentage stored on the row, which is not in the VAT rate list".
+    /// Negative so it can never collide with a real rate id.
+    /// </summary>
+    private const long CustomRateOption = -1;
+
+    /// <summary>
+    /// Value shown in the VAT rate select: the row's rate id when that rate is in the list, otherwise the
+    /// "custom percentage" option. Without it a row with <c>VatRateId == null</c> (e.g. 15 %) looked empty and
+    /// invited the user to pick, and thereby change, a rate by accident.
+    /// </summary>
+    private long? RateSelectValue(CreateInvoiceItemDto item) =>
+        item.VatRateId is { } id && _vatRates.Any(v => v.Id == id) ? id : CustomRateOption;
     private List<Fakvio.Contracts.Dto.OssVatRate.OssVatRateDto> _ossRates = new();
     private string? _loadedOssCountry;
     private DateTime? _loadedRateDate;
@@ -347,6 +379,9 @@
     /// </summary>
     private async Task LoadIssuerVatStatus()
     {
+        // Received invoice: the supplier's VAT is independent of ours, keep the rows as they are.
+        if (IsReceived) return;
+
         try
         {
             var issuer = await ClientService.GetIssuerAsync();
@@ -462,6 +497,9 @@
     /// </summary>
     private void OnVatRateChanged(CreateInvoiceItemDto item, long? vatRateId)
     {
+        // Re-selecting the "custom percentage" entry must leave the row untouched.
+        if (vatRateId == CustomRateOption) return;
+
         item.VatRateId = vatRateId;
 
         if (vatRateId.HasValue)

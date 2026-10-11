@@ -1,16 +1,20 @@
 @using Fakvio.Contracts.Dto.Invoice
 @using Fakvio.Contracts.Dto.PaymentMatching
 @using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Models
+@inject FakvioService InvoiceApi
 @inject PaymentMatchingApiService PaymentApi
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
 
 @*
-    Reusable payments panel embedded inside InvoiceDetail. Shows:
+    Reusable payments panel embedded inside InvoiceDetail, for issued AND received documents. Shows:
       - Progress bar PaidAmount / TotalWithVat
-      - List of PaymentMatch rows (date, amount, source, note, Unmatch button)
-      - "Match payment manually..." button → MatchPaymentDialog
+      - List of PaymentMatch rows of THIS document (GET /api/invoice/{id}/payments: date, amount, source,
+        note, Unmatch button that sends the real PaymentMatch id)
+      - "Match payment manually..." button → MatchPaymentDialog (issued documents only, see
+        DocumentTypeUiPolicy.SupportsManualPaymentMatch)
     Auto-match has been moved to the Payments overview page (issue #125).
     Parent controls when to refresh by toggling the RefreshTrigger parameter.
 *@
@@ -24,11 +28,14 @@
                 @L["InvoicePayments_Panel_Title"]
             </MudText>
             <MudSpacer />
-            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Link"
-                       OnClick="OpenMatchDialog">
-                @L["InvoicePayments_MatchManually"]
-            </MudButton>
+            @if (Policy.SupportsManualPaymentMatch)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Link"
+                           OnClick="OpenMatchDialog">
+                    @L["InvoicePayments_MatchManually"]
+                </MudButton>
+            }
         </div>
 
         @* Progress bar — green when fully paid, blue partial, grey unpaid. *@
@@ -90,18 +97,10 @@
     /// <summary>Raised after a manual match or unmatch — parent reloads the invoice.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
 
-    private List<PaymentMatchRow>? _matches;
+    private List<PaymentMatchDto>? _matches;
     private bool _loading;
     private int _lastTrigger = -1;
-
-    /// <summary>Local row type — we read PaymentMatch via the BankTransaction details endpoint.</summary>
-    public record PaymentMatchRow(
-        long PaymentMatchId,
-        DateTime MatchedAt,
-        decimal MatchedAmount,
-        EMatchType MatchedBy,
-        string? Note,
-        long BankTransactionId);
+    private long _loadedForId = -1;
 
     private double ProgressPercent =>
         Invoice == null || Invoice.TotalWithVat <= 0
@@ -116,19 +115,26 @@
         _ => Color.Default,
     };
 
+    /// <summary>Policy of the viewed document (an unset/unknown type falls back to an ordinary invoice).</summary>
+    private DocumentTypeUiPolicy Policy => DocumentTypeUiPolicy.For(
+        Invoice != null && Enum.IsDefined(Invoice.DocumentType) ? Invoice.DocumentType : EDocumentType.Invoice);
+
     protected override async Task OnParametersSetAsync()
     {
         if (Invoice == null) return;
-        if (RefreshTrigger != _lastTrigger)
+        // Reload on an explicit refresh AND when the panel is handed another document (same instance reused).
+        if (RefreshTrigger != _lastTrigger || Invoice.Id != _loadedForId)
         {
             _lastTrigger = RefreshTrigger;
+            _loadedForId = Invoice.Id;
             await LoadMatchesAsync();
         }
     }
 
     /// <summary>
-    /// MVP approach: load all bank transactions linked to this invoice via the search endpoint.
-    /// Long-term we could add a dedicated /api/payment-matching/invoices/{id}/matches endpoint.
+    /// Loads the payments of THIS document by its id (GET /api/invoice/{id}/payments, works for issued and
+    /// received documents). The rows carry the real PaymentMatch id, which the unmatch call needs; the old
+    /// approach (first 100 bank transactions matched by document number) found nothing for older documents.
     /// </summary>
     private async Task LoadMatchesAsync()
     {
@@ -136,22 +142,7 @@
         _loading = true;
         try
         {
-            // Pull both Matched and PartiallyMatched transactions and keep ones whose
-            // MatchedInvoiceNumbers contains our DocumentNumber.
-            var page = await PaymentApi.ListTransactionsAsync(pageSize: 100);
-            if (page == null) { _matches = new(); return; }
-
-            _matches = page.Items
-                .Where(t => Invoice.DocumentNumber != null
-                         && t.MatchedInvoiceNumbers.Contains(Invoice.DocumentNumber))
-                .Select(t => new PaymentMatchRow(
-                    PaymentMatchId: 0, // not exposed in summary DTO; populated via detail endpoint when used
-                    MatchedAt: t.TransactionDate,
-                    MatchedAmount: t.MatchedTotal,
-                    MatchedBy: EMatchType.Auto, // best-effort guess for summary
-                    Note: t.Message,
-                    BankTransactionId: t.Id))
-                .ToList();
+            _matches = await InvoiceApi.GetPaymentsAsync(Invoice.Id);
         }
         catch (Exception ex)
         {
@@ -175,7 +166,7 @@
         }
     }
 
-    private async Task UnmatchAsync(PaymentMatchRow row)
+    private async Task UnmatchAsync(PaymentMatchDto row)
     {
         var confirm = await DialogService.ShowMessageBox(
             L["InvoicePayments_Unmatch"],
@@ -185,23 +176,17 @@
 
         try
         {
-            // PaymentMatchId not surfaced in the grid summary — re-fetch the transaction detail to pick the
-            // PaymentMatch row that targets this invoice. For MVP we send a no-op when id=0.
-            if (row.PaymentMatchId == 0)
-            {
-                Snackbar.Add(L["InvoicePayments_Unmatch"] + ": detail endpoint not yet wired", Severity.Warning);
-                return;
-            }
-
             await PaymentApi.UnmatchAsync(row.BankTransactionId, new UnmatchRequest
             {
-                PaymentMatchId = row.PaymentMatchId,
+                PaymentMatchId = row.Id,
                 Reason = null,
             });
             await OnChanged.InvokeAsync();
         }
         catch (Exception ex)
         {
+            // The server refuses some unmatches on purpose (e.g. after a manual "mark as paid") and explains why in
+            // the 400 body; ApiClientBase puts that text into the exception, so the user reads the real reason.
             Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
     }
