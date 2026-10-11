@@ -60,18 +60,14 @@ public class DashboardService : IDashboardService
         var firstDayOfNextMonth = firstDayOfMonth.AddMonths(1);
 
         // Base query for invoices — excludes templates (TPH) and soft-deleted invoices.
-        // Filtered by company (issuer) if provided.
-        // When companyId is null (SysAdmin without impersonation), all invoices are shown.
+        // NOT filtered by companyId: the tenant schema holds only this company's documents, and companyId
+        // is a master-DB id while Invoice.IssuerId is a client id of the tenant schema. Comparing the two
+        // emptied the dashboard of every tenant whose issuer client id differs from its company id.
         // AsNoTracking: entire dashboard is read-only — no entity modifications
         var invoiceQuery = _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Where(i => !(i is Domain.Entities.InvoiceTemplate)) // Exclude templates (TPH)
             .Where(i => i.Status != EInvoiceStatus.Deleted);      // Exclude soft-deleted
-
-        if (companyId.HasValue)
-        {
-            invoiceQuery = invoiceQuery.Where(i => i.IssuerId == companyId.Value);
-        }
 
         // Run aggregation queries SEQUENTIALLY — DbContext is NOT thread-safe.
         // Task.WhenAll on the same DbContext instance causes
@@ -263,8 +259,8 @@ public class DashboardService : IDashboardService
 
         // Received invoices: IssuerId is always our own company (we are the recipient) — tenant
         // isolation already comes from the schema-per-tenant TenantDbContext, so no
-        // companyId filter is needed here (unlike invoiceQuery, which filters by Issuer
-        // for multi-issuer tenants). Only Approved/Paid count — Deleted is not a real expense.
+        // companyId filter is needed here (same as invoiceQuery).
+        // Only Approved/Paid count — Deleted is not a real expense.
         var expense = await _context.Invoice.ReceivedOnly()
             .AsNoTracking()
             .Where(r => (r.Status == EInvoiceStatus.Completed || r.Status == EInvoiceStatus.PartiallyPaid || r.Status == EInvoiceStatus.Paid)

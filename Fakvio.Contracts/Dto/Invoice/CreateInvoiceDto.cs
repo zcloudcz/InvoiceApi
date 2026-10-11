@@ -6,7 +6,7 @@ namespace Fakvio.Contracts.Dto.Invoice;
 /// <summary>
 /// DTO for creating a new invoice or credit note
 /// </summary>
-public class CreateInvoiceDto
+public class CreateInvoiceDto : IValidatableObject
 {
     /// <summary>
     /// Opt-in to the EU OSS (One-Stop-Shop) regime for this invoice (DEVGUIDE §4.16). Honoured only when the
@@ -56,17 +56,22 @@ public class CreateInvoiceDto
     public DateTime? TaxableSupplyDate { get; set; }
 
     /// <summary>
+    /// RECEIVED documents only: the date the document arrived at our company (default: now). Not allowed for issued types.
+    /// </summary>
+    public DateTime? ReceivedDate { get; set; }
+
+    /// <summary>
     /// For credit notes: reference to original invoice
     /// Required if DocumentType = CreditNote
     /// </summary>
     public long? OriginalInvoiceId { get; set; }
 
     /// <summary>
-    /// Variable symbol for payment — Czech banking requires max 10 digits only.
-    /// If not provided, auto-generated from document number (digits only, truncated to 10).
+    /// Variable symbol for payment. Issued documents: Czech banking requires max 10 digits only (checked in
+    /// <see cref="Validate"/>); if not provided, auto-generated from document number (digits only, truncated to 10).
+    /// Received invoice: the supplier's symbol as printed, any characters, max 50 (the column length).
     /// </summary>
-    [StringLength(10)]
-    [RegularExpression(@"^\d{0,10}$", ErrorMessage = "Variable symbol must contain only digits (max 10)")]
+    [StringLength(50)]
     public string? VariableSymbol { get; set; }
 
     /// <summary>
@@ -155,6 +160,7 @@ public class CreateInvoiceDto
     /// Custom document number
     /// If not provided, generated automatically from number sequence
     /// Only allowed in Draft status
+    /// RECEIVED documents: this is the SUPPLIER's number (never generated; may stay empty on a draft).
     /// </summary>
     [StringLength(100)]
     public string? CustomDocumentNumber { get; set; }
@@ -173,4 +179,15 @@ public class CreateInvoiceDto
     [Required]
     [MinLength(1, ErrorMessage = "At least one invoice item is required")]
     public List<CreateInvoiceItemDto> InvoiceItem { get; set; } = new();
+
+    /// <summary>
+    /// Rules that depend on more than one property, run by model validation after the attributes above.
+    /// The variable symbol rule depends on <see cref="DocumentType"/>, which an attribute cannot see: an issued
+    /// document keeps "digits only, max 10" (same message and 400 shape as before), a received invoice does not.
+    /// </summary>
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (DocumentType != EDocumentType.ReceivedInvoice && !IssuedDocumentTypes.IsValidVariableSymbol(VariableSymbol))
+            yield return new ValidationResult(IssuedDocumentTypes.VariableSymbolError, [nameof(VariableSymbol)]);
+    }
 }

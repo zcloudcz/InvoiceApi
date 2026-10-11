@@ -149,6 +149,27 @@ public class DocumentUxRegressionTests : BunitContext, IAsyncLifetime
         _backend.Urls.ShouldContain(u => u.Contains("Search=old-2019") && u.Contains("Status=Paid"));
     }
 
+    /// <summary>
+    /// The unified API returns a received invoice under /api/invoice/{id}; the issued detail page must hand it
+    /// over to the received detail instead of rendering it with issued-only actions.
+    /// </summary>
+    [Fact]
+    public async Task IssuedDetail_GivenAReceivedDocument_RedirectsToTheReceivedDetail()
+    {
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        var page = new InvoiceDetail();
+        Set(page, "L", _localizer);
+        Set(page, "Snackbar", Services.GetRequiredService<ISnackbar>());
+        Set(page, "InvoiceService", Services.GetRequiredService<FakvioService>());
+        Set(page, "Navigation", navigation);
+        Set(page, "Id", Backend.ReceivedDocumentId);
+
+        await Invoke(page, "LoadInvoice");
+
+        new Uri(navigation.Uri).AbsolutePath.ShouldBe($"/received-invoices/{Backend.ReceivedDocumentId}");
+        typeof(InvoiceDetail).GetField("_invoice", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page).ShouldBeNull();
+    }
+
     [Fact]
     public void InvoiceAmountFilter_IsExplicitlyUnavailable()
     {
@@ -250,6 +271,7 @@ public class DocumentUxRegressionTests : BunitContext, IAsyncLifetime
 
     private sealed class Backend : HttpMessageHandler
     {
+        public const long ReceivedDocumentId = 777;
         public List<string> Urls { get; } = [];
         public bool FailPayments, FailInvoices, HoldWrites;
         public int Writes;
@@ -280,6 +302,8 @@ public class DocumentUxRegressionTests : BunitContext, IAsyncLifetime
             if (uri.AbsolutePath == "/api/client/1")
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new ClientDto { Id = 1, CompanyName = "Customer", Language = "cs" }) };
             if (uri.AbsolutePath == "/api/client/issuer") return Json("null");
+            if (uri.AbsolutePath == $"/api/invoice/{ReceivedDocumentId}")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new InvoiceDto { Id = ReceivedDocumentId, DocumentType = EDocumentType.ReceivedInvoice }) };
             if (uri.AbsolutePath == "/api/invoice/paged")
             {
                 if (FailInvoices) return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = new StringContent("Unavailable") };

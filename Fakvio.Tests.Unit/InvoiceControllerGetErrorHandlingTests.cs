@@ -198,13 +198,13 @@ public class InvoiceControllerGetErrorHandlingTests
     {
         // Arrange
         _invoiceService
-            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("simulated DB error"));
 
         var controller = BuildController();
 
         // Act
-        var result = await controller.GetInvoiceByDocumentNumber("INV-2026-001", CancellationToken.None);
+        var result = await controller.GetInvoiceByDocumentNumber("INV-2026-001", cancellationToken: CancellationToken.None);
 
         // Assert
         var objectResult = result.Result.ShouldBeOfType<ObjectResult>();
@@ -381,13 +381,13 @@ public class InvoiceControllerGetErrorHandlingTests
     {
         // Arrange
         _invoiceService
-            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns((InvoiceDto?)null);
 
         var controller = BuildController();
 
         // Act
-        var result = await controller.GetInvoiceByDocumentNumber("INV-MISSING-001", CancellationToken.None);
+        var result = await controller.GetInvoiceByDocumentNumber("INV-MISSING-001", cancellationToken: CancellationToken.None);
 
         // Assert — 404 with the document number in the message
         var notFoundResult = result.Result.ShouldBeOfType<NotFoundObjectResult>();

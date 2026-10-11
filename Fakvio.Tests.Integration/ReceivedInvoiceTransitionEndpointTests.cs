@@ -12,8 +12,9 @@ namespace Fakvio.Tests.Integration;
 
 /// <summary>
 /// HTTP-level tests of the received-invoice transitions that mirror the issued routes
-/// (<c>POST api/received-invoice/{id}/mark-unpaid | revert-to-draft | restore</c>) and of the by-id isolation:
-/// an issued route given a received id (and vice versa) answers 404 and leaves the document untouched.
+/// (<c>POST api/received-invoice/{id}/mark-unpaid | revert-to-draft | restore</c>) and of the by-id isolation of the
+/// LEGACY received routes: they answer 404 for an issued id and leave the document untouched. (The unified
+/// <c>api/invoice</c> routes serve both sides - see <c>UnifiedDocumentEndpointTests</c>.)
 /// </summary>
 public class ReceivedInvoiceTransitionEndpointTests : IClassFixture<FakvioFactory>
 {
@@ -167,20 +168,5 @@ public class ReceivedInvoiceTransitionEndpointTests : IClassFixture<FakvioFactor
         (await client.DeleteAsync($"/api/received-invoice/{issuedId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         StatusOf(issuedId).ShouldBe(status);
-    }
-
-    [Theory]
-    [InlineData("mark-unpaid", EInvoiceStatus.Paid)]
-    [InlineData("revert-to-draft", EInvoiceStatus.Completed)]
-    [InlineData("restore", EInvoiceStatus.Deleted)]
-    public async Task IssuedRoutes_GivenReceivedId_Return404_AndLeaveTheDocumentUntouched(string route, EInvoiceStatus status)
-    {
-        var receivedId = SeedDoc(EDocumentType.ReceivedInvoice, status, paidAmount: status == EInvoiceStatus.Paid ? 121m : 0m);
-        var client = await CreateAuthenticatedClientAsync();
-
-        (await client.PostAsync($"/api/invoice/{receivedId}/{route}", null)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        (await client.DeleteAsync($"/api/invoice/{receivedId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-
-        StatusOf(receivedId).ShouldBe(status);
     }
 }
