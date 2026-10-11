@@ -18,6 +18,7 @@
 @inject CurrencyApiService CurrencyService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 @inject IJSRuntime JS
 
@@ -57,6 +58,19 @@
             @if (_invoice.Status == EReceivedInvoiceStatus.Approved)
             {
                 <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="MarkAsPaid">@L["Invoice_MarkAsPaid"]</MudButton>
+            }
+            @* The legacy status reports a partially paid invoice as Approved; PaidAmount > 0 tells them apart. *@
+            @if (_invoice.Status == EReceivedInvoiceStatus.Paid
+                 || (_invoice.Status == EReceivedInvoiceStatus.Approved && _invoice.PaidAmount > 0))
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.MoneyOff"
+                           OnClick="MarkAsUnpaid">@L["Invoice_MarkAsUnpaid"]</MudButton>
+            }
+            @* Revert is only allowed when nothing is paid (a partially paid invoice must be un-paid first). *@
+            @if (_invoice.Status == EReceivedInvoiceStatus.Approved && _invoice.PaidAmount == 0)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Undo"
+                           OnClick="RevertToDraft">@L["Invoice_RevertToDraft"]</MudButton>
             }
         }
     </MudItem>
@@ -526,6 +540,59 @@ else
             Snackbar.Add(L["Invoice_MarkedAsPaid"].Value, Severity.Success);
             await LoadInvoice();
         }
+    }
+
+    /// <summary>
+    /// Takes the payment back after the user confirms (same wording and flow as the issued invoice page).
+    /// The confirmation matters because the action removes all linked payment matches.
+    /// </summary>
+    private async Task MarkAsUnpaid()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Invoice_MarkAsUnpaid"].Value,
+            L["Invoice_MarkAsUnpaidConfirm"].Value,
+            yesText: L["Btn_Confirm"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed != true)
+            return;
+
+        try
+        {
+            var result = await ReceivedInvoiceService.MarkAsUnpaidAsync(Id);
+            if (result is not null)
+            {
+                Snackbar.Add(L["Invoice_MarkAsUnpaidSuccess"].Value, Severity.Success);
+                await LoadInvoice();
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>Reverts an approved (nothing paid) received invoice to Draft after the user confirms.</summary>
+    private async Task RevertToDraft()
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", L["Invoice_RevertToDraftConfirm"].Value);
+        if (!confirmed) return;
+
+        try
+        {
+            var result = await ReceivedInvoiceService.RevertToDraftAsync(Id);
+            if (result is not null)
+            {
+                Snackbar.Add(L["Invoice_RevertedToDraft"].Value, Severity.Success);
+                await LoadInvoice();
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
     }
 
     /// <summary>

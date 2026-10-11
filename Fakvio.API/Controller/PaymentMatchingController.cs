@@ -169,13 +169,23 @@ public class PaymentMatchingController : ControllerBase
     /// <summary>Removes an existing PaymentMatch row.</summary>
     [HttpPost("transactions/{id:long}/unmatch")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Unmatch(
         long id,
         [FromBody] UnmatchRequest req,
         CancellationToken ct = default)
     {
-        await _matcher.UnmatchAsync(req.PaymentMatchId, req.Reason, GetUserId(), ct);
-        return NoContent();
+        try
+        {
+            await _matcher.UnmatchAsync(req.PaymentMatchId, req.Reason, GetUserId(), ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Business rule refused the unmatch (e.g. the document was partly paid by hand). Same shape as Match
+            // above, so the UI shows the message instead of a generic HTTP 500.
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>Marks a transaction as "not our concern" (ATM fees, personal transfers, …).</summary>
