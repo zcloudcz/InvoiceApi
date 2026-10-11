@@ -15,8 +15,12 @@
 - [x] `DocumentTypeUiPolicy` (urls, resource keys, capabilities, status state machine, accounting-export defaults) + table-driven tests; `Invoice_StatusPartiallyPaid` (CZ/EN).
 - [x] `Invoices.razor` serves `/invoices` and `/received-invoices` (type fixed by the url), `ReceivedInvoices.razor` deleted; received columns/actions/bulk via the unified API (`documentType=ReceivedInvoice`, bulk complete/mark-paid/delete), attachments column, overdue highlight on both sides, no Reject, status filter only in the column header.
 - [x] `FakvioService`: received bulk ISDOC + bulk attachments ZIP (legacy endpoints). bUnit `DocumentGridBothSidesTests`, integration gaps (bulk complete/delete, paged `AttachmentCount`), Playwright list/grid tests updated.
-- [ ] PR 2: detail page on the policy (`InvoiceDetail` + `ReceivedInvoiceDetail` -> one), payments panel (`ReceivedInvoicePaymentsPanel`), then remove `ReceivedInvoiceApiService`, `ReceivedInvoiceDetail.razor`, legacy DTOs from the UI.
-- [ ] `DownloadUblLogicTests` still mirrors the detail page rule; move it to the policy with the detail page.
+- [x] PR 2 (branch `feature/unify-documents-ui-detail`): `InvoiceDetail` serves `/received-invoices/create|{id}` on the policy (new members, `IsReceivedRoute`, `CanExportUbl`), redirect both ways, `LocationChanged` + state reset; `ReceivedInvoiceDetail.razor`, `ReceivedInvoicePaymentsPanel`, `ReceivedInvoiceApiService` deleted (UI uses only received ISDOC + bulk ZIP legacy endpoints).
+- [x] One payments panel by document id (`GET /api/invoice/{id}/payments`), working unmatch with the real PaymentMatch id, server message in a snackbar; "match manually" issued-only.
+- [x] `InvoiceItemEditor`: `IsReceived`, shows a VAT percentage outside the rate list (`VatRateId == null`, normal on imported invoices) and keeps it on save. bUnit: `UnifiedDocumentDetailTests`, `InvoicePaymentsPanelTests`, `InvoiceItemEditorReceivedTests`; integration gap test for the unified create/update shape; Playwright `ReceivedInvoiceDetailTests` rewritten + `ReceivedInvoiceWorkflowTests` (lifecycle), `ApiSeed` helper.
+- [x] `DownloadUblLogicTests` asserts the policy.
+- [ ] Playwright, newly executing against seeded data (were silently inconclusive on the empty dev DB): `Invoice_EmailDialog_*` (dialog redesigned: send disabled until a recipient, cancel never clickable), `Grid_ColumnFilter_*` (column text filter does not narrow). Not caused by #542; to fix separately.
+- [ ] Resource keys now unused (left in place): `Common_Back`, `Common_Save`, `Common_Edit`, `Common_NotFound`, `Common_Created`, `Common_Saved`, `Invoice_ItemsRequired`, `ReceivedInvoice_Reject`, `ReceivedInvoice_Rejected`, `ReceivedInvoice_RejectConfirm`.
 
 ## Send by e-mail: editable whole body (branch `feature/send-email-editable-body`)
 

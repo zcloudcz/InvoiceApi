@@ -1,4 +1,4 @@
-@* "Export do účetnictví" — reachable from both the Invoices and ReceivedInvoices pages
+@* "Export do účetnictví" — reachable from the document list (/invoices and /received-invoices, both served by the Invoices page)
    (DialogService.ShowAsync<AccountingExportDialog>). Lets the user pick a target accounting
    system, a date range and which document types to include, then downloads one XML file. *@
 @using Fakvio.Domain.Enums
@@ -47,7 +47,7 @@
 @code {
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
 
-    /// <summary>Optional: pre-select which document type the dialog was opened for (Invoices page = issued only, ReceivedInvoices page = received only). Both remain editable.</summary>
+    /// <summary>Optional: pre-select which document type the dialog was opened for (/invoices = issued only, /received-invoices = received only). Both remain editable.</summary>
     [Parameter] public bool DefaultIncludeIssued { get; set; } = true;
     [Parameter] public bool DefaultIncludeReceived { get; set; } = true;
 
