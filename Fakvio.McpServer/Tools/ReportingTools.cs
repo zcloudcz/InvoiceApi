@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
@@ -227,13 +228,13 @@ public static class ReportingTools
 
     /// <summary>
     /// Exports an EPO XML filing (VAT return, control statement or EU summary statement)
-    /// for one period, returned as a base64 file like the other export tools.
+    /// for one period, returned as a short-lived download link like the other export tools.
     /// </summary>
     [McpServerTool(Title = "Export VAT filing for EPO", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Export an XML filing for the Czech tax portal EPO for one period. kind: " +
         "'return' = DPHDP3 VAT return (Priznani k DPH), 'control' = DPHKH1 control statement (Kontrolni hlaseni), " +
         "'summary' = DPHSHV EU summary statement (Souhrnne hlaseni, supplies to EU VAT payers). " +
-        "Returns the XML as a base64-encoded string. Requires a VAT-payer company with EPO tax office settings. " +
+        "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. Requires a VAT-payer company with EPO tax office settings. " +
         "For 'return' and 'summary', supplies to EU customers default to services (return row 21 / summary code 3); pass goodsVatIds " +
         "to report those customers as goods (row 20 / code 0). A quarterly summary cannot contain goods (monthly filing required).")]
     public static async Task<string> ExportVatEpo(
@@ -247,30 +248,30 @@ public static class ReportingTools
     {
         try
         {
-            var (route, prefix) = kind?.Trim().ToLowerInvariant() switch
+            var (downloadKind, prefix) = kind?.Trim().ToLowerInvariant() switch
             {
-                "return"  => ("epo/return", "DPHDP3"),
-                "control" => ("epo/control-statement", "DPHKH1"),
-                "summary" => ("epo/summary-statement", "DPHSHV"),
+                "return"  => ((EDownloadKind?)EDownloadKind.VatEpoReturn, "DPHDP3"),
+                "control" => (EDownloadKind.VatEpoControlStatement, "DPHKH1"),
+                "summary" => (EDownloadKind.VatEpoSummaryStatement, "DPHSHV"),
                 _ => (null, null)
             };
-            if (route is null)
+            if (downloadKind is null)
                 return JsonSerializer.Serialize(new { error = $"Invalid kind '{kind}'. Use 'return', 'control' or 'summary'." }, JsonOptions);
 
             if (!Enum.TryParse<EVatPeriodType>(periodType, ignoreCase: true, out var parsedType))
                 return JsonSerializer.Serialize(new { error = $"Invalid periodType '{periodType}'. Use 'Monthly' or 'Quarterly'." }, JsonOptions);
 
-            var bytes = await api.ExportVatEpoAsync(route, year, period, parsedType.ToString(), goodsVatIds, ct);
+            var link = await api.CreateDownloadLinkAsync(new CreateDownloadLinkDto
+            {
+                Kind = downloadKind.Value,
+                Year = year,
+                Period = period,
+                PeriodType = parsedType,
+                Goods = goodsVatIds?.ToList()
+            }, ct);
             var part = parsedType == EVatPeriodType.Monthly ? $"M{period:D2}" : $"Q{period}";
 
-            return JsonSerializer.Serialize(new
-            {
-                success = true,
-                fileName = $"{prefix}_{year}_{part}.xml",
-                mimeType = "application/xml",
-                sizeBytes = bytes.Length,
-                base64Content = Convert.ToBase64String(bytes)
-            }, JsonOptions);
+            return DownloadLinkResult.ToJson(link, "application/xml", $"{prefix}_{year}_{part}.xml");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

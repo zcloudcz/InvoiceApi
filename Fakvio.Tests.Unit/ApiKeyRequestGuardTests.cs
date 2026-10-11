@@ -121,6 +121,15 @@ public class ApiKeyRequestGuardTests
     }
 
     [Fact]
+    public void ReadOnlyKey_MayMintADownloadLink()
+    {
+        // POST /api/download-links only signs a link to an export; nothing is stored. Exports used to be
+        // GETs, so refusing this would take every MCP export away from read-only keys and OAuth read tokens.
+        ApiKeyRequestGuard.GetDenialReason(Principal(ReadOnly), "POST", "/api/download-links")
+            .ShouldBeNull();
+    }
+
+    [Fact]
     public void SafeMethodOverride_IsCaseInsensitive()
     {
         ApiKeyRequestGuard.GetDenialReason(Principal(ReadOnly), "POST", "/API/Tax/Estimate")

@@ -1,0 +1,63 @@
+using System.Text.Json;
+using Fakvio.Application.Service;
+using Microsoft.AspNetCore.DataProtection;
+
+namespace Fakvio.Infrastructure.Service;
+
+/// <summary>
+/// Time-limited Data Protection tokens for signed download links - same pattern as
+/// <c>OAuthAuthorizeTicketProtector</c>, with its own purpose string so a token minted for one
+/// feature can never be accepted by another. The key ring is the one persisted to PostgreSQL
+/// (see ServiceCollectionExtensions), so links survive restarts and work on every instance.
+///
+/// The token is a bearer credential for tenant data, so our own code never writes it to a log. It does
+/// travel in the URL path, and the framework records that path on its own. What is redacted where
+/// (all via <c>DownloadLinkLogRedactor</c> in Fakvio.API):
+/// - AppLog table: <c>GlobalExceptionMiddleware</c> redacts the path in its "Unhandled exception" message.
+///   Nothing else puts the path there: <c>DatabaseLogger</c> ignores logging scopes and drops everything
+///   below Warning from <c>Microsoft.AspNetCore</c> (the "Request starting ..." messages with the URL).
+/// - Application Insights: <c>DownloadLinkTelemetryInitializer</c> redacts every telemetry item - request
+///   URL and name, operation name, and on traces/exceptions the message plus all custom properties
+///   (the per-request logging scope puts the raw <c>RequestPath</c> there).
+/// Not covered: <c>Trace</c>-level MVC logging prints action arguments, i.e. the bare token without its
+/// path, so the <c>Microsoft.AspNetCore</c> log level must stay at <c>Warning</c> in production. Anything
+/// new that logs a request path must use the redactor too.
+/// </summary>
+public class DownloadLinkProtector : IDownloadLinkProtector
+{
+    /// <summary>
+    /// Data Protection purpose string. Changing it invalidates every outstanding link (they live
+    /// 10 minutes, so that is harmless) - but do not change it casually.
+    /// </summary>
+    internal const string Purpose = "Fakvio.DownloadLink.v1";
+
+    private readonly ITimeLimitedDataProtector _protector;
+    private readonly TimeSpan _lifetime;
+
+    public DownloadLinkProtector(IDataProtectionProvider dataProtectionProvider, TimeSpan lifetime)
+    {
+        _protector = dataProtectionProvider.CreateProtector(Purpose).ToTimeLimitedDataProtector();
+        _lifetime = lifetime;
+    }
+
+    public string Protect(DownloadTokenPayload payload, out DateTime expiresAt)
+    {
+        expiresAt = DateTime.UtcNow + _lifetime;
+        return _protector.Protect(JsonSerializer.Serialize(payload), _lifetime);
+    }
+
+    public DownloadTokenPayload? Unprotect(string token)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<DownloadTokenPayload>(_protector.Unprotect(token));
+        }
+        catch (Exception)
+        {
+            // Expired, tampered, wrong purpose or garbage all look the same to the caller (fail
+            // closed, no detail leaked). Nothing is logged here: the input is attacker-controlled
+            // and the token itself must never reach the logs.
+            return null;
+        }
+    }
+}

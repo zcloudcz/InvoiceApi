@@ -50,7 +50,7 @@ vytvoří Draft vyúčtování se zkopírovanými položkami a odpočtem zálohy
 
 **2.3.0** doplňuje 1 nástroj — `export_invoice_ubl` (`Tools/InvoiceTools.cs`, ADR 0002 N7) —
 export vydané faktury jako UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-fakturace 2027, ViDA
-2030). Vrací base64 XML stejně jako `export_invoice_isdoc`; při nepřipravené faktuře (Draft,
+2030). Vrací odkaz ke stažení stejně jako `export_invoice_isdoc`; při nepřipravené faktuře (Draft,
 proforma, chybějící Peppol ID…) API vrací 400 s čitelnými kódy `EINVOICE_*`. Zpětně kompatibilní,
 žádné volání ze 2.2.0 se neláme.
 
@@ -279,13 +279,14 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (82)
+## Dostupné nástroje (88)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 19 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail (optional recipient — defaults to the client's e-mail contact — plus ccEmails, attachPdf/attachIsdoc/attachUbl, fileAttachmentIds, saveAttachmentDefaults), GetInvoiceEmailOptions (read-only: client e-mail contacts, default attachments, stored invoice files), ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, DeleteInvoice, SetInvoiceBankAccount, UpdateInvoice (partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`), RevertInvoiceToDraft (only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
+| `Tools/InvoiceTools.cs` | 20 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail (optional recipient — defaults to the client's e-mail contact — plus ccEmails, attachPdf/attachIsdoc/attachUbl, fileAttachmentIds, saveAttachmentDefaults), GetInvoiceEmailOptions (read-only: client e-mail contacts, default attachments, stored invoice files), ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, ExportInvoicesZip (hromadné ZIP: ids + `format` pdf/isdoc/ubl), DeleteInvoice, SetInvoiceBankAccount, UpdateInvoice (partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`), RevertInvoiceToDraft (only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance |
 | `Tools/ClientTools.cs` | 7 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, VerifyVatVies, GetIssuer |
-| `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
+| `Tools/ReceivedInvoiceTools.cs` | 9 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment, ExportReceivedInvoiceIsdoc, DownloadReceivedInvoicesAttachments (ZIP příloh více přijatých faktur) |
+| `Tools/AttachmentTools.cs` | 3 | ListAttachments (metadata příloh záznamu), GetAttachmentDownloadLink, GetRecordAttachmentsZipLink |
 | `Tools/ReportingTools.cs` | 8 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices, ExportVatEpo, GetOssReport (kvartální hlášení EU OSS v EUR) |
 | `Tools/TaxTools.cs` | 5 | EstimateTax, CompareTaxRegimes, GetAnnualIncome, GetInsuranceAdvance, GetTaxConfig |
 | `Tools/TemplateTools.cs` | 3 | ListTemplates, GetTemplate, CreateInvoiceFromTemplate |
@@ -331,10 +332,16 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 - Deserializace vstupu od modelu má **vlastní menší `try`** před tím hlavním, aby `JsonException`
   z poškozené úspěšné odpovědi API spadla do sanitizované větve, a ne modelu zpátky jako „vstup
   je špatně" i s textem výjimky.
-- `ExportInvoicePdf`, `ExportInvoiceIsdoc`, `ExportInvoiceUbl` a `ExportAccounting` (hromadný XML export
-  vydaných/přijatých faktur za období pro POHODA / Money S3 / ABRA Flexi) vracejí soubor jako
-  `base64Content` + `fileName`, `mimeType`, `sizeBytes`. Uložení souboru
-  je na klientovi.
+- **Žádný tool nevrací bajty souboru.** `ExportInvoicePdf`, `ExportInvoiceIsdoc`, `ExportInvoiceUbl`,
+  `ExportAccounting` (hromadný XML export vydaných/přijatých faktur za období pro POHODA / Money S3 /
+  ABRA Flexi), `ExportVatEpo`, `ExportInvoicesZip`, `ExportReceivedInvoiceIsdoc`,
+  `DownloadReceivedInvoicesAttachments` a přílohové tooly vrací krátce platný podepsaný odkaz:
+  `downloadUrl` + `expiresAt` (výchozí platnost 10 minut) a `mimeType` (`fileName` jen tam, kde je
+  znám předem). Odkaz funguje bez přihlášení do vypršení; model ho má dát uživateli a obsah souboru
+  nenačítat do konverzace. Mechanismus: DEVGUIDE §2.7a. Odmítnutý export se hlásí hned, ne až při
+  otevření odkazu: `ExportInvoiceUbl` vrátí strukturované `TENANT_NOT_READY` s `EINVOICE_*` issues,
+  `ExportVatEpo` chybu hlavičky EPO a `ExportAccounting` má ve výsledku `skippedDocuments` (počet dokladů,
+  které v souboru chybí). Read-only API klíč na tyto tooly stačí.
 - Logy jdou **výhradně na stderr** (`LogToStandardErrorThreshold = Trace`).
   Stdout je vyhrazený pro JSON-RPC — jakýkoli zápis do stdout protokol rozbije.
 - **Vstup nikdy není „JSON string of …Dto" (N2.5).** Parametr typu DTO (`CreateClientDto client`,

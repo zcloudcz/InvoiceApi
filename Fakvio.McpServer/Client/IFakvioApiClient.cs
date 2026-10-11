@@ -14,6 +14,7 @@ using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.RecurringInvoice;
 using Fakvio.Contracts.Dto.Reminder;
+using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.ReverseChargeCode;
@@ -256,6 +257,17 @@ public interface IFakvioApiClient
     Task<FileAttachmentDto> UploadFileAttachmentAsync(
         string entityName, long recordId, string fileName, string contentType, byte[] content,
         string? description = null, CancellationToken ct = default);
+
+    /// <summary>GET /api/file-attachment/{entityName}/{recordId} - metadata of all attachments of a record (newest first).</summary>
+    Task<List<FileAttachmentDto>> GetFileAttachmentsAsync(string entityName, long recordId, CancellationToken ct = default);
+
+    // ── Download links ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// POST /api/download-links - mints a short-lived signed URL for one whitelisted file download.
+    /// File-producing tools return this link instead of the file bytes.
+    /// </summary>
+    Task<DownloadLinkDto> CreateDownloadLinkAsync(CreateDownloadLinkDto request, CancellationToken ct = default);
 
     // ── VAT Report endpoints ─────────────────────────────────────────────
 
