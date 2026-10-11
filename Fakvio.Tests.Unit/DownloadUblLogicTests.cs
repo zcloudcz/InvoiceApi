@@ -15,9 +15,12 @@ namespace Fakvio.Tests.Unit;
 
 public class DownloadUblLogicTests
 {
-    /// <summary>Replicates the Disabled="..." condition on the "Btn_ExportUbl" MudButton.</summary>
+    /// <summary>
+    /// The "Btn_ExportUbl" MudButton is disabled exactly when the policy (which the page asks) refuses the export,
+    /// so the rule is read from the policy instead of being copied here.
+    /// </summary>
     private static bool IsDownloadDisabled(EInvoiceStatus status, EDocumentType documentType) =>
-        status == EInvoiceStatus.Draft || documentType == EDocumentType.Proforma;
+        !DocumentTypeUiPolicy.For(documentType).CanExportUbl(status);
 
     /// <summary>Replicates the file-name formula: $"{_invoice.DocumentNumber ?? Id.ToString()}.xml".</summary>
     private static string BuildFileName(string? documentNumber, long invoiceId) =>
