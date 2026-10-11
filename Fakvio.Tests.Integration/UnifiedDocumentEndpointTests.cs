@@ -243,6 +243,7 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
 
     [Theory]
     [InlineData("GET", "{id}/pdf")]
+    [InlineData("GET", "{id}/isdoc")]
     [InlineData("POST", "{id}/send-email")]
     [InlineData("GET", "{id}/email-defaults")]
     [InlineData("GET", "{id}/qr")]

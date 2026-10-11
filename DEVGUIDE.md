@@ -2792,8 +2792,8 @@ Konfig `ExchangeRates:SyncEnabled=false` worker nezaregistruje (integrační tes
 
 Vydané doklady **i přijaté faktury** jsou řádky tabulky `Invoice` (položky v `InvoiceItem`); jediný rozlišovač je
 `Invoice.DocumentType`: `Invoice=1`, `CreditNote=2`, `Proforma=3`, `TaxReceiptForAdvance=4`, **`ReceivedInvoice=5`**.
-Žádný příznak směru. Entity `ReceivedInvoice` / `ReceivedInvoiceItem` neexistují (krok 1 ze 4 sjednocení; API, DTO,
-UI a MCP zatím zůstávají beze změny).
+Žádný příznak směru. Entity `ReceivedInvoice` / `ReceivedInvoiceItem` neexistují (krok 1 ze 4 sjednocení; jednotné API
+je krok 3a, viz „Jednotné API dokladů" níže; UI a MCP zatím používají starou fasádu).
 
 | Přijatý doklad | v `Invoice` |
 |---|---|
@@ -2812,13 +2812,16 @@ UI a MCP zatím zůstávají beze změny).
 - Unikátní index `IX_Invoice_DocumentNumber` se na přijaté doklady **nevztahuje** (`AND "DocumentType" <> 5`):
   číslo dodavatele se u různých dodavatelů opakuje a může se rovnat našemu.
 
-**POVINNÉ pravidlo pro každý dotaz na `Invoice` DbSet:** zvol stranu helperem z
-`Fakvio.Application/Common/Extensions/InvoiceQueryExtensions.cs` — `.IssuedOnly()` (vše kromě přijatých) nebo
-`.ReceivedOnly()`. Zapomenutý helper = upomínky posílané dodavatelům, přijaté faktury v tržbách / DPH na výstupu,
+**POVINNÉ pravidlo pro každý dotaz na `Invoice` DbSet:** zvol rozsah helperem z
+`Fakvio.Application/Common/Extensions/InvoiceQueryExtensions.cs` - `.IssuedOnly()` (vše kromě přijatých),
+`.ReceivedOnly()` nebo `.AnyDocument()` (jakýkoli typ, ale bez šablon faktur; jen pro jednotné operace nad dokladem a
+seznamy s explicitním rozsahem, viz „Jednotné API dokladů"). Zapomenutý helper = upomínky posílané dodavatelům, přijaté faktury v tržbách / DPH na výstupu,
 kolize s číselnou řadou. Hlídá to `InvoiceDbSetUsageGuardTests` (source-scan; allowlist = dva `Add(...)` nových řádků).
 Guard nevidí navigační vlastnosti (`match.Invoice`, `x.Invoice` v `InvoiceItem`/`PaymentMatch` dotazech) — tam filtruj
-`DocumentType` ručně (viz `BankTransactionQueryService`, `VatReportService`). Izolace podle id: vydaná operace s id
-přijatého dokladu = „not found" a naopak (`DocumentSideIsolationTests`).
+`DocumentType` ručně (viz `BankTransactionQueryService`, `VatReportService`). Izolace podle id: jednotné operace
+(`InvoiceService`) berou typ z uloženého dokladu a fungují pro obě strany; stará fasáda `ReceivedInvoiceService` dál
+odmítá vydané id jako „not found"; reporty, DPH, dashboard, upomínky, číselné řady a exporty zůstávají na jedné straně
+(`DocumentSideIsolationTests`).
 
 **Zápis: `ReceivedInvoice` nesmí projít vydanou cestou.** Typ je ve stejném enumu, takže každá *vydaná* zápisová
 hranice ho odmítá dřív, než cokoli uloží: `IssuedDocumentTypes.EnsureIssued(...)` (`Fakvio.Domain/Enums`) v
@@ -2830,8 +2833,9 @@ ani holé `Enum.TryParse`** (bere i číslo `"5"`). Testy: `IssuedDocumentTypeBo
 **Jeden stavový automat pro všechny doklady (krok 2 ze 4).** Proces je pro každý typ dokladu stejný; doklady se liší
 JEN typem (`EDocumentType`) a malou, explicitní *typovou politikou*. Každý přechod má **jedinou implementaci** v
 `Fakvio.Infrastructure/Service/DocumentTransitions.cs` (interní kolaborátor; `InvoiceService` ho drží v `_transitions`,
-fasáda `ReceivedInvoiceService` si ho vytvoří sama). Volající jen načte doklad ze SVÉ strany tabulky
-(`IssuedOnly()` / `ReceivedOnly()` → cizí id = „not found") a výsledek namapuje; pravidla se nekopírují.
+fasáda `ReceivedInvoiceService` si ho vytvoří sama). Volající jen načte doklad
+(`InvoiceService`: `AnyDocument()`, typ se bere z řádku; fasáda `ReceivedInvoiceService`: `ReceivedOnly()` → vydané id =
+„not found") a výsledek namapuje; pravidla se nekopírují.
 
 ```
 Draft ──complete──► Completed ──mark paid──► Paid / PartiallyPaid
@@ -2895,6 +2899,64 @@ Provozní pohled (záloha, 503, id) je v ADMINGUIDE §13.2. Zlatý standard pro 
 
 Selhání migrace při lazy migraci (první request tenanta, `TenantDbContextFactory.EnsureMigratedAsync`): výjimka se
 propaguje a `TenantContextMiddleware` vrací HTTP 503 — požadavek **nepokračuje** na starém schématu.
+
+**Jednotné API dokladů (krok 3a ze 4).** `InvoiceController` / `InvoiceService` / `InvoiceDto` obsluhují VŠECHNY typy
+dokladů včetně `ReceivedInvoice`. Stará trojice `ReceivedInvoiceController` / `IReceivedInvoiceService` /
+`ReceivedInvoiceDto` zůstává beze změny (UI a MCP ji ještě používají), je **legacy** a smaže se po přepsání UI (krok 3b)
+a MCP nástrojů (krok 4).
+
+*Tři dotazové helpery* (`InvoiceQueryExtensions`, hlídá `InvoiceDbSetUsageGuardTests`):
+
+| Helper | Co vrací | Kde |
+|---|---|---|
+| `IssuedOnly()` | vše kromě přijatých | reporty, DPH, dashboard, upomínky, číselné řady, exporty, vydané-only operace a výchozí rozsah seznamů |
+| `ReceivedOnly()` | jen přijaté | fasáda `ReceivedInvoiceService`, přijaté reporty |
+| `AnyDocument()` | jakýkoli typ, **bez šablon faktur** (`InvoiceTemplate` sdílí tabulku přes diskriminátor `InvoiceType`) | jednotné operace nad dokladem podle id a seznamy s rozsahem (`InvoiceService`) |
+
+*Operace nad jedním dokladem* (get, update, complete, mark-paid, mark-unpaid, revert-to-draft, delete, restore, copy,
+platby, auto-match) berou typ z **uloženého řádku**, nikdy z URL; přechody jsou sdílené (`DocumentTransitions`).
+*Seznamy a hledání mají explicitní rozsah*: `InvoiceFilterDto.DocumentTypes` (množina typů, např. `?DocumentTypes=5`),
+`InvoiceFilterDto.DocumentType` a `GET /api/invoice?documentType=`, `GET /api/invoice/by-number/{n}?documentType=`.
+**Výchozí rozsah (nic nezadáno) = jen vydané typy**, takže stávající volající (UI, MCP, chat nástroje, dashboardy,
+exporty) dostávají přesně to, co dřív. Zadané obě (`DocumentTypes` i `DocumentType`) = průnik. Stránkovaný seznam plní
+`AttachmentCount` jen u přijatých řádků (jeden seskupený dotaz na stránku). Příloh se jednotné API netýká: zůstává
+generické `FileAttachmentController` (`entityName` = `"ReceivedInvoice"` pro přijaté).
+
+*Typová politika create / update* (`ReceivedDocumentWriter`, jediné místo; fasáda `ReceivedInvoiceService` mapuje svá
+legacy DTO na `CreateInvoiceDto` / `UpdateInvoiceDto` a volá totéž, takže oba vstupy zapisují identické řádky):
+
+| | Vydané typy | `ReceivedInvoice` (`POST /api/invoice` s `DocumentType = 5`) |
+|---|---|---|
+| protistrana | zákazník v `ClientId` | **dodavatel** v `ClientId` (povinný, existující a aktivní) |
+| `IssuerId` | z DTO, musí být `IsIssuer` | **vždy server**: naše firma = `Client` s `IsIssuer`, nejnižší Id (hodnota z DTO se ignoruje) |
+| číslo dokladu | z číselné řady / `CustomDocumentNumber` | `CustomDocumentNumber` = číslo dodavatele (může chybět na konceptu), upravitelné přes `UpdateInvoiceDto.DocumentNumber`, **nikdy se negeneruje ani neuvolňuje** |
+| `ReceivedDate` | zakázáno (400) | nastavitelné (výchozí: teď), upravitelné |
+| data | normalizace na UTC půlnoc, splatnost z fakturačního nastavení | uloženo tak, jak přišlo (data dodavatele) |
+| editace | Draft i Completed; kurz jen v Draftu | Draft, Completed a PartiallyPaid; **kurz jen v Draftu** (před schválením); Paid / Deleted = 400 |
+| odmítnuté pole | - | `NumberSequenceId`, `OriginalInvoiceId`, `BankAccountId`, `ApplyOss`, textové řádky položek = 400 |
+| položky | VAT dle plátce / OSS / PDP | stejné PDP validace a výpočty jako dřív (`Received invoice item ...`) |
+| webhooky | `invoice.created`, `invoice.paid`, `invoice.cancelled` | jen `received_invoice.created` |
+| copy | nové číslo z řady | nový přijatý Draft bez čísla dodavatele, `ReceivedDate` = teď (implementováno, protože se do toho přirozeně vešlo) |
+
+*Matice operací* (`api/invoice`):
+
+| Operace | Vydaný | Přijatý |
+|---|---|---|
+| list / paged / by-number | výchozí rozsah | jen s explicitním rozsahem |
+| get, create, update, complete (= approve), mark-paid, mark-unpaid, revert-to-draft, delete, restore, copy | funguje | funguje (politika výše) |
+| bulk complete / mark-paid / delete | funguje | funguje (politika se použije na každý doklad zvlášť) |
+| `{id}/payments`, `{id}/auto-match` | vydaná varianta | přijatá varianta (strana z uloženého dokladu) |
+| pdf, isdoc, send-email, email-defaults, qr, qr/sind, qr/spd, ubl, credit-note, credit-notes, issue-final, remaining-advance, final-invoices, issue-tax-receipt, tax-receipts, bulk/pdf, bulk/isdoc, bulk/ubl | funguje | **400** `{ message }` (`[IssuedDocumentOnly]`, `Fakvio.API/Extensions/IssuedDocumentOnlyAttribute.cs`) |
+| bulk/send-email | funguje | položka selže s jasnou hláškou |
+
+Ostatní přijaté-only operace zůstávají na starých endpointech (`api/received-invoice`: přijatý ISDOC (jednotlivě i
+hromadně; stejnou akci `InvoiceController.ExportIsdoc` volají i odkazy ke stažení, proto ji nelze udělat typově
+závislou), hromadný ZIP příloh, AI import, `approve` / `reject`). Služby vydaných exportů (PDF, ISDOC, UBL, QR, e-mail) zůstávají
+`IssuedOnly()`; 400 vzniká v kontroleru dřív, než se zavolají. Přidáváš-li do `InvoiceController` akci jen pro vydané
+doklady, označ ji `[IssuedDocumentOnly]` a doplň ji do `IssuedDocumentOnlyAttributeTests.IssuedOnlyActions`. Chat nástroje
+(`InvoiceLookup`) dál berou přijaté id jako „not found" (mají vlastní nástroje pro přijaté). Testy:
+`DocumentSideIsolationTests`, `UnifiedReceivedDocumentTests` (včetně shody fasády a jednotného API sloupec po sloupci),
+`IssuedDocumentOnlyAttributeTests`, `UnifiedDocumentEndpointTests`.
 
 ---
 

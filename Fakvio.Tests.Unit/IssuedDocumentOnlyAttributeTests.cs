@@ -23,7 +23,7 @@ public class IssuedDocumentOnlyAttributeTests
     // The operation matrix (DEVGUIDE §5.6): every one of these actions is issued-only.
     private static readonly string[] IssuedOnlyActions =
     [
-        nameof(InvoiceController.ExportToPdf), nameof(InvoiceController.SendInvoiceEmail),
+        nameof(InvoiceController.ExportToPdf), nameof(InvoiceController.ExportIsdoc), nameof(InvoiceController.SendInvoiceEmail),
         nameof(InvoiceController.GetEmailDefaults), nameof(InvoiceController.GetQrCode),
         nameof(InvoiceController.GetSindString), nameof(InvoiceController.GetSpdString),
         nameof(InvoiceController.ExportUbl), nameof(InvoiceController.BulkExportPdf),
@@ -53,7 +53,7 @@ public class IssuedDocumentOnlyAttributeTests
             nameof(InvoiceController.GetInvoiceById), nameof(InvoiceController.UpdateInvoice), nameof(InvoiceController.CompleteInvoice),
             nameof(InvoiceController.MarkAsPaid), nameof(InvoiceController.MarkAsUnpaid), nameof(InvoiceController.RevertToDraft),
             nameof(InvoiceController.DeleteInvoice), nameof(InvoiceController.RestoreInvoice), nameof(InvoiceController.CopyInvoice),
-            nameof(InvoiceController.GetPayments), nameof(InvoiceController.FindAutoMatch), nameof(InvoiceController.ExportIsdoc),
+            nameof(InvoiceController.GetPayments), nameof(InvoiceController.FindAutoMatch),
             nameof(InvoiceController.BulkComplete), nameof(InvoiceController.BulkMarkAsPaid), nameof(InvoiceController.BulkDelete),
         ];
         foreach (var name in unified)

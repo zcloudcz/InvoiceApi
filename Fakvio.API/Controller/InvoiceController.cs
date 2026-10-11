@@ -988,6 +988,7 @@ public class InvoiceController : ControllerBase
     /// <returns>ISDOC XML file</returns>
     /// <response code="200">Returns .isdoc XML file</response>
     /// <response code="404">Invoice not found</response>
+    [IssuedDocumentOnly] // a received invoice's ISDOC stays on GET /api/received-invoice/{id}/isdoc (also used by download links)
     [HttpGet("{id:long}/isdoc")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -999,15 +1000,6 @@ public class InvoiceController : ControllerBase
 
         try
         {
-            // The unified endpoint serves every document type: a received (supplier) invoice has its own ISDOC mapping
-            // and file name (the same output as GET /api/received-invoice/{id}/isdoc).
-            if (await _invoiceService.GetDocumentTypeAsync(id, cancellationToken) == EDocumentType.ReceivedInvoice)
-            {
-                var receivedBytes = await _isdocExportService.ExportReceivedInvoiceAsync(id, cancellationToken);
-                var received = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-                return File(receivedBytes, "application/xml", $"ReceivedInvoice_{received?.DocumentNumber ?? id.ToString()}.isdoc");
-            }
-
             // Generate the ISDOC XML bytes via the export service
             var isdocBytes = await _isdocExportService.ExportInvoiceAsync(id, cancellationToken);
 
