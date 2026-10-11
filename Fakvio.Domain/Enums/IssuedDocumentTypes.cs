@@ -49,5 +49,5 @@ public static class IssuedDocumentTypes
     /// invoice: that symbol is whatever the supplier printed (e.g. <c>INV-2026-0042</c>), we only store it.
     /// </summary>
     public static bool IsValidVariableSymbol(string? variableSymbol) =>
-        variableSymbol is null || System.Text.RegularExpressions.Regex.IsMatch(variableSymbol, @"^\d{0,10}$");
+        variableSymbol is null || System.Text.RegularExpressions.Regex.IsMatch(variableSymbol, @"^\d{0,10}\z");
 }

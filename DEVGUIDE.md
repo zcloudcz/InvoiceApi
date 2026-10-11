@@ -2966,8 +2966,7 @@ Ostatní přijaté-only operace zůstávají na starých endpointech (`api/recei
 hromadně; stejnou akci `InvoiceController.ExportIsdoc` volají i odkazy ke stažení, proto ji nelze udělat typově
 závislou), hromadný ZIP příloh, AI import, `approve` / `reject`). Služby vydaných exportů (PDF, ISDOC, UBL, QR, e-mail) zůstávají
 `IssuedOnly()`; 400 vzniká v kontroleru dřív, než se zavolají. Filtr se ptá **jedním dotazem** na všechna id požadavku
-(`IInvoiceService.FindReceivedDocumentIdAsync`) a `bulk/pdf|isdoc|ubl?ids=` přijme nejvýš 100 různých id
-(`DownloadLinkController.MaxBulkIds`, stejný limit jako odkazy ke stažení; víc = 400). Přidáváš-li do `InvoiceController` akci jen pro vydané
+(`IInvoiceService.FindReceivedDocumentIdAsync`); počet id na `bulk/pdf|isdoc|ubl?ids=` záměrně NEOMEZUJE (grid drží výběr přes stránky, strop 100 platí jen pro odkazy ke stažení). Přidáváš-li do `InvoiceController` akci jen pro vydané
 doklady, označ ji `[IssuedDocumentOnly]` a doplň ji do `IssuedDocumentOnlyAttributeTests.IssuedOnlyActions`; akci, která
 má fungovat i pro přijatý doklad (nebo žádné id nedostává), zapiš do `EveryTypeActions`. Test si akce kontroleru zjistí
 reflexí a **nová nezařazená akce ho shodí**.

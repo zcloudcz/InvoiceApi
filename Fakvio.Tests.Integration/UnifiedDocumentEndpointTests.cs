@@ -344,26 +344,27 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
     }
 
     /// <summary>
-    /// Bulk exports: one received id anywhere in the list refuses the whole request (and names that document),
-    /// and the list is capped at 100 like the download links for the same exports.
+    /// Bulk exports: one received id anywhere in the list refuses the whole request (and names that document).
+    /// More than 100 ids are NOT refused here (the grid selects across pages); only download links are capped.
     /// </summary>
     [Theory]
     [InlineData("bulk/pdf")]
     [InlineData("bulk/isdoc")]
     [InlineData("bulk/ubl")]
-    public async Task BulkExport_RefusesAMixedList_AndMoreThan100Ids(string route)
+    public async Task BulkExport_RefusesAMixedList_ButNotMoreThan100Ids(string route)
     {
         var issued = SeedDoc(EDocumentType.Invoice, EInvoiceStatus.Completed);
         var received = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Completed);
         var client = await CreateAuthenticatedClientAsync();
 
         var mixed = await client.GetAsync($"/api/invoice/{route}?ids={issued},{received}");
-        var tooMany = await client.GetAsync($"/api/invoice/{route}?ids={string.Join(',', Enumerable.Range(1, 101))}");
+        var many = await client.GetAsync($"/api/invoice/{route}?ids={string.Join(',', Enumerable.Repeat(issued, 1).Concat(Enumerable.Range(900001, 100).Select(i => (long)i)))}");
 
         mixed.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await JsonOf(mixed)).GetProperty("message").GetString()!.ShouldContain($"Document {received} is a received invoice");
-        tooMany.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await JsonOf(tooMany)).GetProperty("message").GetString()!.ShouldContain("maximum is 100");
+        // 101 ids (one real, the rest unknown): the guard must not answer "too many".
+        if (many.StatusCode == HttpStatusCode.BadRequest)
+            (await many.Content.ReadAsStringAsync()).ShouldNotContain("maximum is");
     }
 
     [Fact]

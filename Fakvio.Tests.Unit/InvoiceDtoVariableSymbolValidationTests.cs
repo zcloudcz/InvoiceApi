@@ -30,6 +30,7 @@ public class InvoiceDtoVariableSymbolValidationTests
     [Theory]
     [InlineData("INV-2026-0042")]
     [InlineData("12345678901")] // 11 digits
+    [InlineData("1234567890\n")] // trailing newline must not slip past the end anchor
     public void Create_IssuedType_RefusesSymbolThatIsNotMax10Digits(string symbol)
     {
         foreach (var type in Enum.GetValues<EDocumentType>().Where(t => t.IsIssued()))
