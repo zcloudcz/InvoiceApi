@@ -2867,7 +2867,9 @@ nebo jde o migrovaný přijatý řádek), `UnmatchAsync` vyhodí `InvalidOperati
 by ruční část potichu smazal. Cesta ven je `mark-unpaid` (smaže všechny páry, `PaidAmount=0`). Hláška jde obvyklou cestou
 této služby: controller → HTTP 400 `{ message }` → `ApiClientBase` → snackbar. `UnmatchAsync` je **jediné** místo, které
 maže jednotlivý `PaymentMatch` (druhé je `DocumentTransitions.MarkUnpaidAsync`); nový unmatch (bulk, MCP) musí volat ji. Kandidáti na auto/ruční spárování i explicitní potvrzení vyloučí
-`Deleted` na obou stranách. Další platba se přiděluje jen do zbývající částky (`total − PaidAmount`).
+`Deleted` **i `Draft`** na obou stranách: platbu lze spárovat jen s dokončeným dokladem (vydaný = vystavený, přijatý =
+**schválený**), jinak by se doklad stal uhrazeným bez `complete` / `approve` (bez čísla, bez kurzu ČNB). `Draft` proto
+nikdy nemá `PaymentMatch`. Další platba se přiděluje jen do zbývající částky (`total − PaidAmount`).
 Testy: `DocumentStateMachineTests` (matice přechodů × obě strany, politika, platby), `ReceivedInvoiceTransitionEndpointTests`.
 
 **Migrace `UnifyDocumentsInInvoiceTable`** (tenant, `Fakvio.Infrastructure/Migrations/Tenant`): ručně psané SQL

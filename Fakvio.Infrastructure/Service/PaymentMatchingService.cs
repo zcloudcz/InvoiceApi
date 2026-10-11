@@ -142,6 +142,11 @@ public class PaymentMatchingService : IPaymentMatchingService
         if (invoice.Status == EInvoiceStatus.Deleted)
             throw new InvalidOperationException($"Invoice {invoiceId} is deleted.");
 
+        // A payment belongs only to a completed document (same rule as the automatic candidates): matching a
+        // Draft would move it to PartiallyPaid / Paid without ever being completed (no number, no exchange rate).
+        if (invoice.Status == EInvoiceStatus.Draft)
+            throw new InvalidOperationException($"Invoice {invoiceId} is a draft - complete it before matching a payment.");
+
         // Never allocate more than the invoice still lacks (same rule as ConfirmAutoMatchAsync).
         var remainingOnInvoice = invoice.TotalWithVat - invoice.PaidAmount;
         if (remainingOnInvoice <= 0)
@@ -464,10 +469,11 @@ public class PaymentMatchingService : IPaymentMatchingService
             return null;
         }
 
-        // Only unpaid, not deleted received invoices make sense to auto-match.
-        if (receivedInvoice.Status is EInvoiceStatus.Paid or EInvoiceStatus.Deleted)
+        // Only approved, unpaid, not deleted received invoices can be auto-matched (Draft = not approved yet,
+        // excluded exactly like an issued Draft).
+        if (receivedInvoice.Status is EInvoiceStatus.Paid or EInvoiceStatus.Deleted or EInvoiceStatus.Draft)
         {
-            _logger.LogDebug("FindAutoMatchForReceivedInvoiceAsync: ReceivedInvoice {Id} is already {Status} — skip", receivedInvoiceId, receivedInvoice.Status);
+            _logger.LogDebug("FindAutoMatchForReceivedInvoiceAsync: ReceivedInvoice {Id} is {Status} — skip", receivedInvoiceId, receivedInvoice.Status);
             return null;
         }
 
@@ -609,7 +615,8 @@ public class PaymentMatchingService : IPaymentMatchingService
             .Include(ri => ri.Currency)
             .Where(ri =>
                 ri.Status != EInvoiceStatus.Paid
-                && ri.Status != EInvoiceStatus.Deleted);
+                && ri.Status != EInvoiceStatus.Deleted
+                && ri.Status != EInvoiceStatus.Draft);
 
         var receivedCandidates = await receivedQuery.ToListAsync(ct);
 
@@ -701,6 +708,10 @@ public class PaymentMatchingService : IPaymentMatchingService
             if (invoice.Status == EInvoiceStatus.Deleted)
                 throw new InvalidOperationException($"Invoice {invoiceId} is deleted.");
 
+            // Only a completed document can take a payment (see ManualMatchAsync).
+            if (invoice.Status == EInvoiceStatus.Draft)
+                throw new InvalidOperationException($"Invoice {invoiceId} is a draft - complete it before matching a payment.");
+
             var remaining = invoice.TotalWithVat - invoice.PaidAmount;
             var matched = Math.Min(tx.Amount - alreadyAssigned, remaining);
 
@@ -754,6 +765,12 @@ public class PaymentMatchingService : IPaymentMatchingService
 
             if (receivedInvoice.Status == EInvoiceStatus.Deleted)
                 throw new InvalidOperationException($"ReceivedInvoice {receivedInvoiceId} is deleted.");
+
+            // Same rule as for issued invoices: only an APPROVED (Completed) document can take a payment. A Draft
+            // (legacy "Received") would otherwise become paid without approve ever running (no exchange rate).
+            if (receivedInvoice.Status == EInvoiceStatus.Draft)
+                throw new InvalidOperationException(
+                    $"ReceivedInvoice {receivedInvoiceId} is not approved yet - approve it before matching a payment.");
 
             // Same rule as for issued invoices: never allocate more than the document still lacks.
             var remaining = receivedInvoice.TotalWithVat - receivedInvoice.PaidAmount;
@@ -880,14 +897,15 @@ public class PaymentMatchingService : IPaymentMatchingService
     /// </summary>
     private async Task MatchOutgoingAsync(BankTransaction tx, CancellationToken ct)
     {
-        // Load all received invoices that are not yet paid, in the same currency.
+        // Load all received invoices that are approved and not yet paid, in the same currency.
         // ReceivedInvoice does not have an IssuerId (our company is always the payer),
-        // so we filter only by currency and non-Paid status.
+        // so we filter only by currency and status (Draft = not approved yet, excluded like an issued Draft).
         var candidates = await _context.Invoice.ReceivedOnly()
             .Include(i => i.Currency)
             .Where(i =>
                 i.Status != EInvoiceStatus.Paid
                 && i.Status != EInvoiceStatus.Deleted
+                && i.Status != EInvoiceStatus.Draft
                 && i.Currency.Code == tx.CurrencyCode)
             .ToListAsync(ct);
 
@@ -1017,7 +1035,8 @@ public class PaymentMatchingService : IPaymentMatchingService
 
     /// <summary>
     /// THE payment status rule, shared by issued and received documents: PaidAmount &gt;= total is Paid,
-    /// 0 &lt; PaidAmount &lt; total is PartiallyPaid, nothing paid is Completed (Draft has no matches).
+    /// 0 &lt; PaidAmount &lt; total is PartiallyPaid, nothing paid is Completed. A Draft never gets here: every
+    /// matching path (automatic candidates, proposals, confirm, manual) refuses a Draft on both sides.
     /// A Deleted document only gets its PaidAmount updated - a payment change must never revive it.
     /// </summary>
     private static void ApplyPaidAmount(Invoice invoice, decimal paidAmount, DateTime txDate)
@@ -1039,7 +1058,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         }
         else
         {
-            // Fully unpaid — revert to Completed (Draft doesn't have matches).
+            // Fully unpaid — revert to Completed (a Draft cannot be matched, so it never has matches to remove).
             invoice.Status = EInvoiceStatus.Completed;
             invoice.PaidAt = null;
         }

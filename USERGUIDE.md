@@ -705,6 +705,11 @@ Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
 **Částečná úhrada:** platba nižší než zbývající částka přijatou fakturu už **neoznačí jako zaplacenou** — zůstane
 „Schválena" (s uhrazenou částkou) a jako „Zaplacena" se označí až po úhradě celé částky (další platbou).
 
+**Párování plateb jen se schválenou fakturou:** bankovní platbu lze spárovat pouze s přijatou fakturou ve stavu
+„Schválena" (stejně jako u vydaných faktur jen s vystavenou). Faktura ve stavu „Přijata" se při automatickém párování
+ani v návrzích nenabízí a potvrzení párování aplikace odmítne — fakturu nejdřív **schvalte**, pak platbu spárujte
+(u už importované platby stačí znovu spustit „Automaticky spárovat").
+
 **Cesta zpět u zaplacené faktury:** nové akce **Označit jako nezaplacenou** (zruší spárované platby; faktura se vrátí do
 stavu „Schválena"), **Vrátit do konceptu** („Schválena" → „Přijata") a **Obnovit** (smazaná → „Přijata"). Smazat lze jen
 fakturu ve stavu „Přijata". Tlačítka v UI přibudou v dalším kroku; API je dostupné už teď.

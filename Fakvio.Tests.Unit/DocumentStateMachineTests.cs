@@ -390,9 +390,11 @@ public class DocumentStateMachineTests
     [Theory]
     [InlineData(Side.Issued, EInvoiceStatus.Completed, true)]
     [InlineData(Side.Issued, EInvoiceStatus.Deleted, false)]
+    [InlineData(Side.Issued, EInvoiceStatus.Draft, false)]
     [InlineData(Side.Received, EInvoiceStatus.Completed, true)]
     [InlineData(Side.Received, EInvoiceStatus.Deleted, false)]
-    public async Task MatchCandidates_ExcludeDeletedDocuments(Side side, EInvoiceStatus status, bool expectMatch)
+    [InlineData(Side.Received, EInvoiceStatus.Draft, false)] // not approved yet (legacy "Received")
+    public async Task MatchCandidates_ExcludeDeletedAndDraftDocuments(Side side, EInvoiceStatus status, bool expectMatch)
     {
         var id = SeedDoc(side, status, vs: "7770001");
         var tx = SeedTx(side, 1210m, vs: "7770001");
@@ -416,20 +418,58 @@ public class DocumentStateMachineTests
         await matching.MatchAsync(tx);
         using var check = NewDb();
         check.PaymentMatch.Any(m => m.InvoiceId == id).ShouldBe(expectMatch);
-        Load(id).Status.ShouldBe(expectMatch ? EInvoiceStatus.Paid : EInvoiceStatus.Deleted);
+        Load(id).Status.ShouldBe(expectMatch ? EInvoiceStatus.Paid : status);
     }
 
     [Theory]
-    [InlineData(Side.Issued)]
-    [InlineData(Side.Received)]
-    public async Task ConfirmMatch_OnDeletedDocument_IsRefused(Side side)
+    [InlineData(Side.Issued, EInvoiceStatus.Deleted)]
+    [InlineData(Side.Received, EInvoiceStatus.Deleted)]
+    [InlineData(Side.Issued, EInvoiceStatus.Draft)]
+    [InlineData(Side.Received, EInvoiceStatus.Draft)] // must be approved first
+    public async Task ConfirmMatch_OnDeletedOrDraftDocument_IsRefused(Side side, EInvoiceStatus status)
     {
-        var id = SeedDoc(side, EInvoiceStatus.Deleted);
+        var id = SeedDoc(side, status);
         var tx = SeedTx(side, 1210m);
 
         await Should.ThrowAsync<InvalidOperationException>(() => ConfirmAsync(side, tx, id));
 
-        Load(id).Status.ShouldBe(EInvoiceStatus.Deleted);
+        var doc = Load(id);
+        doc.Status.ShouldBe(status);
+        doc.PaidAmount.ShouldBe(0m);
+        using var check = NewDb();
+        check.PaymentMatch.Any(m => m.InvoiceId == id).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ManualMatch_OnDraftIssuedDocument_IsRefused()
+    {
+        // The manual dialog exists for issued documents only; a Draft must be completed first.
+        var id = SeedDoc(Side.Issued, EInvoiceStatus.Draft);
+        var tx = SeedTx(Side.Issued, 1210m);
+
+        using (var db = NewDb())
+            await Should.ThrowAsync<InvalidOperationException>(() => Matching(db).ManualMatchAsync(tx, id, 1210m, null, null));
+
+        Load(id).Status.ShouldBe(EInvoiceStatus.Draft);
+        using var check = NewDb();
+        check.PaymentMatch.Any(m => m.InvoiceId == id).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Received_Draft_BecomesMatchableOnceApproved()
+    {
+        var id = SeedDoc(Side.Received, EInvoiceStatus.Draft, vs: "7770002");
+        var tx = SeedTx(Side.Received, 1210m, vs: "7770002");
+
+        using (var db = NewDb()) await Matching(db).MatchAsync(tx);
+        Load(id).Status.ShouldBe(EInvoiceStatus.Draft);
+        using (var check = NewDb())
+            check.BankTransaction.Single(t => t.Id == tx).MatchStatus.ShouldBe(EMatchStatus.Unmatched);
+
+        await RunAsync(Side.Received, "complete", id);
+        using (var db = NewDb()) await Matching(db).MatchAsync(tx);
+
+        Load(id).Status.ShouldBe(EInvoiceStatus.Paid);
     }
 
     // ─── Unmatch after a manual top-up is refused (owner decision) ───────────
