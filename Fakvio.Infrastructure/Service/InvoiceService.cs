@@ -30,6 +30,7 @@ public class InvoiceService : IInvoiceService
     private readonly IWebhookPublisher? _webhookPublisher; // optional so manually-constructed instances (tests) work
     private readonly IExchangeRateService? _exchangeRateService; // optional: without it no ČNB rate is assigned (tests, §4.17)
     private readonly ILogger<InvoiceService> _logger;
+    private readonly DocumentTransitions _transitions; // the ONE state machine shared with the received-invoice facade
 
     /// <summary>
     /// Constructor without the Master context / tenant resolver — EU OSS detection is then switched off
@@ -64,6 +65,7 @@ public class InvoiceService : IInvoiceService
         _tenantReadinessService = tenantReadinessService;
         _webhookPublisher = webhookPublisher;
         _logger = logger;
+        _transitions = new DocumentTransitions(context, numberSequenceService, exchangeRateService, webhookPublisher, logger);
     }
 
     /// <summary>
@@ -964,93 +966,58 @@ public class InvoiceService : IInvoiceService
         if (invoice == null)
             return null;
 
-        if (invoice.Status != EInvoiceStatus.Draft)
-            throw new InvalidOperationException($"Invoice is already {invoice.Status}");
-
-        // Readiness gate (#206): issuing a document is the point of no return — the number is
-        // drawn from the sequence and the document becomes a tax record. Refuse it while the
-        // mandatory company settings are incomplete (address, IČO/DIČ, bank account, number
-        // sequence) instead of producing a document the customer cannot pay.
-        //
-        // Scoped deliberately: only the issuer of THIS invoice and only the document type
-        // being issued, so an unrelated gap elsewhere in the tenant does not block the user.
-        // Warnings (EPO header) never throw. Runs before any state change — see the tests.
-        await _tenantReadinessService.EnsureReadyAsync(
-            invoice.IssuerId, invoice.DocumentType, cancellationToken);
-
-        _logger.LogInformation("Completing {DocumentType} {Id}", invoice.DocumentType, invoice.Id);
-
-        // Document number should already be generated at creation time.
-        // This fallback handles legacy invoices that may still have "DRAFT".
-        if (invoice.DocumentNumber == "DRAFT")
+        // Status check, exchange rate and the state change are the shared transition (DocumentTransitions);
+        // the gates below are the ISSUED-document policy and run after the status check, before anything changes.
+        await _transitions.CompleteAsync(invoice, async () =>
         {
-            invoice.DocumentNumber = await GenerateDocumentNumberAsync(invoice, cancellationToken);
-        }
+            // Readiness gate (#206): issuing a document is the point of no return — the number is
+            // drawn from the sequence and the document becomes a tax record. Refuse it while the
+            // mandatory company settings are incomplete (address, IČO/DIČ, bank account, number
+            // sequence) instead of producing a document the customer cannot pay.
+            //
+            // Scoped deliberately: only the issuer of THIS invoice and only the document type
+            // being issued, so an unrelated gap elsewhere in the tenant does not block the user.
+            // Warnings (EPO header) never throw. Runs before any state change — see the tests.
+            await _tenantReadinessService.EnsureReadyAsync(
+                invoice.IssuerId, invoice.DocumentType, cancellationToken);
 
-        // Ensure VariableSymbol is set — digits only, max 10 (Czech banking requirement)
-        if (string.IsNullOrEmpty(invoice.VariableSymbol) && !string.IsNullOrEmpty(invoice.DocumentNumber))
-        {
-            invoice.VariableSymbol = new string(invoice.DocumentNumber
-                .Where(char.IsDigit).Take(10).ToArray());
-        }
+            _logger.LogInformation("Completing {DocumentType} {Id}", invoice.DocumentType, invoice.Id);
 
-        // Check for duplicate Variable Symbol before completing.
-        // Same guard as in CreateInvoiceAsync — prevents duplicate VS on legacy DRAFT invoices.
-        if (!string.IsNullOrEmpty(invoice.VariableSymbol))
-        {
-            var duplicateExists = await _context.Invoice.IssuedOnly()
-                .AsNoTracking()
-                .AnyAsync(i => i.Id != invoice.Id
-                    && i.VariableSymbol == invoice.VariableSymbol
-                    && i.Status != EInvoiceStatus.Deleted,
-                    cancellationToken);
-
-            if (duplicateExists)
+            // Document number should already be generated at creation time.
+            // This fallback handles legacy invoices that may still have "DRAFT".
+            if (invoice.DocumentNumber == "DRAFT")
             {
-                throw new InvalidOperationException(
-                    $"An invoice with Variable Symbol '{invoice.VariableSymbol}' already exists. " +
-                    "Each invoice must have a unique Variable Symbol for payment tracking.");
+                invoice.DocumentNumber = await GenerateDocumentNumberAsync(invoice, cancellationToken);
             }
-        }
 
-        await AssignExchangeRateAsync(invoice, cancellationToken);
+            // Ensure VariableSymbol is set — digits only, max 10 (Czech banking requirement)
+            if (string.IsNullOrEmpty(invoice.VariableSymbol) && !string.IsNullOrEmpty(invoice.DocumentNumber))
+            {
+                invoice.VariableSymbol = new string(invoice.DocumentNumber
+                    .Where(char.IsDigit).Take(10).ToArray());
+            }
 
-        invoice.Status = EInvoiceStatus.Completed;
+            // Check for duplicate Variable Symbol before completing.
+            // Same guard as in CreateInvoiceAsync — prevents duplicate VS on legacy DRAFT invoices.
+            if (!string.IsNullOrEmpty(invoice.VariableSymbol))
+            {
+                var duplicateExists = await _context.Invoice.IssuedOnly()
+                    .AsNoTracking()
+                    .AnyAsync(i => i.Id != invoice.Id
+                        && i.VariableSymbol == invoice.VariableSymbol
+                        && i.Status != EInvoiceStatus.Deleted,
+                        cancellationToken);
 
-        await _context.SaveChangesAsync(cancellationToken);
+                if (duplicateExists)
+                {
+                    throw new InvalidOperationException(
+                        $"An invoice with Variable Symbol '{invoice.VariableSymbol}' already exists. " +
+                        "Each invoice must have a unique Variable Symbol for payment tracking.");
+                }
+            }
+        }, cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
-    }
-
-    /// <summary>
-    /// Fills <see cref="Invoice.ExchangeRate"/> for a non-CZK document being issued (DEVGUIDE §4.17):
-    /// the ČNB rate valid for the DUZP (last fixing on or before it, §38 ZDPH). Rules:
-    ///   - CZK: no rate (cleared, in case the currency was changed on the draft).
-    ///   - Manual rate (value without a ČNB date) or a credit note (inherits its original's rate): kept.
-    ///   - Otherwise the ČNB rate is (re)computed; when none is available the rate stays empty and a
-    ///     warning is logged — issuing is never blocked by a ČNB outage (the PDF then simply omits the rate).
-    /// </summary>
-    private async Task AssignExchangeRateAsync(Invoice invoice, CancellationToken ct)
-    {
-        var code = invoice.Currency?.Code;
-        if (string.IsNullOrEmpty(code) || code.Equals("CZK", StringComparison.OrdinalIgnoreCase))
-        {
-            invoice.ExchangeRate = null;
-            invoice.ExchangeRateDate = null;
-            return;
-        }
-
-        var keep = invoice.DocumentType == EDocumentType.CreditNote && invoice.ExchangeRate != null
-                   || invoice.ExchangeRate != null && invoice.ExchangeRateDate == null;
-        if (keep || _exchangeRateService == null) return;
-
-        var duzp = DateOnly.FromDateTime(invoice.TaxableSupplyDate ?? invoice.IssueDate ?? DateTime.UtcNow);
-        var rate = await _exchangeRateService.GetRateAsync(code, duzp, ct);
-        if (rate == null)
-            _logger.LogWarning("No ČNB rate for {Currency} on {Date}; {DocumentType} {Id} is issued without an exchange rate",
-                code, duzp, invoice.DocumentType, invoice.Id);
-        invoice.ExchangeRate = rate?.RatePerUnit;
-        invoice.ExchangeRateDate = rate?.ValidFor;
     }
 
     public async Task<InvoiceDto?> MarkAsPaidAsync(long invoiceId, DateTime? paidAt = null, CancellationToken cancellationToken = default)
@@ -1060,25 +1027,7 @@ public class InvoiceService : IInvoiceService
         if (invoice == null)
             return null;
 
-        if (invoice.Status != EInvoiceStatus.Completed)
-            throw new InvalidOperationException("Only completed invoices can be marked as paid");
-
-        _logger.LogInformation("Marking {DocumentType} {Id} as paid", invoice.DocumentType, invoice.Id);
-
-        // Amount newly received by this action. PaidAmount isn't necessarily up to date before
-        // this call — manual mark-paid bypasses bank-payment matching — so bring it in line with
-        // the new Paid status too (needed for the proforma deduction/DPP amount calculations).
-        var newlyPaid = invoice.TotalWithVat - invoice.PaidAmount;
-        invoice.PaidAmount = invoice.TotalWithVat;
-        invoice.Status = EInvoiceStatus.Paid;
-        invoice.PaidAt = paidAt ?? DateTime.UtcNow;
-
-        // Outbox row is added to the same context (save: false) so it commits atomically
-        // with the status change below.
-        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
-            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoicePaid, invoice, save: false, cancellationToken);
-
-        await _context.SaveChangesAsync(cancellationToken);
+        var newlyPaid = await _transitions.MarkPaidAsync(invoice, paidAt, cancellationToken);
 
         // Proforma becoming paid → auto-issue its DPP (tax receipt for advance payment), if
         // the issuer is a VAT payer and hasn't disabled auto-issuance. No-op for other types.
@@ -1094,69 +1043,8 @@ public class InvoiceService : IInvoiceService
         if (invoice == null)
             return false;
 
-        // Paid or Creditnoted invoices cannot be deleted under any circumstances —
-        // they have financial implications (payments received, credit notes issued).
-        if (invoice.Status == EInvoiceStatus.Paid || invoice.Status == EInvoiceStatus.Creditnoted)
-            throw new InvalidOperationException(
-                $"Cannot delete a {invoice.Status} invoice. Only Draft or the last Completed invoice can be deleted.");
-
-        if (invoice.Status == EInvoiceStatus.Deleted)
-            throw new InvalidOperationException("Invoice is already deleted.");
-
-        // Completed invoices can only be deleted if they are the LAST issued document
-        // of their type (Invoice or CreditNote). Deleting a Completed invoice in the middle
-        // of the sequence would break the continuous numbering required by tax law.
-        if (invoice.Status == EInvoiceStatus.Completed)
-        {
-            var isLast = await IsLastIssuedInvoiceAsync(invoice, cancellationToken);
-            if (!isLast)
-                throw new InvalidOperationException(
-                    "Only the last completed invoice can be deleted. " +
-                    "This invoice has subsequent documents in the numbering sequence.");
-        }
-
-        _logger.LogInformation("Deleting {DocumentType} {Id} (Status={Status}, DocumentNumber={DocNum})",
-            invoice.DocumentType, invoice.Id, invoice.Status, invoice.DocumentNumber);
-
-        // Try to release the document number back to the sequence so it can be reused.
-        // This only works if the deleted invoice had the LAST number in the sequence.
-        // If another invoice was generated after this one, the number stays consumed
-        // to avoid gaps in the middle of the sequence.
-        await TryReleaseDocumentNumberAsync(invoice, cancellationToken);
-
-        // Soft delete: mark as Deleted and clear DocumentNumber.
-        // The unique index IX_Invoice_DocumentNumber excludes Status=5 (Deleted),
-        // but clearing the number explicitly prevents any edge cases and makes it
-        // obvious in the DB that the number is no longer in use.
-        invoice.Status = EInvoiceStatus.Deleted;
-
-        // "invoice.cancelled" — published BEFORE the number is cleared so the payload still
-        // carries it, and with save: false so the outbox row commits atomically with the delete.
-        if (_webhookPublisher != null) await _webhookPublisher.PublishInvoiceEventAsync(
-            Fakvio.Contracts.Dto.Webhook.WebhookEventCatalog.InvoiceCancelled, invoice, save: false, cancellationToken);
-
-        invoice.DocumentNumber = null;
-        await _context.SaveChangesAsync(cancellationToken);
-
+        await _transitions.DeleteAsync(invoice, cancellationToken);
         return true;
-    }
-
-    /// <summary>
-    /// Checks whether the given invoice is the last issued (non-deleted) document
-    /// of its DocumentType. Used to determine if a Completed invoice can be deleted.
-    ///
-    /// "Last" is determined by the highest ID among non-deleted invoices of the same type,
-    /// because IDs are sequential and always increment. This is simpler and more reliable
-    /// than parsing document numbers (which may have variable formats with prefixes/suffixes).
-    /// </summary>
-    private async Task<bool> IsLastIssuedInvoiceAsync(Invoice invoice, CancellationToken ct)
-    {
-        var lastId = await _context.Invoice.IssuedOnly()
-            .Where(i => i.DocumentType == invoice.DocumentType
-                     && i.Status != EInvoiceStatus.Deleted)
-            .MaxAsync(i => (long?)i.Id, ct);
-
-        return lastId == invoice.Id;
     }
 
     /// <summary>
@@ -1171,22 +1059,12 @@ public class InvoiceService : IInvoiceService
     /// <returns>Restored invoice DTO, or null if the invoice does not exist</returns>
     public async Task<InvoiceDto?> RestoreInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        // FindAsync uses the primary key — no need for a LINQ query.
         var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return null;
 
-        // Only deleted invoices can be restored.
-        if (invoice.Status != EInvoiceStatus.Deleted)
-            throw new InvalidOperationException("Only deleted invoices can be restored.");
-
-        _logger.LogInformation("Restoring {DocumentType} {Id} to Draft", invoice.DocumentType, invoice.Id);
-
-        // Reset status back to Draft so the user can edit and re-issue the invoice.
-        invoice.Status = EInvoiceStatus.Draft;
-
-        await _context.SaveChangesAsync(cancellationToken);
+        await _transitions.RestoreAsync(invoice, cancellationToken);
 
         // Re-fetch with all navigation properties to return a complete DTO.
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
@@ -1204,14 +1082,7 @@ public class InvoiceService : IInvoiceService
         if (invoice == null)
             return null;
 
-        if (invoice.Status != EInvoiceStatus.Completed)
-            throw new InvalidOperationException(
-                $"Only completed invoices can be reverted to draft. Current status: {invoice.Status}");
-
-        _logger.LogInformation("Reverting {DocumentType} {Id} from Completed to Draft", invoice.DocumentType, invoice.Id);
-
-        invoice.Status = EInvoiceStatus.Draft;
-        await _context.SaveChangesAsync(cancellationToken);
+        await _transitions.RevertToDraftAsync(invoice, cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
     }
@@ -1994,64 +1865,10 @@ public class InvoiceService : IInvoiceService
     /// <inheritdoc />
     public async Task<InvoiceDto> MarkAsUnpaidAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        // Load the invoice with its PaymentMatch rows so we can unlink them.
-        // Include BankTransaction via PaymentMatch so we can recalculate the transaction's MatchStatus.
-        var invoice = await _context.Invoice.IssuedOnly()
-            .Include(i => i.PaymentMatch)
-                .ThenInclude(m => m.BankTransaction)
-                    .ThenInclude(t => t.PaymentMatch)
-            .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
-
-        if (invoice == null)
-            throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
-
-        // Only Paid invoices can be reverted — all other statuses are rejected.
-        if (invoice.Status != EInvoiceStatus.Paid)
-            throw new InvalidOperationException(
-                $"Only paid invoices can be marked as unpaid. Current status: {invoice.Status}");
-
-        _logger.LogInformation(
-            "Marking {DocumentType} {Id} as unpaid (reverting from Paid to Completed)",
-            invoice.DocumentType, invoice.Id);
-
-        // Collect affected bank transactions BEFORE removing the match rows,
-        // so we can still iterate over them and recalculate their MatchStatus.
-        var affectedTransactions = invoice.PaymentMatch
-            .Select(m => m.BankTransaction)
-            .DistinctBy(t => t.Id)
-            .ToList();
-
-        // Remove all PaymentMatch rows that link this invoice to bank transactions.
-        // This mirrors the behaviour of PaymentMatchingService.UnmatchAsync but in bulk —
-        // every payment record tied to this invoice is deleted so the transaction is free
-        // to be matched to a different invoice in the future.
-        _context.PaymentMatch.RemoveRange(invoice.PaymentMatch);
-
-        // Recalculate each affected bank transaction's MatchStatus.
-        // After removing this invoice's matches, sum what is still assigned on the transaction
-        // (other invoice / received-invoice matches from the same transaction, if any).
-        foreach (var tx in affectedTransactions)
-        {
-            var stillAssigned = tx.PaymentMatch
-                .Where(m => m.InvoiceId != invoiceId) // this invoice's rows are being removed
-                .Sum(m => m.MatchedAmount);
-
-            // Mirror PaymentMatchingService.RecalculateTransactionStatus logic:
-            // Unmatched → Matched → PartiallyMatched based on how much is still assigned.
-            if (stillAssigned <= 0)
-                tx.MatchStatus = EMatchStatus.Unmatched;
-            else if (stillAssigned >= tx.Amount)
-                tx.MatchStatus = EMatchStatus.Matched;
-            else
-                tx.MatchStatus = EMatchStatus.PartiallyMatched;
-        }
-
-        // Reset the invoice back to Completed (the state before payment was applied).
-        invoice.Status = EInvoiceStatus.Completed;
-        invoice.PaidAt = null;
-        invoice.PaidAmount = 0;
-
-        await _context.SaveChangesAsync(cancellationToken);
+        // The shared transition (DocumentTransitions) removes the PaymentMatch rows and recalculates the
+        // bank transactions; null = no ISSUED document with this id.
+        var invoice = await _transitions.MarkUnpaidAsync(_context.Invoice.IssuedOnly(), invoiceId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
         // Re-fetch with all navigation properties to return a complete DTO.
         return (await GetInvoiceByIdAsync(invoice.Id, cancellationToken))!;
@@ -2474,60 +2291,6 @@ public class InvoiceService : IInvoiceService
     /// Generates document number using number sequence service.
     /// Priority: 1) explicit overrideSequenceId (from template), 2) issuer's custom sequence, 3) default for doc type.
     /// </summary>
-    /// <summary>
-    /// Attempts to release the document number of a deleted invoice back to the number sequence.
-    ///
-    /// Extracts the counter value from the document number and asks the sequence service
-    /// to decrement if this was the last generated number. If another invoice was created
-    /// after this one, the release is silently skipped (no gap in the middle allowed).
-    ///
-    /// This is best-effort — failures are logged but do not block the deletion.
-    /// </summary>
-    private async Task TryReleaseDocumentNumberAsync(Invoice invoice, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(invoice.DocumentNumber) || invoice.DocumentNumber == "DRAFT")
-            return;
-
-        try
-        {
-            // Find the default sequence for this document type to get the current counter.
-            var sequence = await _context.NumberSequence
-                .AsNoTracking()
-                .OrderBy(s => s.Id)
-                .FirstOrDefaultAsync(
-                    s => s.DocumentType == invoice.DocumentType && s.IsDefault && s.IsActive, ct);
-
-            if (sequence == null)
-                return;
-
-            // The CurrentNumber in the sequence is the NEXT number to be generated.
-            // If the deleted invoice was the last one, releasing means decrementing by 1.
-            // We pass CurrentNumber as the expected value — the service only decrements
-            // if it still matches (no other invoice was generated since).
-            var released = await _numberSequenceService.TryReleaseLastNumberAsync(
-                invoice.DocumentType, sequence.CurrentNumber, ct);
-
-            if (released)
-            {
-                _logger.LogInformation(
-                    "Released document number '{DocNum}' for {DocumentType} — counter decremented, will be reused",
-                    invoice.DocumentNumber, invoice.DocumentType);
-                // DocumentNumber is cleared by the caller (DeleteInvoiceAsync) after this method returns.
-            }
-            else
-            {
-                _logger.LogDebug(
-                    "Document number '{DocNum}' NOT released — not the last in sequence",
-                    invoice.DocumentNumber);
-            }
-        }
-        catch (Exception ex)
-        {
-            // Best-effort — don't fail the deletion if number release fails.
-            _logger.LogWarning(ex, "Failed to release document number '{DocNum}'", invoice.DocumentNumber);
-        }
-    }
-
     private async Task<string> GenerateDocumentNumberAsync(
         Invoice invoice, CancellationToken cancellationToken, long? overrideSequenceId = null)
     {

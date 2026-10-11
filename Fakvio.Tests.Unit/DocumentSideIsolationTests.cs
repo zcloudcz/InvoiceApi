@@ -85,6 +85,7 @@ public class DocumentSideIsolationTests : IDisposable
         (await _invoices.RevertToDraftAsync(_receivedId)).ShouldBeNull();
         (await _invoices.DeleteInvoiceAsync(_receivedId)).ShouldBeFalse();
         (await _invoices.RestoreInvoiceAsync(_receivedId)).ShouldBeNull();
+        await Should.ThrowAsync<KeyNotFoundException>(() => _invoices.MarkAsUnpaidAsync(_receivedId));
         (await _invoices.GetCreditNotesForInvoiceAsync(_receivedId)).ShouldBeEmpty();
 
         await Should.ThrowAsync<InvalidOperationException>(
@@ -137,6 +138,9 @@ public class DocumentSideIsolationTests : IDisposable
         (await _received.MarkAsPaidAsync(_issuedId)).ShouldBeNull();
         (await _received.RejectAsync(_issuedId)).ShouldBeNull();
         (await _received.DeleteAsync(_issuedId)).ShouldBeFalse();
+        (await _received.MarkAsUnpaidAsync(_issuedId)).ShouldBeNull();
+        (await _received.RevertToDraftAsync(_issuedId)).ShouldBeNull();
+        (await _received.RestoreAsync(_issuedId)).ShouldBeNull();
         (await _received.GetDocumentNumbersAsync([_issuedId, _receivedId])).Keys.ShouldBe([_receivedId]);
         (await _received.GetAllAsync()).Select(r => r.Id).ShouldBe([_receivedId]);
 

@@ -702,6 +702,13 @@ Dvě možnosti:
 
 Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
 
+**Částečná úhrada:** platba nižší než zbývající částka přijatou fakturu už **neoznačí jako zaplacenou** — zůstane
+„Schválena" (s uhrazenou částkou) a jako „Zaplacena" se označí až po úhradě celé částky (další platbou).
+
+**Cesta zpět u zaplacené faktury:** nové akce **Označit jako nezaplacenou** (zruší spárované platby; faktura se vrátí do
+stavu „Schválena"), **Vrátit do konceptu** („Schválena" → „Přijata") a **Obnovit** (smazaná → „Přijata"). Smazat lze jen
+fakturu ve stavu „Přijata". Tlačítka v UI přibudou v dalším kroku; API je dostupné už teď.
+
 **Odmítnutí faktury:** akce **Odmítnout** (u faktury ve stavu „Přijata") nyní fakturu **smaže** — stav „Odmítnuta" už
 neexistuje, odmítnutá faktura se chová jako smazaná a z přehledů zmizí. Dříve odmítnuté faktury byly při
 aktualizaci převedeny do stavu „Smazána".
