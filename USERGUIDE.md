@@ -206,6 +206,19 @@ Grid zobrazuje vydané faktury s těmito sloupci:
 | Creditnoted (Dobropisována) | Oranžová | K faktuře byl vystaven dobropis |
 | Deleted (Smazaná) | Tmavá | Faktura je soft-smazaná, lze ji obnovit |
 
+**Částečně uhrazená faktura (PartiallyPaid):** vznikne, když spárovaná bankovní platba pokryje jen část částky. Pro
+takovou fakturu (stejně pro dobropis, proformu i přijatou fakturu) nově platí:
+
+- **Označit jako zaplacenou** lze i částečně uhrazenou fakturu — zbytek se bere jako doplacený ručně (např. hotově)
+  a faktura přejde do stavu Paid. Dříve to šlo jen u faktury ve stavu Issued.
+- **Označit jako nezaplacenou** (zrušit úhradu) lze i u částečně uhrazené faktury, nejen u zaplacené. Zruší se tím
+  **všechna** párování plateb této faktury (platby se vrátí mezi nespárované) a faktura se vrátí do stavu Issued.
+- **Smazat** částečně uhrazenou fakturu nelze (stejně jako zaplacenou) — nejdřív zrušte úhradu („Označit jako
+  nezaplacenou"), pak ji lze smazat podle běžných pravidel (Draft, nebo poslední Issued v číselné řadě).
+
+Tlačítka pro částečně uhrazenou fakturu přibudou v UI v dalším kroku; přes API tato pravidla platí už teď. Zrušení
+jednotlivého párování po ručním doplacení viz [15. Párování plateb](#15-párování-plateb).
+
 ### 2.3 Akce v řádku gridu
 
 | Ikona | Akce | Podmínka |
