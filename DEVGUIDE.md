@@ -1731,7 +1731,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Doklady** (`InvoiceTools`, 22; jedna sada pro všechny `EDocumentType`, viz §5.6 „Jednotné API dokladů“ a „MCP nástroje dokladů“) |
 | `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné, `bankAccountId` volitelné; chat `bank_account_id`) | `create_invoice` | ✅ | |
 | `SetInvoiceBankAccount` | **Write** (změní bankovní účet faktury přes `UpdateInvoiceDto.BankAccountId`) | `update_invoice` (`bank_account_id`, confirm) | ✅ | jen Draft, viz `UpdateInvoice` |
-| `UpdateInvoice` | **Destructive** (`items` smaže všechny řádky; `ExpectedStatus=Draft` → 409 při změně stavu; `""` u VS/KS/SS symbol smaže; částečná úprava konceptu: data, symboly, platba, účet, měna, poznámka, `items` = náhrada VŠECH řádků; Completed → `requires_revert_to_draft`, Paid/Creditnoted → chyba) | `update_invoice` (confirm; bez `applyOss`, OSS fakturu s `items` odmítne) | ✅ | |
+| `UpdateInvoice` | **Destructive** (`items` smaže všechny řádky; `ExpectedStatus=Draft` → 409 při změně stavu; `""` u VS/KS/SS symbol smaže; částečná úprava konceptu: data, symboly, platba, účet, měna, poznámka, `exchangeRate`, `items` = náhrada VŠECH řádků; u přijatého navíc `documentNumber`, `receivedDate`, účet dodavatele `bankAccountNumber` / `iban` / `swift`; Completed → `requires_revert_to_draft`, Paid/Creditnoted → chyba) | `update_invoice` (confirm; bez `applyOss`, OSS fakturu s `items` odmítne) | ✅ | |
 | `RevertInvoiceToDraft` | **Destructive** (Completed → Draft přes `POST /api/invoice/{id}/revert-to-draft`; volat až po výslovném souhlasu uživatele) | `revert_invoice_to_draft` (confirm) | ✅ | faktura zůstává označená jako odeslaná; opětovné vystavení znovu spustí webhook faktury |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
@@ -1750,7 +1750,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `DeleteInvoice` | **Destructive** | `delete_invoice` (confirm, jen Draft) | ✅ | |
 | `MarkInvoiceUnpaid` | **Destructive** (zruší úhradu přes `POST /api/invoice/{id}/mark-unpaid`, smaže `PaymentMatch`; jakýkoli typ dokladu) | — | ❌ | krok 4 sjednocení; chat zatím bez tasku |
 | `RestoreInvoice` | **Write** (Deleted → Draft přes `POST /api/invoice/{id}/restore`; jakýkoli typ) | — | ❌ | krok 4 sjednocení; chat zatím bez tasku |
-| **Přijaté faktury** (`ReceivedInvoiceTools`, 7) |
+| **Přijaté faktury** (`ReceivedInvoiceTools`, 9) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
 | `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
 | `CreateReceivedInvoice` | Create | `create_received_invoice` (diktovaná data) · `import_invoice` (z dokladu) | ✅ | |
@@ -1909,7 +1909,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **90 tools** (jednotné nástroje dokladů pro všechny `EDocumentType`, viz §5.6 „MCP nástroje dokladů“; file downloads: každý exportní tool vrací `downloadUrl` + `expiresAt` místo base64, viz §2.7a; invoice edit: `update_invoice` upravuje jen **Draft** (`items` nahradí všechny řádky); u vystavené (Completed) faktury nic nezmění a vrátí `{"status":"requires_revert_to_draft"}` — model se musí výslovně zeptat uživatele a teprve potom zavolat `revert_invoice_to_draft` (Destructive) a `update_invoice` znovu; Paid/Creditnoted vrací chybu s odkazem na dobropis; bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` / `update_invoice` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 22 invoice + 7 client + 9 received invoice + 3 attachment + 6 reporting + 5 tax + 3 template + 1 readiness + 2 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **90 tools** (jednotné nástroje dokladů pro všechny `EDocumentType`, viz §5.6 „MCP nástroje dokladů“; file downloads: každý exportní tool vrací `downloadUrl` + `expiresAt` místo base64, viz §2.7a; invoice edit: `update_invoice` upravuje jen **Draft** (`items` nahradí všechny řádky); u vystavené (Completed) faktury nic nezmění a vrátí `{"status":"requires_revert_to_draft"}` — model se musí výslovně zeptat uživatele a teprve potom zavolat `revert_invoice_to_draft` (Destructive) a `update_invoice` znovu; Paid/Creditnoted vrací chybu s odkazem na dobropis; bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` / `update_invoice` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 22 invoice + 7 client + 9 received invoice + 3 attachment + 8 reporting + 5 tax + 3 template + 1 readiness + 3 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -2977,7 +2977,7 @@ teď zná i přijaté doklady; dřív přijaté id znamenalo všude 404 / „not
 | Volající dostane **přijaté id** / typ | Dřív | Teď |
 |---|---|---|
 | MCP `get_invoice` | not found | vrátí přijatý doklad jako `InvoiceDto` (`find_invoice_by_number` beze změny: hledá jen ve vydaných) |
-| MCP `update_invoice` | not found | upraví přijatý doklad politikou přijatých (Draft / Completed / PartiallyPaid); sazby DPH si nástroj dohledává s předpoklady vydané faktury |
+| MCP `update_invoice` | not found | API upraví přijatý doklad politikou přijatých (Draft / Completed / PartiallyPaid); nástroj sám pustí jen Draft a (od kroku 4) sazbu DPH přijatého dokladu nedohledává, procento pošle beze změny |
 | MCP `delete_invoice` | not found | soft-delete přijatého Draftu |
 | MCP `complete_invoice` | not found | schválí přijatý doklad (Draft → Completed, bez čísla z řady) |
 | MCP `mark_invoice_paid`, `revert_invoice_to_draft` | not found | provede přechod nad přijatým dokladem |
@@ -3009,7 +3009,18 @@ dokladů + `documentType: ReceivedInvoice`; upload přílohy, přijatý ISDOC a 
   API případně odmítne). Vstupy jen pro vydané (`originalInvoiceId`, `bankAccountId`, `applyOss`) se **neodmítají v nástroji**,
   ale API; jeho hláška projde `McpToolError`. `documentNumber` u vydaného typu odmítne nástroj (číslo dává číselná řada).
   `update_invoice` přidává `documentNumber` + `receivedDate`; formát `variableSymbol` se kontroluje až po načtení uloženého
-  typu (vydaný: číslice max 10, přijatý: nechá se na API).
+  typu (vydaný: číslice max 10 přes `IssuedDocumentTypes.IsValidVariableSymbol`, přijatý: nechá se na API).
+- **Parita s `create_received_invoice`:** `create_invoice` umí všechno co legacy nástroj (hlídá
+  `UnifiedDocumentToolsTests.CreateInvoice_ReceivedInvoice_SendsTheSameFieldsAsTheLegacyTool`; přidáš-li pole do
+  `CreateReceivedInvoiceDto`, doplň ho i sem). `taxableSupplyDate` (create) a `exchangeRate` (create i update) se posílají
+  u VŠECH typů (API je u vydaných zná taky, vynechané = dosavadní chování). `bankAccountNumber` / `iban` / `swift` jsou
+  **jen pro přijatý doklad** (účet dodavatele); u vydaného je **odmítne nástroj**, protože API by volný text vytisklo na naši
+  fakturu místo uloženého účtu vystavitele (vydaný doklad smí ukázat jen na `bankAccountId`).
+- **Sazba DPH přijatého dokladu se v nástroji nedohledává** (`ResolveItemVatRatesAsync` se u `ReceivedInvoice` přeskočí v
+  create i update): `vatRatePercentage` je sazba, kterou účtoval dodavatel (DE 19 %, stará CZ 15 %), a nemusí být v naší
+  tabulce sazeb. `ReceivedDocumentWriter.BuildItemsAsync` ji uloží, jak přišla.
+- **Popisy parametrů** `issueDate`, `dueDate`, `variableSymbol`, `paymentMethod` říkají zvlášť chování vydaného (výchozí
+  hodnoty) a přijatého (uloží se, co přišlo; bez `dueDate` se přijatá faktura nikdy neukáže jako po splatnosti).
 - **Přechody:** nové `mark_invoice_unpaid` (Destructive, mazání spárování) a `restore_invoice`; popisy `complete_invoice`,
   `mark_invoice_paid`, `revert_invoice_to_draft`, `delete_invoice` říkají jednu cestu zpět: mark unpaid → revert to draft → delete.
 - **Jen vydané operace:** API vrací 400 přes `[IssuedDocumentOnly]` a nástroj ho jen předá. Výjimka jsou odkazy ke stažení:

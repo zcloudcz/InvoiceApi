@@ -283,7 +283,7 @@ dostane, klíč revokujte na `/settings/integrations` — přestane platit okam�
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 22 | **Nástroje pro VŠECHNY typy dokladů** (viz „Jeden proces pro všechny doklady“ níže): ListInvoices (`documentType` = jakýkoli `EDocumentType` vč. `ReceivedInvoice`, výchozí vydané), GetInvoice, FindInvoiceByNumber (`documentType?`), CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId; pro `ReceivedInvoice` navíc `documentNumber` a `receivedDate` — see below), CompleteInvoice (u přijaté = schválení), MarkInvoicePaid, **MarkInvoiceUnpaid** (zruší úhradu, smaže spárování plateb), **RestoreInvoice** (smazaný → Draft), SendInvoiceEmail (optional recipient — defaults to the client's e-mail contact — plus ccEmails, attachPdf/attachIsdoc/attachUbl, fileAttachmentIds, saveAttachmentDefaults), GetInvoiceEmailOptions (read-only: client e-mail contacts, default attachments, stored invoice files), ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, ExportInvoicesZip (hromadné ZIP: ids + `format` pdf/isdoc/ubl), DeleteInvoice (jakýkoli typ), SetInvoiceBankAccount (jen vydané), UpdateInvoice (jakýkoli typ; partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`; u přijaté i `documentNumber`, `receivedDate`), RevertInvoiceToDraft (jakýkoli typ; only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance. **Jen vydané doklady:** SendInvoiceEmail, GetInvoiceEmailOptions, ExportInvoicePdf/Isdoc/Ubl, ExportInvoicesZip, SetInvoiceBankAccount, IssueFinalInvoice, IssueTaxReceipt, GetRemainingAdvance |
+| `Tools/InvoiceTools.cs` | 22 | **Nástroje pro VŠECHNY typy dokladů** (viz „Jeden proces pro všechny doklady“ níže): ListInvoices (`documentType` = jakýkoli `EDocumentType` vč. `ReceivedInvoice`, výchozí vydané), GetInvoice, FindInvoiceByNumber (`documentType?`), CreateInvoice (typed params — clientId, items, currency code, optional issuerId and bankAccountId; volitelně `taxableSupplyDate`, `exchangeRate`; pro `ReceivedInvoice` navíc `documentNumber`, `receivedDate` a účet dodavatele `bankAccountNumber` / `iban` / `swift` — see below), CompleteInvoice (u přijaté = schválení), MarkInvoicePaid, **MarkInvoiceUnpaid** (zruší úhradu, smaže spárování plateb), **RestoreInvoice** (smazaný → Draft), SendInvoiceEmail (optional recipient — defaults to the client's e-mail contact — plus ccEmails, attachPdf/attachIsdoc/attachUbl, fileAttachmentIds, saveAttachmentDefaults), GetInvoiceEmailOptions (read-only: client e-mail contacts, default attachments, stored invoice files), ExportInvoicePdf, ExportInvoiceIsdoc, ExportInvoiceUbl, ExportAccounting, ExportInvoicesZip (hromadné ZIP: ids + `format` pdf/isdoc/ubl), DeleteInvoice (jakýkoli typ), SetInvoiceBankAccount (jen vydané), UpdateInvoice (jakýkoli typ; partial: omitted = unchanged, `items` replaces ALL lines; Draft only — Completed returns `requires_revert_to_draft`; volitelně `exchangeRate`; u přijaté i `documentNumber`, `receivedDate`, `bankAccountNumber` / `iban` / `swift`), RevertInvoiceToDraft (jakýkoli typ; only after explicit user confirmation), IssueFinalInvoice (vyúčtování proformy: `proformaId`, `deductionAmount?`), IssueTaxReceipt (DPP k proformě), GetRemainingAdvance. **Jen vydané doklady:** SendInvoiceEmail, GetInvoiceEmailOptions, ExportInvoicePdf/Isdoc/Ubl, ExportInvoicesZip, SetInvoiceBankAccount, IssueFinalInvoice, IssueTaxReceipt, GetRemainingAdvance |
 | `Tools/ClientTools.cs` | 7 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, VerifyVatVies, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 9 | **legacy** (stejné názvy a chování, jen popis odkazuje na nástroj dokladů): ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice; **plnohodnotné** (bez protějšku v nástrojích dokladů): UploadReceivedInvoiceAttachment, ExportReceivedInvoiceIsdoc, DownloadReceivedInvoicesAttachments (ZIP příloh více přijatých faktur) |
 | `Tools/AttachmentTools.cs` | 3 | ListAttachments (metadata příloh záznamu), GetAttachmentDownloadLink, GetRecordAttachmentsZipLink |
@@ -317,6 +317,24 @@ Neznámý `documentType` vrátí chybu se seznamem platných názvů (číslo ja
   documentNumber=<číslo dodavatele>, receivedDate?, items)`; `issuerId` se vynechá (server použije
   naši firmu). Vstupy jen pro vydané (`originalInvoiceId`, `bankAccountId`, `applyOss`, textové řádky)
   odmítne API a jeho hláška se vrátí modelu. `complete_invoice` = schválení.
+- **Co se u přijaté faktury liší od vydané:**
+
+  | Parametr (`create_invoice`) | Vydaný doklad | Přijatá faktura |
+  |---|---|---|
+  | `issueDate` | vynechané = dnes | uloží se, co přišlo (vynechané = prázdné) |
+  | `dueDate` | vynechané = podle nastavení klienta | uloží se, co přišlo; **bez něj se faktura nikdy neukáže jako po splatnosti** |
+  | `variableSymbol` | max 10 číslic, vynechaný = z čísla dokladu | symbol dodavatele, max 50 znaků, nic se negeneruje |
+  | `paymentMethod` | vynechané = výchozí klienta | uloží se, co přišlo |
+  | `taxableSupplyDate` | vynechané = `issueDate` | vynechané = `issueDate` |
+  | `exchangeRate` | ruční kurz (CZK za jednotku); vynechaný = kurz ČNB při vystavení | totéž; kurz ČNB při schválení |
+  | `bankAccountNumber`, `iban`, `swift` | **odmítne nástroj** (použij `bankAccountId`) | účet dodavatele, na který se platí |
+  | `documentNumber` | **odmítne nástroj** (číslo dává číselná řada) | číslo dodavatele |
+  | `receivedDate` | odmítne API | vynechané = teď |
+  | `vatRatePercentage` položky | u plátce DPH musí odpovídat aktivní sazbě (dohledá se `vatRateId`) | sazba dodavatele, uloží se jak přišla (i zahraniční 19 % nebo stará sazba) |
+  | `bankAccountId`, `originalInvoiceId`, `applyOss`, textové řádky | beze změny | odmítne API |
+
+  `update_invoice` má totéž pro `exchangeRate`, `bankAccountNumber` / `iban` / `swift` (`""` = smazat), `documentNumber`,
+  `receivedDate` a sazbu položek; rozhoduje typ **uloženého** dokladu.
 - **Cesta zpět u zaplaceného dokladu (jakýkoli typ):** `mark_invoice_unpaid` → `revert_invoice_to_draft`
   → `delete_invoice` (`restore_invoice` smazání vrátí). Jednotlivou bankovní platbu lze odpárovat
   přímo jen tehdy, když byl doklad uhrazen výhradně spárovanými platbami; při ručním doplacení slouží
