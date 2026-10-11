@@ -20,6 +20,18 @@ public class UpdateInvoiceDto
     public DateTime? IssueDate { get; set; }
 
     /// <summary>
+    /// RECEIVED documents only: the supplier's own document number (editable). Issued numbers come from the
+    /// number sequence and cannot be changed here - sending it for an issued document is refused.
+    /// </summary>
+    [StringLength(100)]
+    public string? DocumentNumber { get; set; }
+
+    /// <summary>
+    /// RECEIVED documents only: the date the document arrived at our company. Refused for issued documents.
+    /// </summary>
+    public DateTime? ReceivedDate { get; set; }
+
+    /// <summary>
     /// Due date - when payment is due
     /// </summary>
     public DateTime? DueDate { get; set; }
@@ -30,10 +42,11 @@ public class UpdateInvoiceDto
     public DateTime? TaxableSupplyDate { get; set; }
 
     /// <summary>
-    /// Variable symbol for payment — Czech banking requires max 10 digits only.
+    /// Variable symbol for payment. Issued documents: Czech banking requires max 10 digits only. That rule needs
+    /// the STORED document type, which this DTO does not carry, so <c>InvoiceController.UpdateInvoice</c> checks it.
+    /// Received invoice: the supplier's symbol as printed, any characters, max 50 (the column length).
     /// </summary>
-    [StringLength(10)]
-    [RegularExpression(@"^\d{0,10}$", ErrorMessage = "Variable symbol must contain only digits (max 10)")]
+    [StringLength(50)]
     public string? VariableSymbol { get; set; }
 
     /// <summary>

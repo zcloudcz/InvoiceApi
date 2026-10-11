@@ -62,7 +62,7 @@ public class IssuedDocumentTypeBoundaryTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateInvoice_WithReceivedType_IsRejected_AndNothingIsSaved()
+    public async Task CreateImportedInvoice_WithReceivedType_IsRejected_AndNothingIsSaved()
     {
         var dto = new CreateInvoiceDto
         {
@@ -70,8 +70,9 @@ public class IssuedDocumentTypeBoundaryTests : IDisposable
             InvoiceItem = [new CreateInvoiceItemDto { Description = "X", Quantity = 1, UnitPrice = 100 }]
         };
 
-        // Both public entry points share one pipeline (so do copy, template, final invoice, tax receipt).
-        await Should.ThrowAsync<InvalidOperationException>(() => _invoices.CreateInvoiceAsync(dto));
+        // The issued pipeline (import, and with it copy of an issued document, template, final invoice, tax receipt)
+        // refuses the received type. Only the unified CreateInvoiceAsync accepts it, through the received rules
+        // (covered in UnifiedReceivedDocumentTests).
         await Should.ThrowAsync<InvalidOperationException>(() => _invoices.CreateImportedInvoiceAsync(dto));
 
         (await _db.Invoice.CountAsync()).ShouldBe(0);
@@ -105,12 +106,13 @@ public class IssuedDocumentTypeBoundaryTests : IDisposable
         (await _db.NumberSequenceFormat.CountAsync()).ShouldBe(0);
     }
 
-    // ─── Tools: the value is neither accepted nor offered ────────────────────
+    // ─── Tools: no raw type numbers; number sequences neither accept nor offer the received type ───
 
+    // Step 4: create_invoice now ACCEPTS the name "ReceivedInvoice" (it is THE document tool); the API applies the
+    // received policy. A raw number is still refused, so only "5" remains here.
     [Theory]
-    [InlineData("ReceivedInvoice")]
     [InlineData("5")]
-    public async Task McpCreateInvoice_WithReceivedType_ReturnsErrorWithoutCallingApi(string documentType)
+    public async Task McpCreateInvoice_WithRawNumericDocumentType_ReturnsErrorWithoutCallingApi(string documentType)
     {
         var api = Substitute.For<IFakvioApiClient>();
         var items = new List<CreateInvoiceItemDto> { new() { Description = "X", Quantity = 1, UnitPrice = 1 } };

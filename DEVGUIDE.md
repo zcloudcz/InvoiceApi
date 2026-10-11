@@ -1706,7 +1706,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 55 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 88 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 90 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1728,10 +1728,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
-| **Vydané faktury** (`InvoiceTools`, 16) |
+| **Doklady** (`InvoiceTools`, 22; jedna sada pro všechny `EDocumentType`, viz §5.6 „Jednotné API dokladů“ a „MCP nástroje dokladů“) |
 | `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné, `bankAccountId` volitelné; chat `bank_account_id`) | `create_invoice` | ✅ | |
 | `SetInvoiceBankAccount` | **Write** (změní bankovní účet faktury přes `UpdateInvoiceDto.BankAccountId`) | `update_invoice` (`bank_account_id`, confirm) | ✅ | jen Draft, viz `UpdateInvoice` |
-| `UpdateInvoice` | **Destructive** (`items` smaže všechny řádky; `ExpectedStatus=Draft` → 409 při změně stavu; `""` u VS/KS/SS symbol smaže; částečná úprava konceptu: data, symboly, platba, účet, měna, poznámka, `items` = náhrada VŠECH řádků; Completed → `requires_revert_to_draft`, Paid/Creditnoted → chyba) | `update_invoice` (confirm; bez `applyOss`, OSS fakturu s `items` odmítne) | ✅ | |
+| `UpdateInvoice` | **Destructive** (`items` smaže všechny řádky; `ExpectedStatus=Draft` → 409 při změně stavu; `""` u VS/KS/SS symbol smaže; částečná úprava konceptu: data, symboly, platba, účet, měna, poznámka, `exchangeRate`, `items` = náhrada VŠECH řádků; u přijatého navíc `documentNumber`, `receivedDate`, účet dodavatele `bankAccountNumber` / `iban` / `swift`; Completed → `requires_revert_to_draft`, Paid/Creditnoted → chyba) | `update_invoice` (confirm; bez `applyOss`, OSS fakturu s `items` odmítne) | ✅ | |
 | `RevertInvoiceToDraft` | **Destructive** (Completed → Draft přes `POST /api/invoice/{id}/revert-to-draft`; volat až po výslovném souhlasu uživatele) | `revert_invoice_to_draft` (confirm) | ✅ | faktura zůstává označená jako odeslaná; opětovné vystavení znovu spustí webhook faktury |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
@@ -1748,7 +1748,9 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `ExportInvoiceUbl` | Read → download | — | ❌ | zatím bez tasku |
 | `ExportAccounting` | Read → download | — | ❌ | export do účetnictví (§4.15) je zatím jen MCP a UI |
 | `DeleteInvoice` | **Destructive** | `delete_invoice` (confirm, jen Draft) | ✅ | |
-| **Přijaté faktury** (`ReceivedInvoiceTools`, 7) |
+| `MarkInvoiceUnpaid` | **Destructive** (zruší úhradu přes `POST /api/invoice/{id}/mark-unpaid`, smaže `PaymentMatch`; jakýkoli typ dokladu) | — | ❌ | krok 4 sjednocení; chat zatím bez tasku |
+| `RestoreInvoice` | **Write** (Deleted → Draft přes `POST /api/invoice/{id}/restore`; jakýkoli typ) | — | ❌ | krok 4 sjednocení; chat zatím bez tasku |
+| **Přijaté faktury** (`ReceivedInvoiceTools`, 9) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
 | `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
 | `CreateReceivedInvoice` | Create | `create_received_invoice` (diktovaná data) · `import_invoice` (z dokladu) | ✅ | |
@@ -1819,8 +1821,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
 
-**Součty:** 88 MCP toolů, 55 chat toolů. Chat pokrývá 49 MCP toolů, žádný už jen částečně;
-13 chat toolů nemá MCP protějšek. Zbývá 39 mezer: přílohy a hromadné ZIP exporty přes download linky (6 — `AttachmentTools` ×3, `ExportInvoicesZip`, `ExportReceivedInvoiceIsdoc`, `DownloadReceivedInvoicesAttachments`, §2.7a), e-mailové volby faktury (1 — `GetInvoiceEmailOptions`), EPO export DPH (1 — `ExportVatEpo`, zatím bez tasku), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
+**Součty:** 90 MCP toolů, 55 chat toolů. Chat pokrývá 49 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 41 mezer: stavové přechody dokladu bez chat protějšku (2 — `MarkInvoiceUnpaid`, `RestoreInvoice`, krok 4 sjednocení), přílohy a hromadné ZIP exporty přes download linky (6 — `AttachmentTools` ×3, `ExportInvoicesZip`, `ExportReceivedInvoiceIsdoc`, `DownloadReceivedInvoicesAttachments`, §2.7a), e-mailové volby faktury (1 — `GetInvoiceEmailOptions`), EPO export DPH (1 — `ExportVatEpo`, zatím bez tasku), firmy a správa členství (6), zpětná vazba (6), daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (3 — `ListCurrencies`, `GetExchangeRate`, `ListReverseChargeCodes`), opakované faktury
 (7 — celý `RecurringTools`, zatím bez tasku), export do účetnictví (1 — `ExportAccounting`, §4.15), export e-faktury (1 — `ExportInvoiceUbl`, ADR 0002
 N7, zatím bez tasku — UBL/Peppol export je zatím jen MCP a UI, chat readiness/export tooly ho
@@ -1907,7 +1909,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **OAuth 2.1 (story N5) je implementované** — viz §2.11 výše a `docs/adr/0001-mcp-oauth21.md` (Accepted). Claude.ai/ChatGPT se připojí zadáním URL + přihlášením, bez ručně kopírovaného API klíče; PRM/AS metadata, resource-proof hlavička a audience check jsou v `Fakvio.McpServer/Http/McpApiKeyMiddleware.cs`. **Mimo scope zůstává:** dynamic client registration (RFC 7591 — jen CIMD, DCR jen podmíněně přes N5.5b), per-area scopes (jen read/write), cache API klíčů (revokace musí být okamžitá — story #144).
-- **88 tools** (file downloads: každý exportní tool vrací `downloadUrl` + `expiresAt` místo base64, viz §2.7a; invoice edit: `update_invoice` upravuje jen **Draft** (`items` nahradí všechny řádky); u vystavené (Completed) faktury nic nezmění a vrátí `{"status":"requires_revert_to_draft"}` — model se musí výslovně zeptat uživatele a teprve potom zavolat `revert_invoice_to_draft` (Destructive) a `update_invoice` znovu; Paid/Creditnoted vrací chybu s odkazem na dobropis; bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` / `update_invoice` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 20 invoice + 7 client + 9 received invoice + 3 attachment + 6 reporting + 5 tax + 3 template + 1 readiness + 2 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
+- **90 tools** (jednotné nástroje dokladů pro všechny `EDocumentType`, viz §5.6 „MCP nástroje dokladů“; file downloads: každý exportní tool vrací `downloadUrl` + `expiresAt` místo base64, viz §2.7a; invoice edit: `update_invoice` upravuje jen **Draft** (`items` nahradí všechny řádky); u vystavené (Completed) faktury nic nezmění a vrátí `{"status":"requires_revert_to_draft"}` — model se musí výslovně zeptat uživatele a teprve potom zavolat `revert_invoice_to_draft` (Destructive) a `update_invoice` znovu; Paid/Creditnoted vrací chybu s odkazem na dobropis; bank account: `list_bank_accounts` neexistuje — `get_issuer` vrací `bankAccount[]` s `id`, `isDefault`, `currencyCode`; `create_invoice`/`create_invoice_from_template` berou `bankAccountId`, `set_invoice_bank_account` / `update_invoice` ho mění, `add_bank_account` má `isDefault`; server při chybějících bankovních údajích sám doplní účet — `InvoiceService.ApplyBankAccountDefaultsAsync`: výchozí účet v měně faktury → jakýkoli účet v měně → výchozí → první; proforma→ostrá a kopie přebírají účet zdroje): 22 invoice + 7 client + 9 received invoice + 3 attachment + 8 reporting + 5 tax + 3 template + 1 readiness + 3 code list + 6 settings + 4 payment + 7 recurring + 6 feedback + 6 company (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -2792,8 +2794,8 @@ Konfig `ExchangeRates:SyncEnabled=false` worker nezaregistruje (integrační tes
 
 Vydané doklady **i přijaté faktury** jsou řádky tabulky `Invoice` (položky v `InvoiceItem`); jediný rozlišovač je
 `Invoice.DocumentType`: `Invoice=1`, `CreditNote=2`, `Proforma=3`, `TaxReceiptForAdvance=4`, **`ReceivedInvoice=5`**.
-Žádný příznak směru. Entity `ReceivedInvoice` / `ReceivedInvoiceItem` neexistují (krok 1 ze 4 sjednocení; API, DTO,
-UI a MCP zatím zůstávají beze změny).
+Žádný příznak směru. Entity `ReceivedInvoice` / `ReceivedInvoiceItem` neexistují (krok 1 ze 4 sjednocení; jednotné API
+je krok 3a, viz „Jednotné API dokladů" níže; MCP nástroje dokladů jsou krok 4, viz „MCP nástroje dokladů"; UI zatím používá starou fasádu).
 
 | Přijatý doklad | v `Invoice` |
 |---|---|
@@ -2812,13 +2814,16 @@ UI a MCP zatím zůstávají beze změny).
 - Unikátní index `IX_Invoice_DocumentNumber` se na přijaté doklady **nevztahuje** (`AND "DocumentType" <> 5`):
   číslo dodavatele se u různých dodavatelů opakuje a může se rovnat našemu.
 
-**POVINNÉ pravidlo pro každý dotaz na `Invoice` DbSet:** zvol stranu helperem z
-`Fakvio.Application/Common/Extensions/InvoiceQueryExtensions.cs` — `.IssuedOnly()` (vše kromě přijatých) nebo
-`.ReceivedOnly()`. Zapomenutý helper = upomínky posílané dodavatelům, přijaté faktury v tržbách / DPH na výstupu,
+**POVINNÉ pravidlo pro každý dotaz na `Invoice` DbSet:** zvol rozsah helperem z
+`Fakvio.Application/Common/Extensions/InvoiceQueryExtensions.cs` - `.IssuedOnly()` (vše kromě přijatých),
+`.ReceivedOnly()` nebo `.AnyDocument()` (jakýkoli typ, ale bez šablon faktur; jen pro jednotné operace nad dokladem a
+seznamy s explicitním rozsahem, viz „Jednotné API dokladů"). Zapomenutý helper = upomínky posílané dodavatelům, přijaté faktury v tržbách / DPH na výstupu,
 kolize s číselnou řadou. Hlídá to `InvoiceDbSetUsageGuardTests` (source-scan; allowlist = dva `Add(...)` nových řádků).
 Guard nevidí navigační vlastnosti (`match.Invoice`, `x.Invoice` v `InvoiceItem`/`PaymentMatch` dotazech) — tam filtruj
-`DocumentType` ručně (viz `BankTransactionQueryService`, `VatReportService`). Izolace podle id: vydaná operace s id
-přijatého dokladu = „not found" a naopak (`DocumentSideIsolationTests`).
+`DocumentType` ručně (viz `BankTransactionQueryService`, `VatReportService`). Izolace podle id: jednotné operace
+(`InvoiceService`) berou typ z uloženého dokladu a fungují pro obě strany; stará fasáda `ReceivedInvoiceService` dál
+odmítá vydané id jako „not found"; reporty, DPH, dashboard, upomínky, číselné řady a exporty zůstávají na jedné straně
+(`DocumentSideIsolationTests`).
 
 **Zápis: `ReceivedInvoice` nesmí projít vydanou cestou.** Typ je ve stejném enumu, takže každá *vydaná* zápisová
 hranice ho odmítá dřív, než cokoli uloží: `IssuedDocumentTypes.EnsureIssued(...)` (`Fakvio.Domain/Enums`) v
@@ -2830,8 +2835,9 @@ ani holé `Enum.TryParse`** (bere i číslo `"5"`). Testy: `IssuedDocumentTypeBo
 **Jeden stavový automat pro všechny doklady (krok 2 ze 4).** Proces je pro každý typ dokladu stejný; doklady se liší
 JEN typem (`EDocumentType`) a malou, explicitní *typovou politikou*. Každý přechod má **jedinou implementaci** v
 `Fakvio.Infrastructure/Service/DocumentTransitions.cs` (interní kolaborátor; `InvoiceService` ho drží v `_transitions`,
-fasáda `ReceivedInvoiceService` si ho vytvoří sama). Volající jen načte doklad ze SVÉ strany tabulky
-(`IssuedOnly()` / `ReceivedOnly()` → cizí id = „not found") a výsledek namapuje; pravidla se nekopírují.
+fasáda `ReceivedInvoiceService` si ho vytvoří sama). Volající jen načte doklad
+(`InvoiceService`: `AnyDocument()`, typ se bere z řádku; fasáda `ReceivedInvoiceService`: `ReceivedOnly()` → vydané id =
+„not found") a výsledek namapuje; pravidla se nekopírují.
 
 ```
 Draft ──complete──► Completed ──mark paid──► Paid / PartiallyPaid
@@ -2895,6 +2901,136 @@ Provozní pohled (záloha, 503, id) je v ADMINGUIDE §13.2. Zlatý standard pro 
 
 Selhání migrace při lazy migraci (první request tenanta, `TenantDbContextFactory.EnsureMigratedAsync`): výjimka se
 propaguje a `TenantContextMiddleware` vrací HTTP 503 — požadavek **nepokračuje** na starém schématu.
+
+**Jednotné API dokladů (krok 3a ze 4).** `InvoiceController` / `InvoiceService` / `InvoiceDto` obsluhují VŠECHNY typy
+dokladů včetně `ReceivedInvoice`. Stará trojice `ReceivedInvoiceController` / `IReceivedInvoiceService` /
+`ReceivedInvoiceDto` zůstává beze změny (UI a staré MCP nástroje `ReceivedInvoiceTools` ji ještě používají), je **legacy** a smaže se po přepsání UI (krok 3b)
+a po vyřazení legacy MCP nástrojů (nástroje dokladů jsou krok 4).
+
+*Tři dotazové helpery* (`InvoiceQueryExtensions`, hlídá `InvoiceDbSetUsageGuardTests`):
+
+| Helper | Co vrací | Kde |
+|---|---|---|
+| `IssuedOnly()` | vše kromě přijatých | reporty, DPH, dashboard, upomínky, číselné řady, exporty, vydané-only operace a výchozí rozsah seznamů |
+| `ReceivedOnly()` | jen přijaté | fasáda `ReceivedInvoiceService`, přijaté reporty |
+| `AnyDocument()` | jakýkoli typ, **bez šablon faktur** (`InvoiceTemplate` sdílí tabulku přes diskriminátor `InvoiceType`) | jednotné operace nad dokladem podle id a seznamy s rozsahem (`InvoiceService`) |
+
+*Operace nad jedním dokladem* (get, update, complete, mark-paid, mark-unpaid, revert-to-draft, delete, restore, copy,
+platby, auto-match) berou typ z **uloženého řádku**, nikdy z URL; přechody jsou sdílené (`DocumentTransitions`).
+*Seznamy a hledání mají explicitní rozsah*: `InvoiceFilterDto.DocumentTypes` (množina typů, např. `?DocumentTypes=5`),
+`InvoiceFilterDto.DocumentType` a `GET /api/invoice?documentType=`, `GET /api/invoice/by-number/{n}?documentType=`.
+**Výchozí rozsah (nic nezadáno) = jen vydané typy**, takže *seznam bez zadaného typu* vrací stávajícím volajícím
+(UI, MCP, chat nástroje, exporty) to, co dřív. `by-number` vrací při shodě čísla u více přijatých dokladů (dva dodavatelé) vždy stejný řádek:
+nesmazaný před smazaným, pak nejnovější (nejvyšší Id). **Pro volání podle id a pro seznam se zadaným typem to neplatí**, viz
+„Co se změnilo pro stávající volající" níže. Zadané obě (`DocumentTypes` i `DocumentType`) = průnik. Stránkovaný seznam plní
+`AttachmentCount` jen u přijatých řádků (jeden seskupený dotaz na stránku). Příloh se jednotné API netýká: zůstává
+generické `FileAttachmentController` (`entityName` = `"ReceivedInvoice"` pro přijaté).
+
+**Id firmy NENÍ id vystavitele.** `CompanyId` (claim, `ITenantResolver.GetCurrentCompanyId()`) je id firmy v **master**
+DB; `Invoice.IssuerId` je id klienta `IsIssuer` v **tenant** schématu. Čísla spolu nesouvisí (v produkci má vystavitel
+každého tenanta Id 1, firmy mají 1, 3, 4, ...). Nikdy je neporovnávej: tenant schéma už obsahuje jen doklady jedné firmy,
+takže seznamy (`GET /api/invoice`, `/paged`), `DashboardService` ani chat `ListInvoicesTool` podle firmy **nefiltrují**
+(dřívější vynucené `IssuerId = CompanyId` skrylo doklady každého tenanta, kde se čísla liší). `issuerId` /
+`InvoiceFilterDto.IssuerId` zůstává volitelný filtr volajícího = id klienta `IsIssuer` (např. z `GET /api/client/issuer`).
+Test: `IssuerClientIdDiffersFromCompanyIdTests`.
+
+*Typová politika create / update* (`ReceivedDocumentWriter`, jediné místo; fasáda `ReceivedInvoiceService` mapuje svá
+legacy DTO na `CreateInvoiceDto` / `UpdateInvoiceDto` a volá totéž, takže oba vstupy zapisují identické řádky):
+
+| | Vydané typy | `ReceivedInvoice` (`POST /api/invoice` s `DocumentType = 5`) |
+|---|---|---|
+| protistrana | zákazník v `ClientId` | **dodavatel** v `ClientId` (povinný, existující a aktivní) |
+| `IssuerId` | z DTO, musí být `IsIssuer` | **vždy server**: naše firma = `Client` s `IsIssuer`, nejnižší Id; DTO smí poslat `0` (neposláno) nebo právě toto Id, **jiná hodnota = 400** |
+| číslo dokladu | z číselné řady / `CustomDocumentNumber` | `CustomDocumentNumber` = číslo dodavatele (může chybět na konceptu), upravitelné přes `UpdateInvoiceDto.DocumentNumber`, **nikdy se negeneruje ani neuvolňuje** |
+| `ReceivedDate` | zakázáno (400) | nastavitelné (výchozí: teď), upravitelné |
+| variabilní symbol | jen číslice, max 10 (validační 400 se stejnou hláškou jako dřív; pravidlo `IssuedDocumentTypes.IsValidVariableSymbol`, create: `CreateInvoiceDto.Validate`, update: `InvoiceController.UpdateInvoice` podle **uloženého** typu) | symbol dodavatele tak, jak je na faktuře: libovolné znaky, max 50 (délka sloupce), např. `INV-2026-0042` |
+| data | normalizace na UTC půlnoc, splatnost z fakturačního nastavení | uloženo tak, jak přišlo (data dodavatele) |
+| editace | Draft i Completed; kurz jen v Draftu | Draft, Completed a PartiallyPaid; **kurz jen v Draftu** (před schválením); Paid / Deleted = 400 |
+| odmítnuté pole | - | `NumberSequenceId`, `OriginalInvoiceId`, `BankAccountId`, `ApplyOss`, textové řádky položek = 400 |
+| položky | VAT dle plátce / OSS / PDP | stejné PDP validace a výpočty jako dřív (`Received invoice item ...`) |
+| webhooky | `invoice.created`, `invoice.paid`, `invoice.cancelled` | jen `received_invoice.created` |
+| copy | nové číslo z řady | nový přijatý Draft bez čísla dodavatele, `ReceivedDate` = teď (implementováno, protože se do toho přirozeně vešlo) |
+
+*Matice operací* (`api/invoice`):
+
+| Operace | Vydaný | Přijatý |
+|---|---|---|
+| list / paged / by-number | výchozí rozsah | jen s explicitním rozsahem |
+| get, create, update, complete (= approve), mark-paid, mark-unpaid, revert-to-draft, delete, restore, copy | funguje | funguje (politika výše) |
+| bulk complete / mark-paid / delete | funguje | funguje (politika se použije na každý doklad zvlášť) |
+| `{id}/payments`, `{id}/auto-match` | vydaná varianta | přijatá varianta (strana z uloženého dokladu) |
+| pdf, isdoc, send-email, email-defaults, qr, qr/sind, qr/spd, ubl, credit-note, credit-notes, issue-final, remaining-advance, final-invoices, issue-tax-receipt, tax-receipts, bulk/pdf, bulk/isdoc, bulk/ubl | funguje | **400** `{ message }` (`[IssuedDocumentOnly]`, `Fakvio.API/Extensions/IssuedDocumentOnlyAttribute.cs`) |
+| bulk/send-email | funguje | položka selže s jasnou hláškou |
+
+Ostatní přijaté-only operace zůstávají na starých endpointech (`api/received-invoice`: přijatý ISDOC (jednotlivě i
+hromadně; stejnou akci `InvoiceController.ExportIsdoc` volají i odkazy ke stažení, proto ji nelze udělat typově
+závislou), hromadný ZIP příloh, AI import, `approve` / `reject`). Služby vydaných exportů (PDF, ISDOC, UBL, QR, e-mail) zůstávají
+`IssuedOnly()`; 400 vzniká v kontroleru dřív, než se zavolají. Filtr se ptá **jedním dotazem** na všechna id požadavku
+(`IInvoiceService.FindReceivedDocumentIdAsync`); počet id na `bulk/pdf|isdoc|ubl?ids=` záměrně NEOMEZUJE (grid drží výběr přes stránky, strop 100 platí jen pro odkazy ke stažení). Přidáváš-li do `InvoiceController` akci jen pro vydané
+doklady, označ ji `[IssuedDocumentOnly]` a doplň ji do `IssuedDocumentOnlyAttributeTests.IssuedOnlyActions`; akci, která
+má fungovat i pro přijatý doklad (nebo žádné id nedostává), zapiš do `EveryTypeActions`. Test si akce kontroleru zjistí
+reflexí a **nová nezařazená akce ho shodí**.
+
+*Co se změnilo pro stávající volající* (MCP, chat a Blazor se v kroku 3a **neměnily**, ale volají `api/invoice`, které
+teď zná i přijaté doklady; dřív přijaté id znamenalo všude 404 / „not found"):
+
+| Volající dostane **přijaté id** / typ | Dřív | Teď |
+|---|---|---|
+| MCP `get_invoice` | not found | vrátí přijatý doklad jako `InvoiceDto` (`find_invoice_by_number` beze změny: hledá jen ve vydaných) |
+| MCP `update_invoice` | not found | API upraví přijatý doklad politikou přijatých (Draft / Completed / PartiallyPaid); nástroj sám pustí jen Draft a (od kroku 4) sazbu DPH přijatého dokladu nedohledává, procento pošle beze změny |
+| MCP `delete_invoice` | not found | soft-delete přijatého Draftu |
+| MCP `complete_invoice` | not found | schválí přijatý doklad (Draft → Completed, bez čísla z řady) |
+| MCP `mark_invoice_paid`, `revert_invoice_to_draft` | not found | provede přechod nad přijatým dokladem |
+| MCP `send_invoice_email`, `get_invoice_email_options`, `issue_final_invoice`, `issue_tax_receipt`, `get_remaining_advance` | not found | **400** (`[IssuedDocumentOnly]`) |
+| MCP `set_invoice_bank_account` | not found | **400** (`BankAccountId` je u přijatého odmítnuté pole) |
+| MCP exporty (`export_invoice_pdf` / `_isdoc` / `_ubl`, ZIP) | not found | (krok 4) nástroj přijaté id odmítne hned stejnou hláškou jako API (`IssuedOnlyRefusal`), odkaz ke stažení nevznikne. Dřív (do kroku 4) PDF / ISDOC vrátily odkaz, který po otevření odpověděl 404, protože odkazy volají akce přímo (mimo filtr) a služby exportů jsou `IssuedOnly()`. Přímé HTTP exporty (`api/invoice/{id}/pdf` ...) odpoví 400 |
+| MCP `list_invoices(documentType: "ReceivedInvoice")`, chat `list_invoices(document_type: ReceivedInvoice)` | prázdný seznam | vrátí přijaté doklady (MCP od kroku 4 hodnotu výslovně nabízí a neznámý typ odmítne; chat parsuje holým `Enum.TryParse` a schéma hodnotu nenabízí) |
+| chat nástroje podle id (`InvoiceLookup`) | not found | beze změny: not found (mají vlastní nástroje pro přijaté) |
+| Blazor `/invoices/{přijatéId}` | „nenalezeno" | `InvoiceDetail` přesměruje na `/received-invoices/{id}` (vydaný detail přijatý doklad nevykreslí; sjednocené UI je krok 3b) |
+
+Všechny tyto cesty jdou přes politiku přijatých dokladů (`DocumentTransitions`, `ReceivedDocumentWriter`): neuvolní
+číslo, nepublikují `invoice.*` webhook, nenahrávají PDF do cloudu, nevystaví DPP. Jde o změnu chování nástrojů
+popsaných jako „fakturační", ne o bezpečnostní díru. Testy:
+`DocumentSideIsolationTests`, `UnifiedReceivedDocumentTests` (včetně shody fasády a jednotného API sloupec po sloupci),
+`IssuedDocumentOnlyAttributeTests`, `UnifiedDocumentEndpointTests`.
+
+**MCP nástroje dokladů (krok 4 ze 4).** `InvoiceTools` jsou JEDNA sada nástrojů pro všechny `EDocumentType`
+(`Fakvio.McpServer/Tools/InvoiceTools.cs`); `ReceivedInvoiceTools` zůstávají se stejnými názvy a chováním (automatizace je
+volají jménem), ale 6 duplicitních (list, get, create, approve, mark paid, delete) má v popisu `LEGACY` s odkazem na nástroj
+dokladů + `documentType: ReceivedInvoice`; upload přílohy, přijatý ISDOC a ZIP příloh zůstávají plnohodnotné.
+
+- **Rozsah typu:** `list_invoices`, `find_invoice_by_number` (`FakvioApiClient.GetInvoiceByDocumentNumberAsync(..., ct, documentType)`
+  – typ je záměrně až za `ct`, aby se nerozbili stávající volající) a `get_overdue_invoices` berou `documentType` = jméno
+  jakéhokoli `EDocumentType`. Parsování je `InvoiceTools.TryParseDocumentType` (jen jména, číslo `"5"` se odmítá; **ne**
+  `IssuedDocumentTypes.TryParse`, ten přijatý typ zakazuje) a chyba vypíše všechna platná jména. Bez typu platí výchozí
+  rozsah API (jen vydané).
+- **Zápis:** `create_invoice(documentType: ReceivedInvoice)` posílá `clientId` = dodavatel, `documentNumber` →
+  `CustomDocumentNumber`, `receivedDate`, `IssuerId = 0` (server doplní naši firmu; explicitní `issuerId` se pošle dál, ať ho
+  API případně odmítne). Vstupy jen pro vydané (`originalInvoiceId`, `bankAccountId`, `applyOss`) se **neodmítají v nástroji**,
+  ale API; jeho hláška projde `McpToolError`. `documentNumber` u vydaného typu odmítne nástroj (číslo dává číselná řada).
+  `update_invoice` přidává `documentNumber` + `receivedDate`; formát `variableSymbol` se kontroluje až po načtení uloženého
+  typu (vydaný: číslice max 10 přes `IssuedDocumentTypes.IsValidVariableSymbol`, přijatý: nechá se na API).
+- **Parita s `create_received_invoice`:** `create_invoice` umí všechno co legacy nástroj (hlídá
+  `UnifiedDocumentToolsTests.CreateInvoice_ReceivedInvoice_SendsTheSameFieldsAsTheLegacyTool`; přidáš-li pole do
+  `CreateReceivedInvoiceDto`, doplň ho i sem). `taxableSupplyDate` (create) a `exchangeRate` (create i update) se posílají
+  u VŠECH typů (API je u vydaných zná taky, vynechané = dosavadní chování). `bankAccountNumber` / `iban` / `swift` jsou
+  **jen pro přijatý doklad** (účet dodavatele); u vydaného je **odmítne nástroj**, protože API by volný text vytisklo na naši
+  fakturu místo uloženého účtu vystavitele (vydaný doklad smí ukázat jen na `bankAccountId`).
+- **Sazba DPH přijatého dokladu se v nástroji nedohledává** (`ResolveItemVatRatesAsync` se u `ReceivedInvoice` přeskočí v
+  create i update): `vatRatePercentage` je sazba, kterou účtoval dodavatel (DE 19 %, stará CZ 15 %), a nemusí být v naší
+  tabulce sazeb. `ReceivedDocumentWriter.BuildItemsAsync` ji uloží, jak přišla.
+- **Popisy parametrů** `issueDate`, `dueDate`, `variableSymbol`, `paymentMethod` říkají zvlášť chování vydaného (výchozí
+  hodnoty) a přijatého (uloží se, co přišlo; bez `dueDate` se přijatá faktura nikdy neukáže jako po splatnosti).
+- **Přechody:** nové `mark_invoice_unpaid` (Destructive, mazání spárování) a `restore_invoice`; popisy `complete_invoice`,
+  `mark_invoice_paid`, `revert_invoice_to_draft`, `delete_invoice` říkají jednu cestu zpět: mark unpaid → revert to draft → delete.
+- **Jen vydané operace:** API vrací 400 přes `[IssuedDocumentOnly]` a nástroj ho jen předá. Výjimka jsou odkazy ke stažení:
+  `export_invoice_pdf` / `_isdoc` / `_ubl`, `export_invoices_zip` a `issue_final_invoice` volají
+  `InvoiceTools.IssuedOnlyRefusal(invoice)` PŘED vytvořením odkazu (stejný text a tvar `validation_error` jako 400 z API). Jde o
+  opravu regrese kroku 3a: odkazy ke stažení volají akce kontroleru přímo (mimo filtr), takže PDF / ISDOC přijatého dokladu
+  vydaly odkaz, který po otevření odpověděl 404. Oprava je jen v MCP (API se nemění); ZIP kontroluje každé id jedním
+  `GetInvoiceByIdAsync` (max 100).
+- Přidáváš-li nástroj dokladu: popiš v něm všechny typy, nebo výslovně „jen vydané“ a u odkazů ke stažení vlož `IssuedOnlyRefusal`.
+  Testy: `UnifiedDocumentToolsTests`, `FakvioApiClientTests`.
 
 ---
 

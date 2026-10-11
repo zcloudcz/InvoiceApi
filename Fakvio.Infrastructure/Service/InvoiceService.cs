@@ -31,6 +31,7 @@ public class InvoiceService : IInvoiceService
     private readonly IExchangeRateService? _exchangeRateService; // optional: without it no ČNB rate is assigned (tests, §4.17)
     private readonly ILogger<InvoiceService> _logger;
     private readonly DocumentTransitions _transitions; // the ONE state machine shared with the received-invoice facade
+    private readonly ReceivedDocumentWriter _receivedWriter; // the ONE create/update rule set of received documents
 
     /// <summary>
     /// Constructor without the Master context / tenant resolver — EU OSS detection is then switched off
@@ -66,7 +67,18 @@ public class InvoiceService : IInvoiceService
         _webhookPublisher = webhookPublisher;
         _logger = logger;
         _transitions = new DocumentTransitions(context, numberSequenceService, exchangeRateService, webhookPublisher, logger);
+        _receivedWriter = new ReceivedDocumentWriter(context, webhookPublisher, logger);
     }
+
+    /// <summary>
+    /// The document scope of a LIST. No types requested = ISSUED documents only (what every list returned before
+    /// received documents shared this API); otherwise any document whose type is in the set (so asking for
+    /// <see cref="EDocumentType.ReceivedInvoice"/> is how the received grid gets its rows).
+    /// </summary>
+    private IQueryable<Invoice> ScopedDocuments(IReadOnlyCollection<EDocumentType>? types) =>
+        types is { Count: > 0 }
+            ? _context.Invoice.AnyDocument().Where(i => types.Contains(i.DocumentType))
+            : _context.Invoice.IssuedOnly();
 
     /// <summary>
     /// Maps an Invoice entity to InvoiceDto using ZMapper v1.1.0.
@@ -138,7 +150,7 @@ public class InvoiceService : IInvoiceService
         CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only query — no entity modifications needed
-        var query = _context.Invoice.IssuedOnly()
+        var query = ScopedDocuments(documentType.HasValue ? [documentType.Value] : null)
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -182,7 +194,8 @@ public class InvoiceService : IInvoiceService
             filter.Page, filter.PageSize, filter.Search);
 
         // AsNoTracking: read-only paged query — results are mapped to DTOs
-        var query = _context.Invoice.IssuedOnly()
+        // Scope: DocumentTypes, else the single DocumentType, else issued documents only (see ScopedDocuments).
+        var query = ScopedDocuments(filter.DocumentTypes ?? (filter.DocumentType.HasValue ? [filter.DocumentType.Value] : null))
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -280,7 +293,7 @@ public class InvoiceService : IInvoiceService
         // ThenByDescending(Id) breaks ties so paging stays stable when many invoices share
         // one issue date (month-end billing). "?? DateTime.MinValue" keeps invoices without
         // IssueDate last on PostgreSQL too (it puts NULLs first on DESC) — same as GetInvoicesAsync.
-        var validSortFields = new[] { "DocumentNumber", "IssueDate", "DueDate", "TaxableSupplyDate", "TotalWithVat", "Status", "CreatedAt", "UpdatedAt" };
+        var validSortFields = new[] { "DocumentNumber", "IssueDate", "ReceivedDate", "DueDate", "TaxableSupplyDate", "TotalWithVat", "Status", "CreatedAt", "UpdatedAt" };
         var hasSortField = !string.IsNullOrWhiteSpace(filter.SortBy) && validSortFields.Contains(filter.SortBy, StringComparer.OrdinalIgnoreCase);
 
         query = hasSortField
@@ -290,9 +303,26 @@ public class InvoiceService : IInvoiceService
         // Get paged results
         var pagedResult = await query.ToPagedResultAsync(filter.Page, filter.PageSize, cancellationToken);
 
-        // Map to DTOs
+        var dtos = pagedResult.Items.Select(i => MapToDto(i)).ToList();
+
+        // Attachment counts for the received grid's "download attachments" action: one grouped query over just the
+        // page's received ids (max PageSize rows) - no N+1, and no query at all for a page of issued documents.
+        // FileAttachment rows of a received invoice carry EntityName "ReceivedInvoice" - the name of the enum member.
+        var receivedIds = dtos.Where(d => d.DocumentType == EDocumentType.ReceivedInvoice).Select(d => d.Id).ToList();
+        if (receivedIds.Count > 0)
+        {
+            var attachmentCounts = await _context.FileAttachment
+                .AsNoTracking()
+                .Where(f => f.EntityName == nameof(EDocumentType.ReceivedInvoice) && receivedIds.Contains(f.RecordId))
+                .GroupBy(f => f.RecordId)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
+            foreach (var dto in dtos)
+                dto.AttachmentCount = attachmentCounts.GetValueOrDefault(dto.Id);
+        }
+
         return new PagedResult<InvoiceDto>(
-            pagedResult.Items.Select(i => MapToDto(i)).ToList(),
+            dtos,
             pagedResult.TotalCount,
             pagedResult.PageNumber,
             pagedResult.PageSize);
@@ -301,7 +331,8 @@ public class InvoiceService : IInvoiceService
     public async Task<InvoiceDto?> GetInvoiceByIdAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only lookup — result is mapped to DTO
-        var invoice = await _context.Invoice.IssuedOnly()
+        // AnyDocument: the type comes from the stored row, so a received document is found here too.
+        var invoice = await _context.Invoice.AnyDocument()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -318,10 +349,13 @@ public class InvoiceService : IInvoiceService
         return invoice == null ? null : MapToDto(invoice);
     }
 
-    public async Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(string documentNumber, CancellationToken cancellationToken = default)
+    public async Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(
+        string documentNumber, EDocumentType? documentType = null, CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only lookup — result is mapped to DTO
-        var invoice = await _context.Invoice.IssuedOnly()
+        // Supplier numbers are not unique and may equal one of ours, so the search needs an explicit scope:
+        // issued documents unless a type is asked for (ReceivedInvoice finds the supplier's document).
+        var invoice = await ScopedDocuments(documentType.HasValue ? [documentType.Value] : null)
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)
@@ -333,18 +367,48 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.OriginalInvoice)
             // Allow loading deleted invoices so users can view details and restore them.
             // List endpoints (GetAll, GetPaged) still hide deleted invoices by default.
+            // Deterministic pick when the number is not unique (received invoices of two suppliers; an issued
+            // number is unique, so this never reorders issued results): live before deleted, then the newest.
+            .OrderBy(i => i.Status == EInvoiceStatus.Deleted)
+            .ThenByDescending(i => i.Id)
             .FirstOrDefaultAsync(i => i.DocumentNumber == documentNumber, cancellationToken);
 
         return invoice == null ? null : MapToDto(invoice);
     }
 
-    public Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+    public Task<EDocumentType?> GetDocumentTypeAsync(long invoiceId, CancellationToken cancellationToken = default)
+        => _context.Invoice.AnyDocument()
+            .AsNoTracking()
+            .Where(i => i.Id == invoiceId)
+            .Select(i => (EDocumentType?)i.DocumentType)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public Task<long?> FindReceivedDocumentIdAsync(IReadOnlyCollection<long> ids, CancellationToken cancellationToken = default)
+        => _context.Invoice.AnyDocument()
+            .AsNoTracking()
+            .Where(i => ids.Contains(i.Id) && i.DocumentType == EDocumentType.ReceivedInvoice)
+            .OrderBy(i => i.Id) // deterministic: the same request always names the same document in the 400
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
+    {
+        // The unified create entry: the ONE place that accepts a RECEIVED document. Its type policy (supplier in
+        // ClientId, our company as IssuerId, supplier's number, no number sequence) lives in ReceivedDocumentWriter;
+        // every other create path (import, copy of an issued document, template, final invoice) still refuses it.
+        if (createDto.DocumentType == EDocumentType.ReceivedInvoice)
+        {
+            var id = await _receivedWriter.CreateAsync(createDto, cancellationToken);
+            return (await GetInvoiceByIdAsync(id, cancellationToken))!;
+        }
+
         // Public entry point always applies the bank-account default fill (issue: MCP-created
         // invoices had no bank account at all). Internal re-use of this pipeline for
         // proforma→final and invoice-copy passes applyBankAccountDefaulting:false — those two
         // explicitly copy the source document's bank fields (even when the source has none) and
         // must not have the resolver silently invent one.
-        => CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: true, cancellationToken);
+        return await CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: true, cancellationToken);
+    }
 
     public Task<InvoiceDto> CreateImportedInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
         => CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
@@ -356,6 +420,9 @@ public class InvoiceService : IInvoiceService
         // (API, copy, template, proforma -> final invoice, tax receipt, import, recurring), so the received type is
         // refused here, before anything is read or saved.
         IssuedDocumentTypes.EnsureIssued(createDto.DocumentType);
+
+        if (createDto.ReceivedDate.HasValue)
+            throw new InvalidOperationException("ReceivedDate can be set only on a received invoice.");
 
         _logger.LogInformation("Creating new {DocumentType}", createDto.DocumentType);
 
@@ -721,17 +788,31 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDto?> UpdateInvoiceAsync(long invoiceId, UpdateInvoiceDto updateDto, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.IssuedOnly()
+        var invoice = await _context.Invoice.AnyDocument()
             .Include(i => i.InvoiceItem)
-            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.Status != EInvoiceStatus.Deleted, cancellationToken);
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
-        if (invoice == null)
+        // A soft-deleted ISSUED document is "not found" for update (as always); a deleted received one is refused by
+        // the received rules below with a message.
+        if (invoice == null || (invoice.Status == EInvoiceStatus.Deleted && invoice.DocumentType != EDocumentType.ReceivedInvoice))
             return null;
 
         // Caller-supplied guard against a status change between its own check and this write (409 in the API).
         if (updateDto.ExpectedStatus.HasValue && updateDto.ExpectedStatus.Value != invoice.Status)
             throw new InvoiceStatusConflictException(
                 $"Invoice status is {invoice.Status}, expected {updateDto.ExpectedStatus.Value}");
+
+        // Type policy: a received document is updated by its own rule set (supplier number, received date, editing
+        // window, exchange-rate rule); the issued pipeline below never sees it.
+        if (invoice.DocumentType == EDocumentType.ReceivedInvoice)
+        {
+            await _receivedWriter.UpdateAsync(invoice, updateDto, cancellationToken);
+            return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
+        }
+
+        if (updateDto.DocumentNumber != null || updateDto.ReceivedDate.HasValue)
+            throw new InvalidOperationException(
+                "DocumentNumber and ReceivedDate can be set only on a received invoice (an issued number comes from its number sequence).");
 
         // Validate status - only Draft and Completed can be updated
         if (invoice.Status == EInvoiceStatus.Paid)
@@ -957,7 +1038,7 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDto?> CompleteInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.IssuedOnly()
+        var invoice = await _context.Invoice.AnyDocument()
             .Include(i => i.Issuer)
                 .ThenInclude(issuer => issuer.BillingSettings)
             .Include(i => i.Currency)
@@ -967,7 +1048,8 @@ public class InvoiceService : IInvoiceService
             return null;
 
         // Status check, exchange rate and the state change are the shared transition (DocumentTransitions);
-        // the gates below are the ISSUED-document policy and run after the status check, before anything changes.
+        // the gates below are the ISSUED-document policy and run after the status check, before anything changes
+        // (the shared transition skips them for a received document, which is simply "approved").
         await _transitions.CompleteAsync(invoice, async () =>
         {
             // Readiness gate (#206): issuing a document is the point of no return — the number is
@@ -1022,7 +1104,7 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDto?> MarkAsPaidAsync(long invoiceId, DateTime? paidAt = null, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        var invoice = await _context.Invoice.AnyDocument().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return null;
@@ -1031,14 +1113,15 @@ public class InvoiceService : IInvoiceService
 
         // Proforma becoming paid → auto-issue its DPP (tax receipt for advance payment), if
         // the issuer is a VAT payer and hasn't disabled auto-issuance. No-op for other types.
-        await TryAutoIssueTaxReceiptAsync(invoice.Id, newlyPaid, invoice.PaidAt, cancellationToken);
+        if (invoice.DocumentType != EDocumentType.ReceivedInvoice)
+            await TryAutoIssueTaxReceiptAsync(invoice.Id, newlyPaid, invoice.PaidAt, cancellationToken);
 
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
     }
 
     public async Task<bool> DeleteInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        var invoice = await _context.Invoice.AnyDocument().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return false;
@@ -1059,7 +1142,7 @@ public class InvoiceService : IInvoiceService
     /// <returns>Restored invoice DTO, or null if the invoice does not exist</returns>
     public async Task<InvoiceDto?> RestoreInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        var invoice = await _context.Invoice.AnyDocument().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return null;
@@ -1077,7 +1160,7 @@ public class InvoiceService : IInvoiceService
     /// </summary>
     public async Task<InvoiceDto?> RevertToDraftAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
-        var invoice = await _context.Invoice.IssuedOnly().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        var invoice = await _context.Invoice.AnyDocument().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         if (invoice == null)
             return null;
@@ -1866,8 +1949,8 @@ public class InvoiceService : IInvoiceService
     public async Task<InvoiceDto> MarkAsUnpaidAsync(long invoiceId, CancellationToken cancellationToken = default)
     {
         // The shared transition (DocumentTransitions) removes the PaymentMatch rows and recalculates the
-        // bank transactions; null = no ISSUED document with this id.
-        var invoice = await _transitions.MarkUnpaidAsync(_context.Invoice.IssuedOnly(), invoiceId, cancellationToken)
+        // bank transactions; null = no document with this id.
+        var invoice = await _transitions.MarkUnpaidAsync(_context.Invoice.AnyDocument(), invoiceId, cancellationToken)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
         // Re-fetch with all navigation properties to return a complete DTO.
@@ -1884,7 +1967,8 @@ public class InvoiceService : IInvoiceService
         // Load source invoice with all related data needed for the deep copy.
         // AsNoTracking: we're building a new entity from scratch, so we don't want
         // EF to track the source and accidentally propagate changes to it.
-        var source = await _context.Invoice.IssuedOnly()
+        // AnyDocument: copying a RECEIVED invoice into a new received Draft is supported (e.g. a recurring supplier bill).
+        var source = await _context.Invoice.AnyDocument()
             .AsNoTracking()
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
             .Include(i => i.Client)
@@ -1980,7 +2064,11 @@ public class InvoiceService : IInvoiceService
         //   - Status = Draft (always set by CreateInvoiceAsync)
         // applyBankAccountDefaulting: false — bank fields were just copied verbatim from the
         // source invoice above (even when empty); the resolver must not override that.
-        var copy = await CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
+        // A received source takes the received create rules instead (no number sequence: the new Draft has no supplier
+        // number yet, ReceivedDate defaults to now); the DTO built above is valid for both sides.
+        var copy = source.DocumentType == EDocumentType.ReceivedInvoice
+            ? (await GetInvoiceByIdAsync(await _receivedWriter.CreateAsync(createDto, cancellationToken), cancellationToken))!
+            : await CreateInvoiceCoreAsync(createDto, applyBankAccountDefaulting: false, cancellationToken);
 
         _logger.LogInformation(
             "Invoice copied: source #{SourceId} → new #{CopyId} ({DocNum})",

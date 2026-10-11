@@ -65,6 +65,17 @@ public class InvoiceDto
     public decimal PaidAmount { get; set; }
 
     /// <summary>
+    /// Date a RECEIVED document (DocumentType = ReceivedInvoice) arrived at our company. Null for issued documents.
+    /// </summary>
+    public DateTime? ReceivedDate { get; set; }
+
+    /// <summary>
+    /// Number of file attachments of the document. Filled only by the paged list (one grouped query per page,
+    /// and only for received rows - the received grid shows it); 0 everywhere else.
+    /// </summary>
+    public int AttachmentCount { get; set; }
+
+    /// <summary>
     /// ISO2 destination country when this is an EU OSS invoice (B2C sale to a consumer
     /// in another EU state by an OSS-registered issuer). Null for ordinary invoices.
     /// Computed server-side — read-only, see Invoice.OssCountryCode and DEVGUIDE §4.16.

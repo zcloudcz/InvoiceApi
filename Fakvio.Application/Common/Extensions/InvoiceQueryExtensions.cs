@@ -19,4 +19,13 @@ public static class InvoiceQueryExtensions
     /// <summary>Only received (supplier) invoices.</summary>
     public static IQueryable<Invoice> ReceivedOnly(this IQueryable<Invoice> query) =>
         query.Where(i => i.DocumentType == EDocumentType.ReceivedInvoice);
+
+    /// <summary>
+    /// ANY document of ANY type, issued or received - for the unified document operations (get / update / transitions /
+    /// delete by id, scoped lists) where the type is taken from the stored row. Still excludes invoice TEMPLATES,
+    /// which share the table through the <c>InvoiceType</c> discriminator and are not documents.
+    /// Reports, VAT, dashboards, dunning and number sequences must NOT use this: they are about one side only.
+    /// </summary>
+    public static IQueryable<Invoice> AnyDocument(this IQueryable<Invoice> query) =>
+        query.Where(i => !(i is InvoiceTemplate));
 }
