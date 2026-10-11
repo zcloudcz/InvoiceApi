@@ -254,7 +254,7 @@ public static class InvoiceTools
         [Description("ReceivedInvoice only: the date the document arrived, ISO 8601. Omit for now. The API refuses it for issued documents.")] string? receivedDate = null,
         [Description("Date of taxable supply (DUZP), ISO 8601 - determines the VAT period. Omit to use issueDate (every document type).")] string? taxableSupplyDate = null,
         [Description(
-            "Manual exchange rate: CZK per one unit of a non-CZK currency (must be > 0). Normally omit - the CNB rate for the DUZP " +
+            "Manual exchange rate: CZK per one unit of a non-CZK currency (must be > 0). Send it ONLY when the user explicitly states the rate; never fill it from get_exchange_rate. When omitted the CNB rate for the DUZP " +
             "is assigned when the document is completed (issued / approved). Same for every document type.")] decimal? exchangeRate = null,
         [Description("ReceivedInvoice only: the SUPPLIER's bank account number the invoice is to be paid to. Not allowed for issued documents - use bankAccountId.")] string? bankAccountNumber = null,
         [Description("ReceivedInvoice only: the SUPPLIER's IBAN. Not allowed for issued documents - use bankAccountId.")] string? iban = null,
@@ -277,7 +277,9 @@ public static class InvoiceTools
             return Error("documentNumber is only for documentType='ReceivedInvoice' (the supplier's number). " +
                          "Issued documents get their number from the number sequence when completed.");
 
-        if (!isReceived && HasSupplierBankDetails(bankAccountNumber, iban, swift))
+        // In create an empty string means "not sent" (some clients send '' for unset optional strings), so it must
+        // not turn an ordinary issued invoice into an error. (In update '' means "clear", hence the stricter check there.)
+        if (!isReceived && (!string.IsNullOrWhiteSpace(bankAccountNumber) || !string.IsNullOrWhiteSpace(iban) || !string.IsNullOrWhiteSpace(swift)))
             return Error(SupplierBankDetailsRefusal);
 
         EPaymentMethod? parsedPaymentMethod = null;
@@ -376,9 +378,11 @@ public static class InvoiceTools
                 ApplyOss = applyOss,
                 BankAccountId = bankAccountId,
                 // Supplier's account: only ever set for a received invoice (issued types were refused above).
-                BankAccountNumber = bankAccountNumber,
-                IBAN = iban,
-                SWIFT = swift,
+                // Issued documents never carry free-text bank details (see the refusal above); an empty string must not
+                // reach the API either, where it would count as "given" and suppress the issuer's default account.
+                BankAccountNumber = isReceived ? bankAccountNumber : null,
+                IBAN = isReceived ? iban : null,
+                SWIFT = isReceived ? swift : null,
                 ExchangeRate = exchangeRate,
                 InvoiceItem = items
             };
@@ -1193,7 +1197,7 @@ public static class InvoiceTools
         [Description("ReceivedInvoice only: the supplier's invoice number. The API refuses it for issued documents. Omit to keep.")] string? documentNumber = null,
         [Description("ReceivedInvoice only: the date the document arrived, ISO 8601. The API refuses it for issued documents. Omit to keep.")] string? receivedDate = null,
         [Description(
-            "New manual exchange rate: CZK per one unit of a non-CZK currency (must be > 0). Normally omit - the CNB rate for the DUZP " +
+            "New manual exchange rate: CZK per one unit of a non-CZK currency (must be > 0). Send it ONLY when the user explicitly states the rate; never fill it from get_exchange_rate. When omitted the CNB rate for the DUZP " +
             "is assigned when the document is completed (issued / approved). Same for every document type. Omit to keep (cannot be cleared).")] decimal? exchangeRate = null,
         [Description("ReceivedInvoice only: the SUPPLIER's bank account number the invoice is to be paid to. Not allowed for issued documents - use bankAccountId. Omit to keep, '' to clear.")] string? bankAccountNumber = null,
         [Description("ReceivedInvoice only: the SUPPLIER's IBAN. Not allowed for issued documents - use bankAccountId. Omit to keep, '' to clear.")] string? iban = null,

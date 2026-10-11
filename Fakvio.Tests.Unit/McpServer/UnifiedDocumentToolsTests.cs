@@ -462,6 +462,23 @@ public class UnifiedDocumentToolsTests
         await _api.DidNotReceiveWithAnyArgs().CreateInvoiceAsync(default!, default);
     }
 
+    /// <summary>
+    /// Some MCP clients send '' for optional strings the model left unset. On create that must mean "not sent",
+    /// otherwise an ordinary issued invoice is refused with a message about received invoices.
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoice_IssuedInvoice_EmptyBankStrings_AreTreatedAsNotSent()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>()).Returns(new ClientDto { Id = 1, IsVatPayer = false });
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>()).Returns(new InvoiceDto { Id = 93 });
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: OneItem(), bankAccountNumber: "", iban: " ", swift: "");
+
+        Root(json).TryGetProperty("error", out _).ShouldBeFalse();
+        await _api.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(d => d.BankAccountNumber == null && d.IBAN == null && d.SWIFT == null), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task CreateInvoice_IssuedInvoice_ForwardsTaxableSupplyDateAndExchangeRate_AndLeavesThemEmptyWhenOmitted()
     {
