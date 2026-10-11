@@ -386,12 +386,15 @@ public class ReceivedInvoiceServiceTests : IDisposable
     {
         var id = await CreateInvoiceInDb();
         await _service.ApproveAsync(id);
+        // The UI tells "approved, nothing paid" (revert allowed) from "partially paid" (cancel payment) by PaidAmount.
+        (await _service.GetByIdAsync(id))!.PaidAmount.ShouldBe(0m);
         var row = await _context.Invoice.SingleAsync(i => i.Id == id);
         row.Status = EInvoiceStatus.PartiallyPaid; // a payment was matched, the rest is open
         row.PaidAmount = 10m;
         await _context.SaveChangesAsync();
 
         (await _service.GetByIdAsync(id))!.Status.ShouldBe(EReceivedInvoiceStatus.Approved);
+        (await _service.GetByIdAsync(id))!.PaidAmount.ShouldBe(10m);
         (await _service.GetAllAsync(EReceivedInvoiceStatus.Approved)).Select(r => r.Id).ShouldContain(id);
         (await _service.MarkAsPaidAsync(id))!.Status.ShouldBe(EReceivedInvoiceStatus.Paid);
     }

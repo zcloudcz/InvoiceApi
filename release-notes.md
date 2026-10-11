@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.11.2 — 2026-10-11
+
+### Změny pro uživatele
+
+- **#532** — Všechny doklady mají jeden společný postup. Zaplacenou přijatou fakturu lze zrušit po krocích: Zrušit úhradu, Vrátit do rozpracovaného, Smazat (nová tlačítka v detailu přijaté faktury). Částečná platba už přijatou fakturu neoznačí jako zaplacenou. Bankovní platbu lze spárovat jen se schválenou přijatou fakturou. Odpárování platby u ručně doplaceného dokladu se odmítne, nejdřív je třeba zrušit úhradu na dokladu. Vydané doklady: částečně uhrazený doklad lze označit jako zaplacený nebo mu zrušit úhradu, ale nelze ho smazat bez zrušení úhrady. (PR #533, `b18d94f`)
+
 ## 2026.10.11 — 2026-10-11
 
 ### Změny pro uživatele

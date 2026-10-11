@@ -184,6 +184,72 @@ public class ReceivedInvoiceController : ControllerBase
     }
 
     /// <summary>
+    /// Takes the payment back (removes the matched bank payments).
+    /// Transition: Paid or partially paid -> Approved.
+    /// </summary>
+    [HttpPost("{id:long}/mark-unpaid")]
+    [ProducesResponseType(typeof(ReceivedInvoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ReceivedInvoiceDto>> MarkAsUnpaid(long id, CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await _service.MarkAsUnpaidAsync(id, ct);
+            if (result is null) return NotFound();
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Reverts an approved received invoice to Draft.
+    /// Transition: Approved -> Received.
+    /// </summary>
+    [HttpPost("{id:long}/revert-to-draft")]
+    [ProducesResponseType(typeof(ReceivedInvoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ReceivedInvoiceDto>> RevertToDraft(long id, CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await _service.RevertToDraftAsync(id, ct);
+            if (result is null) return NotFound();
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Restores a soft-deleted received invoice.
+    /// Transition: Deleted -> Received.
+    /// </summary>
+    [HttpPost("{id:long}/restore")]
+    [ProducesResponseType(typeof(ReceivedInvoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ReceivedInvoiceDto>> Restore(long id, CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await _service.RestoreAsync(id, ct);
+            if (result is null) return NotFound();
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Rejects a received invoice.
     /// Transition: Received -> Rejected.
     /// </summary>
@@ -207,7 +273,7 @@ public class ReceivedInvoiceController : ControllerBase
 
     /// <summary>
     /// Soft-deletes a received invoice.
-    /// Only allowed in Received or Rejected status.
+    /// Only allowed in Received status (revert an approved one to draft first).
     /// </summary>
     [HttpDelete("{id:long}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

@@ -85,6 +85,7 @@ public class DocumentSideIsolationTests : IDisposable
         (await _invoices.RevertToDraftAsync(_receivedId)).ShouldBeNull();
         (await _invoices.DeleteInvoiceAsync(_receivedId)).ShouldBeFalse();
         (await _invoices.RestoreInvoiceAsync(_receivedId)).ShouldBeNull();
+        await Should.ThrowAsync<KeyNotFoundException>(() => _invoices.MarkAsUnpaidAsync(_receivedId));
         (await _invoices.GetCreditNotesForInvoiceAsync(_receivedId)).ShouldBeEmpty();
 
         await Should.ThrowAsync<InvalidOperationException>(
@@ -137,6 +138,9 @@ public class DocumentSideIsolationTests : IDisposable
         (await _received.MarkAsPaidAsync(_issuedId)).ShouldBeNull();
         (await _received.RejectAsync(_issuedId)).ShouldBeNull();
         (await _received.DeleteAsync(_issuedId)).ShouldBeFalse();
+        (await _received.MarkAsUnpaidAsync(_issuedId)).ShouldBeNull();
+        (await _received.RevertToDraftAsync(_issuedId)).ShouldBeNull();
+        (await _received.RestoreAsync(_issuedId)).ShouldBeNull();
         (await _received.GetDocumentNumbersAsync([_issuedId, _receivedId])).Keys.ShouldBe([_receivedId]);
         (await _received.GetAllAsync()).Select(r => r.Id).ShouldBe([_receivedId]);
 
@@ -198,12 +202,14 @@ public class DocumentSideIsolationTests : IDisposable
     }
 
     /// <summary>
-    /// A row migrated from the old table: Paid with PaidAmount = total, although its only match covers less
-    /// (the old matcher marked a received invoice Paid on ANY match). Subtracting the match on unmatch would
-    /// leave 1210 - 600 = 610 "paid" and a PartiallyPaid document with no payment behind it.
+    /// A row migrated from the old table: Paid with PaidAmount = total, although its matches cover less
+    /// (the old matcher marked a received invoice Paid on ANY match). Such a row cannot be told apart from a
+    /// document that was topped up by hand, so the same rule applies (owner decision, DEVGUIDE §5.6): a single
+    /// match cannot be taken out - neither subtracting (1210 - 600 = 610 "paid" with no payment behind it) nor
+    /// recomputing (100, the rest silently gone) is right. The payment is cancelled as a whole with mark-unpaid.
     /// </summary>
     [Fact]
-    public async Task Unmatch_Received_RecomputesPaidAmountFromRemainingMatches()
+    public async Task Unmatch_Received_PaidAboveItsMatches_IsRefused_MarkUnpaidCleansIt()
     {
         var received = await _db.Invoice.SingleAsync(i => i.Id == _receivedId);
         received.Status = EInvoiceStatus.Paid;
@@ -220,21 +226,21 @@ public class DocumentSideIsolationTests : IDisposable
         _db.PaymentMatch.AddRange(big, small);
         await _db.SaveChangesAsync();
 
-        // One match remains: PaidAmount is exactly that match, the legacy status is "Approved" as before.
-        await _matching.UnmatchAsync(big.Id, null, null);
+        await Should.ThrowAsync<InvalidOperationException>(() => _matching.UnmatchAsync(big.Id, null, null));
 
-        var partly = await _db.Invoice.AsNoTracking().SingleAsync(i => i.Id == _receivedId);
-        partly.PaidAmount.ShouldBe(100m);
-        partly.Status.ShouldBe(EInvoiceStatus.PartiallyPaid);
-        (await _received.GetByIdAsync(_receivedId))!.Status.ShouldBe(EReceivedInvoiceStatus.Approved);
+        var untouched = await _db.Invoice.AsNoTracking().SingleAsync(i => i.Id == _receivedId);
+        untouched.PaidAmount.ShouldBe(1210m);
+        untouched.Status.ShouldBe(EInvoiceStatus.Paid);
+        (await _db.PaymentMatch.AsNoTracking().CountAsync(m => m.InvoiceId == _receivedId)).ShouldBe(2);
 
-        // No match remains: nothing is paid, never "PartiallyPaid with zero matches".
-        await _matching.UnmatchAsync(small.Id, null, null);
+        // Cancelling the payment on the document: nothing is paid, never "PartiallyPaid with zero matches".
+        await _received.MarkAsUnpaidAsync(_receivedId);
 
         var unpaid = await _db.Invoice.AsNoTracking().SingleAsync(i => i.Id == _receivedId);
         unpaid.PaidAmount.ShouldBe(0m);
         unpaid.Status.ShouldBe(EInvoiceStatus.Completed);
         unpaid.PaidAt.ShouldBeNull();
+        (await _db.PaymentMatch.AsNoTracking().AnyAsync(m => m.InvoiceId == _receivedId)).ShouldBeFalse();
         (await _received.GetByIdAsync(_receivedId))!.Status.ShouldBe(EReceivedInvoiceStatus.Approved);
     }
 }
