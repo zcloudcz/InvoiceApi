@@ -99,6 +99,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         IBAN = entity.IBAN,
         SWIFT = entity.SWIFT,
         PaidAt = entity.PaidAt,
+        PaidAmount = entity.PaidAmount,
         Notes = entity.Notes,
         // AttachmentFileName / AttachmentContentType stay null: the old columns were never written by any code.
         Items = entity.InvoiceItem.OrderBy(i => i.OrderIndex).Select(i => i.ToReceivedInvoiceItemDto()).ToList(),

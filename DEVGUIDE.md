@@ -846,6 +846,11 @@ rows 10/11/25/43/44 and DPHKH1 sections A.1/B.1.
 UI: `VatRegimeSelect` + `ReverseChargeCodeSelect` in `ReceivedInvoiceDetail.razor`; MCP `create_received_invoice`
 accepts `vatRegime` / `reverseChargeCodeId` per item (the DTO is passed through).
 
+`ReceivedInvoiceDto.PaidAmount` (mapped from `Invoice.PaidAmount`) exists because the legacy status reports PartiallyPaid
+as `Approved`: `ReceivedInvoiceDetail.razor` shows "mark as unpaid" for Paid or (Approved and PaidAmount > 0) and
+"revert to draft" only for Approved with PaidAmount == 0. `ReceivedInvoiceApiService` has `MarkAsUnpaidAsync`,
+`RevertToDraftAsync`, `RestoreAsync` (restore has no button yet).
+
 **UI**: `InvoiceItemEditor` uses the reusable `VatRegimeSelect` (wraps `EnumSelect<EVatRegime>`) and
 `ReverseChargeCodeSelect` (code list supplied by the caller) from `Fakvio.UI.Shared/Components/Shared/`; the
 invoice-level "reverse charge" switch is UI-only (loops over items, no persisted field) and re-syncs when per-row

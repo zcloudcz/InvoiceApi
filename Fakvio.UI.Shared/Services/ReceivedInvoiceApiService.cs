@@ -120,6 +120,30 @@ public class ReceivedInvoiceApiService : ApiClientBase
     }
 
     /// <summary>
+    /// Takes the payment back (paid or partially paid -> Approved); removes the matched bank payments.
+    /// </summary>
+    public async Task<ReceivedInvoiceDto?> MarkAsUnpaidAsync(long id)
+    {
+        return await PostWithoutBodyAsync<ReceivedInvoiceDto>($"/api/received-invoice/{id}/mark-unpaid");
+    }
+
+    /// <summary>
+    /// Reverts an approved received invoice (nothing paid) back to Draft.
+    /// </summary>
+    public async Task<ReceivedInvoiceDto?> RevertToDraftAsync(long id)
+    {
+        return await PostWithoutBodyAsync<ReceivedInvoiceDto>($"/api/received-invoice/{id}/revert-to-draft");
+    }
+
+    /// <summary>
+    /// Restores a soft-deleted received invoice (Deleted -> Draft).
+    /// </summary>
+    public async Task<ReceivedInvoiceDto?> RestoreAsync(long id)
+    {
+        return await PostWithoutBodyAsync<ReceivedInvoiceDto>($"/api/received-invoice/{id}/restore");
+    }
+
+    /// <summary>
     /// Rejects a received invoice.
     /// </summary>
     public async Task<ReceivedInvoiceDto?> RejectAsync(long id)

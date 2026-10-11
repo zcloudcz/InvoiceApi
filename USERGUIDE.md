@@ -723,9 +723,12 @@ Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
 ani v návrzích nenabízí a potvrzení párování aplikace odmítne - fakturu nejdřív **schvalte**, pak platbu spárujte
 (u už importované platby stačí znovu spustit „Automaticky spárovat").
 
-**Cesta zpět u zaplacené faktury:** nové akce **Označit jako nezaplacenou** (zruší spárované platby; faktura se vrátí do
-stavu „Schválena"), **Vrátit do konceptu** („Schválena" → „Přijata") a **Obnovit** (smazaná → „Přijata"). Smazat lze jen
-fakturu ve stavu „Přijata". Tlačítka v UI přibudou v dalším kroku; API je dostupné už teď.
+**Cesta zpět u zaplacené faktury:** v detailu přijaté faktury jsou akce **Označit jako nezaplacenou** (u zaplacené i
+částečně uhrazené faktury; zruší spárované platby a faktura se vrátí do stavu „Schválena") a **Vrátit do konceptu**
+(u schválené faktury bez úhrady: „Schválena" → „Přijata"). Zaplacenou fakturu tedy zrušíte v pořadí: označit jako
+nezaplacenou → vrátit do konceptu → smazat (smazat lze jen fakturu ve stavu „Přijata"). U částečně uhrazené faktury
+tlačítko „Vrátit do konceptu" není, nejdřív je nutné zrušit úhradu. Akce **Obnovit** (smazaná → „Přijata") je zatím
+dostupná jen přes API; tlačítko v UI přibude v dalším kroku.
 
 **Odmítnutí faktury:** akce **Odmítnout** (u faktury ve stavu „Přijata") nyní fakturu **smaže** — stav „Odmítnuta" už
 neexistuje, odmítnutá faktura se chová jako smazaná a z přehledů zmizí. Dříve odmítnuté faktury byly při
