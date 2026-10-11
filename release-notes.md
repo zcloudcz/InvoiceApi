@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.11 — 2026-10-11
+
 ### Změny pro uživatele
 
 - **#526** — Přijaté faktury jsou nově uložené společně s vydanými doklady (první krok k jednotnému procesu všech dokladů); chování obrazovek se zatím nemění. Akce Zamítnout u přijaté faktury doklad smaže (stav Zamítnuto je zrušen). ID přijatých faktur se mění, staré odkazy a ID u odběratelů webhooků přestanou platit; mění se i UUID v ISDOC exportu přijaté faktury. `POST /api/invoice` bez `documentType` nově vrací 400. Migrace dat je nevratná: před nasazením záloha DB; při selhání dostane tenant 503 a migrace se zopakuje při dalším požadavku. (PR #527, `fbbf29b`)
