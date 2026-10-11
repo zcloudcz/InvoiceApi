@@ -69,6 +69,7 @@ public class InvoicesTypeFilterTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(factory);
         Services.AddSingleton(Substitute.For<AuthenticationStateProvider>());
         Services.AddSingleton<FakvioService>();
+        Services.AddSingleton<FileAttachmentApiService>();
         Services.AddSingleton<ClientApiService>();
         Services.AddSingleton<InvoiceTemplateApiService>();
         Services.AddSingleton<ContentTemplateApiService>();
