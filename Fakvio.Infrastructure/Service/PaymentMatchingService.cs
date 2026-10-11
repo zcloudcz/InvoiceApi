@@ -1035,16 +1035,18 @@ public class PaymentMatchingService : IPaymentMatchingService
 
     /// <summary>
     /// THE payment status rule, shared by issued and received documents: PaidAmount &gt;= total is Paid,
-    /// 0 &lt; PaidAmount &lt; total is PartiallyPaid, nothing paid is Completed. A Draft never gets here: every
-    /// matching path (automatic candidates, proposals, confirm, manual) refuses a Draft on both sides.
-    /// A Deleted or Creditnoted document only gets its PaidAmount updated - a payment change must never revive a
-    /// deleted document, nor turn a credit-noted invoice back into an open (Completed / PartiallyPaid) one.
+    /// 0 &lt; PaidAmount &lt; total is PartiallyPaid, nothing paid is Completed. No matching path (automatic
+    /// candidates, proposals, confirm, manual) accepts a Draft, but one can still get here through legacy data: a
+    /// deleted partially paid document restored to Draft keeps its matches, and unmatching them lands here.
+    /// A Deleted, Creditnoted or Draft document only gets its PaidAmount updated - a payment change must never
+    /// revive a deleted document, turn a credit-noted invoice back into an open (Completed / PartiallyPaid) one,
+    /// nor promote a Draft that has not been completed yet.
     /// </summary>
     private static void ApplyPaidAmount(Invoice invoice, decimal paidAmount, DateTime txDate)
     {
         invoice.PaidAmount = paidAmount < 0 ? 0 : paidAmount; // defensive
 
-        if (invoice.Status is EInvoiceStatus.Deleted or EInvoiceStatus.Creditnoted)
+        if (invoice.Status is EInvoiceStatus.Deleted or EInvoiceStatus.Creditnoted or EInvoiceStatus.Draft)
             return;
 
         if (invoice.PaidAmount >= invoice.TotalWithVat)
@@ -1059,7 +1061,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         }
         else
         {
-            // Fully unpaid — revert to Completed (a Draft cannot be matched, so it never has matches to remove).
+            // Fully unpaid — revert to Completed (a Draft returns early above).
             invoice.Status = EInvoiceStatus.Completed;
             invoice.PaidAt = null;
         }

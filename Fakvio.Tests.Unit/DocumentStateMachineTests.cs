@@ -393,6 +393,33 @@ public class DocumentStateMachineTests
     }
 
     [Theory]
+    [InlineData(Side.Issued)]
+    [InlineData(Side.Received)]
+    public async Task Unmatch_OnDraftDocument_FreesTransactionAndLeavesStatusAlone(Side side)
+    {
+        // Legacy data: a deleted partially paid document was restored to Draft with its match left behind.
+        var id = SeedDoc(side, EInvoiceStatus.Draft, paidAmount: 400m);
+        var tx = SeedTx(side, 400m);
+        long matchId;
+        using (var seed = NewDb())
+        {
+            var match = new PaymentMatch { BankTransactionId = tx, InvoiceId = id, MatchedAmount = 400m, MatchedAt = DateTime.UtcNow };
+            seed.PaymentMatch.Add(match);
+            seed.SaveChanges();
+            matchId = match.Id;
+        }
+
+        using (var db = NewDb()) await Matching(db).UnmatchAsync(matchId, null, null);
+
+        // The Draft must NOT be promoted to Completed; only the money bookkeeping changes.
+        var doc = Load(id);
+        doc.Status.ShouldBe(EInvoiceStatus.Draft);
+        doc.PaidAmount.ShouldBe(0m);
+        using var check = NewDb();
+        check.BankTransaction.Single(t => t.Id == tx).MatchStatus.ShouldBe(EMatchStatus.Unmatched);
+    }
+
+    [Theory]
     [InlineData(Side.Issued, EInvoiceStatus.Completed, true)]
     [InlineData(Side.Issued, EInvoiceStatus.Deleted, false)]
     [InlineData(Side.Issued, EInvoiceStatus.Draft, false)]
