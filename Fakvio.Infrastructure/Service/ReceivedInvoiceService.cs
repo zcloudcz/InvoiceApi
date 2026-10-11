@@ -27,15 +27,16 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     private readonly TenantDbContext _context;
     private readonly ILogger<ReceivedInvoiceService> _logger;
     private readonly IWebhookPublisher? _webhookPublisher;
-    private readonly IExchangeRateService? _exchangeRateService; // optional: without it no ČNB rate is assigned (§4.17)
+    private readonly DocumentTransitions _transitions; // the ONE state machine shared with InvoiceService
 
     public ReceivedInvoiceService(TenantDbContext context, ILogger<ReceivedInvoiceService> logger, IWebhookPublisher? webhookPublisher = null,
         IExchangeRateService? exchangeRateService = null)
     {
-        _exchangeRateService = exchangeRateService;
         _context = context;
         _logger = logger;
         _webhookPublisher = webhookPublisher;
+        // Received policy: no number sequence and no invoice webhooks (null), the exchange rate is shared (§4.17).
+        _transitions = new DocumentTransitions(context, null, exchangeRateService, null, logger);
     }
 
     // ─── Status vocabulary: unified EInvoiceStatus (storage) <-> EReceivedInvoiceStatus (contract) ───
@@ -98,6 +99,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         IBAN = entity.IBAN,
         SWIFT = entity.SWIFT,
         PaidAt = entity.PaidAt,
+        PaidAmount = entity.PaidAmount,
         Notes = entity.Notes,
         // AttachmentFileName / AttachmentContentType stay null: the old columns were never written by any code.
         Items = entity.InvoiceItem.OrderBy(i => i.OrderIndex).Select(i => i.ToReceivedInvoiceItemDto()).ToList(),
@@ -502,40 +504,16 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         var entity = await _context.Invoice.ReceivedOnly().Include(r => r.Currency).FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return null;
 
-        var status = ToLegacy(entity.Status);
-        if (status != EReceivedInvoiceStatus.Received)
-            throw new InvalidOperationException($"Cannot approve invoice in {status} status. Only Received allowed.");
+        // Only the wording of the refusal is received-specific (the contract speaks of Received / Approved);
+        // the rule itself is the shared one below.
+        if (entity.Status != EInvoiceStatus.Draft)
+            throw new InvalidOperationException($"Cannot approve invoice in {ToLegacy(entity.Status)} status. Only Received allowed.");
 
-        await AssignExchangeRateAsync(entity, ct);
-        entity.Status = EInvoiceStatus.Completed; // legacy "Approved"
-        await _context.SaveChangesAsync(ct);
+        // "Approve" = the shared Draft -> Completed transition (status check + ČNB exchange rate).
+        await _transitions.CompleteAsync(entity, issuedChecks: null, ct);
 
         _logger.LogInformation("Approved received invoice ID {Id}", id);
         return await GetByIdAsync(id, ct);
-    }
-
-    /// <summary>
-    /// Fills the ČNB rate (CZK per unit, valid for the DUZP) of a non-CZK received invoice on approval —
-    /// same rules as InvoiceService.AssignExchangeRateAsync (manual rate kept, CZK cleared, outage = no rate).
-    /// </summary>
-    private async Task AssignExchangeRateAsync(Invoice entity, CancellationToken ct)
-    {
-        var code = entity.Currency?.Code;
-        if (string.IsNullOrEmpty(code) || code.Equals("CZK", StringComparison.OrdinalIgnoreCase))
-        {
-            entity.ExchangeRate = null;
-            entity.ExchangeRateDate = null;
-            return;
-        }
-
-        if (_exchangeRateService == null || (entity.ExchangeRate != null && entity.ExchangeRateDate == null)) return;
-
-        var duzp = DateOnly.FromDateTime(entity.TaxableSupplyDate ?? entity.IssueDate ?? entity.ReceivedDate ?? DateTime.UtcNow);
-        var rate = await _exchangeRateService.GetRateAsync(code, duzp, ct);
-        if (rate == null)
-            _logger.LogWarning("No ČNB rate for {Currency} on {Date}; received invoice {Id} is approved without an exchange rate", code, duzp, entity.Id);
-        entity.ExchangeRate = rate?.RatePerUnit;
-        entity.ExchangeRateDate = rate?.ValidFor;
     }
 
     /// <inheritdoc />
@@ -544,16 +522,41 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         var entity = await _context.Invoice.ReceivedOnly().FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return null;
 
-        var status = ToLegacy(entity.Status);
-        if (status != EReceivedInvoiceStatus.Approved)
-            throw new InvalidOperationException($"Cannot mark as paid in {status} status. Only Approved allowed.");
-
-        entity.Status = EInvoiceStatus.Paid;
-        entity.PaidAt = paidAt ?? DateTime.UtcNow;
-        entity.PaidAmount = entity.TotalWithVat; // fully paid, keeps PaidAmount consistent with Status = Paid
-        await _context.SaveChangesAsync(ct);
+        await _transitions.MarkPaidAsync(entity, paidAt, ct);
 
         _logger.LogInformation("Marked received invoice ID {Id} as paid", id);
+        return await GetByIdAsync(id, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<ReceivedInvoiceDto?> MarkAsUnpaidAsync(long id, CancellationToken ct = default)
+    {
+        var entity = await _transitions.MarkUnpaidAsync(_context.Invoice.ReceivedOnly(), id, ct);
+        if (entity is null) return null;
+
+        _logger.LogInformation("Marked received invoice ID {Id} as unpaid", id);
+        return await GetByIdAsync(id, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<ReceivedInvoiceDto?> RevertToDraftAsync(long id, CancellationToken ct = default)
+    {
+        var entity = await _context.Invoice.ReceivedOnly().FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (entity is null) return null;
+
+        await _transitions.RevertToDraftAsync(entity, ct);
+
+        return await GetByIdAsync(id, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<ReceivedInvoiceDto?> RestoreAsync(long id, CancellationToken ct = default)
+    {
+        var entity = await _context.Invoice.ReceivedOnly().FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (entity is null) return null;
+
+        await _transitions.RestoreAsync(entity, ct);
+
         return await GetByIdAsync(id, ct);
     }
 
@@ -567,9 +570,9 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         if (status != EReceivedInvoiceStatus.Received)
             throw new InvalidOperationException($"Cannot reject invoice in {status} status. Only Received allowed.");
 
-        // "Rejected" is abolished in the unified model: rejecting soft-deletes the document.
-        entity.Status = EInvoiceStatus.Deleted;
-        await _context.SaveChangesAsync(ct);
+        // "Rejected" is abolished in the unified model: rejecting IS the shared Draft -> Deleted transition
+        // (the check above only keeps the legacy wording of the refusal).
+        await _transitions.DeleteAsync(entity, ct);
 
         _logger.LogInformation("Rejected (soft-deleted) received invoice ID {Id}", id);
         return await GetByIdAsync(id, ct);
@@ -581,16 +584,8 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         var entity = await _context.Invoice.ReceivedOnly().FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return false;
 
-        // Legacy rule: delete only from Received (or Rejected, which no longer exists as a separate state).
-        var status = ToLegacy(entity.Status);
-        if (status != EReceivedInvoiceStatus.Received)
-        {
-            throw new InvalidOperationException(
-                $"Cannot delete invoice in {status} status. Only Received or Rejected allowed.");
-        }
-
-        entity.Status = EInvoiceStatus.Deleted;
-        await _context.SaveChangesAsync(ct);
+        // Shared delete: Draft only for a received document (the supplier's number is left untouched).
+        await _transitions.DeleteAsync(entity, ct);
 
         _logger.LogInformation("Soft-deleted received invoice ID {Id}", id);
         return true;

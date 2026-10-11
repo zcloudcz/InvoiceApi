@@ -50,9 +50,28 @@ public interface IReceivedInvoiceService
 
     /// <summary>
     /// Marks a received invoice as paid.
-    /// Transition: Approved -> Paid.
+    /// Transition: Approved -> Paid (a partially paid invoice may be completed by hand too).
     /// </summary>
     Task<ReceivedInvoiceDto?> MarkAsPaidAsync(long id, DateTime? paidAt = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Takes the payment back: removes the matched bank payments and recalculates the transactions.
+    /// Transition: Paid or partially paid (legacy Approved/Paid) -> Approved.
+    /// Same shared transition as for issued documents.
+    /// </summary>
+    Task<ReceivedInvoiceDto?> MarkAsUnpaidAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reverts an approved (not paid) received invoice to Draft so it can be edited or deleted.
+    /// Transition: Approved -> Received.
+    /// </summary>
+    Task<ReceivedInvoiceDto?> RevertToDraftAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Restores a soft-deleted (or rejected) received invoice.
+    /// Transition: Deleted -> Received.
+    /// </summary>
+    Task<ReceivedInvoiceDto?> RestoreAsync(long id, CancellationToken ct = default);
 
     /// <summary>
     /// Rejects a received invoice.
@@ -62,7 +81,7 @@ public interface IReceivedInvoiceService
 
     /// <summary>
     /// Soft-deletes a received invoice.
-    /// Only allowed in Received or Rejected status.
+    /// Only allowed in Received status (revert an approved one to draft first).
     /// </summary>
     Task<bool> DeleteAsync(long id, CancellationToken ct = default);
 

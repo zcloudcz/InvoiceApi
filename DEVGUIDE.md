@@ -846,6 +846,11 @@ rows 10/11/25/43/44 and DPHKH1 sections A.1/B.1.
 UI: `VatRegimeSelect` + `ReverseChargeCodeSelect` in `ReceivedInvoiceDetail.razor`; MCP `create_received_invoice`
 accepts `vatRegime` / `reverseChargeCodeId` per item (the DTO is passed through).
 
+`ReceivedInvoiceDto.PaidAmount` (mapped from `Invoice.PaidAmount`) exists because the legacy status reports PartiallyPaid
+as `Approved`: `ReceivedInvoiceDetail.razor` shows "mark as unpaid" for Paid or (Approved and PaidAmount > 0) and
+"revert to draft" only for Approved with PaidAmount == 0. `ReceivedInvoiceApiService` has `MarkAsUnpaidAsync`,
+`RevertToDraftAsync`, `RestoreAsync` (restore has no button yet).
+
 **UI**: `InvoiceItemEditor` uses the reusable `VatRegimeSelect` (wraps `EnumSelect<EVatRegime>`) and
 `ReverseChargeCodeSelect` (code list supplied by the caller) from `Fakvio.UI.Shared/Components/Shared/`; the
 invoice-level "reverse charge" switch is UI-only (loops over items, no persisted field) and re-syncs when per-row
@@ -2821,6 +2826,56 @@ hranice ho odmítá dřív, než cokoli uloží: `IssuedDocumentTypes.EnsureIssu
 `InvoiceTemplateService.CreateTemplateAsync` a `NumberSequenceService.CreateSequenceAsync`. Nástroje (MCP, chat) parsují
 přes `IssuedDocumentTypes.TryParse` a nabízejí `IssuedDocumentTypes.Names`, **nikdy `Enum.GetNames<EDocumentType>()`
 ani holé `Enum.TryParse`** (bere i číslo `"5"`). Testy: `IssuedDocumentTypeBoundaryTests`.
+
+**Jeden stavový automat pro všechny doklady (krok 2 ze 4).** Proces je pro každý typ dokladu stejný; doklady se liší
+JEN typem (`EDocumentType`) a malou, explicitní *typovou politikou*. Každý přechod má **jedinou implementaci** v
+`Fakvio.Infrastructure/Service/DocumentTransitions.cs` (interní kolaborátor; `InvoiceService` ho drží v `_transitions`,
+fasáda `ReceivedInvoiceService` si ho vytvoří sama). Volající jen načte doklad ze SVÉ strany tabulky
+(`IssuedOnly()` / `ReceivedOnly()` → cizí id = „not found") a výsledek namapuje; pravidla se nekopírují.
+
+```
+Draft ──complete──► Completed ──mark paid──► Paid / PartiallyPaid
+  ▲  ◄─revert-to-draft─┘   ▲                        │
+  │                        └──────mark unpaid───────┘
+  └─restore─ Deleted ◄─delete─ (Draft; vydaný Completed = jen poslední v řadě)
+```
+
+| Přechod | Z → Do | Vydaný doklad | Přijatý doklad (`ReceivedInvoiceService`) |
+|---|---|---|---|
+| complete | Draft → Completed | `POST /api/invoice/{id}/complete` | `POST /api/received-invoice/{id}/approve` |
+| mark paid | Completed / PartiallyPaid → Paid | `.../mark-paid` | `.../mark-paid` |
+| mark unpaid | Paid / PartiallyPaid → Completed (smaže `PaymentMatch`, přepočte `MatchStatus` transakcí, `PaidAmount=0`) | `.../mark-unpaid` | `.../mark-unpaid` |
+| revert to draft | Completed → Draft | `.../revert-to-draft` | `.../revert-to-draft` |
+| delete | Draft → Deleted (vydaný Completed viz politika) | `DELETE /api/invoice/{id}` | `DELETE /api/received-invoice/{id}` |
+| restore | Deleted → Draft | `.../restore` | `.../restore` |
+
+Cesta zpět u zaplacené přijaté faktury: `mark-unpaid` → `revert-to-draft` → `DELETE` (→ `restore`). `Reject` zůstává
+(= sdílený `delete` z Draftu; fasáda jen drží původní znění odmítnutí, stejně jako u `approve`). Chybně použitý přechod = `InvalidOperationException` → HTTP 400.
+
+**Typová politika (jediné povolené rozdíly):**
+
+| | Vydané typy (Invoice, CreditNote, Proforma, TaxReceiptForAdvance) | `ReceivedInvoice` |
+|---|---|---|
+| číslo dokladu | z číselné řady (fallback `DRAFT`), při delete se uvolní do řady a `DocumentNumber` se vynuluje | číslo dodavatele: **nikdy** se negeneruje, neuvolňuje ani nemaže |
+| delete z Completed | jen **poslední** nesmazaný doklad stejného typu (souvislá číselná řada) | nikdy (nejdřív `revert-to-draft`); delete = jen Draft |
+| complete – navíc | readiness gate (#206), unikátní VS (jen vydané) | jen kontrola stavu + kurz ČNB (`approve` si drží dnešní validace) |
+| kurz ČNB | při complete (dobropis zdědí kurz originálu) | při complete (`approve`); ruční kurz měnitelný jen před schválením |
+| webhooky `invoice.paid` / `invoice.cancelled` | ano | ne (jen `received_invoice.created`) |
+| proforma → DPP po zaplacení | ano (`InvoiceService.MarkAsPaidAsync`) | – |
+
+Stavy `Paid` / `PartiallyPaid` / `Creditnoted` se nikdy nemažou. Platby (`PaymentMatchingService`) mají **jedno pravidlo
+pro obě strany** (`ApplyPaidAmount`): `PaidAmount >= total` = Paid, `0 < PaidAmount < total` = PartiallyPaid (DTO přijaté
+faktury ho dál mapuje na `Approved`), nic = Completed. `UnmatchAsync` přepočítá `PaidAmount` a stav ze ZBYLÝCH
+`PaymentMatch` a **nikdy neoživí `Deleted`** doklad. **Unmatch po ručním doplacení se odmítá** (obě strany): je-li
+doklad `Paid` / `PartiallyPaid` a `PaidAmount` > součet jeho `PaymentMatch` (část byla uhrazena ručně přes mark-paid,
+nebo jde o migrovaný přijatý řádek), `UnmatchAsync` vyhodí `InvalidOperationException` dřív, než cokoli změní - přepočet
+by ruční část potichu smazal. Cesta ven je `mark-unpaid` (smaže všechny páry, `PaidAmount=0`). Hláška jde obvyklou cestou
+této služby: controller → HTTP 400 `{ message }` → `ApiClientBase` → snackbar. `UnmatchAsync` je **jediné** místo, které
+maže jednotlivý `PaymentMatch` (druhé je `DocumentTransitions.MarkUnpaidAsync`); nový unmatch (bulk, MCP) musí volat ji. Kandidáti na auto/ruční spárování i explicitní potvrzení vyloučí
+`Deleted` **i `Draft`** na obou stranách: platbu lze spárovat jen s dokončeným dokladem (vydaný = vystavený, přijatý =
+**schválený**), jinak by se doklad stal uhrazeným bez `complete` / `approve` (bez čísla, bez kurzu ČNB). `Draft` proto
+nikdy nemá `PaymentMatch`. Další platba se přiděluje jen do zbývající částky (`total − PaidAmount`).
+Testy: `DocumentStateMachineTests` (matice přechodů × obě strany, politika, platby), `ReceivedInvoiceTransitionEndpointTests`.
 
 **Migrace `UnifyDocumentsInInvoiceTable`** (tenant, `Fakvio.Infrastructure/Migrations/Tenant`): ručně psané SQL
 (`UnifyDocumentsInInvoiceTableSql`) — nové id = souvislý blok z identity sekvence `Invoice` v pořadí starých id,

@@ -45,6 +45,12 @@ public class ReceivedInvoiceDto
     public string? SWIFT { get; set; }
 
     public DateTime? PaidAt { get; set; }
+
+    /// <summary>
+    /// Amount already paid. The legacy status reports a partially paid invoice as Approved,
+    /// so PaidAmount > 0 with Status = Approved is how the UI recognises a partial payment.
+    /// </summary>
+    public decimal PaidAmount { get; set; }
     public string? Notes { get; set; }
 
     /// <summary>
