@@ -49,10 +49,7 @@ public class ChatToolPageTotalParityTests
         var service = Substitute.For<IInvoiceService>();
         service.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>()).Returns(page);
 
-        var tenantResolver = Substitute.For<ITenantResolver>();
-        tenantResolver.GetCurrentCompanyId().Returns(42L);
-
-        return new ListInvoicesTool(service, tenantResolver, Substitute.For<ILogger<ListInvoicesTool>>());
+        return new ListInvoicesTool(service, Substitute.For<ILogger<ListInvoicesTool>>());
     }
 
     private static ListReceivedInvoicesTool BuildListReceivedInvoicesTool()

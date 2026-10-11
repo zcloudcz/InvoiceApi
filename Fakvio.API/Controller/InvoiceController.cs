@@ -19,9 +19,11 @@ namespace Fakvio.API.Controller;
 /// <summary>
 /// Controller for managing invoices and credit notes.
 /// Provides CRUD operations and invoice lifecycle management.
-/// Users can only manage invoices from their own company (IssuerId = user's CompanyId).
-/// SysAdmin can impersonate a company via X-Company-Id header — the middleware
-/// sets the CompanyId claim, so filtering works automatically.
+/// Users can only manage documents of their own company: the database is schema-per-tenant, so every
+/// row this controller can reach already belongs to the caller's company (the CompanyId claim selects
+/// the schema; a SysAdmin impersonating via X-Company-Id gets that claim from the middleware).
+/// The CompanyId claim is a MASTER database id and must never be compared with <c>Invoice.IssuerId</c>,
+/// which is a client id inside the tenant schema - the two are unrelated numbers.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -72,24 +74,12 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
-    /// Gets the effective company ID from JWT claims.
-    /// For regular users, this is their own CompanyId from JWT.
-    /// For SysAdmin impersonating, the ImpersonationMiddleware sets this from X-Company-Id header.
-    /// Returns null if no company context (SysAdmin not impersonating).
-    /// </summary>
-    private long? GetCurrentUserCompanyId()
-    {
-        var companyIdClaim = User.FindFirst("CompanyId")?.Value;
-        return long.TryParse(companyIdClaim, out var companyId) ? companyId : null;
-    }
-
-    /// <summary>
     /// Gets all invoices and credit notes with optional filtering
     /// </summary>
     /// <param name="documentType">Filter by document type (Invoice or CreditNote)</param>
     /// <param name="status">Filter by status (Draft, Completed, Paid, etc.)</param>
     /// <param name="clientId">Filter by client ID</param>
-    /// <param name="issuerId">Filter by issuer ID</param>
+    /// <param name="issuerId">Optional filter by issuer: the Id of one of the tenant's own-company clients (<c>Client.IsIssuer</c>), NOT the company id</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of invoices/credit notes</returns>
     /// <response code="200">Returns list of invoices</response>
@@ -104,14 +94,9 @@ public class InvoiceController : ControllerBase
         [FromQuery] long? issuerId = null,
         CancellationToken cancellationToken = default)
     {
-        // Auto-filter by company: regular users see only their company's invoices,
-        // SysAdmin sees only impersonated company's invoices (or all if not impersonating)
-        var companyId = GetCurrentUserCompanyId();
-        if (companyId.HasValue)
-        {
-            issuerId = companyId.Value;
-        }
-
+        // No forced issuer filter: the tenant schema holds only the caller's company, and the company id
+        // (master DB) is not an issuer client id (tenant schema). Forcing it hid every document of a tenant
+        // whose issuer client id differs from its company id. issuerId stays an optional caller filter.
         _logger.LogInformation("GET /api/invoice - documentType: {DocumentType}, status: {Status}, clientId: {ClientId}, issuerId: {IssuerId}",
             documentType, status, clientId, issuerId);
 
@@ -157,13 +142,7 @@ public class InvoiceController : ControllerBase
         [FromQuery] InvoiceFilterDto filter,
         CancellationToken cancellationToken = default)
     {
-        // Auto-filter by company: ensure users only see invoices from their company
-        var companyId = GetCurrentUserCompanyId();
-        if (companyId.HasValue)
-        {
-            filter.IssuerId = companyId.Value;
-        }
-
+        // No forced issuer filter - see GetAllInvoices. filter.IssuerId is whatever the caller asked for.
         _logger.LogInformation("GET /api/invoice/paged - Page: {Page}, PageSize: {PageSize}, Search: {Search}, IssuerId: {IssuerId}",
             filter.Page, filter.PageSize, filter.Search, filter.IssuerId);
 

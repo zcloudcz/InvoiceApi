@@ -2922,6 +2922,14 @@ exporty) dostávají přesně to, co dřív. Zadané obě (`DocumentTypes` i `Do
 `AttachmentCount` jen u přijatých řádků (jeden seskupený dotaz na stránku). Příloh se jednotné API netýká: zůstává
 generické `FileAttachmentController` (`entityName` = `"ReceivedInvoice"` pro přijaté).
 
+**Id firmy NENÍ id vystavitele.** `CompanyId` (claim, `ITenantResolver.GetCurrentCompanyId()`) je id firmy v **master**
+DB; `Invoice.IssuerId` je id klienta `IsIssuer` v **tenant** schématu. Čísla spolu nesouvisí (v produkci má vystavitel
+každého tenanta Id 1, firmy mají 1, 3, 4, ...). Nikdy je neporovnávej: tenant schéma už obsahuje jen doklady jedné firmy,
+takže seznamy (`GET /api/invoice`, `/paged`), `DashboardService` ani chat `ListInvoicesTool` podle firmy **nefiltrují**
+(dřívější vynucené `IssuerId = CompanyId` skrylo doklady každého tenanta, kde se čísla liší). `issuerId` /
+`InvoiceFilterDto.IssuerId` zůstává volitelný filtr volajícího = id klienta `IsIssuer` (např. z `GET /api/client/issuer`).
+Test: `IssuerClientIdDiffersFromCompanyIdTests`.
+
 *Typová politika create / update* (`ReceivedDocumentWriter`, jediné místo; fasáda `ReceivedInvoiceService` mapuje svá
 legacy DTO na `CreateInvoiceDto` / `UpdateInvoiceDto` a volá totéž, takže oba vstupy zapisují identické řádky):
 
