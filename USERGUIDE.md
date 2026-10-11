@@ -209,11 +209,11 @@ Grid zobrazuje vydané faktury s těmito sloupci:
 **Částečně uhrazená faktura (PartiallyPaid):** vznikne, když spárovaná bankovní platba pokryje jen část částky. Pro
 takovou fakturu (stejně pro dobropis, proformu i přijatou fakturu) nově platí:
 
-- **Označit jako zaplacenou** lze i částečně uhrazenou fakturu — zbytek se bere jako doplacený ručně (např. hotově)
+- **Označit jako zaplacenou** lze i částečně uhrazenou fakturu - zbytek se bere jako doplacený ručně (např. hotově)
   a faktura přejde do stavu Paid. Dříve to šlo jen u faktury ve stavu Issued.
 - **Označit jako nezaplacenou** (zrušit úhradu) lze i u částečně uhrazené faktury, nejen u zaplacené. Zruší se tím
   **všechna** párování plateb této faktury (platby se vrátí mezi nespárované) a faktura se vrátí do stavu Issued.
-- **Smazat** částečně uhrazenou fakturu nelze (stejně jako zaplacenou) — nejdřív zrušte úhradu („Označit jako
+- **Smazat** částečně uhrazenou fakturu nelze (stejně jako zaplacenou) - nejdřív zrušte úhradu („Označit jako
   nezaplacenou"), pak ji lze smazat podle běžných pravidel (Draft, nebo poslední Issued v číselné řadě).
 
 Tlačítka pro částečně uhrazenou fakturu přibudou v UI v dalším kroku; přes API tato pravidla platí už teď. Zrušení
@@ -720,7 +720,7 @@ Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
 
 **Párování plateb jen se schválenou fakturou:** bankovní platbu lze spárovat pouze s přijatou fakturou ve stavu
 „Schválena" (stejně jako u vydaných faktur jen s vystavenou). Faktura ve stavu „Přijata" se při automatickém párování
-ani v návrzích nenabízí a potvrzení párování aplikace odmítne — fakturu nejdřív **schvalte**, pak platbu spárujte
+ani v návrzích nenabízí a potvrzení párování aplikace odmítne - fakturu nejdřív **schvalte**, pak platbu spárujte
 (u už importované platby stačí znovu spustit „Automaticky spárovat").
 
 **Cesta zpět u zaplacené faktury:** nové akce **Označit jako nezaplacenou** (zruší spárované platby; faktura se vrátí do
@@ -1116,7 +1116,7 @@ Kliknutím na řádek s platbou se otevře detail → tlačítko „Spárovat s 
 
 **Zrušení párování:** v detailu faktury (i přijaté faktury) lze u spárované platby párování zrušit; stav dokladu se přepočítá
 podle zbylých plateb (částečně uhrazená / vystavená). **Výjimka:** pokud byl doklad zčásti uhrazen bankovní platbou a zbytek jste
-doplatili ručně („Označit jako zaplacenou"), jednotlivou platbu odpárovat nelze — ručně zadaná část by se ztratila. Aplikace
+doplatili ručně („Označit jako zaplacenou"), jednotlivou platbu odpárovat nelze - ručně zadaná část by se ztratila. Aplikace
 zrušení odmítne a vyzve vás, abyste nejdřív zrušili úhradu na dokladu („Označit jako nezaplacenou"); tím se zruší všechna
 párování dokladu a úhradu můžete zadat znovu.
 

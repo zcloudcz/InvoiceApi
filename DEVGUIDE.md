@@ -2863,7 +2863,7 @@ pro obě strany** (`ApplyPaidAmount`): `PaidAmount >= total` = Paid, `0 < PaidAm
 faktury ho dál mapuje na `Approved`), nic = Completed. `UnmatchAsync` přepočítá `PaidAmount` a stav ze ZBYLÝCH
 `PaymentMatch` a **nikdy neoživí `Deleted`** doklad. **Unmatch po ručním doplacení se odmítá** (obě strany): je-li
 doklad `Paid` / `PartiallyPaid` a `PaidAmount` > součet jeho `PaymentMatch` (část byla uhrazena ručně přes mark-paid,
-nebo jde o migrovaný přijatý řádek), `UnmatchAsync` vyhodí `InvalidOperationException` dřív, než cokoli změní — přepočet
+nebo jde o migrovaný přijatý řádek), `UnmatchAsync` vyhodí `InvalidOperationException` dřív, než cokoli změní - přepočet
 by ruční část potichu smazal. Cesta ven je `mark-unpaid` (smaže všechny páry, `PaidAmount=0`). Hláška jde obvyklou cestou
 této služby: controller → HTTP 400 `{ message }` → `ApiClientBase` → snackbar. `UnmatchAsync` je **jediné** místo, které
 maže jednotlivý `PaymentMatch` (druhé je `DocumentTransitions.MarkUnpaidAsync`); nový unmatch (bulk, MCP) musí volat ji. Kandidáti na auto/ruční spárování i explicitní potvrzení vyloučí
