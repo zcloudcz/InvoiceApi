@@ -2917,8 +2917,9 @@ a MCP nástrojů (krok 4).
 platby, auto-match) berou typ z **uloženého řádku**, nikdy z URL; přechody jsou sdílené (`DocumentTransitions`).
 *Seznamy a hledání mají explicitní rozsah*: `InvoiceFilterDto.DocumentTypes` (množina typů, např. `?DocumentTypes=5`),
 `InvoiceFilterDto.DocumentType` a `GET /api/invoice?documentType=`, `GET /api/invoice/by-number/{n}?documentType=`.
-**Výchozí rozsah (nic nezadáno) = jen vydané typy**, takže stávající volající (UI, MCP, chat nástroje, dashboardy,
-exporty) dostávají přesně to, co dřív. Zadané obě (`DocumentTypes` i `DocumentType`) = průnik. Stránkovaný seznam plní
+**Výchozí rozsah (nic nezadáno) = jen vydané typy**, takže *seznam bez zadaného typu* vrací stávajícím volajícím
+(UI, MCP, chat nástroje, exporty) to, co dřív. **Pro volání podle id a pro seznam se zadaným typem to neplatí**, viz
+„Co se změnilo pro stávající volající" níže. Zadané obě (`DocumentTypes` i `DocumentType`) = průnik. Stránkovaný seznam plní
 `AttachmentCount` jen u přijatých řádků (jeden seskupený dotaz na stránku). Příloh se jednotné API netýká: zůstává
 generické `FileAttachmentController` (`entityName` = `"ReceivedInvoice"` pro přijaté).
 
@@ -2964,8 +2965,28 @@ závislou), hromadný ZIP příloh, AI import, `approve` / `reject`). Služby vy
 `IssuedOnly()`; 400 vzniká v kontroleru dřív, než se zavolají. Filtr se ptá **jedním dotazem** na všechna id požadavku
 (`IInvoiceService.FindReceivedDocumentIdAsync`) a `bulk/pdf|isdoc|ubl?ids=` přijme nejvýš 100 různých id
 (`DownloadLinkController.MaxBulkIds`, stejný limit jako odkazy ke stažení; víc = 400). Přidáváš-li do `InvoiceController` akci jen pro vydané
-doklady, označ ji `[IssuedDocumentOnly]` a doplň ji do `IssuedDocumentOnlyAttributeTests.IssuedOnlyActions`. Chat nástroje
-(`InvoiceLookup`) dál berou přijaté id jako „not found" (mají vlastní nástroje pro přijaté). Testy:
+doklady, označ ji `[IssuedDocumentOnly]` a doplň ji do `IssuedDocumentOnlyAttributeTests.IssuedOnlyActions`.
+
+*Co se změnilo pro stávající volající* (MCP, chat a Blazor se v kroku 3a **neměnily**, ale volají `api/invoice`, které
+teď zná i přijaté doklady; dřív přijaté id znamenalo všude 404 / „not found"):
+
+| Volající dostane **přijaté id** / typ | Dřív | Teď |
+|---|---|---|
+| MCP `get_invoice` | not found | vrátí přijatý doklad jako `InvoiceDto` (`find_invoice_by_number` beze změny: hledá jen ve vydaných) |
+| MCP `update_invoice` | not found | upraví přijatý doklad politikou přijatých (Draft / Completed / PartiallyPaid); sazby DPH si nástroj dohledává s předpoklady vydané faktury |
+| MCP `delete_invoice` | not found | soft-delete přijatého Draftu |
+| MCP `complete_invoice` | not found | schválí přijatý doklad (Draft → Completed, bez čísla z řady) |
+| MCP `mark_invoice_paid`, `revert_invoice_to_draft` | not found | provede přechod nad přijatým dokladem |
+| MCP `send_invoice_email`, `get_invoice_email_options`, `issue_final_invoice`, `issue_tax_receipt`, `get_remaining_advance` | not found | **400** (`[IssuedDocumentOnly]`) |
+| MCP `set_invoice_bank_account` | not found | **400** (`BankAccountId` je u přijatého odmítnuté pole) |
+| MCP exporty (`export_invoice_pdf` / `_isdoc` / `_ubl`; ZIP beze změny, přijaté id přeskočí) | not found | nástroj doklad najde a požádá o odkaz ke stažení; odkazy volají akce přímo (mimo filtr) a služby exportů jsou `IssuedOnly()`, takže UBL selže hned (404 z dry-runu) a **PDF / ISDOC vrátí odkaz, který po otevření odpoví 404**. Přímé HTTP exporty (`api/invoice/{id}/pdf` ...) odpoví 400. Opraví krok 4 (MCP) |
+| MCP `list_invoices(documentType: "ReceivedInvoice")`, chat `list_invoices(document_type: ReceivedInvoice)` | prázdný seznam | vrátí přijaté doklady (oba nástroje parsují holým `Enum.TryParse`; chat schéma tuto hodnotu nenabízí) |
+| chat nástroje podle id (`InvoiceLookup`) | not found | beze změny: not found (mají vlastní nástroje pro přijaté) |
+| Blazor `/invoices/{přijatéId}` | „nenalezeno" | `InvoiceDetail` přesměruje na `/received-invoices/{id}` (vydaný detail přijatý doklad nevykreslí; sjednocené UI je krok 3b) |
+
+Všechny tyto cesty jdou přes politiku přijatých dokladů (`DocumentTransitions`, `ReceivedDocumentWriter`): neuvolní
+číslo, nepublikují `invoice.*` webhook, nenahrávají PDF do cloudu, nevystaví DPP. Jde o změnu chování nástrojů
+popsaných jako „fakturační", ne o bezpečnostní díru. Testy:
 `DocumentSideIsolationTests`, `UnifiedReceivedDocumentTests` (včetně shody fasády a jednotného API sloupec po sloupci),
 `IssuedDocumentOnlyAttributeTests`, `UnifiedDocumentEndpointTests`.
 
