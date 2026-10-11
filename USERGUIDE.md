@@ -1411,7 +1411,7 @@ zkuste to znovu.
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
 nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
-volání Fakvia. Nabízí 88 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+volání Fakvia. Nabízí 90 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
 výpočty, šablony, měny, nastavení, platby a upomínky, opakované faktury.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
@@ -1549,9 +1549,9 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 
 | Oblast | Příklady |
 |--------|---------|
-| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, odeslat emailem (příjemce, kopie, volba příloh, uložené soubory dokladu), zobrazit možnosti odeslání, stáhnout PDF, ISDOC nebo UBL (i více faktur najednou jako ZIP), smazat koncept |
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, upravit koncept (data, položky, platební údaje), dokončit, označit jako uhrazenou, zrušit úhradu, vrátit na koncept, obnovit smazaný doklad, odeslat emailem (příjemce, kopie, volba příloh, uložené soubory dokladu), zobrazit možnosti odeslání, stáhnout PDF, ISDOC nebo UBL (i více faktur najednou jako ZIP), smazat koncept |
 | Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES, zjistit vystavitele |
-| Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat, stáhnout ISDOC, stáhnout přílohy (jednu, všechny u záznamu nebo u více faktur najednou jako ZIP) |
+| Přijaté faktury | Vypsat, zobrazit, zadat novou (dodavatel, jeho číslo dokladu, datum přijetí), upravit, schválit, označit jako uhrazenou, zrušit úhradu, vrátit na koncept, smazat a smazání vrátit (stejné nástroje jako u vydaných faktur), stáhnout ISDOC, stáhnout přílohy (jednu, všechny u záznamu nebo u více faktur najednou jako ZIP) |
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
 | Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné, daňové nastavení |
 | Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
@@ -1565,6 +1565,8 @@ Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzulta
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“, „Změň splatnost konceptu FAK-2026-002 na 30. 6.“
 
 **Odeslání faktury emailem přes AI.** Příjemci vždy dorazí **PDF i ISDOC** faktury (u slovenských a Peppol odběratelů navíc UBL XML). AI může zadat i vlastní **předmět** emailu (nahradí předmět ze šablony) a vlastní **zprávu** (prostý text, zobrazí se nad textem ze šablony; HTML se nevykonává, jen se zobrazí jako text). AI také umí zobrazit **celý text e-mailu** před odesláním (předmět a tělo ze šablony s doplněnými údaji) a odeslat jeho upravenou verzi — ta pak celé tělo šablony nahradí (skripty, iframe a odkazy `javascript:` se odmítnou). Navíc lze přiložit **další soubory**: nejvýše 5, dohromady do 10 MB, jen typy `pdf`, `isdoc`, `xml`, `txt`, `csv`, `png`, `jpg`, `jpeg`, `xlsx`, `docx`, `zip`. Nepovolený typ, příliš velký soubor nebo vadný soubor se odmítne srozumitelnou chybou a email se **neodešle**.
+
+**Jeden postup pro všechny doklady.** Vydané faktury, dobropisy, zálohové faktury i přijaté faktury od dodavatelů se liší jen typem; AI je vypisuje, hledá, zakládá, upravuje, schvaluje / vystavuje, označuje jako uhrazené a maže stejným způsobem. Vypsání bez upřesnění ukáže jen vaše vydané doklady, přijaté si AI vyžádá výslovně. Operace určené jen pro vydané doklady (PDF, vydaný ISDOC, UBL, odeslání e-mailem, QR platba, dobropis, zálohy) u přijaté faktury odmítne srozumitelnou hláškou a odkaz ke stažení nevydá. **Cesta zpět u zaplaceného dokladu** (vydaného i přijatého): nejdřív zrušit úhradu, pak vrátit na koncept, pak případně smazat (a smazání jde vrátit); AI se před tím vždy zeptá. Jednotlivou bankovní platbu lze odpárovat přímo jen tehdy, když byl doklad uhrazen výhradně spárovanými platbami; po ručním doplacení pomůže zrušení úhrady, které zruší všechna spárování.
 
 **Úprava faktury.** AI upraví jen **koncept**; změní jen to, co jste zadali (při změně položek nahradí všechny řádky celým novým seznamem). Už **vystavenou** fakturu sama nezmění: nejdřív se vás zeptá, zda ji smí vrátit na koncept — vystavený doklad se tím stane konceptem, po úpravě ho musíte znovu vystavit a pokud už byl odeslán emailem, poslat klientovi znovu. Zaplacenou nebo dobropisovanou fakturu upravit nejde; opravíte ji dobropisem a novou fakturou.
 
