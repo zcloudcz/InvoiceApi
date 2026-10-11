@@ -44,11 +44,11 @@ public class AbraFlexiAccountingExporter : IAccountingExporter
         && (invoice.DocumentNumber?.Length ?? 0) is > 0 and <= 20 // faktura-vydana.kod max length
         && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
 
-    public bool CanExport(ReceivedInvoice invoice) =>
+    public bool CanExportReceived(Invoice invoice) =>
         AccountingExportCommon.CurrencyExportable(invoice.Currency?.Code, invoice.ExchangeRate)
-        && AccountingExportCommon.AllRatesSupported((invoice.Items ?? []).Select(i => i.VatRatePercentage));
+        && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Select(i => i.VatRatePercentage));
 
-    public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<ReceivedInvoice> receivedInvoices, Client issuer)
+    public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<Invoice> receivedInvoices, Client issuer)
     {
         var root = new XElement("winstrom", new XAttribute("version", "1.0"));
 
@@ -91,7 +91,7 @@ public class AbraFlexiAccountingExporter : IAccountingExporter
         return el;
     }
 
-    private static XElement BuildReceived(ReceivedInvoice invoice)
+    private static XElement BuildReceived(Invoice invoice)
     {
         // No "kod": Flexi assigns its own internal number from the series.
         var el = new XElement("faktura-prijata",
@@ -102,9 +102,9 @@ public class AbraFlexiAccountingExporter : IAccountingExporter
         AddDates(el, invoice.DueDate, invoice.TaxableSupplyDate ?? invoice.IssueDate);
         AddCurrency(el, invoice.Currency?.Code, invoice.ExchangeRate);
         AddNote(el, invoice.Notes);
-        AddPartner(el, invoice.Supplier);
+        AddPartner(el, invoice.Client);
 
-        var items = invoice.Items?.OrderBy(i => i.OrderIndex).ToList() ?? [];
+        var items = invoice.InvoiceItem?.OrderBy(i => i.OrderIndex).ToList() ?? [];
         el.Add(new XElement("polozkyFaktury", items.Select(i => BuildItem("faktura-prijata-polozka",
             i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage, false))));
         return el;

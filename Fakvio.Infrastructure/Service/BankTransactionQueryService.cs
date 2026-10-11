@@ -129,8 +129,10 @@ public class BankTransactionQueryService : IBankTransactionQueryService
             ParserConfidence = t.ParserConfidence,
             ParserModel = t.ParserModel,
             MatchedInvoiceNumbers = t.PaymentMatch
-                .Where(m => m.Invoice != null)
-                .Select(m => m.Invoice!.DocumentNumber ?? "")
+                // Only matches to ISSUED documents are listed here (as before the table merge, when
+                // payments to supplier invoices had no Invoice link at all).
+                .Where(m => m.Invoice.DocumentType != EDocumentType.ReceivedInvoice)
+                .Select(m => m.Invoice.DocumentNumber ?? "")
                 .ToList(),
             MatchedTotal = t.PaymentMatch.Sum(m => m.MatchedAmount),
             RecognizedCounterpartyId = t.RecognizedCounterpartyId,

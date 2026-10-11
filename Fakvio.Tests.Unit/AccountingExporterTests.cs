@@ -433,8 +433,8 @@ public class AccountingExporterTests
         pohoda.CanExport(tooLongForPohoda).ShouldBeFalse(); // numberRequested is string20
         money.CanExport(longNumber).ShouldBeTrue(); // number goes to EvCisDokl, Doklad is omitted
         flexi.CanExport(longNumber).ShouldBeTrue(); // 17 chars <= 20
-        money.CanExport(Received("R1", "EUR", ("A", 21m, 1m))).ShouldBeFalse();
-        pohoda.CanExport(Received("R1", "EUR", ("A", 21m, 1m))).ShouldBeTrue();
+        money.CanExportReceived(Received("R1", "EUR", ("A", 21m, 1m))).ShouldBeFalse();
+        pohoda.CanExportReceived(Received("R1", "EUR", ("A", 21m, 1m))).ShouldBeTrue();
     }
 
     [Fact]
@@ -535,18 +535,19 @@ public class AccountingExporterTests
         };
     }
 
-    private static ReceivedInvoice Received(string number, string currency, params (string Text, decimal Vat, decimal Net)[] lines)
+    private static Invoice Received(string number, string currency, params (string Text, decimal Vat, decimal Net)[] lines)
     {
-        var items = lines.Select((l, i) => new ReceivedInvoiceItem
+        var items = lines.Select((l, i) => new InvoiceItem
         {
             OrderIndex = i, Description = l.Text, Quantity = 1, Unit = "ks", UnitPrice = l.Net,
             VatRatePercentage = l.Vat, TotalBeforeVat = l.Net,
             VatAmount = Math.Round(l.Net * l.Vat / 100m, 2), TotalWithVat = l.Net + Math.Round(l.Net * l.Vat / 100m, 2)
         }).ToList();
-        return new ReceivedInvoice
+        return new Invoice
         {
+            DocumentType = EDocumentType.ReceivedInvoice,
             DocumentNumber = number, IssueDate = new DateTime(2026, 3, 2), DueDate = new DateTime(2026, 3, 16),
-            Currency = new Currency { Code = currency }, Supplier = Partner(), Items = items,
+            Currency = new Currency { Code = currency }, Client = Partner(), InvoiceItem = items,
             TotalBeforeVat = items.Sum(i => i.TotalBeforeVat), TotalVat = items.Sum(i => i.VatAmount),
             TotalWithVat = items.Sum(i => i.TotalWithVat)
         };

@@ -657,7 +657,7 @@ public class ClientService : IClientService
         }
 
         // Check if client has invoices
-        var hasInvoices = await _context.Invoice
+        var hasInvoices = await _context.Invoice.IssuedOnly()
             .AnyAsync(i => i.ClientId == clientId || i.IssuerId == clientId, cancellationToken);
 
         if (hasInvoices)

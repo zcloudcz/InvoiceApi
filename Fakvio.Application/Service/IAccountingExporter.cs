@@ -27,8 +27,8 @@ public interface IAccountingExporter
     /// </summary>
     bool CanExport(Invoice invoice);
 
-    /// <summary>Same as <see cref="CanExport(Invoice)"/> for received invoices.</summary>
-    bool CanExport(ReceivedInvoice invoice);
+    /// <summary>Same as <see cref="CanExport(Invoice)"/> for received invoices (also <see cref="Invoice"/> rows, DocumentType = ReceivedInvoice).</summary>
+    bool CanExportReceived(Invoice invoice);
 
     /// <summary>
     /// Builds a single XML document containing both issued and received invoices
@@ -40,6 +40,6 @@ public interface IAccountingExporter
     /// <returns>UTF-8 or system-specific encoded bytes of the XML document (see implementation remarks).</returns>
     byte[] Export(
         IReadOnlyList<Invoice> issuedInvoices,
-        IReadOnlyList<ReceivedInvoice> receivedInvoices,
+        IReadOnlyList<Invoice> receivedInvoices,
         Client issuer);
 }

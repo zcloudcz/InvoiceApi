@@ -218,7 +218,9 @@ public static class InvoiceTools
         // an unknown currency code or VAT percentage is the model's mistake, not the API's,
         // and reporting it precisely here means the API is never even called with bad data.
 
-        if (!Enum.TryParse<EDocumentType>(documentType, ignoreCase: true, out var parsedDocumentType))
+        // IssuedDocumentTypes.TryParse, not Enum.TryParse: the enum also contains ReceivedInvoice (and Enum.TryParse
+        // accepts raw numbers), which must never be created through the issued-invoice tool.
+        if (!IssuedDocumentTypes.TryParse(documentType, out var parsedDocumentType))
             return Error($"Unknown documentType '{documentType}'. Use 'Invoice', 'CreditNote' or 'Proforma'.");
 
         EPaymentMethod? parsedPaymentMethod = null;

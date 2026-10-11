@@ -35,5 +35,14 @@ public enum EDocumentType
     /// This IS a VAT tax document and triggers the VAT obligation.
     /// References the originating pro-forma via <c>OriginalInvoiceId</c>.
     /// </summary>
-    TaxReceiptForAdvance = 4
+    TaxReceiptForAdvance = 4,
+
+    /// <summary>
+    /// Received (incoming) invoice from a supplier - an expense document.
+    /// Lives in the same <c>Invoice</c> table as issued documents: <c>ClientId</c> is the supplier,
+    /// <c>IssuerId</c> is our own company (the <c>IsIssuer</c> client). It is NOT a number-sequence document:
+    /// <c>DocumentNumber</c> is the supplier's number, so it is excluded from the unique-number index.
+    /// Every query on the <c>Invoice</c> DbSet must pick a side with <c>IssuedOnly()</c> / <c>ReceivedOnly()</c>.
+    /// </summary>
+    ReceivedInvoice = 5
 }

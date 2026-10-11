@@ -41,10 +41,10 @@ public class PohodaAccountingExporter : IAccountingExporter
         && (invoice.DocumentNumber?.Length ?? 0) <= 20 // inv:numberRequested is string20 in the XSD
         && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
 
-    public bool CanExport(ReceivedInvoice invoice) =>
-        AccountingExportCommon.AllRatesSupported((invoice.Items ?? []).Select(i => i.VatRatePercentage));
+    public bool CanExportReceived(Invoice invoice) =>
+        AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Select(i => i.VatRatePercentage));
 
-    public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<ReceivedInvoice> receivedInvoices, Client issuer)
+    public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<Invoice> receivedInvoices, Client issuer)
     {
         // The dataPack ico attribute is mandatory for Pohoda to pick the right accounting unit.
         if (string.IsNullOrWhiteSpace(issuer.RegistrationNumber))
@@ -137,7 +137,7 @@ public class PohodaAccountingExporter : IAccountingExporter
     // Received invoices
     // --------------------------------------------------------------------------
 
-    private static XElement BuildReceivedInvoice(ReceivedInvoice invoice, Client issuer)
+    private static XElement BuildReceivedInvoice(Invoice invoice, Client issuer)
     {
         var header = new XElement(Inv + "invoiceHeader",
             new XElement(Inv + "invoiceType", "receivedInvoice"),
@@ -152,12 +152,12 @@ public class PohodaAccountingExporter : IAccountingExporter
         if (!string.IsNullOrWhiteSpace(invoice.Notes))
             header.Add(new XElement(Inv + "text", AccountingExportCommon.Truncate(invoice.Notes, 240)));
 
-        header.Add(BuildPartnerIdentity(invoice.Supplier));
+        header.Add(BuildPartnerIdentity(invoice.Client));
 
         AddPaymentType(header, invoice.PaymentMethod);
 
         var currency = invoice.Currency?.Code ?? "CZK";
-        var items = invoice.Items?.OrderBy(i => i.OrderIndex).ToList() ?? [];
+        var items = invoice.InvoiceItem?.OrderBy(i => i.OrderIndex).ToList() ?? [];
         var detail = new XElement(Inv + "invoiceDetail",
             items.Select(i => BuildItem(i.Description, i.Quantity, i.Unit, i.UnitPrice,
                 i.TotalBeforeVat, i.VatAmount, i.TotalWithVat, i.VatRatePercentage, currency)));

@@ -48,6 +48,12 @@ public class Invoice : BaseEntity
     public DateTime? DueDate { get; set; }
 
     /// <summary>
+    /// Date when a RECEIVED document (DocumentType = ReceivedInvoice) arrived at our company; determines the
+    /// booking period. Null for issued documents.
+    /// </summary>
+    public DateTime? ReceivedDate { get; set; }
+
+    /// <summary>
     /// Date of taxable supply (DUZP - "datum uskutečnění zdanitelného plnění")
     /// Required for VAT payers
     /// Usually same as IssueDate, but can be different

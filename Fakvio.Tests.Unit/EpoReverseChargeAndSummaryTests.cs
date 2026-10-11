@@ -130,14 +130,14 @@ public class EpoReverseChargeAndSummaryTests : IDisposable
     {
         var rc = regime == EVatRegime.ReverseCharge;
         var vat = regime == EVatRegime.Standard ? Math.Round(baseAmount * vatPct / 100m, 2) : 0m;
-        _context.ReceivedInvoice.Add(new ReceivedInvoice
+        _context.Invoice.Add(new Invoice
         {
-            DocumentNumber = number, Status = EReceivedInvoiceStatus.Approved, SupplierId = CzCustomerId,
+            DocumentType = EDocumentType.ReceivedInvoice, DocumentNumber = number, Status = EInvoiceStatus.Completed, ClientId = CzCustomerId, IssuerId = 1,
             IssueDate = Duzp, ReceivedDate = Duzp, TaxableSupplyDate = Duzp, DueDate = Duzp.AddDays(30), CurrencyId = 1,
             TotalBeforeVat = baseAmount, TotalVat = vat, TotalWithVat = baseAmount + vat,
-            Items =
+            InvoiceItem =
             {
-                new ReceivedInvoiceItem
+                new InvoiceItem
                 {
                     OrderIndex = 1, Description = "Item", Quantity = 1, UnitPrice = baseAmount,
                     VatRatePercentage = vatPct, TotalBeforeVat = baseAmount, VatAmount = vat, TotalWithVat = baseAmount + vat,

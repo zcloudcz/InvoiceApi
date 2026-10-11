@@ -53,8 +53,9 @@ public class ListInvoiceTemplatesTool : IChatTool
     /// Everything is optional: with no parameters the tool returns the first page of active
     /// templates.
     ///
-    /// The allowed document types are read from <see cref="EDocumentType"/> rather than typed
-    /// out, so a new document type cannot silently become invisible to the assistant.
+    /// The allowed document types are read from <see cref="IssuedDocumentTypes"/> rather than typed
+    /// out, so a new issued document type cannot silently become invisible to the assistant
+    /// (received invoices are in the same enum but never have a template).
     /// </summary>
     private static readonly ChatToolParameter[] Schema =
     [
@@ -81,7 +82,7 @@ public class ListInvoiceTemplatesTool : IChatTool
             Name = "document_type",
             Type = ChatToolParameterType.String,
             Description = "Filter by the document type the template produces",
-            AllowedValues = Enum.GetNames<EDocumentType>()
+            AllowedValues = IssuedDocumentTypes.Names
         },
         new()
         {

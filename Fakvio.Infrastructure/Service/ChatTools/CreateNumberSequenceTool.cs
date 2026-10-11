@@ -51,7 +51,7 @@ public class CreateNumberSequenceTool : IConfirmableChatTool
             Type = ChatToolParameterType.String,
             Description = "Document type the sequence numbers",
             IsRequired = true,
-            AllowedValues = ["Invoice", "CreditNote", "Proforma", "TaxReceiptForAdvance"]
+            AllowedValues = IssuedDocumentTypes.Names
         },
         new()
         {

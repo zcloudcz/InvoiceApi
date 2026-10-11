@@ -1418,9 +1418,6 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<int>("ProcessAttempts")
                         .HasColumnType("integer");
 
-                    b.Property<long?>("ReceivedInvoiceId")
-                        .HasColumnType("bigint");
-
                     b.Property<DateTime>("ServerReceivedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1452,8 +1449,6 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasKey("Id");
 
                     b.HasIndex("InvoiceId");
-
-                    b.HasIndex("ReceivedInvoiceId");
 
                     b.HasIndex("ServerReceivedAt");
 
@@ -1560,6 +1555,9 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<int?>("PaymentMethod")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("ReceivedDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("SWIFT")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -1604,7 +1602,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("DocumentNumber")
                         .IsUnique()
-                        .HasFilter("\"DocumentNumber\" IS NOT NULL AND \"DocumentNumber\" <> 'DRAFT' AND \"Status\" <> 5");
+                        .HasFilter("\"DocumentNumber\" IS NOT NULL AND \"DocumentNumber\" <> 'DRAFT' AND \"Status\" <> 5 AND \"DocumentType\" <> 5");
 
                     b.HasIndex("DocumentType");
 
@@ -1617,6 +1615,8 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasIndex("OriginalInvoiceId");
 
                     b.HasIndex("OssCountryCode");
+
+                    b.HasIndex("ReceivedDate");
 
                     b.HasIndex("Status");
 
@@ -2100,7 +2100,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
-                    b.Property<long?>("InvoiceId")
+                    b.Property<long>("InvoiceId")
                         .HasColumnType("bigint");
 
                     b.Property<decimal>("MatchedAmount")
@@ -2120,9 +2120,6 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<long?>("ReceivedInvoiceId")
-                        .HasColumnType("bigint");
-
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2135,223 +2132,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("InvoiceId");
 
-                    b.HasIndex("ReceivedInvoiceId");
-
-                    b.ToTable("PaymentMatch", t =>
-                        {
-                            t.HasCheckConstraint("CK_PaymentMatch_Target", "\"InvoiceId\" IS NOT NULL OR \"ReceivedInvoiceId\" IS NOT NULL");
-                        });
-                });
-
-            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoice", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("AttachmentContentType")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("AttachmentFileName")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("BankAccountNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long?>("CreatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("CurrencyId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("DocumentNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime?>("DueDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal?>("ExchangeRate")
-                        .HasPrecision(18, 8)
-                        .HasColumnType("numeric(18,8)");
-
-                    b.Property<DateOnly?>("ExchangeRateDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("IBAN")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<DateTime?>("IssueDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(5000)
-                        .HasColumnType("character varying(5000)");
-
-                    b.Property<DateTime?>("PaidAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("PaymentMethod")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("ReceivedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("SWIFT")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<long>("SupplierId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("TaxableSupplyDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("TotalBeforeVat")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<decimal>("TotalVat")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<decimal>("TotalWithVat")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long?>("UpdatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("VariableSymbol")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CurrencyId");
-
-                    b.HasIndex("DueDate");
-
-                    b.HasIndex("IssueDate");
-
-                    b.HasIndex("ReceivedDate");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("SupplierId");
-
-                    b.HasIndex("TaxableSupplyDate");
-
-                    b.ToTable("ReceivedInvoice");
-                });
-
-            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoiceItem", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long?>("CreatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<decimal>("InformationalVatAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<int>("OrderIndex")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ProductCode")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<decimal>("Quantity")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)");
-
-                    b.Property<long>("ReceivedInvoiceId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("ReverseChargeCodeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<decimal>("TotalBeforeVat")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<decimal>("TotalWithVat")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long?>("UpdatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<decimal>("VatAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<long?>("VatRateId")
-                        .HasColumnType("bigint");
-
-                    b.Property<decimal>("VatRatePercentage")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)");
-
-                    b.Property<int>("VatRegime")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ReceivedInvoiceId");
-
-                    b.HasIndex("ReverseChargeCodeId");
-
-                    b.HasIndex("VatRateId");
-
-                    b.ToTable("ReceivedInvoiceItem");
+                    b.ToTable("PaymentMatch");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.RecognizedCounterparty", b =>
@@ -3318,16 +3099,9 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Fakvio.Domain.Entities.ReceivedInvoice", "ReceivedInvoice")
-                        .WithMany()
-                        .HasForeignKey("ReceivedInvoiceId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.Navigation("Invoice");
 
                     b.Navigation("InvoiceMailbox");
-
-                    b.Navigation("ReceivedInvoice");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.Invoice", b =>
@@ -3421,62 +3195,12 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasOne("Fakvio.Domain.Entities.Invoice", "Invoice")
                         .WithMany("PaymentMatch")
                         .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Fakvio.Domain.Entities.ReceivedInvoice", "ReceivedInvoice")
-                        .WithMany()
-                        .HasForeignKey("ReceivedInvoiceId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("BankTransaction");
 
                     b.Navigation("Invoice");
-
-                    b.Navigation("ReceivedInvoice");
-                });
-
-            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoice", b =>
-                {
-                    b.HasOne("Fakvio.Domain.Entities.Currency", "Currency")
-                        .WithMany()
-                        .HasForeignKey("CurrencyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Fakvio.Domain.Entities.Client", "Supplier")
-                        .WithMany()
-                        .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Currency");
-
-                    b.Navigation("Supplier");
-                });
-
-            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoiceItem", b =>
-                {
-                    b.HasOne("Fakvio.Domain.Entities.ReceivedInvoice", "ReceivedInvoice")
-                        .WithMany("Items")
-                        .HasForeignKey("ReceivedInvoiceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Fakvio.Domain.Entities.ReverseChargeCode", "ReverseChargeCode")
-                        .WithMany()
-                        .HasForeignKey("ReverseChargeCodeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Fakvio.Domain.Entities.VatRate", "VatRate")
-                        .WithMany()
-                        .HasForeignKey("VatRateId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ReceivedInvoice");
-
-                    b.Navigation("ReverseChargeCode");
-
-                    b.Navigation("VatRate");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.RecurringInvoiceSchedule", b =>
@@ -3606,11 +3330,6 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
             modelBuilder.Entity("Fakvio.Domain.Entities.Notification", b =>
                 {
                     b.Navigation("Recipients");
-                });
-
-            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoice", b =>
-                {
-                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ReminderSettings", b =>

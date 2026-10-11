@@ -15,6 +15,12 @@ namespace Fakvio.Infrastructure.Service;
 /// Implementation of IReceivedInvoiceService.
 /// Handles CRUD, status transitions, and totals calculation for received (incoming) invoices.
 /// Follows the same patterns as InvoiceService for consistency.
+///
+/// Storage: a received invoice is a row of the shared <c>Invoice</c> table with
+/// <c>DocumentType = ReceivedInvoice</c> (supplier = <c>ClientId</c>, our own company = <c>IssuerId</c>).
+/// This class is a facade: it keeps the old received-invoice contract (DTOs, <see cref="EReceivedInvoiceStatus"/>,
+/// the allowed transitions and the validation messages) on top of the unified table. Every query goes through
+/// <see cref="InvoiceQueryExtensions.ReceivedOnly"/>, so the id of an issued document is always "not found" here.
 /// </summary>
 public class ReceivedInvoiceService : IReceivedInvoiceService
 {
@@ -32,33 +38,85 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         _webhookPublisher = webhookPublisher;
     }
 
+    // ─── Status vocabulary: unified EInvoiceStatus (storage) <-> EReceivedInvoiceStatus (contract) ───
+
     /// <summary>
-    /// Maps a ReceivedInvoice entity to ReceivedInvoiceDto.
-    /// ZMapper handles direct property mapping; navigation-derived props set manually.
+    /// Maps the stored status to the legacy received-invoice status the contract still exposes.
+    /// Draft -> Received, Completed / PartiallyPaid -> Approved (a partial payment is not visible in the old
+    /// contract), Paid -> Paid, Deleted -> Deleted. "Rejected" no longer exists: reject soft-deletes.
     /// </summary>
-    private static ReceivedInvoiceDto MapToDto(ReceivedInvoice entity)
+    internal static EReceivedInvoiceStatus ToLegacy(EInvoiceStatus status) => status switch
     {
-        var dto = entity.ToReceivedInvoiceDto();
+        EInvoiceStatus.Draft => EReceivedInvoiceStatus.Received,
+        EInvoiceStatus.Completed or EInvoiceStatus.PartiallyPaid => EReceivedInvoiceStatus.Approved,
+        EInvoiceStatus.Paid => EReceivedInvoiceStatus.Paid,
+        EInvoiceStatus.Deleted => EReceivedInvoiceStatus.Deleted,
+        // Creditnoted is an issued-document state; a received row can never reach it.
+        _ => throw new InvalidOperationException($"Status {status} is not valid for a received invoice.")
+    };
 
-        // Navigation-derived properties — ZMapper cannot flatten navigation paths
-        dto.SupplierName = entity.Supplier?.CompanyName ?? string.Empty;
-        dto.CurrencyCode = entity.Currency?.Code ?? string.Empty;
-        dto.CurrencySymbol = entity.Currency?.Symbol ?? string.Empty;
+    /// <summary>
+    /// Stored statuses that a legacy status filter stands for. NEVER copy the numbers 1:1 - the legacy
+    /// Rejected(4) would collide with Creditnoted(4). Rejected matches nothing (abolished, such rows are Deleted).
+    /// </summary>
+    private static EInvoiceStatus[] ToStored(EReceivedInvoiceStatus status) => status switch
+    {
+        EReceivedInvoiceStatus.Received => [EInvoiceStatus.Draft],
+        EReceivedInvoiceStatus.Approved => [EInvoiceStatus.Completed, EInvoiceStatus.PartiallyPaid],
+        EReceivedInvoiceStatus.Paid => [EInvoiceStatus.Paid],
+        EReceivedInvoiceStatus.Deleted => [EInvoiceStatus.Deleted],
+        _ => []
+    };
 
-        return dto;
-    }
+    /// <summary>
+    /// Maps an Invoice row (DocumentType = ReceivedInvoice) to ReceivedInvoiceDto.
+    /// Written by hand: the DTO keeps the old shape (SupplierId, EReceivedInvoiceStatus), which
+    /// ZMapper's name-for-name copy cannot express. The items still go through ZMapper.
+    /// </summary>
+    private static ReceivedInvoiceDto MapToDto(Invoice entity) => new()
+    {
+        Id = entity.Id,
+        DocumentNumber = entity.DocumentNumber,
+        Status = ToLegacy(entity.Status),
+        SupplierId = entity.ClientId ?? 0,
+        SupplierName = entity.Client?.CompanyName ?? string.Empty,
+        IssueDate = entity.IssueDate,
+        ReceivedDate = entity.ReceivedDate,
+        DueDate = entity.DueDate,
+        TaxableSupplyDate = entity.TaxableSupplyDate,
+        VariableSymbol = entity.VariableSymbol,
+        TotalBeforeVat = entity.TotalBeforeVat,
+        TotalVat = entity.TotalVat,
+        TotalWithVat = entity.TotalWithVat,
+        CurrencyId = entity.CurrencyId,
+        CurrencyCode = entity.Currency?.Code ?? string.Empty,
+        CurrencySymbol = entity.Currency?.Symbol ?? string.Empty,
+        ExchangeRate = entity.ExchangeRate,
+        ExchangeRateDate = entity.ExchangeRateDate,
+        PaymentMethod = entity.PaymentMethod,
+        BankAccountNumber = entity.BankAccountNumber,
+        IBAN = entity.IBAN,
+        SWIFT = entity.SWIFT,
+        PaidAt = entity.PaidAt,
+        Notes = entity.Notes,
+        // AttachmentFileName / AttachmentContentType stay null: the old columns were never written by any code.
+        Items = entity.InvoiceItem.OrderBy(i => i.OrderIndex).Select(i => i.ToReceivedInvoiceItemDto()).ToList(),
+        CreatedAt = entity.CreatedAt,
+        UpdatedAt = entity.UpdatedAt
+    };
 
     /// <summary>
     /// Base query with all necessary includes for read operations.
     /// AsNoTracking for performance — no entity modifications during reads.
     /// </summary>
-    private IQueryable<ReceivedInvoice> BaseQuery()
+    private IQueryable<Invoice> BaseQuery()
     {
-        return _context.ReceivedInvoice
+        return _context.Invoice
+            .ReceivedOnly()
             .AsNoTracking()
-            .Include(r => r.Supplier)
+            .Include(r => r.Client)
             .Include(r => r.Currency)
-            .Include(r => r.Items.OrderBy(i => i.OrderIndex));
+            .Include(r => r.InvoiceItem.OrderBy(i => i.OrderIndex));
     }
 
     /// <inheritdoc />
@@ -68,13 +126,16 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         CancellationToken ct = default)
     {
         var query = BaseQuery()
-            .Where(r => r.Status != EReceivedInvoiceStatus.Deleted);
+            .Where(r => r.Status != EInvoiceStatus.Deleted);
 
         if (status.HasValue)
-            query = query.Where(r => r.Status == status.Value);
+        {
+            var stored = ToStored(status.Value);
+            query = query.Where(r => stored.Contains(r.Status));
+        }
 
         if (supplierId.HasValue)
-            query = query.Where(r => r.SupplierId == supplierId.Value);
+            query = query.Where(r => r.ClientId == supplierId.Value);
 
         var entities = await query
             .OrderByDescending(r => r.ReceivedDate ?? r.IssueDate)
@@ -90,7 +151,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         CancellationToken ct = default)
     {
         var query = BaseQuery()
-            .Where(r => r.Status != EReceivedInvoiceStatus.Deleted);
+            .Where(r => r.Status != EInvoiceStatus.Deleted);
 
         // Apply filters
         if (!string.IsNullOrWhiteSpace(filter.Search))
@@ -98,7 +159,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
             var search = filter.Search.ToLower();
             query = query.Where(r =>
                 (r.DocumentNumber != null && r.DocumentNumber.ToLower().Contains(search)) ||
-                r.Supplier.CompanyName.ToLower().Contains(search) ||
+                r.Client!.CompanyName.ToLower().Contains(search) ||
                 (r.VariableSymbol != null && r.VariableSymbol.ToLower().Contains(search)));
         }
 
@@ -112,14 +173,17 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         if (!string.IsNullOrWhiteSpace(filter.SupplierName))
         {
             var supplierName = filter.SupplierName.ToLower();
-            query = query.Where(r => r.Supplier.CompanyName.ToLower().Contains(supplierName));
+            query = query.Where(r => r.Client!.CompanyName.ToLower().Contains(supplierName));
         }
 
         if (filter.Status.HasValue)
-            query = query.Where(r => r.Status == filter.Status.Value);
+        {
+            var stored = ToStored(filter.Status.Value);
+            query = query.Where(r => stored.Contains(r.Status));
+        }
 
         if (filter.SupplierId.HasValue)
-            query = query.Where(r => r.SupplierId == filter.SupplierId.Value);
+            query = query.Where(r => r.ClientId == filter.SupplierId.Value);
 
         // Ensure UTC Kind — Npgsql rejects Unspecified Kind for 'timestamp with time zone'.
         if (filter.IssueDateFrom.HasValue)
@@ -137,8 +201,9 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         if (filter.IsOverdue == true)
         {
             var now = DateTime.UtcNow;
+            // "Approved" in the legacy vocabulary = Completed or PartiallyPaid.
             query = query.Where(r =>
-                r.Status == EReceivedInvoiceStatus.Approved && r.DueDate < now);
+                (r.Status == EInvoiceStatus.Completed || r.Status == EInvoiceStatus.PartiallyPaid) && r.DueDate < now);
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Currency))
@@ -150,18 +215,22 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         if (filter.MaxAmount.HasValue)
             query = query.Where(r => r.TotalWithVat <= filter.MaxAmount.Value);
 
-        // Sorting — default by received date descending
+        // Sorting — default by received date descending.
+        // Status sorts by the LEGACY order (PartiallyPaid counts as Approved), not by the raw stored number
+        // (PartiallyPaid = 6 would otherwise jump behind Deleted = 5).
         var sortBy = filter.SortBy?.ToLower() ?? "receiveddate";
         var isDesc = filter.SortDirection == null ? true : filter.IsDescending;
 
         query = sortBy switch
         {
             "documentnumber" => isDesc ? query.OrderByDescending(r => r.DocumentNumber) : query.OrderBy(r => r.DocumentNumber),
-            "suppliername" => isDesc ? query.OrderByDescending(r => r.Supplier.CompanyName) : query.OrderBy(r => r.Supplier.CompanyName),
+            "suppliername" => isDesc ? query.OrderByDescending(r => r.Client!.CompanyName) : query.OrderBy(r => r.Client!.CompanyName),
             "issuedate" => isDesc ? query.OrderByDescending(r => r.IssueDate) : query.OrderBy(r => r.IssueDate),
             "duedate" => isDesc ? query.OrderByDescending(r => r.DueDate) : query.OrderBy(r => r.DueDate),
             "totalwithvat" => isDesc ? query.OrderByDescending(r => r.TotalWithVat) : query.OrderBy(r => r.TotalWithVat),
-            "status" => isDesc ? query.OrderByDescending(r => r.Status) : query.OrderBy(r => r.Status),
+            "status" => isDesc
+                ? query.OrderByDescending(r => r.Status == EInvoiceStatus.PartiallyPaid ? EInvoiceStatus.Completed : r.Status)
+                : query.OrderBy(r => r.Status == EInvoiceStatus.PartiallyPaid ? EInvoiceStatus.Completed : r.Status),
             _ => isDesc ? query.OrderByDescending(r => r.ReceivedDate) : query.OrderBy(r => r.ReceivedDate)
         };
 
@@ -171,10 +240,11 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         // Attachment counts for the grid's "download attachments" action.
         // One grouped query over just the page's ids (max PageSize=100 rows) —
         // avoids an N+1 per row while keeping the entity-based MapToDto untouched.
+        // The EntityName string "ReceivedInvoice" is kept on purpose (stored on existing FileAttachment rows).
         var pageIds = pagedResult.Items.Select(r => r.Id).ToList();
         var attachmentCounts = await _context.FileAttachment
             .AsNoTracking()
-            .Where(f => f.EntityName == nameof(ReceivedInvoice) && pageIds.Contains(f.RecordId))
+            .Where(f => f.EntityName == "ReceivedInvoice" && pageIds.Contains(f.RecordId))
             .GroupBy(f => f.RecordId)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
@@ -197,9 +267,10 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     public async Task<Dictionary<long, string?>> GetDocumentNumbersAsync(
         IReadOnlyCollection<long> ids, CancellationToken ct = default)
     {
-        return await _context.ReceivedInvoice
+        return await _context.Invoice
+            .ReceivedOnly()
             .AsNoTracking()
-            .Where(r => ids.Contains(r.Id) && r.Status != EReceivedInvoiceStatus.Deleted)
+            .Where(r => ids.Contains(r.Id) && r.Status != EInvoiceStatus.Deleted)
             .Select(r => new { r.Id, r.DocumentNumber })
             .ToDictionaryAsync(x => x.Id, x => x.DocumentNumber, ct);
     }
@@ -228,12 +299,24 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 
         ValidateReverseChargeCodes(dto.Items);
 
+        // IssuerId is NOT NULL on Invoice: for a received document it is OUR company (the IsIssuer client).
+        // Lowest Id wins - the same rule the data migration used for the existing rows.
+        var issuerId = await _context.Client
+            .AsNoTracking()
+            .Where(c => c.IsIssuer)
+            .OrderBy(c => c.Id)
+            .Select(c => (long?)c.Id)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException("Tenant has no issuer company (Client with IsIssuer = true) configured.");
+
         // Create entity
-        var entity = new ReceivedInvoice
+        var entity = new Invoice
         {
+            DocumentType = EDocumentType.ReceivedInvoice,
             DocumentNumber = dto.DocumentNumber,
-            Status = EReceivedInvoiceStatus.Received,
-            SupplierId = dto.SupplierId,
+            Status = EInvoiceStatus.Draft, // legacy "Received"
+            ClientId = dto.SupplierId,
+            IssuerId = issuerId,
             IssueDate = dto.IssueDate,
             ReceivedDate = dto.ReceivedDate ?? DateTime.UtcNow,
             DueDate = dto.DueDate,
@@ -269,7 +352,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 
             var itemTotalBeforeVat = itemDto.Quantity * itemDto.UnitPrice;
 
-            var item = new ReceivedInvoiceItem
+            var item = new InvoiceItem
             {
                 OrderIndex = itemDto.OrderIndex,
                 Description = itemDto.Description,
@@ -286,7 +369,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
             };
             CalculateItemVat(item);
 
-            entity.Items.Add(item);
+            entity.InvoiceItem.Add(item);
             totalBeforeVat += itemTotalBeforeVat;
             totalVat += item.VatAmount;
         }
@@ -295,11 +378,11 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         entity.TotalVat = totalVat;
         entity.TotalWithVat = totalBeforeVat + totalVat;
 
-        _context.ReceivedInvoice.Add(entity);
+        _context.Invoice.Add(entity);
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Created received invoice ID {Id} from supplier {SupplierId}, total {Total}",
-            entity.Id, entity.SupplierId, entity.TotalWithVat);
+            entity.Id, entity.ClientId, entity.TotalWithVat);
 
         // "received_invoice.created" webhook — never throws (see IWebhookPublisher).
         if (_webhookPublisher != null)
@@ -313,18 +396,20 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     /// <inheritdoc />
     public async Task<ReceivedInvoiceDto?> UpdateAsync(long id, UpdateReceivedInvoiceDto dto, CancellationToken ct = default)
     {
-        var entity = await _context.ReceivedInvoice
-            .Include(r => r.Items)
+        var entity = await _context.Invoice
+            .ReceivedOnly()
+            .Include(r => r.InvoiceItem)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
         if (entity is null) return null;
 
-        // Only allow updates in Received or Approved status
-        if (entity.Status != EReceivedInvoiceStatus.Received &&
-            entity.Status != EReceivedInvoiceStatus.Approved)
+        // Only allow updates in Received or Approved status (legacy vocabulary)
+        var status = ToLegacy(entity.Status);
+        if (status != EReceivedInvoiceStatus.Received &&
+            status != EReceivedInvoiceStatus.Approved)
         {
             throw new InvalidOperationException(
-                $"Cannot update received invoice in {entity.Status} status. Only Received or Approved allowed.");
+                $"Cannot update received invoice in {status} status. Only Received or Approved allowed.");
         }
 
         // Update simple fields (only if provided)
@@ -338,7 +423,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         if (dto.ExchangeRate.HasValue)
         {
             // Like an issued invoice: the rate is fixed once the document is approved.
-            if (entity.Status != EReceivedInvoiceStatus.Received)
+            if (status != EReceivedInvoiceStatus.Received)
                 throw new InvalidOperationException("The exchange rate can be changed only before the invoice is approved.");
             entity.ExchangeRate = dto.ExchangeRate.Value;
             entity.ExchangeRateDate = null; // manual rate has no ČNB date
@@ -355,7 +440,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
             ValidateReverseChargeCodes(dto.Items);
 
             // Remove old items
-            _context.ReceivedInvoiceItem.RemoveRange(entity.Items);
+            _context.InvoiceItem.RemoveRange(entity.InvoiceItem);
 
             // Add new items and recalculate totals
             decimal totalBeforeVat = 0;
@@ -377,9 +462,9 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
 
                 var itemTotalBeforeVat = itemDto.Quantity * itemDto.UnitPrice;
 
-                var item = new ReceivedInvoiceItem
+                var item = new InvoiceItem
                 {
-                    ReceivedInvoiceId = entity.Id,
+                    InvoiceId = entity.Id,
                     OrderIndex = itemDto.OrderIndex,
                     Description = itemDto.Description,
                     Quantity = itemDto.Quantity,
@@ -395,7 +480,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
                 };
                 CalculateItemVat(item);
 
-                _context.ReceivedInvoiceItem.Add(item);
+                _context.InvoiceItem.Add(item);
                 totalBeforeVat += itemTotalBeforeVat;
                 totalVat += item.VatAmount;
             }
@@ -414,14 +499,15 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     /// <inheritdoc />
     public async Task<ReceivedInvoiceDto?> ApproveAsync(long id, CancellationToken ct = default)
     {
-        var entity = await _context.ReceivedInvoice.Include(r => r.Currency).FirstOrDefaultAsync(r => r.Id == id, ct);
+        var entity = await _context.Invoice.ReceivedOnly().Include(r => r.Currency).FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return null;
 
-        if (entity.Status != EReceivedInvoiceStatus.Received)
-            throw new InvalidOperationException($"Cannot approve invoice in {entity.Status} status. Only Received allowed.");
+        var status = ToLegacy(entity.Status);
+        if (status != EReceivedInvoiceStatus.Received)
+            throw new InvalidOperationException($"Cannot approve invoice in {status} status. Only Received allowed.");
 
         await AssignExchangeRateAsync(entity, ct);
-        entity.Status = EReceivedInvoiceStatus.Approved;
+        entity.Status = EInvoiceStatus.Completed; // legacy "Approved"
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Approved received invoice ID {Id}", id);
@@ -432,7 +518,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     /// Fills the ČNB rate (CZK per unit, valid for the DUZP) of a non-CZK received invoice on approval —
     /// same rules as InvoiceService.AssignExchangeRateAsync (manual rate kept, CZK cleared, outage = no rate).
     /// </summary>
-    private async Task AssignExchangeRateAsync(ReceivedInvoice entity, CancellationToken ct)
+    private async Task AssignExchangeRateAsync(Invoice entity, CancellationToken ct)
     {
         var code = entity.Currency?.Code;
         if (string.IsNullOrEmpty(code) || code.Equals("CZK", StringComparison.OrdinalIgnoreCase))
@@ -455,14 +541,16 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     /// <inheritdoc />
     public async Task<ReceivedInvoiceDto?> MarkAsPaidAsync(long id, DateTime? paidAt = null, CancellationToken ct = default)
     {
-        var entity = await _context.ReceivedInvoice.FindAsync(new object[] { id }, ct);
+        var entity = await _context.Invoice.ReceivedOnly().FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return null;
 
-        if (entity.Status != EReceivedInvoiceStatus.Approved)
-            throw new InvalidOperationException($"Cannot mark as paid in {entity.Status} status. Only Approved allowed.");
+        var status = ToLegacy(entity.Status);
+        if (status != EReceivedInvoiceStatus.Approved)
+            throw new InvalidOperationException($"Cannot mark as paid in {status} status. Only Approved allowed.");
 
-        entity.Status = EReceivedInvoiceStatus.Paid;
+        entity.Status = EInvoiceStatus.Paid;
         entity.PaidAt = paidAt ?? DateTime.UtcNow;
+        entity.PaidAmount = entity.TotalWithVat; // fully paid, keeps PaidAmount consistent with Status = Paid
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Marked received invoice ID {Id} as paid", id);
@@ -472,33 +560,36 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     /// <inheritdoc />
     public async Task<ReceivedInvoiceDto?> RejectAsync(long id, CancellationToken ct = default)
     {
-        var entity = await _context.ReceivedInvoice.FindAsync(new object[] { id }, ct);
+        var entity = await _context.Invoice.ReceivedOnly().FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return null;
 
-        if (entity.Status != EReceivedInvoiceStatus.Received)
-            throw new InvalidOperationException($"Cannot reject invoice in {entity.Status} status. Only Received allowed.");
+        var status = ToLegacy(entity.Status);
+        if (status != EReceivedInvoiceStatus.Received)
+            throw new InvalidOperationException($"Cannot reject invoice in {status} status. Only Received allowed.");
 
-        entity.Status = EReceivedInvoiceStatus.Rejected;
+        // "Rejected" is abolished in the unified model: rejecting soft-deletes the document.
+        entity.Status = EInvoiceStatus.Deleted;
         await _context.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Rejected received invoice ID {Id}", id);
+        _logger.LogInformation("Rejected (soft-deleted) received invoice ID {Id}", id);
         return await GetByIdAsync(id, ct);
     }
 
     /// <inheritdoc />
     public async Task<bool> DeleteAsync(long id, CancellationToken ct = default)
     {
-        var entity = await _context.ReceivedInvoice.FindAsync(new object[] { id }, ct);
+        var entity = await _context.Invoice.ReceivedOnly().FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return false;
 
-        if (entity.Status != EReceivedInvoiceStatus.Received &&
-            entity.Status != EReceivedInvoiceStatus.Rejected)
+        // Legacy rule: delete only from Received (or Rejected, which no longer exists as a separate state).
+        var status = ToLegacy(entity.Status);
+        if (status != EReceivedInvoiceStatus.Received)
         {
             throw new InvalidOperationException(
-                $"Cannot delete invoice in {entity.Status} status. Only Received or Rejected allowed.");
+                $"Cannot delete invoice in {status} status. Only Received or Rejected allowed.");
         }
 
-        entity.Status = EReceivedInvoiceStatus.Deleted;
+        entity.Status = EInvoiceStatus.Deleted;
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Soft-deleted received invoice ID {Id}", id);
@@ -546,7 +637,7 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
     ///
     /// TotalBeforeVat must be set on the item before calling this method.
     /// </summary>
-    private static void CalculateItemVat(ReceivedInvoiceItem item)
+    private static void CalculateItemVat(InvoiceItem item)
     {
         switch (item.VatRegime)
         {

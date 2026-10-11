@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Domain.Entities;
@@ -134,7 +135,7 @@ public class PaymentMatchingService : IPaymentMatchingService
             .FirstOrDefaultAsync(t => t.Id == bankTransactionId, ct)
             ?? throw new InvalidOperationException($"BankTransaction {bankTransactionId} not found.");
 
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new InvalidOperationException($"Invoice {invoiceId} not found.");
 
@@ -198,19 +199,23 @@ public class PaymentMatchingService : IPaymentMatchingService
             .Include(m => m.BankTransaction)
                 .ThenInclude(t => t.PaymentMatch)
             .Include(m => m.Invoice)
-            .Include(m => m.ReceivedInvoice)
             .FirstOrDefaultAsync(m => m.Id == paymentMatchId, ct)
             ?? throw new InvalidOperationException($"PaymentMatch {paymentMatchId} not found.");
 
-        if (match.Invoice != null)
+        // One Invoice table for both sides: the document type decides which status rules apply.
+        if (match.Invoice.DocumentType == EDocumentType.ReceivedInvoice)
         {
+            // Recompute from the matches that REMAIN instead of subtracting this one. A received document can be
+            // Paid with PaidAmount = total while its matches sum to less (rows migrated from the old table, where
+            // any match meant Paid, or "mark as paid" by hand). Subtracting would leave e.g. 1000 - 600 = 400 and
+            // a PartiallyPaid document with no payment behind it.
+            var remainingOnInvoice = await _context.PaymentMatch
+                .Where(m => m.InvoiceId == match.InvoiceId && m.Id != match.Id)
+                .SumAsync(m => (decimal?)m.MatchedAmount, ct) ?? 0m;
+            RevertReceivedInvoice(match.Invoice, remainingOnInvoice);
+        }
+        else
             RecalculateInvoice(match.Invoice, delta: -match.MatchedAmount, match.BankTransaction.TransactionDate);
-        }
-
-        if (match.ReceivedInvoice != null)
-        {
-            RecalculateReceivedInvoice(match.ReceivedInvoice, delta: -match.MatchedAmount, match.BankTransaction.TransactionDate);
-        }
 
         _context.PaymentMatch.Remove(match);
 
@@ -246,7 +251,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         CancellationToken ct = default)
     {
         // Load the requested invoice so we know its type and OriginalInvoiceId.
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
 
@@ -288,7 +293,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         {
             // Find all tax receipts for advance (DPPs) linked to this proforma — covers
             // partial-payment scenarios where multiple DPPs exist for one proforma.
-            var dppIds = await _context.Invoice
+            var dppIds = await _context.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .Where(i =>
                     i.OriginalInvoiceId == proformaId.Value
@@ -304,7 +309,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         var matches = await _context.PaymentMatch
             .AsNoTracking()
             .Include(m => m.BankTransaction)
-            .Where(m => m.InvoiceId != null && relatedInvoiceIds.Contains(m.InvoiceId.Value))
+            .Where(m => relatedInvoiceIds.Contains(m.InvoiceId))
             .OrderBy(m => m.MatchedAt)
             .ToListAsync(ct);
 
@@ -321,7 +326,7 @@ public class PaymentMatchingService : IPaymentMatchingService
                 MatchedBy = m.MatchedBy,
                 MatchedAt = m.MatchedAt,
                 Note = m.Note,
-                MatchedInvoiceId = m.InvoiceId!.Value,
+                MatchedInvoiceId = m.InvoiceId,
             })
             .ToList();
     }
@@ -331,7 +336,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         long receivedInvoiceId,
         CancellationToken ct = default)
     {
-        var receivedInvoice = await _context.ReceivedInvoice
+        var receivedInvoice = await _context.Invoice.ReceivedOnly()
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == receivedInvoiceId, ct);
 
@@ -346,7 +351,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         var matches = await _context.PaymentMatch
             .AsNoTracking()
             .Include(m => m.BankTransaction)
-            .Where(m => m.ReceivedInvoiceId == receivedInvoiceId)
+            .Where(m => m.InvoiceId == receivedInvoiceId)
             .OrderBy(m => m.MatchedAt)
             .ToListAsync(ct);
 
@@ -373,7 +378,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         long invoiceId,
         CancellationToken ct = default)
     {
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Currency)
             .Include(i => i.Client)
@@ -438,7 +443,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         long receivedInvoiceId,
         CancellationToken ct = default)
     {
-        var receivedInvoice = await _context.ReceivedInvoice
+        var receivedInvoice = await _context.Invoice.ReceivedOnly()
             .AsNoTracking()
             .Include(i => i.Currency)
             .FirstOrDefaultAsync(i => i.Id == receivedInvoiceId, ct);
@@ -450,7 +455,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         }
 
         // Only unpaid received invoices make sense to auto-match.
-        if (receivedInvoice.Status == EReceivedInvoiceStatus.Paid)
+        if (receivedInvoice.Status == EInvoiceStatus.Paid)
         {
             _logger.LogDebug("FindAutoMatchForReceivedInvoiceAsync: ReceivedInvoice {Id} is already Paid — skip", receivedInvoiceId);
             return null;
@@ -529,7 +534,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         // Load unpaid issued invoices in the same currency that belong to our bank account's issuer.
         var issuerId = tx.BankAccount?.ClientId;
 
-        var query = _context.Invoice
+        var query = _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Currency)
             .Include(i => i.Client)
@@ -588,13 +593,13 @@ public class PaymentMatchingService : IPaymentMatchingService
         }
 
         // ── ReceivedInvoice matching (outgoing payments or incoming with no issued match) ──
-        var receivedQuery = _context.ReceivedInvoice
+        var receivedQuery = _context.Invoice.ReceivedOnly()
             .AsNoTracking()
-            .Include(ri => ri.Supplier)
+            .Include(ri => ri.Client)
             .Include(ri => ri.Currency)
             .Where(ri =>
-                ri.Status != EReceivedInvoiceStatus.Paid
-                && ri.Status != EReceivedInvoiceStatus.Deleted);
+                ri.Status != EInvoiceStatus.Paid
+                && ri.Status != EInvoiceStatus.Deleted);
 
         var receivedCandidates = await receivedQuery.ToListAsync(ct);
 
@@ -639,13 +644,13 @@ public class PaymentMatchingService : IPaymentMatchingService
         };
 
     /// <summary>Maps a ReceivedInvoice entity to a TransactionAutoMatchProposalDto.</summary>
-    private static TransactionAutoMatchProposalDto ToReceivedInvoiceProposal(Domain.Entities.ReceivedInvoice ri) =>
+    private static TransactionAutoMatchProposalDto ToReceivedInvoiceProposal(Domain.Entities.Invoice ri) =>
         new()
         {
             InvoiceId = null,
             ReceivedInvoiceId = ri.Id,
             DocumentNumber = ri.DocumentNumber ?? string.Empty,
-            ClientName = ri.Supplier?.CompanyName,
+            ClientName = ri.Client?.CompanyName,
             TotalWithVat = ri.TotalWithVat,
             PaidAmount = 0,
             Remaining = ri.TotalWithVat,
@@ -679,7 +684,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         if (invoiceId.HasValue)
         {
             // Confirm match for an issued invoice.
-            var invoice = await _context.Invoice
+            var invoice = await _context.Invoice.IssuedOnly()
                 .FirstOrDefaultAsync(i => i.Id == invoiceId.Value, ct)
                 ?? throw new InvalidOperationException($"Invoice {invoiceId} not found.");
 
@@ -730,7 +735,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         else
         {
             // Confirm match for a received (supplier) invoice.
-            var receivedInvoice = await _context.ReceivedInvoice
+            var receivedInvoice = await _context.Invoice.ReceivedOnly()
                 .FirstOrDefaultAsync(i => i.Id == receivedInvoiceId!.Value, ct)
                 ?? throw new InvalidOperationException($"ReceivedInvoice {receivedInvoiceId} not found.");
 
@@ -742,7 +747,7 @@ public class PaymentMatchingService : IPaymentMatchingService
             var match = new PaymentMatch
             {
                 BankTransactionId = tx.Id,
-                ReceivedInvoiceId = receivedInvoice.Id,
+                InvoiceId = receivedInvoice.Id,
                 MatchedAmount = matched,
                 MatchedBy = EMatchType.Auto,
                 MatchedAt = DateTime.UtcNow,
@@ -753,7 +758,7 @@ public class PaymentMatchingService : IPaymentMatchingService
             // Invoice match wins over registry categorization — drop any recognition.
             tx.RecognizedCounterpartyId = null;
 
-            RecalculateReceivedInvoice(receivedInvoice, delta: matched, tx.TransactionDate);
+            RecalculateReceivedInvoice(receivedInvoice, matched, tx.TransactionDate);
             RecalculateTransactionStatus(tx, alreadyAssigned + matched);
 
             await _context.SaveChangesAsync(ct);
@@ -782,7 +787,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         // Issuer = the client who owns this bank account (the "our side" of the transaction).
         var issuerId = tx.BankAccount.ClientId;
 
-        var candidates = await _context.Invoice
+        var candidates = await _context.Invoice.IssuedOnly()
             .Include(i => i.Currency)
             .Include(i => i.Client)
                 .ThenInclude(c => c!.BankAccount)
@@ -860,10 +865,10 @@ public class PaymentMatchingService : IPaymentMatchingService
         // Load all received invoices that are not yet paid, in the same currency.
         // ReceivedInvoice does not have an IssuerId (our company is always the payer),
         // so we filter only by currency and non-Paid status.
-        var candidates = await _context.ReceivedInvoice
+        var candidates = await _context.Invoice.ReceivedOnly()
             .Include(i => i.Currency)
             .Where(i =>
-                i.Status != EReceivedInvoiceStatus.Paid
+                i.Status != EInvoiceStatus.Paid
                 && i.Currency.Code == tx.CurrencyCode)
             .ToListAsync(ct);
 
@@ -965,20 +970,20 @@ public class PaymentMatchingService : IPaymentMatchingService
     /// <summary>
     /// Creates the PaymentMatch row and updates the received invoice status + transaction aggregate.
     /// </summary>
-    private void ApplyAutoMatchReceivedInvoice(BankTransaction tx, ReceivedInvoice receivedInvoice)
+    private void ApplyAutoMatchReceivedInvoice(BankTransaction tx, Invoice receivedInvoice)
     {
         var matched = Math.Min(tx.Amount, receivedInvoice.TotalWithVat);
 
         _context.PaymentMatch.Add(new PaymentMatch
         {
             BankTransactionId = tx.Id,
-            ReceivedInvoiceId = receivedInvoice.Id,
+            InvoiceId = receivedInvoice.Id,
             MatchedAmount = matched,
             MatchedBy = EMatchType.Auto,
             MatchedAt = DateTime.UtcNow,
         });
 
-        RecalculateReceivedInvoice(receivedInvoice, delta: matched, tx.TransactionDate);
+        RecalculateReceivedInvoice(receivedInvoice, matched, tx.TransactionDate);
         RecalculateTransactionStatus(tx, matched);
 
         _logger.LogInformation(
@@ -1012,29 +1017,28 @@ public class PaymentMatchingService : IPaymentMatchingService
     }
 
     /// <summary>
-    /// Applies a payment delta to a received invoice and recomputes Status + PaidAt.
-    /// ReceivedInvoice uses a simpler status flow: Received/Approved → Paid.
-    /// There is no PartiallyPaid state for received invoices — they are marked Paid
-    /// when the full amount is covered.
+    /// Applies a payment to a received invoice and recomputes PaidAmount + Status + PaidAt.
+    /// Status behaviour is unchanged from the old ReceivedInvoice table: any applied payment marks the
+    /// document Paid. PaidAmount follows the sum of the PaymentMatch rows (same denormalisation as for
+    /// issued invoices). Removing a payment is handled by <see cref="RevertReceivedInvoice"/>.
     /// </summary>
-    private static void RecalculateReceivedInvoice(ReceivedInvoice receivedInvoice, decimal delta, DateTime txDate)
+    private static void RecalculateReceivedInvoice(Invoice receivedInvoice, decimal matched, DateTime txDate)
     {
-        // ReceivedInvoice does not have a PaidAmount field — it only has a Paid status flag.
-        // We mark it as Paid when matched, or revert to Approved on unmatch.
-        // Note: we only change the status when going to/from Paid; other status transitions
-        // are managed by the approval workflow separately.
-        if (delta > 0)
-        {
-            // Payment applied: mark as Paid.
-            receivedInvoice.Status = EReceivedInvoiceStatus.Paid;
-            receivedInvoice.PaidAt ??= DateTime.SpecifyKind(txDate, DateTimeKind.Utc);
-        }
-        else
-        {
-            // Payment removed (unmatch): revert to Approved (the last pre-paid state).
-            receivedInvoice.Status = EReceivedInvoiceStatus.Approved;
-            receivedInvoice.PaidAt = null;
-        }
+        receivedInvoice.PaidAmount += matched;
+        receivedInvoice.Status = EInvoiceStatus.Paid;
+        receivedInvoice.PaidAt ??= DateTime.SpecifyKind(txDate, DateTimeKind.Utc);
+    }
+
+    /// <summary>
+    /// A payment was removed (unmatch): the received invoice goes back to the last pre-paid state.
+    /// "Approved" in the old received vocabulary = Completed here; PartiallyPaid also maps to Approved and is
+    /// used while other matches remain. <paramref name="remainingMatched"/> is the sum of the matches that stay.
+    /// </summary>
+    private static void RevertReceivedInvoice(Invoice receivedInvoice, decimal remainingMatched)
+    {
+        receivedInvoice.PaidAmount = remainingMatched;
+        receivedInvoice.Status = remainingMatched > 0 ? EInvoiceStatus.PartiallyPaid : EInvoiceStatus.Completed;
+        receivedInvoice.PaidAt = null;
     }
 
     /// <summary>Sets BankTransaction.MatchStatus based on how much is assigned to invoices.</summary>

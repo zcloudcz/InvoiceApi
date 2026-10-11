@@ -183,6 +183,9 @@ public class InvoiceTemplateService : IInvoiceTemplateService
 
     public async Task<InvoiceTemplateDto> CreateTemplateAsync(CreateInvoiceTemplateDto createDto, CancellationToken cancellationToken = default)
     {
+        // Templates produce ISSUED documents only (see IssuedDocumentTypes); refuse before anything is saved.
+        IssuedDocumentTypes.EnsureIssued(createDto.DocumentType);
+
         _logger.LogInformation("Creating new template: {Name}", createDto.Name);
 
         // Validate issuer exists
@@ -559,7 +562,7 @@ public class InvoiceTemplateService : IInvoiceTemplateService
         _logger.LogInformation("Creating template from invoice {InvoiceId}", invoiceId);
 
         // Load invoice
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .Include(i => i.InvoiceItem)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 

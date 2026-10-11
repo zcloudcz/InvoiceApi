@@ -239,11 +239,13 @@ public class EpoControlStatementExportTests : IDisposable
         var baseAmount = divisor == 0m ? totalWithVat : totalWithVat / divisor;
         var vatAmount  = totalWithVat - baseAmount;
 
-        var received = new ReceivedInvoice
+        var received = new Invoice
         {
             DocumentNumber = documentNumber ?? $"REC-{Guid.NewGuid():N}",
-            Status = status,
-            SupplierId = supplierId,
+            DocumentType = EDocumentType.ReceivedInvoice,
+            Status = status.ToStored(),
+            ClientId = supplierId,
+            IssuerId = 1,
             IssueDate = duzp,
             ReceivedDate = duzp,
             TaxableSupplyDate = duzp,
@@ -254,7 +256,7 @@ public class EpoControlStatementExportTests : IDisposable
             TotalWithVat = totalWithVat
         };
 
-        received.Items.Add(new ReceivedInvoiceItem
+        received.InvoiceItem.Add(new InvoiceItem
         {
             OrderIndex = 1,
             Description = "Test expense",
@@ -266,7 +268,7 @@ public class EpoControlStatementExportTests : IDisposable
             TotalWithVat = totalWithVat
         });
 
-        _context.ReceivedInvoice.Add(received);
+        _context.Invoice.Add(received);
         _context.SaveChanges();
     }
 

@@ -142,11 +142,13 @@ public class VatReportServiceTests : IDisposable
         decimal vatPercentage,
         int quantity = 1)
     {
-        var received = new ReceivedInvoice
+        var received = new Invoice
         {
             DocumentNumber = $"REC-{Guid.NewGuid().ToString()[..6]}",
-            Status = status,
-            SupplierId = 1,
+            DocumentType = EDocumentType.ReceivedInvoice,
+            Status = status.ToStored(),
+            ClientId = 1,
+            IssuerId = 1,
             IssueDate = taxableSupplyDate,
             ReceivedDate = taxableSupplyDate,
             DueDate = taxableSupplyDate.AddDays(14),
@@ -157,7 +159,7 @@ public class VatReportServiceTests : IDisposable
             TotalWithVat = quantity * unitPrice * (1 + vatPercentage / 100m)
         };
 
-        received.Items.Add(new ReceivedInvoiceItem
+        received.InvoiceItem.Add(new InvoiceItem
         {
             OrderIndex = 1,
             Description = "Test expense",
@@ -169,7 +171,7 @@ public class VatReportServiceTests : IDisposable
             TotalWithVat = quantity * unitPrice * (1 + vatPercentage / 100m)
         });
 
-        _context.ReceivedInvoice.Add(received);
+        _context.Invoice.Add(received);
         _context.SaveChanges();
     }
 
@@ -438,7 +440,7 @@ public class VatReportServiceTests : IDisposable
         SeedReceivedInvoice(March, EReceivedInvoiceStatus.Approved, 100, 21);
         _context.Currency.Add(new Currency { Id = 2, Code = "EUR", Name = "Euro", Symbol = "EUR", DecimalPlaces = 2, SortOrder = 2, IsActive = true });
         _context.SaveChanges();
-        var rec = _context.ReceivedInvoice.First();
+        var rec = _context.Invoice.First(i => i.DocumentType == EDocumentType.ReceivedInvoice);
         rec.CurrencyId = 2; // no stored rate: historic document -> ČNB rate at DUZP
         _context.SaveChanges();
         var rates = Substitute.For<Fakvio.Application.Service.IExchangeRateService>();

@@ -85,16 +85,13 @@ public class InboundInvoiceEmail : BaseEntity
 
     // ─── Result links ────────────────────────────────────────────────────
 
-    /// <summary>FK to created ReceivedInvoice (when Direction = Received).</summary>
-    public long? ReceivedInvoiceId { get; set; }
-
-    /// <summary>Navigation to created received invoice.</summary>
-    public ReceivedInvoice? ReceivedInvoice { get; set; }
-
-    /// <summary>FK to created Invoice (when Direction = Issued).</summary>
+    /// <summary>
+    /// FK to the created document: a received invoice (DocumentType = ReceivedInvoice, Direction = Received)
+    /// or an issued one (Direction = Issued) - both live in the Invoice table.
+    /// </summary>
     public long? InvoiceId { get; set; }
 
-    /// <summary>Navigation to created invoice.</summary>
+    /// <summary>Navigation to the created document.</summary>
     public Invoice? Invoice { get; set; }
 
     // ─── Attachment metadata ─────────────────────────────────────────────

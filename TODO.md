@@ -1,5 +1,15 @@
 # Fakvio TODO
 
+## One table for all documents - step 1 of 4: persistence (branch `feature/unify-documents-db`, issue #526)
+
+- [x] `EDocumentType.ReceivedInvoice = 5`, `Invoice.ReceivedDate`, entities `ReceivedInvoice`/`ReceivedInvoiceItem` removed; `PaymentMatch.InvoiceId` required, `InboundInvoiceEmail.InvoiceId` only.
+- [x] Tenant migration `UnifyDocumentsInInvoiceTable` (data move + in-transaction self-check, legacy tables parked); real-PostgreSQL tests incl. rollback.
+- [x] `IssuedOnly()` / `ReceivedOnly()` at every `Invoice` DbSet query + `InvoiceDbSetUsageGuardTests`; by-id isolation tests.
+- [x] `ReceivedInvoiceService` = facade over `Invoice` (Reject now soft-deletes); golden master on a production copy identical.
+- [x] Review round 1 (PR #527): migration tolerates double-linked inbound e-mails (`InboundInvoiceEmailReceivedLink_legacy`) and orphan pointers, new ids start above every old received id, per-row self-check; `IssuedDocumentTypes` guard on every issued write path; unmatch recomputes received `PaidAmount`; ADMINGUIDE 13.2.
+- [ ] Later steps: unify API/DTO/UI/MCP (2-4); drop the four `*_legacy` tables in a later release.
+- [ ] Own issue (pre-existing): auto-match candidates for received invoices exclude only `Paid`, so a Deleted supplier invoice can still be matched.
+
 ## Send by e-mail: editable whole body (branch `feature/send-email-editable-body`)
 
 - [x] `InvoiceEmailDefaultsDto.DefaultHtmlBody` (one render with the subject); `SendInvoiceEmailDto/Options.HtmlBody` replaces the template body (Message ignored), placeholders filled in overrides.

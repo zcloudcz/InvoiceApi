@@ -223,9 +223,9 @@ public class GpcImportTests
     public async Task Import_OutgoingDebit_MatchesReceivedInvoice()
     {
         var (db, sut) = Create();
-        db.ReceivedInvoice.Add(new ReceivedInvoice
+        db.Invoice.Add(new Invoice
         {
-            DocumentNumber = "RI-1", Status = EReceivedInvoiceStatus.Approved, SupplierId = 1,
+            DocumentType = EDocumentType.ReceivedInvoice, DocumentNumber = "RI-1", Status = EInvoiceStatus.Completed, ClientId = 1, IssuerId = 1,
             CurrencyId = db.Currency.Single().Id, TotalWithVat = 300m, TotalBeforeVat = 300m, VariableSymbol = "777",
         });
         db.SaveChanges();
@@ -234,7 +234,7 @@ public class GpcImportTests
 
         r.Imported.ShouldBe(1);
         r.Matched.ShouldBe(1);
-        (await db.ReceivedInvoice.SingleAsync()).Status.ShouldBe(EReceivedInvoiceStatus.Paid);
+        (await db.Invoice.SingleAsync(i => i.DocumentType == EDocumentType.ReceivedInvoice)).Status.ShouldBe(EInvoiceStatus.Paid);
     }
 
     [Fact]
