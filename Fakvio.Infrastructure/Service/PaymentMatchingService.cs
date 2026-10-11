@@ -206,12 +206,25 @@ public class PaymentMatchingService : IPaymentMatchingService
             ?? throw new InvalidOperationException($"PaymentMatch {paymentMatchId} not found.");
 
         // Same rule for issued and received documents: recompute from the matches that REMAIN instead of
-        // subtracting this one. A document can be Paid with PaidAmount = total while its matches sum to less
-        // ("mark as paid" by hand, rows migrated from the old received table where any match meant Paid).
-        // Subtracting would leave e.g. 1000 - 600 = 400 and a PartiallyPaid document with no payment behind it.
+        // subtracting this one, so PaidAmount can never drift away from the payments that are really there.
         var remainingOnInvoice = await _context.PaymentMatch
             .Where(m => m.InvoiceId == match.InvoiceId && m.Id != match.Id)
             .SumAsync(m => (decimal?)m.MatchedAmount, ct) ?? 0m;
+
+        // Refused when part of the payment was recorded BY HAND ("mark as paid" on a partially matched document,
+        // or a row migrated from the old received table, where any match meant Paid): PaidAmount is then higher
+        // than all the matches together, and recomputing from the remaining matches would silently erase the
+        // manual part (1000 total, 600 matched, 400 by hand -> unmatch -> 0 paid).
+        // The user has to cancel the whole payment on the document instead (mark unpaid removes every match and
+        // resets the document). Only Paid / PartiallyPaid are checked - those are exactly the statuses mark unpaid
+        // accepts; a Deleted or Creditnoted document could not follow the advice and would keep the transaction
+        // blocked forever. Thrown before anything is changed, so a refused unmatch leaves no trace.
+        if (match.Invoice.Status is EInvoiceStatus.Paid or EInvoiceStatus.PartiallyPaid
+            && match.Invoice.PaidAmount > remainingOnInvoice + match.MatchedAmount)
+            throw new InvalidOperationException(
+                "This payment cannot be unmatched because part of the document was marked as paid manually. " +
+                "Cancel the payment on the document first (mark it as unpaid) - that removes all its matched payments.");
+
         ApplyPaidAmount(match.Invoice, remainingOnInvoice, match.BankTransaction.TransactionDate);
 
         _context.PaymentMatch.Remove(match);

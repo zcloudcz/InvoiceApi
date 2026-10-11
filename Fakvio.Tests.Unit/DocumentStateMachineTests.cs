@@ -431,4 +431,79 @@ public class DocumentStateMachineTests
 
         Load(id).Status.ShouldBe(EInvoiceStatus.Deleted);
     }
+
+    // ─── Unmatch after a manual top-up is refused (owner decision) ───────────
+
+    [Theory]
+    [InlineData(Side.Issued)]
+    [InlineData(Side.Received)]
+    public async Task Unmatch_AfterManualTopUp_IsRefusedAndChangesNothing_MarkUnpaidThenCleansEverything(Side side)
+    {
+        // 1210 total: 600 came from the bank, the rest was marked as paid by hand.
+        var id = SeedDoc(side, EInvoiceStatus.Completed);
+        var tx = SeedTx(side, 600m);
+        await ConfirmAsync(side, tx, id);
+        Load(id).Status.ShouldBe(EInvoiceStatus.PartiallyPaid);
+        await RunAsync(side, "pay", id);
+        var paid = Load(id);
+        paid.Status.ShouldBe(EInvoiceStatus.Paid);
+        paid.PaidAmount.ShouldBe(1210m);
+
+        long matchId;
+        using (var db = NewDb()) matchId = db.PaymentMatch.Single(m => m.InvoiceId == id).Id;
+
+        // Unmatching the 600 would recompute PaidAmount to 0 and silently lose the manual 610 -> refused.
+        InvalidOperationException ex;
+        using (var db = NewDb())
+            ex = await Should.ThrowAsync<InvalidOperationException>(() => Matching(db).UnmatchAsync(matchId, null, null));
+        ex.Message.ShouldContain("mark it as unpaid");
+
+        var untouched = Load(id);
+        untouched.Status.ShouldBe(EInvoiceStatus.Paid);
+        untouched.PaidAmount.ShouldBe(1210m);
+        untouched.PaidAt.ShouldBe(paid.PaidAt);
+        using (var check = NewDb())
+        {
+            check.PaymentMatch.Count(m => m.InvoiceId == id).ShouldBe(1);
+            check.BankTransaction.Single(t => t.Id == tx).MatchStatus.ShouldBe(EMatchStatus.Matched);
+        }
+
+        // The way out the message points to: cancel the payment on the document.
+        await RunAsync(side, "unpay", id);
+
+        var clean = Load(id);
+        clean.Status.ShouldBe(EInvoiceStatus.Completed);
+        clean.PaidAmount.ShouldBe(0m);
+        clean.PaidAt.ShouldBeNull();
+        using (var check = NewDb())
+        {
+            check.PaymentMatch.Any(m => m.InvoiceId == id).ShouldBeFalse();
+            check.BankTransaction.Single(t => t.Id == tx).MatchStatus.ShouldBe(EMatchStatus.Unmatched);
+        }
+    }
+
+    [Theory]
+    [InlineData(Side.Issued)]
+    [InlineData(Side.Received)]
+    public async Task Unmatch_OfOneOfTwoMatches_AfterManualTopUp_IsRefusedToo(Side side)
+    {
+        // Two bank payments (300 + 300) and a manual rest: no single match may be taken out.
+        var id = SeedDoc(side, EInvoiceStatus.Completed);
+        await ConfirmAsync(side, SeedTx(side, 300m), id);
+        await ConfirmAsync(side, SeedTx(side, 300m), id);
+        await RunAsync(side, "pay", id);
+
+        long[] matchIds;
+        using (var db = NewDb()) matchIds = db.PaymentMatch.Where(m => m.InvoiceId == id).Select(m => m.Id).ToArray();
+
+        foreach (var matchId in matchIds)
+        {
+            using var db = NewDb();
+            await Should.ThrowAsync<InvalidOperationException>(() => Matching(db).UnmatchAsync(matchId, null, null));
+        }
+
+        Load(id).PaidAmount.ShouldBe(1210m);
+        using var check = NewDb();
+        check.PaymentMatch.Count(m => m.InvoiceId == id).ShouldBe(2);
+    }
 }

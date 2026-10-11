@@ -1096,6 +1096,12 @@ nespárovaných plateb a případná upozornění (např. storno položky se nei
 
 Kliknutím na řádek s platbou se otevře detail → tlačítko „Spárovat s fakturou" → výběr faktury ze seznamu.
 
+**Zrušení párování:** v detailu faktury (i přijaté faktury) lze u spárované platby párování zrušit; stav dokladu se přepočítá
+podle zbylých plateb (částečně uhrazená / vystavená). **Výjimka:** pokud byl doklad zčásti uhrazen bankovní platbou a zbytek jste
+doplatili ručně („Označit jako zaplacenou"), jednotlivou platbu odpárovat nelze — ručně zadaná část by se ztratila. Aplikace
+zrušení odmítne a vyzve vás, abyste nejdřív zrušili úhradu na dokladu („Označit jako nezaplacenou"); tím se zruší všechna
+párování dokladu a úhradu můžete zadat znovu.
+
 ### Rozpoznané protistrany (platby bez faktury)
 
 Pravidelné platby bez faktury — sociální a zdravotní pojištění, nemocenská, DPH
