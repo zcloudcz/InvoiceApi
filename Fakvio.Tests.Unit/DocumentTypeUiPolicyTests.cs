@@ -121,17 +121,21 @@ public class DocumentTypeUiPolicyTests
         DocumentTypeUiPolicy.StatusColor(status).ShouldBe(expected);
 
     [Fact]
-    public void StatusColor_CoversEveryStatus()
+    public void StatusColor_CoversEveryDefinedStatus_NotJustTheDefault()
     {
-        // A new EInvoiceStatus must get a color on purpose (the mapping throws for unknown values).
-        foreach (var status in AllStatuses)
-            Should.NotThrow(() => DocumentTypeUiPolicy.StatusColor(status));
+        // Default is reserved for Draft and unknown values; every other status has its own mapping row above.
+        foreach (var status in AllStatuses.Where(st => st != EInvoiceStatus.Draft))
+            DocumentTypeUiPolicy.StatusColor(status).ShouldNotBe(Color.Default, status.ToString());
     }
 
     [Fact]
-    public void StatusLabelKey_UnknownStatus_Throws() =>
-        Should.Throw<ArgumentOutOfRangeException>(
-            () => DocumentTypeUiPolicy.For(EDocumentType.Invoice).StatusLabelKey((EInvoiceStatus)999));
+    public void UnknownStatus_DoesNotCrashTheGrid_ItFallsBackToTheRawName()
+    {
+        var policy = DocumentTypeUiPolicy.For(EDocumentType.Invoice);
+
+        DocumentTypeUiPolicy.StatusColor((EInvoiceStatus)999).ShouldBe(Color.Default);
+        policy.StatusLabelKey((EInvoiceStatus)999).ShouldBe("999");
+    }
 
     [Fact]
     public void For_UnknownType_Throws() =>

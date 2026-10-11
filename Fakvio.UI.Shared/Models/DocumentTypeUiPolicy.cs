@@ -154,10 +154,12 @@ public sealed class DocumentTypeUiPolicy
         EInvoiceStatus.Creditnoted => "Invoice_StatusCredited",
         EInvoiceStatus.Deleted => "Invoice_StatusDeleted",
         EInvoiceStatus.PartiallyPaid => "Invoice_StatusPartiallyPaid",
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown invoice status.")
+        // A status this UI does not know yet (newer API): the localizer returns the key itself when
+        // no resource matches, so the chip shows the raw status name instead of crashing the grid.
+        _ => status.ToString()
     };
 
-    /// <summary>Status chip color - one mapping for every document type.</summary>
+    /// <summary>Status chip color - one mapping for every document type (unknown status = default color).</summary>
     public static Color StatusColor(EInvoiceStatus status) => status switch
     {
         EInvoiceStatus.Draft => Color.Default,
@@ -166,7 +168,7 @@ public sealed class DocumentTypeUiPolicy
         EInvoiceStatus.Creditnoted => Color.Warning,
         EInvoiceStatus.Deleted => Color.Dark,
         EInvoiceStatus.PartiallyPaid => Color.Info,
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown invoice status.")
+        _ => Color.Default
     };
 
     // ── "Complete" action (issue for issued documents, approve for received) ──
