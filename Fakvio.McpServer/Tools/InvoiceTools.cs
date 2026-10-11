@@ -40,24 +40,36 @@ public static class InvoiceTools
     /// Returns a page of invoices matching the given criteria.
     /// </summary>
     [McpServerTool(Title = "List invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "List invoices with pagination and filters. " +
-        "Returns paginated results with invoice details including status, amounts, and client info. " +
+        "List documents with pagination and filters. ONE toolbox for every document type: issued Invoice, CreditNote, " +
+        "Proforma, TaxReceiptForAdvance and received ReceivedInvoice (supplier invoices) - they differ only by documentType. " +
+        "Without documentType only ISSUED documents are listed; pass documentType='ReceivedInvoice' for received ones. " +
+        "Returns paginated results with details including status, amounts, and client (for a received document: supplier) info. " +
         "Sorted newest first (by issue date) unless sortBy is given.")]
     public static async Task<string> ListInvoices(
         IFakvioApiClient api,
         [Description("Page number (1-based, default 1)")] int page = 1,
         [Description("Items per page (default 20, max 100)")] int pageSize = 20,
         [Description("Search by document number, client name, or variable symbol")] string? search = null,
-        [Description("Filter by document type: 'Invoice' or 'CreditNote'")] string? documentType = null,
-        [Description("Filter by status: 'Draft', 'Completed', 'Paid', 'Creditnoted', or 'Deleted'")] string? status = null,
+        [Description("Filter by document type: 'Invoice', 'CreditNote', 'Proforma', 'TaxReceiptForAdvance' or 'ReceivedInvoice'. Omit for issued documents.")] string? documentType = null,
+        [Description("Filter by status: 'Draft', 'Completed' (for a received invoice = approved), 'Paid', 'Creditnoted', or 'Deleted'")] string? status = null,
         [Description("Filter by client ID")] long? clientId = null,
         [Description("Filter invoices issued on or after this date (ISO 8601, e.g. '2026-01-01')")] string? issueDateFrom = null,
         [Description("Filter invoices issued on or before this date (ISO 8601)")] string? issueDateTo = null,
-        [Description("Filter to only overdue invoices (true/false)")] bool? isOverdue = null,
+        [Description("Filter to only overdue documents (true/false)")] bool? isOverdue = null,
         [Description("Sort field: DocumentNumber, IssueDate, DueDate, TaxableSupplyDate, TotalWithVat, Status, CreatedAt or UpdatedAt. Omit for newest first.")] string? sortBy = null,
         [Description("Sort direction for sortBy: 'asc' or 'desc' (default 'desc')")] string sortDirection = "desc",
         CancellationToken ct = default)
     {
+        // Validate the model's own input BEFORE any API call: an unknown type used to be ignored silently,
+        // which returned issued documents when the model asked for something else.
+        EDocumentType? parsedDocumentType = null;
+        if (!string.IsNullOrWhiteSpace(documentType))
+        {
+            if (!TryParseDocumentType(documentType, out var dt))
+                return Error(UnknownDocumentTypeMessage(documentType));
+            parsedDocumentType = dt;
+        }
+
         try
         {
             // Sorting is passed through as-is: the API validates sortBy and falls back
@@ -72,9 +84,10 @@ public static class InvoiceTools
                 SortDirection = sortDirection
             };
 
+            // The API's default list scope is issued documents only; an explicit type (incl. ReceivedInvoice) widens it.
+            filter.DocumentType = parsedDocumentType;
+
             // Parse enum strings safely — AI models may pass various casing
-            if (!string.IsNullOrEmpty(documentType) && Enum.TryParse<EDocumentType>(documentType, ignoreCase: true, out var dt))
-                filter.DocumentType = dt;
 
             if (!string.IsNullOrEmpty(status) && Enum.TryParse<EInvoiceStatus>(status, ignoreCase: true, out var st))
                 filter.Status = st;
@@ -106,8 +119,9 @@ public static class InvoiceTools
     /// Returns full invoice details including items, amounts, and metadata.
     /// </summary>
     [McpServerTool(Title = "Get invoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "Get a single invoice by ID. Returns full details including line items, " +
-        "totals (before VAT, VAT, with VAT), payment status, and client/issuer info.")]
+        "Get a single document by ID - any type (invoice, credit note, proforma, tax receipt, received invoice); " +
+        "the type is read from the stored document. Returns full details including line items, " +
+        "totals (before VAT, VAT, with VAT), payment status, and client (for a received invoice: supplier) / issuer info.")]
     public static async Task<string> GetInvoice(
         IFakvioApiClient api,
         [Description("The invoice ID (database primary key)")] long invoiceId,
@@ -137,16 +151,27 @@ public static class InvoiceTools
     /// Useful when the user refers to an invoice by its printed number.
     /// </summary>
     [McpServerTool(Title = "Find invoice by number", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "Find an invoice by its document number (e.g., 'FAK2026001'). " +
-        "Use this when the user refers to an invoice by its printed/visible number.")]
+        "Find a document by its document number (e.g., 'FAK2026001'). " +
+        "Use this when the user refers to an invoice by its printed/visible number. " +
+        "Searches issued documents unless documentType is given; for a received invoice pass documentType='ReceivedInvoice' " +
+        "(then documentNumber is the SUPPLIER's number, which two suppliers may share - use list_invoices with search to see all).")]
     public static async Task<string> FindInvoiceByNumber(
         IFakvioApiClient api,
         [Description("The document number to search for (e.g., 'FAK2026001')")] string documentNumber,
+        [Description("Type scope: 'Invoice', 'CreditNote', 'Proforma', 'TaxReceiptForAdvance' or 'ReceivedInvoice'. Omit to search issued documents.")] string? documentType = null,
         CancellationToken ct = default)
     {
+        EDocumentType? parsedDocumentType = null;
+        if (!string.IsNullOrWhiteSpace(documentType))
+        {
+            if (!TryParseDocumentType(documentType, out var dt))
+                return Error(UnknownDocumentTypeMessage(documentType));
+            parsedDocumentType = dt;
+        }
+
         try
         {
-            var invoice = await api.GetInvoiceByDocumentNumberAsync(documentNumber, ct);
+            var invoice = await api.GetInvoiceByDocumentNumberAsync(documentNumber, ct, parsedDocumentType);
 
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with document number '{documentNumber}' not found." }, JsonOptions);
@@ -174,8 +199,13 @@ public static class InvoiceTools
     /// the API actually needs, entirely before any write call reaches the API.
     /// </summary>
     [McpServerTool(Title = "Create invoice", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
-        "Create a new invoice, credit note or proforma (Draft status). Recommended flow: " +
-        "find_client / list_clients to get clientId → create_invoice → complete_invoice to issue it. " +
+        "Create a new document in Draft status: invoice, credit note, proforma or a RECEIVED invoice from a supplier " +
+        "(documentType='ReceivedInvoice'). Recommended flow: " +
+        "find_client / list_clients to get clientId → create_invoice → complete_invoice to issue it (for a received invoice: to approve it). " +
+        "For a ReceivedInvoice: clientId is the SUPPLIER, documentNumber is the supplier's invoice number (optional on a draft), " +
+        "receivedDate is when it arrived (default now), variableSymbol is the supplier's symbol as printed (max 50 chars, any characters), " +
+        "issuerId can be omitted (the server uses your company). The issued-only inputs (originalInvoiceId, bankAccountId, applyOss, " +
+        "text rows) are refused by the API for a received invoice and its message is returned. " +
         "For a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
         "the matching VatRateId active on issueDate is resolved automatically. EU OSS is opt-in (applyOss=true) for an " +
         "OSS-registered issuer invoicing a consumer (client without a VAT id) in another EU state: vatRatePercentage " +
@@ -185,7 +215,7 @@ public static class InvoiceTools
         "(currency-matching default first) — you don't need to set one for a normal invoice.")]
     public static async Task<string> CreateInvoice(
         IFakvioApiClient api,
-        [Description("The client (customer) ID — find it with list_clients or find_client")] long clientId,
+        [Description("The client (customer) ID — find it with list_clients or find_client. For documentType='ReceivedInvoice' this is the SUPPLIER.")] long clientId,
         [Description(
             "Line items. Each needs description, quantity, unit, unitPrice and (for a VAT-paying " +
             "issuer) vatRatePercentage (e.g. 21); vatRateId is resolved automatically from the " +
@@ -194,7 +224,7 @@ public static class InvoiceTools
             "reverseChargeCodeId to the Id of a code from list_reverse_charge_codes — required " +
             "together, and only for ReverseCharge items.")]
         List<CreateInvoiceItemDto> items,
-        [Description("'Invoice', 'CreditNote' or 'Proforma' (default 'Invoice')")] string documentType = "Invoice",
+        [Description("'Invoice', 'CreditNote', 'Proforma' or 'ReceivedInvoice' (default 'Invoice')")] string documentType = "Invoice",
         [Description("ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit for CZK.")] string? currency = null,
         [Description("Issuer (your company) ID. Omit to use the authenticated user's own company (get_issuer).")] long? issuerId = null,
         [Description("Issue date, ISO 8601 (e.g. '2026-01-15'). Omit for today.")] string? issueDate = null,
@@ -211,6 +241,8 @@ public static class InvoiceTools
             "Optional: one of the issuer's bank accounts (BankAccount.Id, see the bankAccount " +
             "list in get_issuer) to use instead of the automatic default. Must belong to the issuer.")]
         long? bankAccountId = null,
+        [Description("ReceivedInvoice only: the SUPPLIER's invoice number as printed on the document (may stay empty on a draft). Not allowed for issued documents - their number comes from the number sequence.")] string? documentNumber = null,
+        [Description("ReceivedInvoice only: the date the document arrived, ISO 8601. Omit for now. The API refuses it for issued documents.")] string? receivedDate = null,
         CancellationToken ct = default)
     {
         // ── Validate the model's own input BEFORE any API call ──────────────
@@ -218,10 +250,16 @@ public static class InvoiceTools
         // an unknown currency code or VAT percentage is the model's mistake, not the API's,
         // and reporting it precisely here means the API is never even called with bad data.
 
-        // IssuedDocumentTypes.TryParse, not Enum.TryParse: the enum also contains ReceivedInvoice (and Enum.TryParse
-        // accepts raw numbers), which must never be created through the issued-invoice tool.
-        if (!IssuedDocumentTypes.TryParse(documentType, out var parsedDocumentType))
-            return Error($"Unknown documentType '{documentType}'. Use 'Invoice', 'CreditNote' or 'Proforma'.");
+        // TryParseDocumentType matches the enum NAMES only (Enum.TryParse would also accept raw numbers like "99").
+        // ReceivedInvoice is accepted here: one tool creates every document type, the API applies the type policy.
+        if (!TryParseDocumentType(documentType, out var parsedDocumentType))
+            return Error(UnknownDocumentTypeMessage(documentType));
+        var isReceived = parsedDocumentType == EDocumentType.ReceivedInvoice;
+
+        // An issued document gets its number from the number sequence; a model-supplied one would only be a surprise.
+        if (!isReceived && !string.IsNullOrWhiteSpace(documentNumber))
+            return Error("documentNumber is only for documentType='ReceivedInvoice' (the supplier's number). " +
+                         "Issued documents get their number from the number sequence when completed.");
 
         EPaymentMethod? parsedPaymentMethod = null;
         if (!string.IsNullOrWhiteSpace(paymentMethod))
@@ -249,6 +287,10 @@ public static class InvoiceTools
             parsedDueDate = d;
         }
 
+        var (parsedReceivedDate, receivedDateError) = ParseOptionalDate(receivedDate, nameof(receivedDate));
+        if (receivedDateError is not null)
+            return Error(receivedDateError);
+
         try
         {
             // ── Resolve issuer (explicit ID or the authenticated user's own company) ────
@@ -275,8 +317,10 @@ public static class InvoiceTools
             // EU OSS (DEVGUIDE §4.16): when the invoice falls under OSS the server auto-detects it and
             // validates vatRatePercentage against the destination country's rates — the CZ rate table
             // must not be consulted (a German 19 % would be "no matching rate" there).
-            var ossCountry = applyOss ? await api.GetOssCountryAsync(clientId, issuer.Id, parsedDocumentType, ct) : null;
-            if (applyOss && string.IsNullOrEmpty(ossCountry))
+            // A received invoice never goes through OSS: skip the lookup and let the API refuse applyOss=true
+            // with its own message (see the DTO below).
+            var ossCountry = applyOss && !isReceived ? await api.GetOssCountryAsync(clientId, issuer.Id, parsedDocumentType, ct) : null;
+            if (applyOss && !isReceived && string.IsNullOrEmpty(ossCountry))
                 return Error("applyOss=true but this invoice is not eligible for OSS: it needs an OSS-registered VAT-payer issuer, " +
                              "an Invoice (not proforma/credit note) and a consumer client without VAT id in another EU state.");
             if (issuer.IsVatPayer && string.IsNullOrEmpty(ossCountry))
@@ -290,10 +334,14 @@ public static class InvoiceTools
             {
                 DocumentType = parsedDocumentType,
                 ClientId = clientId,
-                IssuerId = issuer.Id,
+                // A received invoice: 0 = "not sent" (the server always uses our own IsIssuer client); an explicit
+                // issuerId is passed through so the API can refuse a foreign one with its message.
+                IssuerId = isReceived ? issuerId ?? 0 : issuer.Id,
                 CurrencyId = resolvedCurrency.Id,
                 IssueDate = parsedIssueDate,
                 DueDate = parsedDueDate,
+                ReceivedDate = parsedReceivedDate,
+                CustomDocumentNumber = isReceived ? documentNumber : null,
                 VariableSymbol = variableSymbol,
                 PaymentMethod = parsedPaymentMethod,
                 Notes = notes,
@@ -336,6 +384,9 @@ public static class InvoiceTools
             var proforma = await api.GetInvoiceByIdAsync(proformaId, ct);
             if (proforma is null)
                 return Error($"Proforma with ID {proformaId} not found.");
+            var receivedRefusal = IssuedOnlyRefusal(proforma);
+            if (receivedRefusal is not null)
+                return receivedRefusal;
             if (proforma.DocumentType != EDocumentType.Proforma)
                 return Error($"Document {proformaId} is a {proforma.DocumentType}, not a Proforma.");
 
@@ -456,6 +507,42 @@ public static class InvoiceTools
     private static string Error(string message) =>
         JsonSerializer.Serialize(new { error = message }, JsonOptions);
 
+    /// <summary>
+    /// Parses a document type typed by a model. Matches the enum NAMES only (case-insensitive): Enum.TryParse would
+    /// also accept raw numbers such as "99" or "5", which a model must not be able to smuggle in.
+    /// Every <see cref="EDocumentType"/> is valid, including ReceivedInvoice (one toolbox for all documents).
+    /// Shared with the overdue list in ReportingTools.
+    /// </summary>
+    internal static bool TryParseDocumentType(string? text, out EDocumentType type)
+    {
+        var name = Enum.GetNames<EDocumentType>()
+            .FirstOrDefault(n => n.Equals(text?.Trim(), StringComparison.OrdinalIgnoreCase));
+        type = name is null ? default : Enum.Parse<EDocumentType>(name);
+        return name is not null;
+    }
+
+    /// <summary>The error text for an unknown document type: lists every valid name so the model can self-correct.</summary>
+    internal static string UnknownDocumentTypeMessage(string? text) =>
+        $"Unknown documentType '{text}'. Valid values: {string.Join(", ", Enum.GetNames<EDocumentType>())}.";
+
+    /// <summary>
+    /// Business error for a RECEIVED document passed to an issued-only operation (PDF, issued ISDOC / UBL, e-mail, QR,
+    /// credit note, advances, bulk ZIP). Same wording and shape as the API's HTTP 400 for these operations
+    /// (<c>IssuedDocumentOnlyAttribute</c> -> <c>{ message }</c> -> McpToolError "validation_error").
+    ///
+    /// Junior note: the export tools only ask the API for a download LINK, and the link's action is called later
+    /// without that 400 filter - so without this up-front check the model got a link that answered 404 when opened.
+    /// Returns null for an issued document (nothing to refuse).
+    /// </summary>
+    internal static string? IssuedOnlyRefusal(InvoiceDto document) =>
+        document.DocumentType == EDocumentType.ReceivedInvoice
+            ? JsonSerializer.Serialize(new
+            {
+                error = "validation_error",
+                message = $"Document {document.Id} is a received invoice. This operation is available only for issued documents."
+            }, JsonOptions)
+            : null;
+
     /// <summary>Renders one candidate in a "which VAT rate did you mean" error message.</summary>
     private static string DescribeVatRate(Fakvio.Contracts.Dto.VatRate.VatRateDto rate) =>
         $"id={rate.Id} name='{rate.Name}' validFrom={rate.ValidFrom:yyyy-MM-dd}" +
@@ -466,8 +553,9 @@ public static class InvoiceTools
     /// This generates the document number and transitions status from Draft → Completed.
     /// </summary>
     [McpServerTool(Title = "Complete invoice", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
-        "Complete (issue) a draft invoice. This generates the document number " +
-        "and changes status from Draft to Completed. Cannot be undone.")]
+        "Complete (issue) a draft document. Works for every type: for an issued document this generates the document number; " +
+        "for a received invoice it is the APPROVAL (the supplier's number is kept). Changes status from Draft to Completed. " +
+        "The way back is revert_invoice_to_draft (a paid document first needs mark_invoice_unpaid).")]
     public static async Task<string> CompleteInvoice(
         IFakvioApiClient api,
         [Description("The invoice ID to complete")] long invoiceId,
@@ -511,8 +599,9 @@ public static class InvoiceTools
     /// Only works on invoices with status Completed.
     /// </summary>
     [McpServerTool(Title = "Mark invoice as paid", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
-        "Mark a completed invoice as paid. Only works on invoices " +
-        "with status 'Completed'. Sets the PaidAt timestamp.")]
+        "Mark a completed document as paid (any type, incl. a received invoice). Only works on documents " +
+        "with status 'Completed' (or partially paid). Sets the PaidAt timestamp. " +
+        "The way back for a paid document: mark_invoice_unpaid -> revert_invoice_to_draft -> delete_invoice.")]
     public static async Task<string> MarkInvoicePaid(
         IFakvioApiClient api,
         [Description("The invoice ID to mark as paid")] long invoiceId,
@@ -534,11 +623,72 @@ public static class InvoiceTools
     }
 
     /// <summary>
+    /// Cancels the payment of a Paid / PartiallyPaid document (POST /api/invoice/{id}/mark-unpaid), any type.
+    /// </summary>
+    [McpServerTool(Title = "Mark invoice as unpaid", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
+        "Cancel the payment of a Paid or partially paid document (any type, incl. a received invoice): the document goes back to " +
+        "'Completed' and ALL its bank-payment matches are removed (the bank transactions become unmatched again), paid amount = 0. " +
+        "Call ONLY after the user confirmed it. This is the first step of the way back for a paid document: " +
+        "mark_invoice_unpaid -> revert_invoice_to_draft -> delete_invoice (restore_invoice undoes a delete). " +
+        "A single bank payment can be unmatched directly only when the document was paid by bank-payment matches alone; " +
+        "if part of it was marked paid manually, use this tool instead.")]
+    public static async Task<string> MarkInvoiceUnpaid(
+        IFakvioApiClient api,
+        [Description("The document ID to mark as unpaid")] long invoiceId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await api.MarkInvoiceAsUnpaidAsync(invoiceId, ct);
+            return result is null
+                ? Error($"Invoice with ID {invoiceId} not found.")
+                : JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Brings a Deleted document back to Draft (POST /api/invoice/{id}/restore), any type.
+    /// </summary>
+    [McpServerTool(Title = "Restore deleted invoice", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
+        "Restore a deleted document (any type, incl. a received invoice) back to Draft - the undo of delete_invoice. " +
+        "Only documents with status 'Deleted' can be restored. A restored issued document gets a new number " +
+        "when completed again; a received invoice keeps the supplier's number.")]
+    public static async Task<string> RestoreInvoice(
+        IFakvioApiClient api,
+        [Description("The deleted document ID to restore")] long invoiceId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await api.RestoreInvoiceAsync(invoiceId, ct);
+            return result is null
+                ? Error($"Invoice with ID {invoiceId} not found.")
+                : JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
     /// Sends an invoice via email. The API generates PDF + ISDOC (and UBL for SK / Peppol buyers)
     /// and attaches them; the caller may add a custom subject, message and extra files.
     /// </summary>
     [McpServerTool(Title = "Send invoice by email", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true), Description(
-        "Send an invoice via email. The system generates the attachments automatically: by default PDF and ISDOC " +
+        "Send an ISSUED invoice via email (a received invoice is refused by the API). The system generates the attachments automatically: by default PDF and ISDOC " +
         "(Czech e-invoice XML) are attached, and a UBL XML is added for Slovak / Peppol buyers - but each client (and " +
         "the company) can change these defaults (update_client billingSettings.emailAttachPdf/emailAttachIsdoc/emailAttachUbl). " +
         "Override them for this send with attachPdf / attachIsdoc / attachUbl (true/false; attachUbl=true forces the UBL for any " +
@@ -609,7 +759,7 @@ public static class InvoiceTools
     /// Read-only preview of what send_invoice_email would do: recipients, default attachments, stored files.
     /// </summary>
     [McpServerTool(Title = "Get invoice e-mail options", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "Show the options for sending an invoice by e-mail: the client's e-mail contacts (best recipient first), the effective " +
+        "Show the options for sending an ISSUED invoice by e-mail (a received invoice is refused): the client's e-mail contacts (best recipient first), the effective " +
         "default attachments (attachPdf / attachIsdoc / attachUbl, and whether UBL is automatic), the files stored on the invoice " +
         "(id, name, size - pass the ids to send_invoice_email fileAttachmentIds) and the rendered default subject " +
         "(defaultSubject) and body (defaultHtmlBody, template with placeholders filled in). Show these to the user " +
@@ -639,7 +789,8 @@ public static class InvoiceTools
     /// (never as file content - AI clients cannot turn base64 text into a file).
     /// </summary>
     [McpServerTool(Title = "Export invoice as PDF", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "Export an invoice as PDF. Returns a short-lived download link (downloadUrl) - give that link to the user " +
+        "Export an ISSUED invoice as PDF (a received invoice is refused - its original is an attachment, see list_attachments). " +
+        "Returns a short-lived download link (downloadUrl) - give that link to the user " +
         "and do NOT fetch it or load the file contents into the conversation. " +
         "Use this when the user asks to download, export, print, or get a PDF of an invoice. " +
         "You can find the invoice ID using FindInvoiceByNumber first.")]
@@ -654,6 +805,11 @@ public static class InvoiceTools
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
+
+            // Refuse a received document HERE: the link would be minted fine and 404 only when opened.
+            var refusal = IssuedOnlyRefusal(invoice);
+            if (refusal is not null)
+                return refusal;
 
             // The file itself is generated when the user opens the link; the server picks the file name then.
             var link = await api.CreateDownloadLinkAsync(
@@ -675,7 +831,7 @@ public static class InvoiceTools
     /// ISDOC is the Czech electronic invoice standard importable by Pohoda, Money S3, Helios.
     /// </summary>
     [McpServerTool(Title = "Export invoice as ISDOC", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "Export an invoice as ISDOC 6.0.2 XML (Czech electronic invoice standard). " +
+        "Export an ISSUED invoice as ISDOC 6.0.2 XML (Czech electronic invoice standard; a received invoice is refused - use export_received_invoice_isdoc). " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "Use this when the user asks to download or export an invoice as ISDOC for import into accounting software. " +
         "You can find the invoice ID using FindInvoiceByNumber first.")]
@@ -690,6 +846,10 @@ public static class InvoiceTools
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
+
+            var refusal = IssuedOnlyRefusal(invoice);
+            if (refusal is not null)
+                return refusal;
 
             var link = await api.CreateDownloadLinkAsync(
                 new CreateDownloadLinkDto { Kind = EDownloadKind.InvoiceIsdoc, Id = invoiceId }, ct);
@@ -713,7 +873,7 @@ public static class InvoiceTools
     /// the link with 400 and the error JSON carries the readable EINVOICE_* codes instead of a stack trace.
     /// </summary>
     [McpServerTool(Title = "Export invoice as UBL/Peppol eInvoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
-        "Export an invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-invoicing 2027, Peppol network). " +
+        "Export an ISSUED invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-invoicing 2027, Peppol network; a received invoice is refused). " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "Use this instead of ExportInvoiceIsdoc when the user asks for a Peppol / UBL / SK eFaktura export, " +
         "or wants a file to upload into a Peppol digital courier application. " +
@@ -729,6 +889,10 @@ public static class InvoiceTools
             var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (invoice is null)
                 return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
+
+            var refusal = IssuedOnlyRefusal(invoice);
+            if (refusal is not null)
+                return refusal;
 
             var link = await api.CreateDownloadLinkAsync(
                 new CreateDownloadLinkDto { Kind = EDownloadKind.InvoiceUbl, Id = invoiceId }, ct);
@@ -822,6 +986,7 @@ public static class InvoiceTools
     [McpServerTool(Title = "Export several invoices as ZIP", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Export several invoices (max 100) as ONE ZIP archive in the chosen format: 'pdf', 'isdoc' or 'ubl'. " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
+        "ISSUED invoices only: if any id is a received invoice the call is refused with a clear error. " +
         "Invoices that cannot be exported are left out of the ZIP. For a single invoice use ExportInvoicePdf / ExportInvoiceIsdoc / ExportInvoiceUbl.")]
     public static async Task<string> ExportInvoicesZip(
         IFakvioApiClient api,
@@ -843,6 +1008,17 @@ public static class InvoiceTools
             if (invoiceIds is null || invoiceIds.Length == 0)
                 return JsonSerializer.Serialize(new { error = "Provide at least one invoice ID." }, JsonOptions);
 
+            // Refuse a received document up front (same reason as the single exports): the ZIP action silently skips
+            // received ids, so a list of only received ids would end in an empty archive behind a perfectly fine link.
+            // ponytail: one GET per distinct id (max 100); a batch lookup endpoint would make this one call.
+            foreach (var id in invoiceIds.Distinct())
+            {
+                var document = await api.GetInvoiceByIdAsync(id, ct);
+                var refusal = document is null ? null : IssuedOnlyRefusal(document);
+                if (refusal is not null)
+                    return refusal;
+            }
+
             var link = await api.CreateDownloadLinkAsync(
                 new CreateDownloadLinkDto { Kind = kind.Value, Ids = invoiceIds.ToList() }, ct);
             return DownloadLinkResult.ToJson(link, "application/zip");
@@ -862,8 +1038,10 @@ public static class InvoiceTools
     /// Only invoices in Draft status can be deleted.
     /// </summary>
     [McpServerTool(Title = "Delete invoice", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
-        "Delete a draft invoice (soft delete). " +
-        "Only invoices with status 'Draft' can be deleted.")]
+        "Delete a draft document (soft delete; any type, incl. a received invoice). " +
+        "Only documents with status 'Draft' can be deleted (an issued Completed one only when it is the last in its number series); " +
+        "a Completed one needs revert_invoice_to_draft first, a Paid one mark_invoice_unpaid -> revert_invoice_to_draft. " +
+        "restore_invoice undoes a delete.")]
     public static async Task<string> DeleteInvoice(
         IFakvioApiClient api,
         [Description("The invoice ID to delete")] long invoiceId,
@@ -890,7 +1068,7 @@ public static class InvoiceTools
     /// any other invoice update (Draft/Completed only, not Paid/Creditnoted).
     /// </summary>
     [McpServerTool(Title = "Set invoice bank account", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
-        "Change the bank account on an existing invoice to one of the issuer's accounts " +
+        "Change the bank account on an existing ISSUED invoice (a received invoice has none - the API refuses it) to one of the issuer's accounts " +
         "(see the bankAccount list in get_issuer for ids). Only works on Draft or Completed " +
         "invoices — Paid and Creditnoted invoices cannot be changed.")]
     public static async Task<string> SetInvoiceBankAccount(
@@ -928,11 +1106,14 @@ public static class InvoiceTools
     /// to revert it to Draft" — so Completed returns a structured hint and Paid/Creditnoted a clear error.
     /// </summary>
     [McpServerTool(Title = "Update invoice", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false), Description(
-        "Edit an existing invoice, credit note or proforma. Partial update: only the arguments you pass " +
+        "Edit an existing invoice, credit note, proforma or received invoice. Partial update: only the arguments you pass " +
         "are changed, omitted ones stay as they are. Edits Draft documents. For an issued (Completed) invoice " +
         "nothing is changed and the result has status 'requires_revert_to_draft': ask the user for explicit " +
         "confirmation, then call revert_invoice_to_draft and retry. Paid / credit-noted invoices cannot be edited " +
-        "(issue a credit note instead, create_invoice with documentType='CreditNote' and originalInvoiceId). " +
+        "(issue a credit note instead, create_invoice with documentType='CreditNote' and originalInvoiceId; " +
+        "a paid document of any type can also go back via mark_invoice_unpaid -> revert_invoice_to_draft after the user confirms). " +
+        "For a RECEIVED invoice you can also change documentNumber (the supplier's number) and receivedDate; its variableSymbol " +
+        "is the supplier's (max 50 chars, any characters) and bankAccountId / applyOss are refused by the API. " +
         "IMPORTANT: 'items' REPLACES ALL existing lines — to change one line, call get_invoice first and " +
         "send the complete list back with your change. The client and document type cannot be changed " +
         "(delete the draft and create a new one instead). Returns the updated invoice like get_invoice.")]
@@ -942,7 +1123,7 @@ public static class InvoiceTools
         [Description("New issue date, ISO 8601 (e.g. '2026-01-15'). Omit to keep.")] string? issueDate = null,
         [Description("New due date, ISO 8601. Omit to keep.")] string? dueDate = null,
         [Description("New date of taxable supply (DUZP), ISO 8601. Omit to keep.")] string? taxableSupplyDate = null,
-        [Description("New variable symbol (digits only, max 10). Omit to keep, '' to clear.")] string? variableSymbol = null,
+        [Description("New variable symbol (issued: digits only, max 10; received: the supplier's symbol, max 50). Omit to keep, '' to clear.")] string? variableSymbol = null,
         [Description("New constant symbol. Omit to keep, '' to clear.")] string? constantSymbol = null,
         [Description("New specific symbol. Omit to keep, '' to clear.")] string? specificSymbol = null,
         [Description("New payment method: BankTransfer, Cash, CreditCard, PayPal, Other. Omit to keep.")] string? paymentMethod = null,
@@ -956,6 +1137,8 @@ public static class InvoiceTools
             "description, quantity, unit, unitPrice, vatRatePercentage (VAT payer; vatRateId is resolved automatically), " +
             "isTextRow, vatRegime / reverseChargeCodeId. Omit to keep the current lines.")]
         List<CreateInvoiceItemDto>? items = null,
+        [Description("ReceivedInvoice only: the supplier's invoice number. The API refuses it for issued documents. Omit to keep.")] string? documentNumber = null,
+        [Description("ReceivedInvoice only: the date the document arrived, ISO 8601. The API refuses it for issued documents. Omit to keep.")] string? receivedDate = null,
         CancellationToken ct = default)
     {
         // ── Validate the model's own input BEFORE any API call (same rule as create_invoice) ──
@@ -972,14 +1155,14 @@ public static class InvoiceTools
         var (parsedIssueDate, issueDateError) = ParseOptionalDate(issueDate, nameof(issueDate));
         var (parsedDueDate, dueDateError) = ParseOptionalDate(dueDate, nameof(dueDate));
         var (parsedDuzp, duzpError) = ParseOptionalDate(taxableSupplyDate, nameof(taxableSupplyDate));
-        var dateError = issueDateError ?? dueDateError ?? duzpError;
+        var (parsedReceivedDate, receivedDateError) = ParseOptionalDate(receivedDate, nameof(receivedDate));
+        var dateError = issueDateError ?? dueDateError ?? duzpError ?? receivedDateError;
         if (dateError is not null)
             return Error(dateError);
 
         // Empty currency = "not provided" (models often send "" instead of omitting the argument).
         // Symbols are different: "" is sent as-is and CLEARS the symbol (null = keep).
-        if (variableSymbol is not null && !System.Text.RegularExpressions.Regex.IsMatch(variableSymbol, @"^\d{0,10}$"))
-            return Error("variableSymbol must contain only digits (max 10), or '' to clear it.");
+        // (The variableSymbol format is checked below, once the stored document type is known.)
         currency = string.IsNullOrWhiteSpace(currency) ? null : currency;
 
         if (items is { Count: 0 })
@@ -988,7 +1171,8 @@ public static class InvoiceTools
         var nothingToChange = parsedIssueDate is null && parsedDueDate is null && parsedDuzp is null
             && variableSymbol is null && constantSymbol is null && specificSymbol is null
             && parsedPaymentMethod is null && bankAccountId is null && currency is null
-            && notes is null && applyOss is null && items is null;
+            && notes is null && applyOss is null && items is null
+            && documentNumber is null && parsedReceivedDate is null;
         if (nothingToChange)
             return Error("Nothing to update — pass at least one field to change.");
 
@@ -998,6 +1182,12 @@ public static class InvoiceTools
             var existing = await api.GetInvoiceByIdAsync(invoiceId, ct);
             if (existing is null)
                 return Error($"Invoice with ID {invoiceId} not found.");
+
+            // Issued documents: digits only, max 10. A received document keeps the supplier's symbol as printed
+            // (any characters, max 50), so that case is left to the API, which validates by the STORED type.
+            if (existing.DocumentType != EDocumentType.ReceivedInvoice && variableSymbol is not null
+                && !System.Text.RegularExpressions.Regex.IsMatch(variableSymbol, @"^\d{0,10}$"))
+                return Error("variableSymbol must contain only digits (max 10), or '' to clear it.");
 
             var notDraft = NotEditableResult(existing);
             if (notDraft is not null)
@@ -1028,6 +1218,8 @@ public static class InvoiceTools
             var dto = new UpdateInvoiceDto
             {
                 IssueDate = parsedIssueDate,
+                DocumentNumber = documentNumber,
+                ReceivedDate = parsedReceivedDate,
                 DueDate = parsedDueDate,
                 TaxableSupplyDate = parsedDuzp,
                 VariableSymbol = variableSymbol,
@@ -1078,7 +1270,8 @@ public static class InvoiceTools
     /// edited with update_invoice. Destructive: the document stops being an issued tax document until completed again.
     /// </summary>
     [McpServerTool(Title = "Revert invoice to draft", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
-        "Switch an issued (Completed) invoice back to Draft so it can be edited. Call ONLY after the user has " +
+        "Switch a Completed document (any type; a received invoice = approved) back to Draft so it can be edited or deleted. " +
+        "A Paid document first needs mark_invoice_unpaid. Call ONLY after the user has " +
         "explicitly confirmed this in the current conversation (explain: the issued document becomes a draft, it must be " +
         "issued again with complete_invoice after editing, and re-sent if it was already e-mailed; the invoice still shows as e-mailed, and re-completing fires the invoice webhook again). The document number " +
         "is kept. Only Completed invoices can be reverted — Paid and credit-noted ones cannot. Typical flow: " +
@@ -1133,11 +1326,17 @@ public static class InvoiceTools
                 $"Invoice {number} is partially paid — a partial payment is recorded, so it cannot be edited. " +
                 "Issue a credit note (create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice instead.");
 
+        if (existing.DocumentType == EDocumentType.ReceivedInvoice)
+            return Error(
+                $"Received invoice {number} is not editable in status {existing.Status}: " +
+                "only Draft documents can be edited (approved ones after reverting to draft). If a payment was recorded by mistake, " +
+                "after the user confirms call mark_invoice_unpaid, then revert_invoice_to_draft, then update_invoice.");
+
         return Error(
             $"Invoice {number} is not editable in status {existing.Status}: " +
             "only Draft documents can be edited (issued ones after reverting to draft). To correct it, issue a credit note " +
             "(create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice. If a payment was recorded " +
-            "by mistake, the user can mark the invoice as unpaid in the Fakvio app first.");
+            "by mistake, after the user confirms call mark_invoice_unpaid first.");
     }
 
     /// <summary>Parses an optional ISO date argument; blank = not provided, unparsable = error message.</summary>

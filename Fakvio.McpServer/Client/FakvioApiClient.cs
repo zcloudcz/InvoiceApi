@@ -160,9 +160,11 @@ public class FakvioApiClient : IFakvioApiClient
         return await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct);
     }
 
-    public async Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(string documentNumber, CancellationToken ct = default)
+    public async Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(string documentNumber, CancellationToken ct = default, EDocumentType? documentType = null)
     {
-        var response = await _http.GetAsync($"api/invoice/by-number/{Uri.EscapeDataString(documentNumber)}", ct);
+        // The API searches issued documents only unless a type is asked for (e.g. ReceivedInvoice).
+        var query = documentType.HasValue ? $"?documentType={documentType.Value}" : "";
+        var response = await _http.GetAsync($"api/invoice/by-number/{Uri.EscapeDataString(documentNumber)}{query}", ct);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
@@ -192,6 +194,28 @@ public class FakvioApiClient : IFakvioApiClient
     public async Task<InvoiceDto?> RevertInvoiceToDraftAsync(long id, CancellationToken ct = default)
     {
         var response = await _http.PostAsync($"api/invoice/{id}/revert-to-draft", null, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct);
+    }
+
+    public async Task<InvoiceDto?> MarkInvoiceAsUnpaidAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"api/invoice/{id}/mark-unpaid", null, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<InvoiceDto>(JsonOptions, ct);
+    }
+
+    public async Task<InvoiceDto?> RestoreInvoiceAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"api/invoice/{id}/restore", null, ct);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;

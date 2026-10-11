@@ -108,8 +108,9 @@ public class IssuedDocumentTypeBoundaryTests : IDisposable
 
     // ─── Tools: the value is neither accepted nor offered ────────────────────
 
+    // Step 4: create_invoice now ACCEPTS the name "ReceivedInvoice" (it is THE document tool); the API applies the
+    // received policy. A raw number is still refused, so only "5" remains here.
     [Theory]
-    [InlineData("ReceivedInvoice")]
     [InlineData("5")]
     public async Task McpCreateInvoice_WithReceivedType_ReturnsErrorWithoutCallingApi(string documentType)
     {
