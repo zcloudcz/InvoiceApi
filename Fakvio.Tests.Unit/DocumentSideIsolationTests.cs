@@ -97,6 +97,10 @@ public class DocumentSideIsolationTests : IDisposable
         (await _invoices.GetDocumentTypeAsync(_receivedId)).ShouldBe(EDocumentType.ReceivedInvoice);
         (await _invoices.GetDocumentTypeAsync(_issuedId)).ShouldBe(EDocumentType.Invoice);
         (await _invoices.GetDocumentTypeAsync(99999)).ShouldBeNull();
+
+        // The "issued only" guard's question, one query for any number of ids.
+        (await _invoices.FindReceivedDocumentIdAsync([_issuedId, 99999, _receivedId])).ShouldBe(_receivedId);
+        (await _invoices.FindReceivedDocumentIdAsync([_issuedId, 99999])).ShouldBeNull();
     }
 
     [Fact]
@@ -107,6 +111,28 @@ public class DocumentSideIsolationTests : IDisposable
         (await _invoices.GetInvoiceByDocumentNumberAsync("2026001"))!.Id.ShouldBe(_issuedId);
         (await _invoices.GetInvoiceByDocumentNumberAsync("SUP-77", documentType: EDocumentType.ReceivedInvoice))!.Id.ShouldBe(_receivedId);
         (await _invoices.GetInvoiceByDocumentNumberAsync("2026001", documentType: EDocumentType.ReceivedInvoice)).ShouldBeNull();
+    }
+
+    /// <summary>
+    /// Two suppliers may use the same number. The lookup must then always return the same row: a live document
+    /// before a deleted one, then the newest - never "whatever the database happened to return first".
+    /// </summary>
+    [Fact]
+    public async Task DocumentNumberLookup_ForADuplicateSupplierNumber_IsDeterministic()
+    {
+        var older = NewDoc(EDocumentType.ReceivedInvoice, "DUP-1", 3);
+        var newer = NewDoc(EDocumentType.ReceivedInvoice, "DUP-1", 3);
+        var deletedNewest = NewDoc(EDocumentType.ReceivedInvoice, "DUP-1", 3);
+        deletedNewest.Status = EInvoiceStatus.Deleted;
+        _seed.Invoice.AddRange(older, newer);
+        _seed.SaveChanges();
+        _seed.Invoice.Add(deletedNewest); // saved last, so it has the highest id
+        _seed.SaveChanges();
+
+        var found = (await _invoices.GetInvoiceByDocumentNumberAsync("DUP-1", EDocumentType.ReceivedInvoice))!;
+
+        found.Id.ShouldBe(Math.Max(older.Id, newer.Id));
+        found.Status.ShouldNotBe(EInvoiceStatus.Deleted);
     }
 
     [Fact]

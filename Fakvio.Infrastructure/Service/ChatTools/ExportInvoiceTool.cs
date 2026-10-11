@@ -121,7 +121,7 @@ public class ExportInvoiceTool : IChatTool
     private async Task<ChatToolResult> ExportByDocumentNumberAsync(
         string documentNumber, string format, CancellationToken ct)
     {
-        var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, ct);
+        var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, cancellationToken: ct);
         if (invoice == null)
         {
             return ChatToolResult.Failure(

@@ -307,13 +307,13 @@ public class InvoiceService : IInvoiceService
 
         // Attachment counts for the received grid's "download attachments" action: one grouped query over just the
         // page's received ids (max PageSize rows) - no N+1, and no query at all for a page of issued documents.
-        // The EntityName string "ReceivedInvoice" is stored on the FileAttachment rows, hence kept.
+        // FileAttachment rows of a received invoice carry EntityName "ReceivedInvoice" - the name of the enum member.
         var receivedIds = dtos.Where(d => d.DocumentType == EDocumentType.ReceivedInvoice).Select(d => d.Id).ToList();
         if (receivedIds.Count > 0)
         {
             var attachmentCounts = await _context.FileAttachment
                 .AsNoTracking()
-                .Where(f => f.EntityName == "ReceivedInvoice" && receivedIds.Contains(f.RecordId))
+                .Where(f => f.EntityName == nameof(EDocumentType.ReceivedInvoice) && receivedIds.Contains(f.RecordId))
                 .GroupBy(f => f.RecordId)
                 .Select(g => new { g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
@@ -350,7 +350,7 @@ public class InvoiceService : IInvoiceService
     }
 
     public async Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(
-        string documentNumber, CancellationToken cancellationToken = default, EDocumentType? documentType = null)
+        string documentNumber, EDocumentType? documentType = null, CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only lookup — result is mapped to DTO
         // Supplier numbers are not unique and may equal one of ours, so the search needs an explicit scope:
@@ -367,6 +367,10 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.OriginalInvoice)
             // Allow loading deleted invoices so users can view details and restore them.
             // List endpoints (GetAll, GetPaged) still hide deleted invoices by default.
+            // Deterministic pick when the number is not unique (received invoices of two suppliers; an issued
+            // number is unique, so this never reorders issued results): live before deleted, then the newest.
+            .OrderBy(i => i.Status == EInvoiceStatus.Deleted)
+            .ThenByDescending(i => i.Id)
             .FirstOrDefaultAsync(i => i.DocumentNumber == documentNumber, cancellationToken);
 
         return invoice == null ? null : MapToDto(invoice);

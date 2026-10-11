@@ -81,7 +81,7 @@ internal static class InvoiceLookup
         }
 
         var documentNumber = rawDocumentNumber!.Trim();
-        var byNumber = await invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, ct);
+        var byNumber = await invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, cancellationToken: ct);
 
         return byNumber is null
             ? (null, $"Issued invoice with document number '{documentNumber}' not found.")

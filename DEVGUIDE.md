@@ -2918,7 +2918,8 @@ platby, auto-match) berou typ z **uloženého řádku**, nikdy z URL; přechody 
 *Seznamy a hledání mají explicitní rozsah*: `InvoiceFilterDto.DocumentTypes` (množina typů, např. `?DocumentTypes=5`),
 `InvoiceFilterDto.DocumentType` a `GET /api/invoice?documentType=`, `GET /api/invoice/by-number/{n}?documentType=`.
 **Výchozí rozsah (nic nezadáno) = jen vydané typy**, takže *seznam bez zadaného typu* vrací stávajícím volajícím
-(UI, MCP, chat nástroje, exporty) to, co dřív. **Pro volání podle id a pro seznam se zadaným typem to neplatí**, viz
+(UI, MCP, chat nástroje, exporty) to, co dřív. `by-number` vrací při shodě čísla u více přijatých dokladů (dva dodavatelé) vždy stejný řádek:
+nesmazaný před smazaným, pak nejnovější (nejvyšší Id). **Pro volání podle id a pro seznam se zadaným typem to neplatí**, viz
 „Co se změnilo pro stávající volající" níže. Zadané obě (`DocumentTypes` i `DocumentType`) = průnik. Stránkovaný seznam plní
 `AttachmentCount` jen u přijatých řádků (jeden seskupený dotaz na stránku). Příloh se jednotné API netýká: zůstává
 generické `FileAttachmentController` (`entityName` = `"ReceivedInvoice"` pro přijaté).
@@ -2937,7 +2938,7 @@ legacy DTO na `CreateInvoiceDto` / `UpdateInvoiceDto` a volá totéž, takže ob
 | | Vydané typy | `ReceivedInvoice` (`POST /api/invoice` s `DocumentType = 5`) |
 |---|---|---|
 | protistrana | zákazník v `ClientId` | **dodavatel** v `ClientId` (povinný, existující a aktivní) |
-| `IssuerId` | z DTO, musí být `IsIssuer` | **vždy server**: naše firma = `Client` s `IsIssuer`, nejnižší Id (hodnota z DTO se ignoruje) |
+| `IssuerId` | z DTO, musí být `IsIssuer` | **vždy server**: naše firma = `Client` s `IsIssuer`, nejnižší Id; DTO smí poslat `0` (neposláno) nebo právě toto Id, **jiná hodnota = 400** |
 | číslo dokladu | z číselné řady / `CustomDocumentNumber` | `CustomDocumentNumber` = číslo dodavatele (může chybět na konceptu), upravitelné přes `UpdateInvoiceDto.DocumentNumber`, **nikdy se negeneruje ani neuvolňuje** |
 | `ReceivedDate` | zakázáno (400) | nastavitelné (výchozí: teď), upravitelné |
 | variabilní symbol | jen číslice, max 10 (validační 400 se stejnou hláškou jako dřív; pravidlo `IssuedDocumentTypes.IsValidVariableSymbol`, create: `CreateInvoiceDto.Validate`, update: `InvoiceController.UpdateInvoice` podle **uloženého** typu) | symbol dodavatele tak, jak je na faktuře: libovolné znaky, max 50 (délka sloupce), např. `INV-2026-0042` |

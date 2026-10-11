@@ -32,9 +32,11 @@ public class InvoiceFilterDto : PaginationParams
 
     /// <summary>
     /// Document SCOPE of the list: the set of document types to return (e.g. <c>ReceivedInvoice</c> for the received
-    /// grid, or several issued types). Together with <see cref="DocumentType"/> it forms the requested set.
+    /// grid, or several issued types). When <see cref="DocumentType"/> is given too, the result is the INTERSECTION:
+    /// only documents of that one type that are also in this set (a type outside the set yields an empty list).
     /// When neither is given the list contains ISSUED documents only (invoice, credit note, proforma, tax receipt),
-    /// exactly as before received documents shared the API - so existing callers are unaffected.
+    /// exactly as before received documents shared the API. An EMPTY set counts as "not given" (issued only), so
+    /// an empty set together with <c>DocumentType = ReceivedInvoice</c> returns nothing.
     /// </summary>
     public List<EDocumentType>? DocumentTypes { get; set; }
 

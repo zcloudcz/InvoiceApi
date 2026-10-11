@@ -67,6 +67,13 @@ internal sealed class ReceivedDocumentWriter
             .FirstOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("Tenant has no issuer company (Client with IsIssuer = true) configured.");
 
+        // The issuer of a received document is never the caller's choice. 0 = "not sent" (IssuerId is a plain
+        // long on the DTO) and our own id are fine; any other value is refused like the issued-only fields above,
+        // because silently storing a different issuer than the caller asked for hides a client bug.
+        if (dto.IssuerId != 0 && dto.IssuerId != issuerId)
+            throw new InvalidOperationException(
+                $"IssuerId {dto.IssuerId} does not apply to a received invoice: the issuer is always the tenant's own company ({issuerId}). Omit it or send 0.");
+
         var entity = new Invoice
         {
             DocumentType = EDocumentType.ReceivedInvoice,

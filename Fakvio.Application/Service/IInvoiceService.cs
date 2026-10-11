@@ -47,12 +47,16 @@ public interface IInvoiceService
     /// Gets invoice by document number
     /// </summary>
     /// <param name="documentNumber">Document number</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     /// <param name="documentType">Search scope: null = ISSUED documents only (as before); a type (e.g.
     /// <c>ReceivedInvoice</c>) searches that type. Supplier numbers are not unique, hence the explicit scope.</param>
-    /// <returns>Invoice data or null if not found</returns>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>
+    /// Invoice data or null if not found. When several documents share the number (possible only for received
+    /// invoices: two suppliers may use the same number) the result is deterministic: a non-deleted document
+    /// wins over a deleted one, then the newest (highest Id).
+    /// </returns>
     Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(
-        string documentNumber, CancellationToken cancellationToken = default, EDocumentType? documentType = null);
+        string documentNumber, EDocumentType? documentType = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Type of a stored document of ANY kind (issued or received), null when no such document exists.

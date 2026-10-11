@@ -42,7 +42,7 @@ public class UnifiedReceivedDocumentTests : IDisposable
 
         _seed.Currency.Add(new Currency { Id = 1, Code = "CZK", Name = "Koruna", Symbol = "Kc", DecimalPlaces = 2, SortOrder = 1, IsActive = true });
         _seed.Currency.Add(new Currency { Id = 2, Code = "EUR", Name = "Euro", Symbol = "EUR", DecimalPlaces = 2, SortOrder = 2, IsActive = true });
-        // Two issuer companies: the received document must pick the LOWEST id, whatever the caller sends.
+        // Two issuer companies: the received document must pick the LOWEST id; the caller cannot choose the other.
         _seed.Client.Add(new Client { Id = 5, CompanyName = "Other issuer", RegistrationNumber = "55555555", IsIssuer = true, IsActive = true });
         _seed.Client.Add(new Client { Id = OurCompanyId, CompanyName = "Us", RegistrationNumber = "11111111", IsIssuer = true, IsActive = true });
         _seed.Client.Add(new Client { Id = SupplierId, CompanyName = "Supplier", RegistrationNumber = "33333333", IsActive = true });
@@ -63,7 +63,7 @@ public class UnifiedReceivedDocumentTests : IDisposable
 
     private static CreateInvoiceDto NewReceived(string? number = "SUP-1") => new()
     {
-        DocumentType = EDocumentType.ReceivedInvoice, ClientId = SupplierId, IssuerId = 5 /* ignored */, CurrencyId = 1,
+        DocumentType = EDocumentType.ReceivedInvoice, ClientId = SupplierId, IssuerId = 0 /* not sent: the server sets it */, CurrencyId = 1,
         CustomDocumentNumber = number,
         IssueDate = new DateTime(2026, 5, 2, 0, 0, 0, DateTimeKind.Utc),
         DueDate = new DateTime(2026, 5, 20, 0, 0, 0, DateTimeKind.Utc),
@@ -99,7 +99,7 @@ public class UnifiedReceivedDocumentTests : IDisposable
         dto.Status.ShouldBe(EInvoiceStatus.Draft);
         dto.ClientId.ShouldBe(SupplierId);          // the supplier is the client
         dto.ClientName.ShouldBe("Supplier");
-        dto.IssuerId.ShouldBe(OurCompanyId);        // set by the server (lowest IsIssuer id), the caller's 5 is ignored
+        dto.IssuerId.ShouldBe(OurCompanyId);        // set by the server: the lowest IsIssuer id, not the other issuer (5)
         dto.DocumentNumber.ShouldBe("SUP-1");       // the supplier's number, as given
         dto.ReceivedDate.ShouldBe(new DateTime(2026, 5, 4, 0, 0, 0, DateTimeKind.Utc));
         dto.IssueDate.ShouldBe(new DateTime(2026, 5, 2, 0, 0, 0, DateTimeKind.Utc));
@@ -138,11 +138,22 @@ public class UnifiedReceivedDocumentTests : IDisposable
         var sequence = NewReceived(); sequence.NumberSequenceId = 7;
         var original = NewReceived(); original.OriginalInvoiceId = 7;
         var reverseNoCode = NewReceived(); reverseNoCode.InvoiceItem[0].VatRegime = EVatRegime.ReverseCharge;
+        var foreignIssuer = NewReceived(); foreignIssuer.IssuerId = 5; // an issuer, but not the one a received document gets
 
-        foreach (var bad in new[] { unknown, inactive, textRow, sequence, original, reverseNoCode })
+        foreach (var bad in new[] { unknown, inactive, textRow, sequence, original, reverseNoCode, foreignIssuer })
             await Should.ThrowAsync<InvalidOperationException>(() => _invoices.CreateInvoiceAsync(bad));
 
         (await _read.Invoice.CountAsync()).ShouldBe(0);
+    }
+
+    /// <summary>Sending our own issuer id is not an error - it is exactly what the server would set anyway.</summary>
+    [Fact]
+    public async Task Create_Received_AcceptsTheTenantIssuerId()
+    {
+        var create = NewReceived();
+        create.IssuerId = OurCompanyId;
+
+        (await _invoices.CreateInvoiceAsync(create)).IssuerId.ShouldBe(OurCompanyId);
     }
 
     [Fact]

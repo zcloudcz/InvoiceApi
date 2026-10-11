@@ -214,15 +214,15 @@ public class InvoiceController : ControllerBase
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<InvoiceDto>> GetInvoiceByDocumentNumber(
         string documentNumber,
-        CancellationToken cancellationToken = default,
-        [FromQuery] EDocumentType? documentType = null)
+        [FromQuery] EDocumentType? documentType = null,
+        CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GET /api/invoice/by-number/{DocumentNumber} - documentType: {DocumentType}", documentNumber, documentType);
 
         try
         {
             // Search scope: issued documents unless a type is asked for (supplier numbers are not unique).
-            var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, cancellationToken, documentType);
+            var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, documentType, cancellationToken);
 
             if (invoice == null)
             {
@@ -371,15 +371,17 @@ public class InvoiceController : ControllerBase
             // Failures are logged as warnings but don't affect the completion response.
             // A received (supplier) invoice has no PDF of ours to upload.
             if (invoice.DocumentType != EDocumentType.ReceivedInvoice)
-            try
             {
-                var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, null, cancellationToken);
-                var fileName = await _fileNameService.GetFileNameAsync(id, DocumentFileName.PdfExtension, cancellationToken);
-                await _cloudStorageOrchestrator.UploadInvoicePdfAsync(id, pdfBytes, fileName, cancellationToken);
-            }
-            catch (Exception cloudEx)
-            {
-                _logger.LogWarning(cloudEx, "Cloud storage upload failed for invoice {Id} (non-blocking)", id);
+                try
+                {
+                    var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, null, cancellationToken);
+                    var fileName = await _fileNameService.GetFileNameAsync(id, DocumentFileName.PdfExtension, cancellationToken);
+                    await _cloudStorageOrchestrator.UploadInvoicePdfAsync(id, pdfBytes, fileName, cancellationToken);
+                }
+                catch (Exception cloudEx)
+                {
+                    _logger.LogWarning(cloudEx, "Cloud storage upload failed for invoice {Id} (non-blocking)", id);
+                }
             }
 
             return Ok(invoice);

@@ -67,7 +67,7 @@ public class ExportInvoiceToolTests
             DocumentType = EDocumentType.Invoice,
             ClientName = "Test s.r.o."
         };
-        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<CancellationToken>())
+        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(invoice);
 
         var parameters = new Dictionary<string, string>
@@ -100,7 +100,7 @@ public class ExportInvoiceToolTests
             DocumentType = EDocumentType.CreditNote,
             ClientName = "ABC"
         };
-        _invoiceService.GetInvoiceByDocumentNumberAsync("DP-2024-0001", Arg.Any<CancellationToken>())
+        _invoiceService.GetInvoiceByDocumentNumberAsync("DP-2024-0001", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(invoice);
 
         var parameters = new Dictionary<string, string>
@@ -122,7 +122,7 @@ public class ExportInvoiceToolTests
     public async Task ExportByDocumentNumber_NotFound_ReturnsFailure()
     {
         // Arrange — no invoice with this document number
-        _invoiceService.GetInvoiceByDocumentNumberAsync("INVALID", Arg.Any<CancellationToken>())
+        _invoiceService.GetInvoiceByDocumentNumberAsync("INVALID", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns((InvoiceDto?)null);
 
         var parameters = new Dictionary<string, string>
@@ -315,7 +315,7 @@ public class ExportInvoiceToolTests
             DocumentType = EDocumentType.Invoice,
             ClientName = "Some Client"
         };
-        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0099", Arg.Any<CancellationToken>())
+        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0099", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(invoice);
 
         var parameters = new Dictionary<string, string>
@@ -350,7 +350,7 @@ public class ExportInvoiceToolTests
     public async Task ExportFormat_ChoosesTheEndpointFileNameAndMimeType(
         string format, string expectedUrl, string expectedFileName, string expectedMimeType)
     {
-        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<CancellationToken>())
+        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto
             {
                 Id = 42,
@@ -375,7 +375,7 @@ public class ExportInvoiceToolTests
     [Fact]
     public async Task ExportFormat_DefaultsToPdf_WhenTheModelSendsNone()
     {
-        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<CancellationToken>())
+        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto
             {
                 Id = 42,
@@ -398,7 +398,7 @@ public class ExportInvoiceToolTests
     /// nothing but what it is about.
     /// </summary>
     private void GivenExportableInvoice()
-        => _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<CancellationToken>())
+        => _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(new InvoiceDto
             {
                 Id = 42,
@@ -456,7 +456,7 @@ public class ExportInvoiceToolTests
         result.ErrorMessage.ShouldContain("format");
         result.UiAction.ShouldBeNull();
         await _invoiceService.DidNotReceive()
-            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>());
     }
 
 }
