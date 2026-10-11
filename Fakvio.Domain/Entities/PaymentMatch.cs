@@ -10,9 +10,8 @@ namespace Fakvio.Domain.Entities;
 /// (partial payments). The MatchedAmount field allows splitting a single
 /// transaction across multiple invoices.
 ///
-/// Exactly one of (InvoiceId, ReceivedInvoiceId) is non-null:
-///   - InvoiceId set         → incoming payment to one of OUR issued invoices
-///   - ReceivedInvoiceId set → outgoing payment to a supplier invoice
+/// Always links to one row of the Invoice table: an issued invoice (incoming payment) or a
+/// received one (Invoice.DocumentType = ReceivedInvoice, outgoing payment to a supplier).
 /// </summary>
 public class PaymentMatch : BaseEntity
 {
@@ -22,17 +21,11 @@ public class PaymentMatch : BaseEntity
     /// <summary>Navigation to the bank transaction.</summary>
     public BankTransaction BankTransaction { get; set; } = null!;
 
-    /// <summary>FK to our issued invoice (null for outgoing-side matches).</summary>
-    public long? InvoiceId { get; set; }
+    /// <summary>FK to the document the payment belongs to (issued or received, see Invoice.DocumentType).</summary>
+    public long InvoiceId { get; set; }
 
-    /// <summary>Navigation to the issued invoice.</summary>
-    public Invoice? Invoice { get; set; }
-
-    /// <summary>FK to a received (supplier) invoice (null for incoming-side matches).</summary>
-    public long? ReceivedInvoiceId { get; set; }
-
-    /// <summary>Navigation to the received invoice.</summary>
-    public ReceivedInvoice? ReceivedInvoice { get; set; }
+    /// <summary>Navigation to the document.</summary>
+    public Invoice Invoice { get; set; } = null!;
 
     /// <summary>Portion of the transaction amount assigned to this invoice.</summary>
     public decimal MatchedAmount { get; set; }

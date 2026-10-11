@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Contracts.Common;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
@@ -39,7 +40,7 @@ public class DocumentFileNameService : IDocumentFileNameService
         // One projection query for all invoices: the client and issuer BillingSettings are joined
         // (LEFT JOIN — both are optional), so there is no per-invoice round trip.
         // Client is nullable on Invoice, hence the null checks.
-        var rows = await _context.Invoice
+        var rows = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Where(i => invoiceIds.Contains(i.Id))
             .Select(i => new

@@ -35,8 +35,8 @@ public class DeleteReceivedInvoiceTool : IConfirmableChatTool
     public string ToolName => "delete_received_invoice";
 
     public string Description =>
-        "Delete a received (incoming/expense) invoice. Only invoices in status 'Received' or " +
-        "'Rejected' can be deleted. Identify the invoice by id or by document number.";
+        "Delete a received (incoming/expense) invoice. Only invoices in status 'Received' " +
+        "can be deleted. Identify the invoice by id or by document number.";
 
     public IReadOnlyList<ChatToolParameter> Parameters => ReceivedInvoiceLookup.IdentityParameters;
 

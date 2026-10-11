@@ -44,9 +44,10 @@ public static class SettingsTools
         EDocumentType? parsedType = null;
         if (!string.IsNullOrWhiteSpace(documentType))
         {
-            if (!Enum.TryParse<EDocumentType>(documentType, ignoreCase: true, out var dt))
+            // Issued types only: received invoices have no number sequence (see IssuedDocumentTypes).
+            if (!IssuedDocumentTypes.TryParse(documentType, out var dt))
                 return Error($"Unknown documentType '{documentType}'. Valid values: " +
-                             string.Join(", ", Enum.GetNames<EDocumentType>()) + ".");
+                             string.Join(", ", IssuedDocumentTypes.Names) + ".");
             parsedType = dt;
         }
 
@@ -124,9 +125,10 @@ public static class SettingsTools
         [Description("Make this the default sequence for its document type (default true)")] bool isDefault = true,
         CancellationToken ct = default)
     {
-        if (!Enum.TryParse<EDocumentType>(documentType, ignoreCase: true, out var parsedType))
+        // Issued types only: received invoices have no number sequence (see IssuedDocumentTypes).
+        if (!IssuedDocumentTypes.TryParse(documentType, out var parsedType))
             return Error($"Unknown documentType '{documentType}'. Valid values: " +
-                         string.Join(", ", Enum.GetNames<EDocumentType>()) + ".");
+                         string.Join(", ", IssuedDocumentTypes.Names) + ".");
 
         try
         {

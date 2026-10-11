@@ -86,11 +86,11 @@ public class IsdocReceivedInvoiceExportTests : IDisposable
         _context.SaveChanges();
 
         // CZK received invoice with mixed VAT rates (21% + 12%)
-        _context.ReceivedInvoice.Add(new ReceivedInvoice
+        _context.Invoice.Add(new Invoice
         {
             Id = 1, DocumentNumber = "FV2026001",
-            Status = EReceivedInvoiceStatus.Received,
-            SupplierId = 2, CurrencyId = 1,
+            DocumentType = EDocumentType.ReceivedInvoice, Status = EInvoiceStatus.Draft,
+            ClientId = 2, IssuerId = 1, CurrencyId = 1,
             IssueDate = new DateTime(2026, 5, 1),
             ReceivedDate = new DateTime(2026, 5, 3),
             DueDate = new DateTime(2026, 5, 15),
@@ -101,15 +101,15 @@ public class IsdocReceivedInvoiceExportTests : IDisposable
             SWIFT = "GIBACZPX",
             VariableSymbol = "2026001",
             TotalBeforeVat = 10000, TotalVat = 2340, TotalWithVat = 12340,
-            Items = new List<ReceivedInvoiceItem>
+            InvoiceItem = new List<InvoiceItem>
             {
-                new ReceivedInvoiceItem
+                new InvoiceItem
                 {
                     Id = 1, OrderIndex = 1, Description = "Hosting",
                     Quantity = 1, Unit = "ks", UnitPrice = 8000,
                     VatRatePercentage = 21, TotalBeforeVat = 8000, VatAmount = 1680, TotalWithVat = 9680
                 },
-                new ReceivedInvoiceItem
+                new InvoiceItem
                 {
                     Id = 2, OrderIndex = 2, Description = "Knihy",
                     Quantity = 4, Unit = "ks", UnitPrice = 500,
@@ -120,14 +120,14 @@ public class IsdocReceivedInvoiceExportTests : IDisposable
         _context.SaveChanges();
 
         // Soft-deleted received invoice — must not be exportable
-        _context.ReceivedInvoice.Add(new ReceivedInvoice
+        _context.Invoice.Add(new Invoice
         {
             Id = 2, DocumentNumber = "DEL001",
-            Status = EReceivedInvoiceStatus.Deleted,
-            SupplierId = 2, CurrencyId = 1,
+            DocumentType = EDocumentType.ReceivedInvoice, Status = EInvoiceStatus.Deleted,
+            ClientId = 2, IssuerId = 1, CurrencyId = 1,
             IssueDate = new DateTime(2026, 5, 1),
             TotalBeforeVat = 100, TotalVat = 0, TotalWithVat = 100,
-            Items = new List<ReceivedInvoiceItem>()
+            InvoiceItem = new List<InvoiceItem>()
         });
         _context.SaveChanges();
     }
@@ -367,12 +367,12 @@ public class IsdocReceivedInvoiceExportTests : IDisposable
     /// Builds a fully-populated CZK received invoice with two items at mixed
     /// VAT rates (21% + 12%), suitable for XSD validation.
     /// </summary>
-    private static ReceivedInvoice BuildReceivedInvoice() => new()
+    private static Invoice BuildReceivedInvoice() => new()
     {
         Id = 42,
         DocumentNumber = "FV2026001",
-        Status = EReceivedInvoiceStatus.Received,
-        Supplier = BuildSupplier(),
+        DocumentType = EDocumentType.ReceivedInvoice, Status = EInvoiceStatus.Draft,
+        Client = BuildSupplier(),
         IssueDate = new DateTime(2026, 5, 1),
         ReceivedDate = new DateTime(2026, 5, 3),
         DueDate = new DateTime(2026, 5, 15),
@@ -384,15 +384,15 @@ public class IsdocReceivedInvoiceExportTests : IDisposable
         VariableSymbol = "2026001",
         TotalBeforeVat = 10000, TotalVat = 2340, TotalWithVat = 12340,
         Currency = new Currency { Code = "CZK" },
-        Items = new List<ReceivedInvoiceItem>
+        InvoiceItem = new List<InvoiceItem>
         {
-            new ReceivedInvoiceItem
+            new InvoiceItem
             {
                 OrderIndex = 1, Description = "Hosting",
                 Quantity = 1, Unit = "ks", UnitPrice = 8000,
                 VatRatePercentage = 21, TotalBeforeVat = 8000, VatAmount = 1680, TotalWithVat = 9680
             },
-            new ReceivedInvoiceItem
+            new InvoiceItem
             {
                 OrderIndex = 2, Description = "Knihy",
                 Quantity = 4, Unit = "ks", UnitPrice = 500,

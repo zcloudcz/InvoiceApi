@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Contracts.Common;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
@@ -241,7 +242,7 @@ public class QrPaymentService : IQrPaymentService
     /// </summary>
     private async Task<Invoice> LoadInvoiceWithDetailsAsync(long invoiceId, CancellationToken ct)
     {
-        return await _context.Invoice
+        return await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Client)
             .Include(i => i.Issuer)

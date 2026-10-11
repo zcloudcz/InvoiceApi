@@ -5,6 +5,10 @@ namespace Fakvio.Domain.Enums;
 /// Flow: Received -> Approved -> Paid -> Deleted
 /// Simpler than issued invoices — no "Draft" or "Completed" because
 /// the supplier already finalized the document.
+///
+/// Contract/DTO enum only: received invoices are stored as <c>Invoice</c> rows with the unified
+/// <see cref="EInvoiceStatus"/> (see ReceivedInvoiceService). Never persist or copy these numbers
+/// (Rejected = 4 would collide with Creditnoted = 4); <c>Rejected</c> is abolished and no longer produced.
 /// </summary>
 public enum EReceivedInvoiceStatus
 {

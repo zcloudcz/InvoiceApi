@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using System.Text.Json;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
@@ -319,7 +320,7 @@ public class ImportInvoiceTool : IChatTool
         // Check for duplicate document number (excluding deleted)
         if (!string.IsNullOrWhiteSpace(documentNumber))
         {
-            var exists = await _tenantContext.Invoice
+            var exists = await _tenantContext.Invoice.IssuedOnly()
                 .AsNoTracking()
                 .AnyAsync(i => i.DocumentNumber == documentNumber
                             && i.Status != EInvoiceStatus.Deleted, ct);

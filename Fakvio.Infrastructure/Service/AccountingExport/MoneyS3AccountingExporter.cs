@@ -40,11 +40,11 @@ public class MoneyS3AccountingExporter : IAccountingExporter
         && AccountingExportCommon.CurrencyExportable(invoice.Currency?.Code, invoice.ExchangeRate)
         && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Where(i => !i.IsTextRow).Select(i => i.VatRatePercentage));
 
-    public bool CanExport(ReceivedInvoice invoice) =>
+    public bool CanExportReceived(Invoice invoice) =>
         AccountingExportCommon.CurrencyExportable(invoice.Currency?.Code, invoice.ExchangeRate)
-        && AccountingExportCommon.AllRatesSupported((invoice.Items ?? []).Select(i => i.VatRatePercentage));
+        && AccountingExportCommon.AllRatesSupported((invoice.InvoiceItem ?? []).Select(i => i.VatRatePercentage));
 
-    public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<ReceivedInvoice> receivedInvoices, Client issuer)
+    public byte[] Export(IReadOnlyList<Invoice> issuedInvoices, IReadOnlyList<Invoice> receivedInvoices, Client issuer)
     {
         var root = new XElement("MoneyData");
 
@@ -90,9 +90,9 @@ public class MoneyS3AccountingExporter : IAccountingExporter
         return el;
     }
 
-    private static XElement BuildReceived(ReceivedInvoice invoice)
+    private static XElement BuildReceived(Invoice invoice)
     {
-        var items = invoice.Items?.OrderBy(i => i.OrderIndex).ToList() ?? [];
+        var items = invoice.InvoiceItem?.OrderBy(i => i.OrderIndex).ToList() ?? [];
 
         var el = new XElement("FaktPrij");
         AddDates(el, invoice.IssueDate, invoice.TaxableSupplyDate, invoice.DueDate);
@@ -102,7 +102,7 @@ public class MoneyS3AccountingExporter : IAccountingExporter
         var foreign = ForeignOf(invoice.Currency?.Code, invoice.ExchangeRate);
         AddKindAndTotals(el, "N", isCreditNote: false,
             items.Select(i => (i.VatRatePercentage, i.TotalBeforeVat, i.VatAmount)), invoice.Notes, foreign);
-        el.Add(BuildPartner(invoice.Supplier));
+        el.Add(BuildPartner(invoice.Client));
         el.Add(BuildItems(items.Select(i => (i.Description, i.Quantity, i.Unit, i.UnitPrice, i.VatRatePercentage)), false, foreign != null));
         return el;
     }

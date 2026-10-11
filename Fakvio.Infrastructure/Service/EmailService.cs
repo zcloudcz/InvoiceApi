@@ -1,4 +1,5 @@
 ﻿using Fakvio.Contracts.Common;
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Application.Common.Helpers;
 using Fakvio.Application.Exceptions;
@@ -340,7 +341,7 @@ public class EmailService : IEmailService
     /// </summary>
     private async Task<Invoice?> LoadInvoiceForEmailAsync(long invoiceId, bool track, CancellationToken ct)
     {
-        var query = _context.Invoice
+        var query = _context.Invoice.IssuedOnly()
             .Include(i => i.Currency)
             .Include(i => i.Issuer)
                 .ThenInclude(c => c.BillingSettings)

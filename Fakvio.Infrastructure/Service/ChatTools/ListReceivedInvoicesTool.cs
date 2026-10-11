@@ -19,7 +19,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// Parameters:
 ///   - page (string, optional): Page number (default 1).
 ///   - page_size (string, optional): Items per page (default 10, max 50).
-///   - status (string, optional): Filter by status — Received, Approved, Paid, Rejected.
+///   - status (string, optional): Filter by status — Received, Approved, Paid.
 ///   - supplier_name (string, optional): Filter by supplier name (case-insensitive contains).
 ///   - issue_date_from (string, optional): YYYY-MM-DD start of issue date range.
 ///   - issue_date_to (string, optional): YYYY-MM-DD end of issue date range.
@@ -73,7 +73,7 @@ public class ListReceivedInvoicesTool : IChatTool
             Name = "status",
             Type = ChatToolParameterType.String,
             Description = "Filter by invoice status",
-            AllowedValues = ["Received", "Approved", "Paid", "Rejected"]
+            AllowedValues = ["Received", "Approved", "Paid"]
         },
         new()
         {

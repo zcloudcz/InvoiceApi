@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.DownloadLink;
 using Fakvio.Domain.Entities;
@@ -477,6 +478,142 @@ public class DownloadLinkEndpointTests : IClassFixture<FakvioFactory>
         file.Content.Headers.ContentType!.MediaType.ShouldBe("application/zip");
         using var zip = new System.IO.Compression.ZipArchive(await file.Content.ReadAsStreamAsync());
         zip.Entries.Count.ShouldBe(2);
+    }
+
+    // ── Issued and received documents share one table: a link never crosses sides ──
+
+    /// <summary>
+    /// Seeds a received (supplier) document the way the UnifyDocuments migration leaves one: an Invoice row
+    /// with DocumentType = ReceivedInvoice, supplier in Client and our company in Issuer. Dated June, so the
+    /// March/April accounting and VAT tests above do not see it.
+    /// </summary>
+    private long SeedReceivedDocument()
+    {
+        SeedCompanyWithInvoice(_factory);
+        using var scope = _factory.Services.CreateScope();
+        var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+
+        var existing = tenantDb.Invoice.FirstOrDefault(i => i.DocumentNumber == "LINK-RCV");
+        if (existing != null) return existing.Id;
+
+        var issued = tenantDb.Invoice.Single(i => i.DocumentNumber == "LINK-1");
+        var received = new Invoice
+        {
+            DocumentNumber = "LINK-RCV", VariableSymbol = "2026999", DocumentType = EDocumentType.ReceivedInvoice,
+            Status = EInvoiceStatus.Completed, IssueDate = new DateTime(2026, 6, 10), DueDate = new DateTime(2026, 6, 24),
+            ReceivedDate = new DateTime(2026, 6, 11),
+            IssuerId = issued.IssuerId, ClientId = issued.ClientId, CurrencyId = issued.CurrencyId,
+            TotalBeforeVat = 100m, TotalVat = 21m, TotalWithVat = 121m,
+            InvoiceItem =
+            [
+                new InvoiceItem
+                {
+                    OrderIndex = 1, Description = "Supplies", Quantity = 1, Unit = "ks", UnitPrice = 100m,
+                    VatRatePercentage = 21m, TotalBeforeVat = 100m, VatAmount = 21m, TotalWithVat = 121m
+                }
+            ]
+        };
+        tenantDb.Invoice.Add(received);
+        tenantDb.SaveChanges();
+        return received.Id;
+    }
+
+    /// <summary>
+    /// Mints a link and opens it. Kinds with a dry run (UBL) are refused already when the link is minted,
+    /// the others when it is opened - the caller only cares about the answer the user ends up with.
+    /// </summary>
+    private async Task<HttpResponseMessage> MintAndRedeemAsync(CreateDownloadLinkDto request)
+    {
+        var minted = await (await LoginAsync(_factory)).PostAsJsonAsync("/api/download-links", request);
+        if (minted.StatusCode != HttpStatusCode.OK)
+            return minted;
+        var link = (await minted.Content.ReadFromJsonAsync<DownloadLinkDto>())!;
+        return await _factory.CreateClient().GetAsync(new Uri(link.Url).PathAndQuery);
+    }
+
+    private static CreateDownloadLinkDto RequestFor(EDownloadKind kind, long id)
+        => DownloadLinkController.Validate(new CreateDownloadLinkDto { Kind = kind, Id = id }) == null
+            ? new CreateDownloadLinkDto { Kind = kind, Id = id }
+            : new CreateDownloadLinkDto { Kind = kind, Ids = [id] };
+
+    [Theory]
+    [InlineData(EDownloadKind.InvoicePdf)]
+    [InlineData(EDownloadKind.InvoiceIsdoc)]
+    [InlineData(EDownloadKind.InvoiceUbl)]
+    [InlineData(EDownloadKind.InvoiceBulkIsdoc)]
+    [InlineData(EDownloadKind.InvoiceBulkUbl)]
+    public async Task IssuedKind_WithReceivedDocumentId_Returns404(EDownloadKind kind)
+    {
+        // The id exists in the Invoice table, but as a supplier invoice. An issued export must not see it.
+        var receivedId = SeedReceivedDocument();
+
+        var response = await MintAndRedeemAsync(RequestFor(kind, receivedId));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await response.Content.ReadAsStringAsync()).ShouldNotContain("LINK-RCV");
+    }
+
+    [Fact]
+    public async Task InvoiceBulkPdf_WithReceivedDocumentId_ReturnsZipWithoutIt()
+    {
+        // Bulk PDF has always answered ids it cannot export with an (empty) ZIP instead of 404.
+        var receivedId = SeedReceivedDocument();
+
+        var response = await MintAndRedeemAsync(RequestFor(EDownloadKind.InvoiceBulkPdf, receivedId));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var zip = new System.IO.Compression.ZipArchive(await response.Content.ReadAsStreamAsync());
+        zip.Entries.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvoiceBulkIsdoc_WithIssuedAndReceivedIds_ExportsOnlyTheIssuedOne()
+    {
+        var receivedId = SeedReceivedDocument();
+
+        var response = await MintAndRedeemAsync(
+            new CreateDownloadLinkDto { Kind = EDownloadKind.InvoiceBulkIsdoc, Ids = [InvoiceId("LINK-1"), receivedId] });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var zip = new System.IO.Compression.ZipArchive(await response.Content.ReadAsStreamAsync());
+        zip.Entries.Count.ShouldBe(1);
+        zip.Entries[0].Name.ShouldNotContain("LINK-RCV");
+    }
+
+    [Theory]
+    [InlineData(EDownloadKind.ReceivedInvoiceIsdoc)]
+    [InlineData(EDownloadKind.ReceivedInvoiceBulkIsdoc)]
+    public async Task ReceivedKind_WithIssuedDocumentId_Returns404(EDownloadKind kind)
+    {
+        SeedCompanyWithInvoice(_factory);
+
+        var response = await MintAndRedeemAsync(RequestFor(kind, InvoiceId("LINK-1")));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ReceivedInvoiceIsdoc_ForReceivedDocument_ReturnsTheFile()
+    {
+        var receivedId = SeedReceivedDocument();
+
+        var file = await MintAndRedeemAsync(RequestFor(EDownloadKind.ReceivedInvoiceIsdoc, receivedId));
+
+        file.StatusCode.ShouldBe(HttpStatusCode.OK);
+        file.Content.Headers.ContentDisposition!.FileName!.ShouldContain("ReceivedInvoice_LINK-RCV");
+        (await file.Content.ReadAsStringAsync()).ShouldContain("LINK-RCV");
+    }
+
+    [Fact]
+    public async Task ReceivedInvoiceBulkIsdoc_ForReceivedDocument_ReturnsZip()
+    {
+        var receivedId = SeedReceivedDocument();
+
+        var file = await MintAndRedeemAsync(RequestFor(EDownloadKind.ReceivedInvoiceBulkIsdoc, receivedId));
+
+        file.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var zip = new System.IO.Compression.ZipArchive(await file.Content.ReadAsStreamAsync());
+        zip.Entries.Single().Name.ShouldBe("ReceivedInvoice_LINK-RCV.isdoc");
     }
 
     // ── Rate limiting of the anonymous endpoint ─────────────────────────
