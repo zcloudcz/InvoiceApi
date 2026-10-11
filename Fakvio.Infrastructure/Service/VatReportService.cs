@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
@@ -129,7 +130,7 @@ public class VatReportService : IVatReportService
             .ToList();
 
         // Count of issued invoices in this period
-        var issuedCount = await _context.Invoice
+        var issuedCount = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Where(i => !(i is InvoiceTemplate)
                 && i.TaxableSupplyDate >= fromUtc
@@ -141,7 +142,7 @@ public class VatReportService : IVatReportService
             .CountAsync(ct);
 
         // Total revenue (before VAT) from issued invoices
-        var revenueDocs = await _context.Invoice
+        var revenueDocs = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Where(i => !(i is InvoiceTemplate)
                 && i.TaxableSupplyDate >= fromUtc
@@ -163,18 +164,17 @@ public class VatReportService : IVatReportService
         // ── Input VAT (from received invoices) ──────────────────────────────
         // Only count Approved or Paid received invoices (not Received/Rejected/Deleted).
         // Filter by TaxableSupplyDate (DUZP).
-        var inputItems = await _context.ReceivedInvoiceItem
+        var inputItems = await _context.InvoiceItem
             .AsNoTracking()
-            .Where(item => item.ReceivedInvoice != null
-                && item.ReceivedInvoice.TaxableSupplyDate >= fromUtc
-                && item.ReceivedInvoice.TaxableSupplyDate <= toUtc
-                && item.ReceivedInvoice.Status != EReceivedInvoiceStatus.Received
-                && item.ReceivedInvoice.Status != EReceivedInvoiceStatus.Rejected
-                && item.ReceivedInvoice.Status != EReceivedInvoiceStatus.Deleted)
+            .Where(item => item.Invoice.DocumentType == EDocumentType.ReceivedInvoice
+                && item.Invoice.TaxableSupplyDate >= fromUtc
+                && item.Invoice.TaxableSupplyDate <= toUtc
+                && item.Invoice.Status != EInvoiceStatus.Draft
+                && item.Invoice.Status != EInvoiceStatus.Deleted)
             .GroupBy(item => new
             {
-                item.ReceivedInvoiceId, item.VatRatePercentage,
-                CurrencyCode = item.ReceivedInvoice!.Currency.Code, item.ReceivedInvoice.ExchangeRate, item.ReceivedInvoice.TaxableSupplyDate
+                item.InvoiceId, item.VatRatePercentage,
+                CurrencyCode = item.Invoice.Currency.Code, item.Invoice.ExchangeRate, item.Invoice.TaxableSupplyDate
             })
             .Select(g => new
             {
@@ -210,23 +210,21 @@ public class VatReportService : IVatReportService
             .ToList();
 
         // Count of received invoices in this period
-        var receivedCount = await _context.ReceivedInvoice
+        var receivedCount = await _context.Invoice.ReceivedOnly()
             .AsNoTracking()
             .Where(r => r.TaxableSupplyDate >= fromUtc
                 && r.TaxableSupplyDate <= toUtc
-                && r.Status != EReceivedInvoiceStatus.Received
-                && r.Status != EReceivedInvoiceStatus.Rejected
-                && r.Status != EReceivedInvoiceStatus.Deleted)
+                && r.Status != EInvoiceStatus.Draft
+                && r.Status != EInvoiceStatus.Deleted)
             .CountAsync(ct);
 
         // Total expenses (before VAT) from received invoices
-        var expenseDocs = await _context.ReceivedInvoice
+        var expenseDocs = await _context.Invoice.ReceivedOnly()
             .AsNoTracking()
             .Where(r => r.TaxableSupplyDate >= fromUtc
                 && r.TaxableSupplyDate <= toUtc
-                && r.Status != EReceivedInvoiceStatus.Received
-                && r.Status != EReceivedInvoiceStatus.Rejected
-                && r.Status != EReceivedInvoiceStatus.Deleted)
+                && r.Status != EInvoiceStatus.Draft
+                && r.Status != EInvoiceStatus.Deleted)
             .Select(r => new { r.TotalBeforeVat, CurrencyCode = r.Currency.Code, r.ExchangeRate, r.TaxableSupplyDate })
             .ToListAsync(ct);
         var totalExpenses = 0m;
@@ -321,7 +319,7 @@ public class VatReportService : IVatReportService
         // ── 4. Load issued invoices for the period ───────────────────────────
         // Same filter as GetReportAsync: exclude Draft, Deleted.
         // We need CurrencyCode for FX conversion, so include Currency navigation.
-        var issuedInvoices = await _context.Invoice
+        var issuedInvoices = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem)
@@ -335,16 +333,15 @@ public class VatReportService : IVatReportService
             .ToListAsync(ct);
 
         // ── 5. Load received invoices for the period ─────────────────────────
-        var receivedInvoices = await _context.ReceivedInvoice
+        var receivedInvoices = await _context.Invoice.ReceivedOnly()
             .AsNoTracking()
             .Include(r => r.Currency)
-            .Include(r => r.Items)
-            .Include(r => r.Supplier) // needed for the CZ DIČ check on reverse charge
+            .Include(r => r.InvoiceItem)
+            .Include(r => r.Client) // needed for the CZ DIČ check on reverse charge
             .Where(r => r.TaxableSupplyDate >= fromUtc
                 && r.TaxableSupplyDate <= toUtc
-                && r.Status != EReceivedInvoiceStatus.Received
-                && r.Status != EReceivedInvoiceStatus.Rejected
-                && r.Status != EReceivedInvoiceStatus.Deleted)
+                && r.Status != EInvoiceStatus.Draft
+                && r.Status != EInvoiceStatus.Deleted)
             .ToListAsync(ct);
 
         // ── 6. Aggregate output VAT per rate bucket ──────────────────────────
@@ -434,7 +431,7 @@ public class VatReportService : IVatReportService
             // TaxableSupplyDate is nullable on ReceivedInvoice as well.
             var duzp = DateOnly.FromDateTime(rec.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
 
-            foreach (var item in rec.Items)
+            foreach (var item in rec.InvoiceItem)
             {
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
                     item.TotalBeforeVat, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
@@ -442,7 +439,7 @@ public class VatReportService : IVatReportService
                 if (item.VatRegime == EVatRegime.ReverseCharge)
                 {
                     // Reverse charge here means domestic §92a ZDPH only; EU acquisitions are not modelled yet.
-                    RequireCzDic(rec.Supplier?.TaxNumber, rec.DocumentNumber ?? string.Empty, "DP3 ř.10/11", "supplier");
+                    RequireCzDic(rec.Client?.TaxNumber, rec.DocumentNumber ?? string.Empty, "DP3 ř.10/11", "supplier");
                     // Self-assessed tax lives in InformationalVatAmount (VatAmount is 0 — the
                     // supplier did not bill it, see ReceivedInvoiceService.CalculateItemVat).
                     var selfAssessedVatCzk = await _currencyService.ConvertToCzkAsync(
@@ -612,7 +609,7 @@ public class VatReportService : IVatReportService
         // ── 4. Load issued invoices with client navigation ───────────────────
         // Client.TaxNumber is needed for the A.4/A.5 split, and
         // Client navigation is needed to get TaxNumber from the relation.
-        var issuedInvoices = await _context.Invoice
+        var issuedInvoices = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem).ThenInclude(item => item.ReverseChargeCode) // needed for A.1 kod_pred_pl
@@ -627,16 +624,15 @@ public class VatReportService : IVatReportService
             .ToListAsync(ct);
 
         // ── 5. Load received invoices with supplier navigation ───────────────
-        var receivedInvoices = await _context.ReceivedInvoice
+        var receivedInvoices = await _context.Invoice.ReceivedOnly()
             .AsNoTracking()
             .Include(r => r.Currency)
-            .Include(r => r.Items).ThenInclude(item => item.ReverseChargeCode) // needed for B.1 kod_pred_pl
-            .Include(r => r.Supplier) // needed for TaxNumber (CZ DIČ check)
+            .Include(r => r.InvoiceItem).ThenInclude(item => item.ReverseChargeCode) // needed for B.1 kod_pred_pl
+            .Include(r => r.Client) // needed for TaxNumber (CZ DIČ check)
             .Where(r => r.TaxableSupplyDate >= fromUtc
                 && r.TaxableSupplyDate <= toUtc
-                && r.Status != EReceivedInvoiceStatus.Received
-                && r.Status != EReceivedInvoiceStatus.Rejected
-                && r.Status != EReceivedInvoiceStatus.Deleted)
+                && r.Status != EInvoiceStatus.Draft
+                && r.Status != EInvoiceStatus.Deleted)
             .ToListAsync(ct);
 
         // ── 6. Classify and aggregate issued invoices (A.4 / A.5) ────────────
@@ -758,7 +754,7 @@ public class VatReportService : IVatReportService
             var totalWithVatCzk = 0m;
             var perItemCzk = new List<(decimal baseCzk, decimal vatCzk, decimal vatPct)>();
 
-            foreach (var item in rec.Items)
+            foreach (var item in rec.InvoiceItem)
             {
                 var baseCzk = await _currencyService.ConvertToCzkAsync(
                     item.TotalBeforeVat, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
@@ -767,7 +763,7 @@ public class VatReportService : IVatReportService
                 {
                     var selfAssessedVatCzk = await _currencyService.ConvertToCzkAsync(
                         item.InformationalVatAmount, currencyCode, duzp, ct, storedRate: rec.ExchangeRate);
-                    RequireCzDic(rec.Supplier?.TaxNumber, docNum, "B.1", "supplier");
+                    RequireCzDic(rec.Client?.TaxNumber, docNum, "B.1", "supplier");
                     var code = item.ReverseChargeCode?.Code ?? string.Empty;
                     var key = (docNum, code);
                     var isStd = item.VatRatePercentage >= 20m;
@@ -775,7 +771,7 @@ public class VatReportService : IVatReportService
                     var row = b1Rows.TryGetValue(key, out var existing)
                         ? existing
                         : new KhB1Row(
-                            StripCzPrefix(rec.Supplier?.TaxNumber ?? string.Empty),
+                            StripCzPrefix(rec.Client?.TaxNumber ?? string.Empty),
                             docNum, dppd, 0m, 0m, 0m, 0m, code);
 
                     b1Rows[key] = isStd
@@ -790,7 +786,7 @@ public class VatReportService : IVatReportService
                 totalWithVatCzk += baseCzk + vatCzk;
             }
 
-            var supplierTaxNumber = rec.Supplier?.TaxNumber;
+            var supplierTaxNumber = rec.Client?.TaxNumber;
             if (IsCzVatNumber(supplierTaxNumber) && totalWithVatCzk >= 10_000m)
             {
                 // B.2 — individual row. dic_dod = numeric part of supplier's CZ DIČ.
@@ -940,7 +936,7 @@ public class VatReportService : IVatReportService
 
         // Invoices and credit notes, each in the period of its own DUZP. Proformas and advance
         // tax receipts (DPP) are intentionally not included (documented limitation).
-        var invoices = await _context.Invoice
+        var invoices = await _context.Invoice.IssuedOnly()
             .AsNoTracking()
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem)

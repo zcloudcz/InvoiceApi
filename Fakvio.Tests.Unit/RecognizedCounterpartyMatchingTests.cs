@@ -120,8 +120,8 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
         reloaded.MatchStatus.ShouldBe(EMatchStatus.Matched);
         reloaded.RecognizedCounterpartyId.ShouldBeNull();
 
-        (await _context.ReceivedInvoice.AsNoTracking().FirstAsync(r => r.Id == ri.Id))
-            .Status.ShouldBe(EReceivedInvoiceStatus.Paid);
+        (await _context.Invoice.AsNoTracking().FirstAsync(r => r.Id == ri.Id))
+            .Status.ShouldBe(EInvoiceStatus.Paid);
         _ = entry; // silences unused warning — presence of the entry is the point
     }
 
@@ -457,7 +457,7 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
         return invoice;
     }
 
-    private ReceivedInvoice AddReceivedInvoice(string? vs, decimal total, string? supplierAccount)
+    private Invoice AddReceivedInvoice(string? vs, decimal total, string? supplierAccount)
     {
         var supplier = new Client
         {
@@ -469,11 +469,13 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
         _context.Client.Add(supplier);
         _context.SaveChanges();
 
-        var ri = new ReceivedInvoice
+        var ri = new Invoice
         {
             DocumentNumber = $"RI-{Guid.NewGuid():N}"[..12],
-            Status = EReceivedInvoiceStatus.Approved,
-            SupplierId = supplier.Id,
+            DocumentType = EDocumentType.ReceivedInvoice,
+            Status = EInvoiceStatus.Completed,
+            ClientId = supplier.Id,
+            IssuerId = 1,
             CurrencyId = _currencyCzkId,
             IssueDate = DateTime.UtcNow.AddDays(-5),
             DueDate = DateTime.UtcNow.AddDays(5),
@@ -483,7 +485,7 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
             TotalVat = 0m,
             TotalWithVat = total,
         };
-        _context.ReceivedInvoice.Add(ri);
+        _context.Invoice.Add(ri);
         _context.SaveChanges();
         return ri;
     }

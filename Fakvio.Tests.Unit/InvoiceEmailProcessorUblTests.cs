@@ -132,7 +132,7 @@ public class InvoiceEmailProcessorUblTests
 
         var email = await _context.InboundInvoiceEmail.SingleAsync();
         email.Status.ShouldBe(EInvoiceEmailStatus.Imported);
-        email.ReceivedInvoiceId.ShouldBe(42L);
+        email.InvoiceId.ShouldBe(42L);
         email.Direction.ShouldBe(EInvoiceDirection.Received);
     }
 

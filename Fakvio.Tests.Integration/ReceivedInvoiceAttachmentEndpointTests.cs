@@ -126,17 +126,19 @@ public class ReceivedInvoiceAttachmentEndpointTests : IClassFixture<ReceivedInvo
         using var scope = _factory.Services.CreateScope();
         var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
 
-        var invoice = new ReceivedInvoice
+        var invoice = new Invoice
         {
             DocumentNumber = documentNumber,
-            Status = EReceivedInvoiceStatus.Received,
-            SupplierId = SupplierId,
+            DocumentType = EDocumentType.ReceivedInvoice,
+            Status = EInvoiceStatus.Draft,
+            ClientId = SupplierId,
+            IssuerId = CompanyId,
             CurrencyId = CurrencyId,
             IssueDate = DateTime.UtcNow.AddDays(-5),
             ReceivedDate = DateTime.UtcNow,
             TotalBeforeVat = 100m, TotalVat = 21m, TotalWithVat = 121m
         };
-        tenantDb.ReceivedInvoice.Add(invoice);
+        tenantDb.Invoice.Add(invoice);
         tenantDb.SaveChanges();
         return invoice.Id;
     }
@@ -153,7 +155,7 @@ public class ReceivedInvoiceAttachmentEndpointTests : IClassFixture<ReceivedInvo
         var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
         tenantDb.FileAttachment.Add(new FileAttachment
         {
-            EntityName = nameof(ReceivedInvoice),
+            EntityName = "ReceivedInvoice",
             RecordId = recordId,
             OriginalFileName = fileName,
             ContentType = "application/pdf",

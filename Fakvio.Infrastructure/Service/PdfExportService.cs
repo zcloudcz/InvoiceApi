@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -52,7 +53,7 @@ public class PdfExportService : IPdfExportService
         // AsSplitQuery: This query includes multiple collection navigations (Client.Address,
         // Client.Contact, Issuer.Address, Issuer.Contact, InvoiceItem) — without split query,
         // the single JOIN produces a massive cartesian product (rows = addresses x contacts x items).
-        var invoice = await _context.Invoice
+        var invoice = await _context.Invoice.IssuedOnly()
             .AsSplitQuery()
             .Include(i => i.Client).ThenInclude(c => c!.Address)
             .Include(i => i.Client).ThenInclude(c => c!.Contact)

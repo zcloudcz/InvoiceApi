@@ -247,6 +247,10 @@ public class NumberSequenceService : INumberSequenceService
 
     public async Task<NumberSequenceDto> CreateSequenceAsync(CreateNumberSequenceDto createDto, CancellationToken cancellationToken = default)
     {
+        // Received invoices carry the SUPPLIER's number, so a sequence for them could never be used.
+        // Checked first: the code below already writes (default formats, un-setting the previous default).
+        IssuedDocumentTypes.EnsureIssued(createDto.DocumentType);
+
         _logger.LogInformation("Creating new number sequence: {Name} for {DocumentType}", createDto.Name, createDto.DocumentType);
 
         // Auto-seed default formats for tenants that were provisioned with empty tables

@@ -362,19 +362,21 @@ public class DashboardServiceTests : IDisposable
         return invoice;
     }
 
-    private ReceivedInvoice AddReceivedInvoice(long supplierId, EReceivedInvoiceStatus status,
+    private Invoice AddReceivedInvoice(long supplierId, EInvoiceStatus status,
         DateTime issueDate, decimal totalBeforeVat)
     {
-        var received = new ReceivedInvoice
+        var received = new Invoice
         {
+            DocumentType = EDocumentType.ReceivedInvoice,
             Status = status,
-            SupplierId = supplierId,
+            ClientId = supplierId,
+            IssuerId = 1,
             CurrencyId = _context.Currency.First(c => c.Code == "CZK").Id,
             IssueDate = issueDate,
             TotalBeforeVat = totalBeforeVat,
             TotalWithVat = totalBeforeVat * 1.21m
         };
-        _context.ReceivedInvoice.Add(received);
+        _context.Invoice.Add(received);
         _context.SaveChanges();
         return received;
     }
@@ -428,8 +430,8 @@ public class DashboardServiceTests : IDisposable
         var thisMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 10, 0, 0, 0, DateTimeKind.Utc);
 
         AddInvoiceFull(client.Id, issuer.Id, EInvoiceStatus.Paid, EDocumentType.Invoice, thisMonth, totalWithVat: 1210);
-        AddReceivedInvoice(supplier.Id, EReceivedInvoiceStatus.Approved, thisMonth, totalBeforeVat: 300);
-        AddReceivedInvoice(supplier.Id, EReceivedInvoiceStatus.Rejected, thisMonth, totalBeforeVat: 9999); // excluded
+        AddReceivedInvoice(supplier.Id, EInvoiceStatus.Completed, thisMonth, totalBeforeVat: 300);
+        AddReceivedInvoice(supplier.Id, EInvoiceStatus.Deleted, thisMonth, totalBeforeVat: 9999); // excluded
 
         var result = await _service.GetDashboardAsync();
 

@@ -5,22 +5,15 @@ using ZMapper;
 namespace Fakvio.Infrastructure.Mapping;
 
 /// <summary>
-/// ZMapper profile for ReceivedInvoice entity -> ReceivedInvoiceDto mapping.
-/// Navigation-derived properties (SupplierName, CurrencyCode, CurrencySymbol)
-/// are ignored here and set manually in the service layer.
+/// ZMapper profile for the received-invoice facade. A received invoice is an <see cref="Invoice"/> row
+/// (DocumentType = ReceivedInvoice), so only the line items map 1:1 (InvoiceItem -> ReceivedInvoiceItemDto).
+/// The header is mapped by hand in <c>ReceivedInvoiceService.MapToDto</c> because the DTO keeps the old
+/// shape (SupplierId, EReceivedInvoiceStatus) that ZMapper's name-for-name copy cannot express.
 /// </summary>
 public partial class ReceivedInvoiceProfile : IMapperProfile
 {
     public void Configure(MapperConfiguration config)
     {
-        // ReceivedInvoiceItem -> ReceivedInvoiceItemDto: direct 1:1 mapping
-        config.CreateMap<ReceivedInvoiceItem, ReceivedInvoiceItemDto>();
-
-        // ReceivedInvoice -> ReceivedInvoiceDto: direct property mapping.
-        // Navigation-derived props are set manually in service layer after mapping.
-        config.CreateMap<ReceivedInvoice, ReceivedInvoiceDto>()
-            .ForMember(d => d.SupplierName, opt => opt.Ignore())
-            .ForMember(d => d.CurrencyCode, opt => opt.Ignore())
-            .ForMember(d => d.CurrencySymbol, opt => opt.Ignore());
+        config.CreateMap<InvoiceItem, ReceivedInvoiceItemDto>();
     }
 }

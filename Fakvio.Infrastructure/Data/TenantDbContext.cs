@@ -143,16 +143,6 @@ public class TenantDbContext : DbContext
     public DbSet<ChatMessage> ChatMessage { get; set; }
 
     /// <summary>
-    /// Received (incoming) invoices from suppliers — expense tracking.
-    /// </summary>
-    public DbSet<ReceivedInvoice> ReceivedInvoice { get; set; }
-
-    /// <summary>
-    /// Line items on received invoices.
-    /// </summary>
-    public DbSet<ReceivedInvoiceItem> ReceivedInvoiceItem { get; set; }
-
-    /// <summary>
     /// Cached ARES lookups (company registry data)
     /// </summary>
     public DbSet<AresCache> AresCache { get; set; }
@@ -311,8 +301,6 @@ public class TenantDbContext : DbContext
         ConfigureAresCache(modelBuilder);
         ConfigureVatRate(modelBuilder);
         ConfigureContentTemplate(modelBuilder);
-        ConfigureReceivedInvoice(modelBuilder);
-        ConfigureReceivedInvoiceItem(modelBuilder);
         ConfigureChatConversation(modelBuilder);
         ConfigureChatMessage(modelBuilder);
         ConfigureFileAttachment(modelBuilder);
@@ -537,15 +525,18 @@ public class TenantDbContext : DbContext
             // Unique document number — excludes NULLs, "DRAFT" placeholders, and soft-deleted invoices.
             // Deleted invoices (Status=5) must NOT block new invoices from reusing the same number.
             // PostgreSQL filtered index syntax uses double-quoted identifiers.
+            // Received documents (DocumentType = 5) carry the SUPPLIER's number: it repeats across suppliers and
+            // can equal one of our own numbers, so they must stay out of this index.
             entity.HasIndex(e => e.DocumentNumber)
                 .IsUnique()
-                .HasFilter("\"DocumentNumber\" IS NOT NULL AND \"DocumentNumber\" <> 'DRAFT' AND \"Status\" <> 5");
+                .HasFilter("\"DocumentNumber\" IS NOT NULL AND \"DocumentNumber\" <> 'DRAFT' AND \"Status\" <> 5 AND \"DocumentType\" <> 5");
             entity.HasIndex(e => e.DocumentType);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.ClientId);
             entity.HasIndex(e => e.IssuerId);
             entity.HasIndex(e => e.IssueDate);
             entity.HasIndex(e => e.DueDate);
+            entity.HasIndex(e => e.ReceivedDate);
 
             entity.Property(e => e.DocumentNumber).HasMaxLength(100);
             entity.HasOne(e => e.Currency).WithMany().HasForeignKey(e => e.CurrencyId).OnDelete(DeleteBehavior.Restrict);
@@ -717,101 +708,6 @@ public class TenantDbContext : DbContext
 
             // ISO 639-1 language code — determines which language this template is written in.
             entity.Property(e => e.Language).IsRequired().HasMaxLength(5).HasDefaultValue("cs");
-        });
-    }
-
-    /// <summary>
-    /// ReceivedInvoice table configuration — incoming invoices from suppliers (expenses).
-    /// Follows same patterns as Invoice configuration for consistency.
-    /// </summary>
-    private void ConfigureReceivedInvoice(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<ReceivedInvoice>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-
-            entity.HasIndex(e => e.Status);
-            entity.HasIndex(e => e.SupplierId);
-            entity.HasIndex(e => e.IssueDate);
-            entity.HasIndex(e => e.DueDate);
-            entity.HasIndex(e => e.ReceivedDate);
-            entity.HasIndex(e => e.TaxableSupplyDate);
-
-            entity.Property(e => e.DocumentNumber).HasMaxLength(100);
-            entity.Property(e => e.VariableSymbol).HasMaxLength(50);
-            entity.Property(e => e.BankAccountNumber).HasMaxLength(100);
-            entity.Property(e => e.IBAN).HasMaxLength(50);
-            entity.Property(e => e.SWIFT).HasMaxLength(50);
-            entity.Property(e => e.PaymentMethod).HasConversion<int?>();
-            entity.Property(e => e.Notes).HasMaxLength(5000);
-            entity.Property(e => e.AttachmentFileName).HasMaxLength(500);
-            entity.Property(e => e.AttachmentContentType).HasMaxLength(100);
-
-            entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
-            entity.Property(e => e.TotalVat).HasPrecision(18, 2);
-            // CZK per one unit of the document currency (ČNB), see Invoice.ExchangeRate.
-            entity.Property(e => e.ExchangeRate).HasPrecision(18, 8);
-            entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
-
-            // Supplier is a Client record — Restrict to prevent accidental deletion of supplier with invoices.
-            entity.HasOne(e => e.Supplier)
-                .WithMany()
-                .HasForeignKey(e => e.SupplierId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(e => e.Currency)
-                .WithMany()
-                .HasForeignKey(e => e.CurrencyId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // Cascade delete items when received invoice is removed
-            entity.HasMany(e => e.Items)
-                .WithOne(i => i.ReceivedInvoice)
-                .HasForeignKey(i => i.ReceivedInvoiceId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-    }
-
-    /// <summary>
-    /// ReceivedInvoiceItem table configuration — line items on received invoices.
-    /// Mirrors InvoiceItem configuration for consistency.
-    /// </summary>
-    private void ConfigureReceivedInvoiceItem(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<ReceivedInvoiceItem>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.ReceivedInvoiceId);
-
-            entity.Property(e => e.Description).IsRequired().HasMaxLength(1000);
-            entity.Property(e => e.Unit).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.Quantity).HasPrecision(18, 4);
-            entity.Property(e => e.UnitPrice).HasPrecision(18, 2);
-            entity.Property(e => e.VatRatePercentage).HasPrecision(5, 2);
-            entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
-            entity.Property(e => e.VatAmount).HasPrecision(18, 2);
-            entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
-            entity.Property(e => e.InformationalVatAmount).HasPrecision(18, 2);
-            entity.Property(e => e.ProductCode).HasMaxLength(100);
-            entity.Property(e => e.Notes).HasMaxLength(1000);
-
-            // VatRegime: same convention as InvoiceItem — integer column, NOT NULL, default 0 (Standard).
-            entity.Property(e => e.VatRegime)
-                .HasConversion<int>()
-                .HasDefaultValue(EVatRegime.Standard)
-                .IsRequired();
-
-            entity.HasOne(e => e.VatRate)
-                .WithMany()
-                .HasForeignKey(e => e.VatRateId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // ReverseChargeCode is a reference data lookup (číselník) — Restrict delete,
-            // same reasoning as InvoiceItem: historical received invoices must stay intact.
-            entity.HasOne(e => e.ReverseChargeCode)
-                .WithMany()
-                .HasForeignKey(e => e.ReverseChargeCodeId)
-                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 
@@ -1262,7 +1158,7 @@ public class TenantDbContext : DbContext
 
     /// <summary>
     /// PaymentMatch — many-to-many link rows between BankTransaction and invoices.
-    /// Composite FK constraint: exactly one of (InvoiceId, ReceivedInvoiceId) must be non-null.
+    /// InvoiceId is required and points at an issued OR a received document (Invoice.DocumentType tells which).
     /// </summary>
     private void ConfigurePaymentMatch(ModelBuilder modelBuilder)
     {
@@ -1272,7 +1168,6 @@ public class TenantDbContext : DbContext
 
             // Fast sum for Invoice.PaidAmount recalc.
             entity.HasIndex(e => e.InvoiceId);
-            entity.HasIndex(e => e.ReceivedInvoiceId);
             entity.HasIndex(e => e.BankTransactionId);
 
             entity.Property(e => e.MatchedAmount).HasPrecision(18, 2);
@@ -1290,20 +1185,7 @@ public class TenantDbContext : DbContext
                 .WithMany(i => i.PaymentMatch)
                 .HasForeignKey(e => e.InvoiceId)
                 .OnDelete(DeleteBehavior.Restrict)
-                .IsRequired(false);
-
-            // FK to ReceivedInvoice — Restrict: same reasoning.
-            entity.HasOne(e => e.ReceivedInvoice)
-                .WithMany()
-                .HasForeignKey(e => e.ReceivedInvoiceId)
-                .OnDelete(DeleteBehavior.Restrict)
-                .IsRequired(false);
-
-            // Database-level check: at least one of (InvoiceId, ReceivedInvoiceId) must be non-null.
-            // Enforced via raw SQL — EF Core has no fluent API for CHECK constraints.
-            entity.ToTable(t => t.HasCheckConstraint(
-                "CK_PaymentMatch_Target",
-                "\"InvoiceId\" IS NOT NULL OR \"ReceivedInvoiceId\" IS NOT NULL"));
+                .IsRequired();
         });
     }
 
@@ -1484,12 +1366,6 @@ public class TenantDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.InvoiceMailboxId)
                 .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(e => e.ReceivedInvoice)
-                .WithMany()
-                .HasForeignKey(e => e.ReceivedInvoiceId)
-                .OnDelete(DeleteBehavior.SetNull)
-                .IsRequired(false);
 
             entity.HasOne(e => e.Invoice)
                 .WithMany()

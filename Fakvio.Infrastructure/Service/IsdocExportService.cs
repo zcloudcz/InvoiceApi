@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Extensions;
 using System.Reflection;
 using System.Text;
 using System.Xml;
@@ -46,7 +47,7 @@ public class IsdocExportService : IIsdocExportService
         // AsNoTracking: read-only operation, no change tracking needed.
         // AsSplitQuery: avoids cartesian explosion when multiple collections are included.
         // Status filter: soft-deleted invoices (Status=Deleted) must not be exported.
-        var invoice = await _db.Invoice
+        var invoice = await _db.Invoice.IssuedOnly()
             .AsNoTracking()
             .AsSplitQuery()
             .Where(i => i.Status != EInvoiceStatus.Deleted)
@@ -81,15 +82,15 @@ public class IsdocExportService : IIsdocExportService
 
         // Same loading strategy as issued invoices: read-only, split query,
         // soft-deleted documents excluded.
-        var invoice = await _db.ReceivedInvoice
+        var invoice = await _db.Invoice.ReceivedOnly()
             .AsNoTracking()
             .AsSplitQuery()
-            .Where(i => i.Status != EReceivedInvoiceStatus.Deleted)
+            .Where(i => i.Status != EInvoiceStatus.Deleted)
             .Include(i => i.Currency)
-            .Include(i => i.Items)
-            .Include(i => i.Supplier)
+            .Include(i => i.InvoiceItem)
+            .Include(i => i.Client)
                 .ThenInclude(c => c!.Address)
-            .Include(i => i.Supplier)
+            .Include(i => i.Client)
                 .ThenInclude(c => c!.Contact)
             .FirstOrDefaultAsync(i => i.Id == receivedInvoiceId, ct);
 

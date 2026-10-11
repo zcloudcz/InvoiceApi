@@ -206,11 +206,13 @@ public class EpoVatReturnExportTests : IDisposable
         decimal vatPct,
         long currencyId = CzkCurrencyId)
     {
-        var received = new ReceivedInvoice
+        var received = new Invoice
         {
             DocumentNumber = $"REC-{Guid.NewGuid():N}",
-            Status = status,
-            SupplierId = 1,
+            DocumentType = EDocumentType.ReceivedInvoice,
+            Status = status.ToStored(),
+            ClientId = 1,
+            IssuerId = 1,
             IssueDate = duzp,
             ReceivedDate = duzp,
             TaxableSupplyDate = duzp,
@@ -221,7 +223,7 @@ public class EpoVatReturnExportTests : IDisposable
             TotalWithVat = baseAmount * (1 + vatPct / 100m)
         };
 
-        received.Items.Add(new ReceivedInvoiceItem
+        received.InvoiceItem.Add(new InvoiceItem
         {
             OrderIndex = 1,
             Description = "Test expense",
@@ -233,7 +235,7 @@ public class EpoVatReturnExportTests : IDisposable
             TotalWithVat = baseAmount * (1 + vatPct / 100m)
         });
 
-        _context.ReceivedInvoice.Add(received);
+        _context.Invoice.Add(received);
         _context.SaveChanges();
     }
 

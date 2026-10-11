@@ -1040,6 +1040,47 @@ Běžné problémy:
 Chyba při startu (např. heslo v connection stringu při `AzureEntraId`) vždy dopoví, **odkud**
 se režim vzal — podle toho víte, který klíč opravit.
 
+### 13.2 Migrace tenantů a sjednocení dokladů (`UnifyDocumentsInInvoiceTable`)
+
+Tenant schémata se nemigrují při startu, ale **líně při prvním požadavku firmy** po nasazení
+(nebo ručně přes `POST /api/diagnostic/migrate`). Migrace `UnifyDocumentsInInvoiceTable`
+přesouvá přijaté faktury z vlastních tabulek do tabulky `Invoice` (`DocumentType = 5`).
+
+**Před nasazením udělejte zálohu databáze.** Migrace je **nevratná**: `Down` není podporováno
+(přijaté doklady dostaly nová id). Návrat = obnova ze zálohy, ne revert commitu.
+
+**Když migrace selže:**
+- Běží celá v jedné transakci a končí vlastní kontrolou (počty, součty, stavy a porovnání
+  řádek po řádku se zdrojem). Při rozdílu se **vrátí zpět celá**, data firmy zůstanou v původním
+  stavu.
+- Dotčená firma dostává na každý požadavek **HTTP 503** („Tenant database is not ready"). Ostatní
+  firmy běží dál.
+- Migrace se **zkusí znovu při dalším požadavku** té firmy (neúspěch se neukládá do cache).
+  Pokud je příčina v datech, bude selhávat, dokud se neopraví.
+- Kde hledat: logy (§7) úrovně Error, zpráva `Tenant schema migration failed for company …`;
+  text výjimky začíná `UnifyDocuments:` a říká, která kontrola neprošla.
+- Migrace záměrně **neselže** na starých nepořádcích v datech: příchozí e-mail navázaný zároveň
+  na vydaný i přijatý doklad (vydaná vazba zůstane, přijatá se uloží do `*_legacy` tabulky) a
+  přílohy / notifikace / upozornění mířící na neexistující přijatou fakturu (zůstanou beze změny).
+
+**Co po migraci zůstane v každém tenant schématu** (jen pro audit, aplikace je nečte):
+
+| Tabulka | Obsah |
+|---|---|
+| `ReceivedInvoice_legacy` | původní hlavičky přijatých faktur |
+| `ReceivedInvoiceItem_legacy` | původní položky |
+| `ReceivedInvoiceIdMap_legacy` | mapa `OldId` → `NewId` každé přijaté faktury |
+| `InboundInvoiceEmailReceivedLink_legacy` | přijaté vazby e-mailů, které měly i vydanou vazbu (`InboundInvoiceEmailId`, `OldReceivedInvoiceId`, `NewInvoiceId`); obvykle prázdná |
+
+Tyto tabulky **smaže až některé z dalších vydání** (samostatná migrace), jakmile bude jisté, že se
+k původním id nikdo nevrací. Do té doby je nemažte ručně a počítejte s nimi v zálohách.
+
+**Id přijatých faktur se změnila.** Nová id leží vždy **nad** všemi původními id přijatých
+i vydaných dokladů, takže staré id nikdy neukáže na jinou přijatou fakturu: endpoint odpoví
+„nenalezeno". Kdo má id uložená mimo aplikaci (integrace přes API, MCP, webhooky, vlastní
+reporty), přemapuje je podle `ReceivedInvoiceIdMap_legacy`. Webhooky čekající ve frontě se
+doručí s původním id v těle.
+
 ---
 
 ## 14. Prostředí (test vs produkce)

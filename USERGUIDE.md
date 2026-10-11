@@ -702,6 +702,10 @@ Dvě možnosti:
 
 Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
 
+**Odmítnutí faktury:** akce **Odmítnout** (u faktury ve stavu „Přijata") nyní fakturu **smaže** — stav „Odmítnuta" už
+neexistuje, odmítnutá faktura se chová jako smazaná a z přehledů zmizí. Dříve odmítnuté faktury byly při
+aktualizaci převedeny do stavu „Smazána".
+
 ### Filtrování a řazení v gridu
 
 Kromě fulltextového vyhledávání nad gridem lze filtrovat přímo v řádku filtrů

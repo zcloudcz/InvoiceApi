@@ -33,13 +33,13 @@ public static class ReceivedInvoiceTools
     [McpServerTool(Title = "List received invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "List received (incoming) invoices with pagination and filters. " +
         "These are expenses from suppliers. " +
-        "Filter by status ('Received', 'Approved', 'Paid', 'Rejected'), supplier ID, date range, etc.")]
+        "Filter by status ('Received', 'Approved', 'Paid'), supplier ID, date range, etc.")]
     public static async Task<string> ListReceivedInvoices(
         IFakvioApiClient api,
         [Description("Page number (1-based, default 1)")] int page = 1,
         [Description("Items per page (default 50, max 100)")] int pageSize = 50,
         [Description("Search in document number, supplier name, variable symbol")] string? search = null,
-        [Description("Filter by status: 'Received', 'Approved', 'Paid', 'Rejected'")] string? status = null,
+        [Description("Filter by status: 'Received', 'Approved', 'Paid'")] string? status = null,
         [Description("Filter by supplier (client) ID")] long? supplierId = null,
         [Description("Filter from issue date (ISO 8601)")] string? issueDateFrom = null,
         [Description("Filter to issue date (ISO 8601)")] string? issueDateTo = null,
@@ -211,7 +211,7 @@ public static class ReceivedInvoiceTools
     /// Deletes a received invoice (soft delete).
     /// </summary>
     [McpServerTool(Title = "Delete received invoice", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
-        "Delete a received invoice (soft delete). Only 'Received' or 'Rejected' invoices can be deleted.")]
+        "Delete a received invoice (soft delete). Only 'Received' invoices can be deleted.")]
     public static async Task<string> DeleteReceivedInvoice(
         IFakvioApiClient api,
         [Description("The received invoice ID to delete")] long id,
