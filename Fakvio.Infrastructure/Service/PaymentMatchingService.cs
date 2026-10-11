@@ -1037,13 +1037,14 @@ public class PaymentMatchingService : IPaymentMatchingService
     /// THE payment status rule, shared by issued and received documents: PaidAmount &gt;= total is Paid,
     /// 0 &lt; PaidAmount &lt; total is PartiallyPaid, nothing paid is Completed. A Draft never gets here: every
     /// matching path (automatic candidates, proposals, confirm, manual) refuses a Draft on both sides.
-    /// A Deleted document only gets its PaidAmount updated - a payment change must never revive it.
+    /// A Deleted or Creditnoted document only gets its PaidAmount updated - a payment change must never revive a
+    /// deleted document, nor turn a credit-noted invoice back into an open (Completed / PartiallyPaid) one.
     /// </summary>
     private static void ApplyPaidAmount(Invoice invoice, decimal paidAmount, DateTime txDate)
     {
         invoice.PaidAmount = paidAmount < 0 ? 0 : paidAmount; // defensive
 
-        if (invoice.Status == EInvoiceStatus.Deleted)
+        if (invoice.Status is EInvoiceStatus.Deleted or EInvoiceStatus.Creditnoted)
             return;
 
         if (invoice.PaidAmount >= invoice.TotalWithVat)

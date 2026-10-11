@@ -159,6 +159,11 @@ public class DocumentStateMachineTests
                     if (transition == "delete" && status == EInvoiceStatus.Completed) continue;
                     yield return [side, transition, status, from.Contains(status), to];
                 }
+
+        // Creditnoted exists on the issued side only (a received row can never reach it) and is a dead end:
+        // every one of the six transitions is refused from it.
+        foreach (var (transition, _, to) in Matrix)
+            yield return [Side.Issued, transition, EInvoiceStatus.Creditnoted, false, to];
     }
 
     [Theory]
@@ -563,5 +568,30 @@ public class DocumentStateMachineTests
         proposal.TotalWithVat.ShouldBe(1210m);
         proposal.PaidAmount.ShouldBe(400m);
         proposal.Remaining.ShouldBe(810m);
+    }
+
+    [Fact]
+    public async Task Unmatch_OnCreditnotedInvoice_NeverReopensIt()
+    {
+        // A paid invoice was credit-noted; its bank payment is unmatched afterwards.
+        var id = SeedDoc(Side.Issued, EInvoiceStatus.Creditnoted, paidAmount: 1210m);
+        var tx = SeedTx(Side.Issued, 1210m);
+        long matchId;
+        using (var seed = NewDb())
+        {
+            var match = new PaymentMatch { BankTransactionId = tx, InvoiceId = id, MatchedAmount = 1210m, MatchedAt = DateTime.UtcNow };
+            seed.PaymentMatch.Add(match);
+            seed.SaveChanges();
+            matchId = match.Id;
+        }
+
+        using (var db = NewDb()) await Matching(db).UnmatchAsync(matchId, null, null);
+
+        var doc = Load(id);
+        doc.Status.ShouldBe(EInvoiceStatus.Creditnoted); // not Completed
+        doc.PaidAmount.ShouldBe(0m);
+        using var check = NewDb();
+        check.PaymentMatch.Any(m => m.InvoiceId == id).ShouldBeFalse();
+        check.BankTransaction.Single(t => t.Id == tx).MatchStatus.ShouldBe(EMatchStatus.Unmatched);
     }
 }
