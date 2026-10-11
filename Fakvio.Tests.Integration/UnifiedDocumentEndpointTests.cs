@@ -343,6 +343,29 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         RowOf(id).Status.ShouldBe(EInvoiceStatus.Completed);
     }
 
+    /// <summary>
+    /// Bulk exports: one received id anywhere in the list refuses the whole request (and names that document),
+    /// and the list is capped at 100 like the download links for the same exports.
+    /// </summary>
+    [Theory]
+    [InlineData("bulk/pdf")]
+    [InlineData("bulk/isdoc")]
+    [InlineData("bulk/ubl")]
+    public async Task BulkExport_RefusesAMixedList_AndMoreThan100Ids(string route)
+    {
+        var issued = SeedDoc(EDocumentType.Invoice, EInvoiceStatus.Completed);
+        var received = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Completed);
+        var client = await CreateAuthenticatedClientAsync();
+
+        var mixed = await client.GetAsync($"/api/invoice/{route}?ids={issued},{received}");
+        var tooMany = await client.GetAsync($"/api/invoice/{route}?ids={string.Join(',', Enumerable.Range(1, 101))}");
+
+        mixed.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await JsonOf(mixed)).GetProperty("message").GetString()!.ShouldContain($"Document {received} is a received invoice");
+        tooMany.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await JsonOf(tooMany)).GetProperty("message").GetString()!.ShouldContain("maximum is 100");
+    }
+
     [Fact]
     public async Task IssuedOnlyOperation_GivenIssuedDocument_IsNotRefusedByTheGuard()
     {

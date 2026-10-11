@@ -1,5 +1,5 @@
+using Fakvio.API.Controller;
 using Fakvio.Application.Service;
-using Fakvio.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
@@ -15,6 +15,10 @@ namespace Fakvio.API.Extensions;
 /// The document type is taken from the STORED row. The document id is read from the route (<c>id</c>,
 /// <c>invoiceId</c> or <c>proformaId</c>) and, for bulk actions, from the <c>ids</c> query string (comma separated);
 /// a request that carries neither is left alone. An unknown id is not our business here - the action answers it.
+///
+/// Cost: ONE query for all ids of the request (not one per id). Because the <c>ids</c> list goes into that query
+/// (and then into the export itself), it is capped at <see cref="DownloadLinkController.MaxBulkIds"/> - the same
+/// limit the download links apply to the very same bulk exports; more ids answer 400.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class IssuedDocumentOnlyAttribute : Attribute, IAsyncActionFilter
@@ -31,20 +35,35 @@ public sealed class IssuedDocumentOnlyAttribute : Attribute, IAsyncActionFilter
         }
         if (context.HttpContext.Request.Query.TryGetValue("ids", out var csv))
         {
-            ids.AddRange((csv.ToString()).Split(',', StringSplitOptions.RemoveEmptyEntries)
+            var bulkIds = csv.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => long.TryParse(s.Trim(), out var id) ? id : 0)
-                .Where(id => id > 0));
-        }
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
 
-        var service = context.HttpContext.RequestServices.GetRequiredService<IInvoiceService>();
-        foreach (var id in ids.Distinct())
-        {
-            var type = await service.GetDocumentTypeAsync(id, context.HttpContext.RequestAborted);
-            if (type == EDocumentType.ReceivedInvoice)
+            // Refused before any database work: an unbounded list would become an unbounded IN (...) below and an
+            // unbounded ZIP in the action.
+            if (bulkIds.Count > DownloadLinkController.MaxBulkIds)
             {
                 context.Result = new BadRequestObjectResult(new
                 {
-                    message = $"Document {id} is a received invoice. This operation is available only for issued documents."
+                    message = $"Too many ids: maximum is {DownloadLinkController.MaxBulkIds}."
+                });
+                return;
+            }
+
+            ids.AddRange(bulkIds);
+        }
+
+        if (ids.Count > 0)
+        {
+            var service = context.HttpContext.RequestServices.GetRequiredService<IInvoiceService>();
+            var receivedId = await service.FindReceivedDocumentIdAsync(ids, context.HttpContext.RequestAborted);
+            if (receivedId.HasValue)
+            {
+                context.Result = new BadRequestObjectResult(new
+                {
+                    message = $"Document {receivedId} is a received invoice. This operation is available only for issued documents."
                 });
                 return;
             }

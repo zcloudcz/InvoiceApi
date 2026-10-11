@@ -98,15 +98,69 @@ public class IssuedDocumentOnlyAttributeTests
             types: new() { [1] = EDocumentType.Invoice, [2] = EDocumentType.Proforma, [3] = EDocumentType.ReceivedInvoice });
 
         nextCalled.ShouldBeFalse();
-        result.ShouldBeOfType<BadRequestObjectResult>();
+        result.ShouldBeOfType<BadRequestObjectResult>().Value!.ToString()!.ShouldContain("Document 3 ");
+    }
+
+    /// <summary>
+    /// The guard used to look every id up separately (N round trips before a bulk export even started).
+    /// It must ask ONCE for the whole set, whatever the number of ids.
+    /// </summary>
+    [Fact]
+    public async Task BulkIds_AreCheckedWithASingleQuery()
+    {
+        var ids = Enumerable.Range(1, DownloadLinkController.MaxBulkIds).Select(i => (long)i).ToList();
+
+        var (_, nextCalled, service) = await RunWithServiceAsync(routeId: null, ids: string.Join(',', ids),
+            types: ids.ToDictionary(i => i, _ => EDocumentType.Invoice));
+
+        nextCalled.ShouldBeTrue();
+        await service.Received(1).FindReceivedDocumentIdAsync(
+            Arg.Is<IReadOnlyCollection<long>>(asked => asked.SequenceEqual(ids)), Arg.Any<CancellationToken>());
+        await service.DidNotReceive().GetDocumentTypeAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Same limit as the download links (100). Over it: 400 without touching the database.</summary>
+    [Fact]
+    public async Task BulkIds_OverTheLimit_Return400_WithoutAnyQuery()
+    {
+        var ids = string.Join(',', Enumerable.Range(1, DownloadLinkController.MaxBulkIds + 1));
+
+        var (result, nextCalled, service) = await RunWithServiceAsync(routeId: null, ids: ids, types: new());
+
+        nextCalled.ShouldBeFalse();
+        result.ShouldBeOfType<BadRequestObjectResult>().Value!.ToString()!.ShouldContain("maximum is 100");
+        service.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    /// <summary>Repeated ids are one document: 101 copies of the same id are not "too many".</summary>
+    [Fact]
+    public async Task BulkIds_DuplicatesDoNotCountTowardsTheLimit()
+    {
+        var ids = string.Join(',', Enumerable.Repeat(7, DownloadLinkController.MaxBulkIds + 1));
+
+        var (_, nextCalled) = await RunAsync(routeId: null, ids: ids, types: new() { [7] = EDocumentType.Invoice });
+
+        nextCalled.ShouldBeTrue();
     }
 
     private static async Task<(IActionResult? Result, bool NextCalled)> RunAsync(
         long? routeId, Dictionary<long, EDocumentType> types, string? ids = null)
     {
+        var (result, nextCalled, _) = await RunWithServiceAsync(routeId, types, ids);
+        return (result, nextCalled);
+    }
+
+    private static async Task<(IActionResult? Result, bool NextCalled, IInvoiceService Service)> RunWithServiceAsync(
+        long? routeId, Dictionary<long, EDocumentType> types, string? ids = null)
+    {
         var service = Substitute.For<IInvoiceService>();
-        service.GetDocumentTypeAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(call => types.TryGetValue(call.ArgAt<long>(0), out var t) ? (EDocumentType?)t : null);
+        // Same contract as the real query: the lowest received id of the asked set, null when there is none.
+        service.FindReceivedDocumentIdAsync(Arg.Any<IReadOnlyCollection<long>>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.ArgAt<IReadOnlyCollection<long>>(0)
+                .Where(id => types.TryGetValue(id, out var t) && t == EDocumentType.ReceivedInvoice)
+                .OrderBy(id => id)
+                .Select(id => (long?)id)
+                .FirstOrDefault());
 
         var http = new DefaultHttpContext
         {
@@ -127,6 +181,6 @@ public class IssuedDocumentOnlyAttributeTests
             return Task.FromResult(new ActionExecutedContext(executing, new List<IFilterMetadata>(), new object()));
         });
 
-        return (executing.Result, nextCalled);
+        return (executing.Result, nextCalled, service);
     }
 }

@@ -2961,7 +2961,9 @@ legacy DTO na `CreateInvoiceDto` / `UpdateInvoiceDto` a volá totéž, takže ob
 Ostatní přijaté-only operace zůstávají na starých endpointech (`api/received-invoice`: přijatý ISDOC (jednotlivě i
 hromadně; stejnou akci `InvoiceController.ExportIsdoc` volají i odkazy ke stažení, proto ji nelze udělat typově
 závislou), hromadný ZIP příloh, AI import, `approve` / `reject`). Služby vydaných exportů (PDF, ISDOC, UBL, QR, e-mail) zůstávají
-`IssuedOnly()`; 400 vzniká v kontroleru dřív, než se zavolají. Přidáváš-li do `InvoiceController` akci jen pro vydané
+`IssuedOnly()`; 400 vzniká v kontroleru dřív, než se zavolají. Filtr se ptá **jedním dotazem** na všechna id požadavku
+(`IInvoiceService.FindReceivedDocumentIdAsync`) a `bulk/pdf|isdoc|ubl?ids=` přijme nejvýš 100 různých id
+(`DownloadLinkController.MaxBulkIds`, stejný limit jako odkazy ke stažení; víc = 400). Přidáváš-li do `InvoiceController` akci jen pro vydané
 doklady, označ ji `[IssuedDocumentOnly]` a doplň ji do `IssuedDocumentOnlyAttributeTests.IssuedOnlyActions`. Chat nástroje
 (`InvoiceLookup`) dál berou přijaté id jako „not found" (mají vlastní nástroje pro přijaté). Testy:
 `DocumentSideIsolationTests`, `UnifiedReceivedDocumentTests` (včetně shody fasády a jednotného API sloupec po sloupci),

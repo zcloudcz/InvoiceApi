@@ -61,6 +61,13 @@ public interface IInvoiceService
     Task<EDocumentType?> GetDocumentTypeAsync(long invoiceId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Id of a RECEIVED document among <paramref name="ids"/> (the lowest one), null when none of them is a
+    /// received document. One query for the whole set - the "issued only" guard uses it for single and bulk
+    /// actions alike, so a bulk export of N documents does not cost N type lookups.
+    /// </summary>
+    Task<long?> FindReceivedDocumentIdAsync(IReadOnlyCollection<long> ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a new invoice or credit note
     /// Automatically generates document number if not provided
     /// Calculates totals from line items

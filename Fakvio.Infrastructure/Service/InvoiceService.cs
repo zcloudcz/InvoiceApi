@@ -379,6 +379,14 @@ public class InvoiceService : IInvoiceService
             .Select(i => (EDocumentType?)i.DocumentType)
             .FirstOrDefaultAsync(cancellationToken);
 
+    public Task<long?> FindReceivedDocumentIdAsync(IReadOnlyCollection<long> ids, CancellationToken cancellationToken = default)
+        => _context.Invoice.AnyDocument()
+            .AsNoTracking()
+            .Where(i => ids.Contains(i.Id) && i.DocumentType == EDocumentType.ReceivedInvoice)
+            .OrderBy(i => i.Id) // deterministic: the same request always names the same document in the 400
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task<InvoiceDto> CreateInvoiceAsync(CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
     {
         // The unified create entry: the ONE place that accepts a RECEIVED document. Its type policy (supplier in
