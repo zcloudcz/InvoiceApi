@@ -2528,7 +2528,7 @@ Jeden XML soubor se **vydanými i přijatými** doklady za období, ve formátu 
   `AbraFlexiAccountingExporter`, společné helpery v `AccountingExportCommon`). Nový systém = nová
   hodnota enumu + nový exporter registrovaný v DI.
 - **UI:** `AccountingExportDialog.razor` otevřený tlačítkem „Export do účetnictví" na `Invoices.razor`
-  a `ReceivedInvoices.razor` (klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (vrací odkaz ke stažení
+  (jeden grid pro `/invoices` i `/received-invoices`; klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (vrací odkaz ke stažení
   jako `ExportInvoiceIsdoc`, §2.7a).
 - **Mapování:** číslo dokladu, VS, data (vystavení / DUZP / splatnost), partner (IČO, DIČ, adresa),
   způsob úhrady (jen Pohoda), položky (popis, množství, MJ, cena, sazba DPH), rozpad DPH. Dobropis má ve Fakvio
@@ -2795,7 +2795,7 @@ Konfig `ExchangeRates:SyncEnabled=false` worker nezaregistruje (integrační tes
 Vydané doklady **i přijaté faktury** jsou řádky tabulky `Invoice` (položky v `InvoiceItem`); jediný rozlišovač je
 `Invoice.DocumentType`: `Invoice=1`, `CreditNote=2`, `Proforma=3`, `TaxReceiptForAdvance=4`, **`ReceivedInvoice=5`**.
 Žádný příznak směru. Entity `ReceivedInvoice` / `ReceivedInvoiceItem` neexistují (krok 1 ze 4 sjednocení; jednotné API
-je krok 3a, viz „Jednotné API dokladů" níže; MCP nástroje dokladů jsou krok 4, viz „MCP nástroje dokladů"; UI zatím používá starou fasádu).
+je krok 3a, viz „Jednotné API dokladů" níže; MCP nástroje dokladů jsou krok 4, viz „MCP nástroje dokladů"; UI: přehled (grid) už používá jednotné API a `DocumentTypeUiPolicy` (§5.7), detail přijaté faktury zatím starou fasádu - to je krok 3b část 2).
 
 | Přijatý doklad | v `Invoice` |
 |---|---|
@@ -3031,6 +3031,23 @@ dokladů + `documentType: ReceivedInvoice`; upload přílohy, přijatý ISDOC a 
   `GetInvoiceByIdAsync` (max 100).
 - Přidáváš-li nástroj dokladu: popiš v něm všechny typy, nebo výslovně „jen vydané“ a u odkazů ke stažení vlož `IssuedOnlyRefusal`.
   Testy: `UnifiedDocumentToolsTests`, `FakvioApiClientTests`.
+
+### 5.7 `DocumentTypeUiPolicy` - jediné místo, kde UI rozhoduje podle typu dokladu
+
+`Fakvio.UI.Shared/Models/DocumentTypeUiPolicy.cs`. Stránky a gridy se NEPTAJÍ na `EDocumentType` / `TypeFilter` /
+`IsReceived`-podobné řetězce samy, ale politiky: `DocumentTypeUiPolicy.For(type)` (nebo `ForListRoute(path, ?type=)`
+pro seznam). Je neměnná, bez DI a bez lokalizátoru - vrací **klíče zdrojů** (`L[policy.ListTitleKey]`), url, příznaky
+a stavový automat UI (`CanEdit/CanComplete/CanMarkPaid/CanMarkUnpaid/CanRevertToDraft/CanDelete/CanRestore(status)`).
+
+- **Seznam `/invoices` + `/received-invoices` je jeden grid** (`Invoices.razor`). Typ je pevně dán url: cesta
+  `/received-invoices` = `ReceivedInvoice`, `/invoices` = `Invoice` nebo vydaný typ z `?type=`. Při přechodu mezi nimi
+  se instance komponenty znovu použije, proto stránka poslouchá `LocationChanged`, maže výběr, přenačte PDF šablony
+  a grid (klíč gridu `GridKey` se liší, takže se při změně strany grid vytvoří znovu).
+- **Nové pravidlo podle typu:** přidej člen do politiky + řádek do `DocumentTypeUiPolicyTests` (tabulka typ x stav) a
+  použij ho ve stránce. Žádný nový `switch (TypeFilter)` / `DocumentType ==` v razoru. Každý klíč, který politika vrací,
+  musí existovat v `SharedResource.resx` i `.en.resx` (hlídá test).
+- Detail dokladu (`InvoiceDetail`/`ReceivedInvoiceDetail`) politiku zatím nepoužívá; sjednotí se v kroku 3b část 2.
+- Stav `PartiallyPaid` má štítek `Invoice_StatusPartiallyPaid` a barvu `Info` pro všechny typy.
 
 ---
 

@@ -178,7 +178,7 @@ public class ReceivedInvoiceGridTests : FakvioPageTest
         var approve = Page.Locator(".mud-table-body button[title='Schválit'], .mud-table-body button[title='Approve']");
         if (await approve.CountAsync() == 0)
         {
-            Assert.Inconclusive("No draft received invoice — cannot verify the approve action");
+            Assert.Inconclusive("No draft received invoice - cannot verify the approve action");
             return;
         }
 

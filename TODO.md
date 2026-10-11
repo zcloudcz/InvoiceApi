@@ -10,6 +10,14 @@
 - [ ] Later steps: unify API/DTO/UI/MCP (2-4); drop the four `*_legacy` tables in a later release.
 - [ ] Own issue (pre-existing): auto-match candidates for received invoices exclude only `Paid`, so a Deleted supplier invoice can still be matched.
 
+## Unify documents UI - step 3b part 1: one grid (branch `feature/unify-documents-ui`, issue #542)
+
+- [x] `DocumentTypeUiPolicy` (urls, resource keys, capabilities, status state machine, accounting-export defaults) + table-driven tests; `Invoice_StatusPartiallyPaid` (CZ/EN).
+- [x] `Invoices.razor` serves `/invoices` and `/received-invoices` (type fixed by the url), `ReceivedInvoices.razor` deleted; received columns/actions/bulk via the unified API (`documentType=ReceivedInvoice`, bulk complete/mark-paid/delete), attachments column, overdue highlight on both sides, no Reject, status filter only in the column header.
+- [x] `FakvioService`: received bulk ISDOC + bulk attachments ZIP (legacy endpoints). bUnit `DocumentGridBothSidesTests`, integration gaps (bulk complete/delete, paged `AttachmentCount`), Playwright list/grid tests updated.
+- [ ] PR 2: detail page on the policy (`InvoiceDetail` + `ReceivedInvoiceDetail` -> one), payments panel (`ReceivedInvoicePaymentsPanel`), then remove `ReceivedInvoiceApiService`, `ReceivedInvoiceDetail.razor`, legacy DTOs from the UI.
+- [ ] `DownloadUblLogicTests` still mirrors the detail page rule; move it to the policy with the detail page.
+
 ## Send by e-mail: editable whole body (branch `feature/send-email-editable-body`)
 
 - [x] `InvoiceEmailDefaultsDto.DefaultHtmlBody` (one render with the subject); `SendInvoiceEmailDto/Options.HtmlBody` replaces the template body (Message ignored), placeholders filled in overrides.

@@ -713,7 +713,9 @@ Dvě možnosti:
 
 ### Stavy přijatých faktur
 
-Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
+Přijaté a vydané faktury sdílejí stejný přehled (stejné ovládání, sloupce se liší jen tím, co dává smysl: u přijatých je „Dodavatel" a sloupec „Přílohy", chybí e-mail a PDF). Filtrovat lze podle stavu ve sloupci „Stav" (řádek filtrů pod hlavičkou); samostatné výběrové pole nad gridem už není.
+
+Stavy: „Přijata" (koncept), „Schválena", „Částečně uhrazena" (je vidět jako štítek „Částečně uhrazeno"), „Zaplacena", „Smazána". Smazanou fakturu vrátíte tlačítkem **Obnovit** přímo v řádku přehledu. Splatnost schválené nebo částečně uhrazené faktury po termínu je zvýrazněná červeně (stejně u vydaných faktur).
 
 **Částečná úhrada:** platba nižší než zbývající částka přijatou fakturu už **neoznačí jako zaplacenou** — zůstane
 „Schválena" (s uhrazenou částkou) a jako „Zaplacena" se označí až po úhradě celé částky (další platbou).
@@ -727,10 +729,10 @@ ani v návrzích nenabízí a potvrzení párování aplikace odmítne - fakturu
 částečně uhrazené faktury; zruší spárované platby a faktura se vrátí do stavu „Schválena") a **Vrátit do konceptu**
 (u schválené faktury bez úhrady: „Schválena" → „Přijata"). Zaplacenou fakturu tedy zrušíte v pořadí: označit jako
 nezaplacenou → vrátit do konceptu → smazat (smazat lze jen fakturu ve stavu „Přijata"). U částečně uhrazené faktury
-tlačítko „Vrátit do konceptu" není, nejdřív je nutné zrušit úhradu. Akce **Obnovit** (smazaná → „Přijata") je zatím
-dostupná jen přes API; tlačítko v UI přibude v dalším kroku.
+tlačítko „Vrátit do konceptu" není, nejdřív je nutné zrušit úhradu. Akce **Obnovit** (smazaná → „Přijata") je v řádku přehledu;
+v detailu faktury tlačítko přibude v dalším kroku.
 
-**Odmítnutí faktury:** akce **Odmítnout** (u faktury ve stavu „Přijata") nyní fakturu **smaže** — stav „Odmítnuta" už
+**Odmítnutí faktury:** v přehledu tlačítko Odmítnout už není - fakturu ve stavu „Přijata" **smažte** (ikona koše; hromadně přes „Smazat"). V detailu akce **Odmítnout** (u faktury ve stavu „Přijata") nyní fakturu **smaže** — stav „Odmítnuta" už
 neexistuje, odmítnutá faktura se chová jako smazaná a z přehledů zmizí. Dříve odmítnuté faktury byly při
 aktualizaci převedeny do stavu „Smazána".
 
