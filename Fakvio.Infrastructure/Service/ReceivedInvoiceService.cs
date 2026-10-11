@@ -503,6 +503,11 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         var entity = await _context.Invoice.ReceivedOnly().Include(r => r.Currency).FirstOrDefaultAsync(r => r.Id == id, ct);
         if (entity is null) return null;
 
+        // Only the wording of the refusal is received-specific (the contract speaks of Received / Approved);
+        // the rule itself is the shared one below.
+        if (entity.Status != EInvoiceStatus.Draft)
+            throw new InvalidOperationException($"Cannot approve invoice in {ToLegacy(entity.Status)} status. Only Received allowed.");
+
         // "Approve" = the shared Draft -> Completed transition (status check + ČNB exchange rate).
         await _transitions.CompleteAsync(entity, issuedChecks: null, ct);
 
@@ -564,9 +569,9 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         if (status != EReceivedInvoiceStatus.Received)
             throw new InvalidOperationException($"Cannot reject invoice in {status} status. Only Received allowed.");
 
-        // "Rejected" is abolished in the unified model: rejecting soft-deletes the document.
-        entity.Status = EInvoiceStatus.Deleted;
-        await _context.SaveChangesAsync(ct);
+        // "Rejected" is abolished in the unified model: rejecting IS the shared Draft -> Deleted transition
+        // (the check above only keeps the legacy wording of the refusal).
+        await _transitions.DeleteAsync(entity, ct);
 
         _logger.LogInformation("Rejected (soft-deleted) received invoice ID {Id}", id);
         return await GetByIdAsync(id, ct);

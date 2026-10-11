@@ -594,4 +594,33 @@ public class DocumentStateMachineTests
         check.PaymentMatch.Any(m => m.InvoiceId == id).ShouldBeFalse();
         check.BankTransaction.Single(t => t.Id == tx).MatchStatus.ShouldBe(EMatchStatus.Unmatched);
     }
+
+    [Theory]
+    [InlineData(EInvoiceStatus.Completed)]
+    [InlineData(EInvoiceStatus.PartiallyPaid)]
+    [InlineData(EInvoiceStatus.Paid)]
+    [InlineData(EInvoiceStatus.Deleted)]
+    public async Task Received_Reject_IsTheSharedDelete_AllowedFromDraftOnly(EInvoiceStatus status)
+    {
+        var draft = SeedDoc(Side.Received, EInvoiceStatus.Draft);
+        var number = Load(draft).DocumentNumber;
+        using (var db = NewDb()) await Received(db).RejectAsync(draft);
+        Load(draft).Status.ShouldBe(EInvoiceStatus.Deleted);
+        Load(draft).DocumentNumber.ShouldBe(number); // the supplier's number is never cleared
+
+        var other = SeedDoc(Side.Received, status, paidAmount: status == EInvoiceStatus.Paid ? 1210m : status == EInvoiceStatus.PartiallyPaid ? 400m : 0m);
+        using (var db = NewDb())
+            await Should.ThrowAsync<InvalidOperationException>(() => Received(db).RejectAsync(other));
+        Load(other).Status.ShouldBe(status);
+    }
+
+    [Fact]
+    public async Task Received_RefusedApprove_SpeaksTheReceivedVocabulary()
+    {
+        var id = SeedDoc(Side.Received, EInvoiceStatus.Completed);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() => RunAsync(Side.Received, "complete", id));
+
+        ex.Message.ShouldBe("Cannot approve invoice in Approved status. Only Received allowed.");
+    }
 }

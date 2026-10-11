@@ -15,6 +15,10 @@ namespace Fakvio.Infrastructure.Service;
 ///   Draft --complete--> Completed --mark paid--> Paid / PartiallyPaid
 ///   Paid / PartiallyPaid --mark unpaid--> Completed --revert to draft--> Draft --delete--> Deleted --restore--> Draft
 ///
+/// Outside these transitions a status is written only in two places: bank-payment matching moves a document
+/// between Completed, PartiallyPaid and Paid by its own single rule (<c>PaymentMatchingService.ApplyPaidAmount</c>),
+/// and issuing a credit note marks the original invoice Creditnoted (InvoiceService).
+///
 /// Documents differ ONLY by <see cref="EDocumentType"/>, and the only place that difference shows is the small,
 /// explicit "type policy" in the methods below (look for <see cref="IsReceived"/>):
 ///   - issued documents draw a number from the number sequence, release it on delete and may delete a Completed

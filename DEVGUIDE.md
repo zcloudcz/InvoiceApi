@@ -2845,7 +2845,7 @@ Draft ──complete──► Completed ──mark paid──► Paid / Partiall
 | restore | Deleted → Draft | `.../restore` | `.../restore` |
 
 Cesta zpět u zaplacené přijaté faktury: `mark-unpaid` → `revert-to-draft` → `DELETE` (→ `restore`). `Reject` zůstává
-(= soft delete z Draftu, vlastní kód ve fasádě). Chybně použitý přechod = `InvalidOperationException` → HTTP 400.
+(= sdílený `delete` z Draftu; fasáda jen drží původní znění odmítnutí, stejně jako u `approve`). Chybně použitý přechod = `InvalidOperationException` → HTTP 400.
 
 **Typová politika (jediné povolené rozdíly):**
 
