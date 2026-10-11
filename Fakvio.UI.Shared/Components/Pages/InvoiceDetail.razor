@@ -1125,7 +1125,21 @@ else
     // any await) so Dispose always finds the handler it has to remove.
     protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
 
-    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+    // Set on Dispose: a response that arrives after the user left must not touch the page or navigate.
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        _disposed = true;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    /// <summary>
+    /// True when the route this load was started for is no longer the current one (the user opened another
+    /// document, switched sides or left the page while the request was running). The caller then drops its
+    /// result: applying it would show document A under the url of document B.
+    /// </summary>
+    private bool IsStale(string? routeKey) => _disposed || routeKey != _previousKey;
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
@@ -1135,8 +1149,18 @@ else
 
         _ = InvokeAsync(async () =>
         {
-            await ApplyRouteAsync();
-            StateHasChanged();
+            // Nobody awaits this task, so a failure would otherwise vanish and leave the spinner up forever.
+            try
+            {
+                await ApplyRouteAsync();
+            }
+            catch (Exception ex)
+            {
+                _loading = false;
+                _errorMessage = ex.Message;
+            }
+
+            if (!_disposed) StateHasChanged();
         });
     }
 
@@ -1179,12 +1203,14 @@ else
             var loads = new List<Task> { LoadClients(), LoadCurrencies() };
             if (!_policy.IsReceived) loads.Add(LoadIssuer());
             await Task.WhenAll(loads);
+            if (IsStale(key)) return;
 
             // If creating from template, load template data and pre-fill the form
             // (templates are an issuing-side feature, ignored on the received route)
             if (TemplateId.HasValue && TemplateId.Value > 0 && _policy.SupportsTemplates)
             {
                 await InitCreateDtoFromTemplate(TemplateId.Value, TemplateClientId);
+                if (IsStale(key)) return;
             }
             else
             {
@@ -1195,7 +1221,11 @@ else
             if (_createDto.DocumentType == EDocumentType.CreditNote)
             {
                 if (_createDto.OriginalInvoiceId is long originalId)
-                    _originalInvoice = await InvoiceService.GetByIdAsync(originalId);
+                {
+                    var original = await InvoiceService.GetByIdAsync(originalId);
+                    if (IsStale(key)) return;
+                    _originalInvoice = original;
+                }
             }
 
             // Pre-fill document number from the default sequence (user can still override).
@@ -1248,6 +1278,9 @@ else
         _editApplyOss = false;
         _selectedBankAccountId = null;
         _bankAccountManuallySelectedInCreate = false;
+        // Our own accounts belong to the issued form only; a received form must never see them (see
+        // OnCreateCurrencyChanged). The issued routes load them again through LoadIssuer.
+        _issuerBankAccounts = new List<BankAccountDto>();
 
         _qrCodeBase64 = null;
         _qrLoading = false;
@@ -1568,7 +1601,14 @@ else
         try
         {
             _loading = true;
-            _invoice = await InvoiceService.GetByIdAsync(Id);
+            var routeKey = _previousKey;
+            var loaded = await InvoiceService.GetByIdAsync(Id);
+            if (IsStale(routeKey))
+            {
+                redirecting = true; // the newer load owns the spinner now; do not switch it off under it
+                return;
+            }
+            _invoice = loaded;
 
             // api/invoice/{id} serves BOTH sides (DEVGUIDE §5.6), so the url may name the wrong one: a received
             // invoice opened on /invoices/{id}, or an issued one on /received-invoices/{id}. Send the user to the
@@ -1747,6 +1787,11 @@ else
     {
         _isDirty = true;
         _createDto.CurrencyId = currencyId;
+
+        // Only an issued document is paid to OUR account. On a received invoice the bank fields hold the
+        // SUPPLIER's account as typed in, so a currency change must never overwrite them with one of ours.
+        if (!_policy.UsesIssuerBankAccountSelect)
+            return;
 
         if (_bankAccountManuallySelectedInCreate)
             return;

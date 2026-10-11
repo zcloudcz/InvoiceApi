@@ -15,6 +15,12 @@ public static class ApiSeed
 
     private static async Task<HttpClient> OpenAsync(TestConfiguration config)
     {
+        // Seeding CREATES and ISSUES documents (an issued invoice takes a number from the real sequence).
+        // That is only acceptable on a developer's local stack, never on a shared or production API.
+        if (!new Uri(config.ApiUrl).IsLoopback)
+            throw new InvalidOperationException(
+                $"Test data seeding is allowed against a local API only, not {config.ApiUrl}.");
+
         var token = await AuthHelper.GetTokenAsync(config.ApiUrl, config.AdminEmail, config.AdminPassword);
         var http = new HttpClient { BaseAddress = new Uri(config.ApiUrl) };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -74,12 +80,15 @@ public static class ApiSeed
     /// </summary>
     public static async Task EnsureIssuedInvoicesAsync(TestConfiguration config)
     {
+        // Against a remote environment the tests use whatever data is there (as they always did).
+        if (!new Uri(config.ApiUrl).IsLoopback) return;
+
         using var http = await OpenAsync(config);
 
         var page = await ReadAsync(await http.GetAsync("api/invoice/paged?pageSize=100"));
         var statuses = page.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("status").GetInt32()).ToList();
         var needDraft = !statuses.Contains(1);   // EInvoiceStatus.Draft
-        var needIssued = statuses.All(s => s == 1); // anything that is not a Draft will do
+        var needIssued = !statuses.Any(s => s is 2 or 3 or 6); // Completed, Paid or PartiallyPaid
 
         if (!needDraft && !needIssued) return;
 

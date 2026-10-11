@@ -429,6 +429,12 @@ public class UnifiedDocumentDetailTests : DocumentDetailTestBase
     [Fact]
     public async Task Navigating_from_the_issued_to_the_received_create_page_does_not_leak_the_issued_form()
     {
+        // Our company has a EUR account. The issued form loads it; the received form must never use it.
+        Api.Issuer.BankAccount =
+        [
+            new() { Id = 9, AccountNumber = "OUR-EUR/0100", IBAN = "CZ00OURS", SWIFT = "OURSCZPP", CurrencyCode = "EUR", IsDefault = true }
+        ];
+
         var cut = RenderAt("/invoices/create");
         WaitForCreateForm(cut);
 
@@ -454,6 +460,11 @@ public class UnifiedDocumentDetailTests : DocumentDetailTestBase
             .First(f => f.Instance.Label == L["Invoice_Notes"].Value).Instance.Value.ShouldBeNullOrEmpty();
         cut.Markup.ShouldContain(L["ReceivedInvoice_New"].Value);
 
+        // Switching the currency re-picks OUR matching account on an issued document. On a received one the
+        // bank fields are the supplier's, so they must stay empty here.
+        await cut.InvokeAsync(() => cut.FindComponents<MudSelect<long>>()
+            .First(f => f.Instance.Label == L["Template_Currency"].Value).Instance.ValueChanged.InvokeAsync(2));
+
         // The save sends a received document, not the credit note that was being filled in.
         await PickParty(cut, L["ReceivedInvoice_Supplier"].Value, 5);
         Click(cut, L["Btn_AddItem"].Value);
@@ -464,6 +475,12 @@ public class UnifiedDocumentDetailTests : DocumentDetailTestBase
         IsAbsent(body, "originalInvoiceId").ShouldBeTrue();
         body.TryGetProperty("notes", out var notes).ShouldBeTrue();
         notes.ValueKind.ShouldBe(JsonValueKind.Null);
+        body.GetProperty("currencyId").GetInt64().ShouldBe(2);
+        foreach (var bankField in new[] { "bankAccountNumber", "iban", "swift" })
+        {
+            if (body.TryGetProperty(bankField, out var value))
+                value.ValueKind.ShouldBe(JsonValueKind.Null, $"{bankField} must not carry our own account");
+        }
     }
 
     [Fact]

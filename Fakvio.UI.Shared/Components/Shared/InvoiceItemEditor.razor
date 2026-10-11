@@ -282,8 +282,16 @@
     /// "custom percentage" option. Without it a row with <c>VatRateId == null</c> (e.g. 15 %) looked empty and
     /// invited the user to pick, and thereby change, a rate by accident.
     /// </summary>
-    private long? RateSelectValue(CreateInvoiceItemDto item) =>
-        item.VatRateId is { } id && _vatRates.Any(v => v.Id == id) ? id : CustomRateOption;
+    private long? RateSelectValue(CreateInvoiceItemDto item)
+    {
+        if (item.VatRateId is { } id && _vatRates.Any(v => v.Id == id)) return id;
+
+        // No usable rate id (imported received invoices store only the percentage). When the list has a rate
+        // with that very percentage, show that entry instead of a second, identical-looking "21%". This is
+        // display only: the row is not modified until the user actually picks something else.
+        var samePercentage = _vatRates.FirstOrDefault(v => v.Rate == item.VatRatePercentage);
+        return samePercentage?.Id ?? CustomRateOption;
+    }
     private List<Fakvio.Contracts.Dto.OssVatRate.OssVatRateDto> _ossRates = new();
     private string? _loadedOssCountry;
     private DateTime? _loadedRateDate;
