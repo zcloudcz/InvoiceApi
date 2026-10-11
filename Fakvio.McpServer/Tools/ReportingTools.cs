@@ -77,7 +77,7 @@ public static class ReportingTools
         if (!string.IsNullOrWhiteSpace(documentType))
         {
             if (!InvoiceTools.TryParseDocumentType(documentType, out var dt))
-                return JsonSerializer.Serialize(new { error = InvoiceTools.UnknownDocumentTypeMessage(documentType) }, JsonOptions);
+                return JsonSerializer.Serialize(new { error = InvoiceTools.UnknownDocumentTypeMessage(documentType) + InvoiceTools.OmitDocumentTypeHint }, JsonOptions);
             parsedDocumentType = dt;
         }
 

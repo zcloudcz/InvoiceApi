@@ -66,7 +66,7 @@ public static class InvoiceTools
         if (!string.IsNullOrWhiteSpace(documentType))
         {
             if (!TryParseDocumentType(documentType, out var dt))
-                return Error(UnknownDocumentTypeMessage(documentType));
+                return Error(UnknownDocumentTypeMessage(documentType) + OmitDocumentTypeHint);
             parsedDocumentType = dt;
         }
 
@@ -165,7 +165,7 @@ public static class InvoiceTools
         if (!string.IsNullOrWhiteSpace(documentType))
         {
             if (!TryParseDocumentType(documentType, out var dt))
-                return Error(UnknownDocumentTypeMessage(documentType));
+                return Error(UnknownDocumentTypeMessage(documentType) + OmitDocumentTypeHint);
             parsedDocumentType = dt;
         }
 
@@ -204,9 +204,12 @@ public static class InvoiceTools
         "find_client / list_clients to get clientId → create_invoice → complete_invoice to issue it (for a received invoice: to approve it). " +
         "For a ReceivedInvoice: clientId is the SUPPLIER, documentNumber is the supplier's invoice number (optional on a draft), " +
         "receivedDate is when it arrived (default now), variableSymbol is the supplier's symbol as printed (max 50 chars, any characters), " +
-        "issuerId can be omitted (the server uses your company). The issued-only inputs (originalInvoiceId, bankAccountId, applyOss, " +
+        "issuerId can be omitted (the server uses your company). bankAccountNumber / iban / swift are the SUPPLIER's account the invoice " +
+        "is to be paid to. vatRatePercentage is the rate the supplier charged, stored as given (any percentage, e.g. a foreign 19 or an " +
+        "old rate; it does not have to exist in your VAT rate table). Nothing is defaulted for a received invoice except receivedDate " +
+        "and taxableSupplyDate (= issueDate). The issued-only inputs (originalInvoiceId, bankAccountId, applyOss, " +
         "text rows) are refused by the API for a received invoice and its message is returned. " +
-        "For a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
+        "For an ISSUED document of a VAT-paying issuer, each non-text item only needs vatRatePercentage (e.g. 21) — " +
         "the matching VatRateId active on issueDate is resolved automatically. EU OSS is opt-in (applyOss=true) for an " +
         "OSS-registered issuer invoicing a consumer (client without a VAT id) in another EU state: vatRatePercentage " +
         "must then be a VAT rate of the client's country (rejected otherwise). " +
@@ -227,10 +230,16 @@ public static class InvoiceTools
         [Description("'Invoice', 'CreditNote', 'Proforma' or 'ReceivedInvoice' (default 'Invoice')")] string documentType = "Invoice",
         [Description("ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit for CZK.")] string? currency = null,
         [Description("Issuer (your company) ID. Omit to use the authenticated user's own company (get_issuer).")] long? issuerId = null,
-        [Description("Issue date, ISO 8601 (e.g. '2026-01-15'). Omit for today.")] string? issueDate = null,
-        [Description("Due date, ISO 8601. Omit to use the client's billing settings.")] string? dueDate = null,
-        [Description("Variable symbol (max 10 digits). Omit to auto-generate from the document number.")] string? variableSymbol = null,
-        [Description("Payment method: BankTransfer, Cash, CreditCard, PayPal, Other. Omit for the client's default.")] string? paymentMethod = null,
+        [Description("Issue date, ISO 8601 (e.g. '2026-01-15'). Issued: omit for today. Received: the date printed by the supplier, stored as given (omitted = stays empty).")] string? issueDate = null,
+        [Description(
+            "Due date, ISO 8601. Issued: omit to use the client's billing settings. Received: stored as given, NO default - " +
+            "a received invoice without dueDate never shows up as overdue (get_overdue_invoices), so always send it when it is printed.")] string? dueDate = null,
+        [Description(
+            "Variable symbol. Issued: max 10 digits, omit to auto-generate from the document number. " +
+            "Received: the supplier's symbol as printed (max 50 chars, any characters), stored as given (omitted = stays empty, never generated).")] string? variableSymbol = null,
+        [Description(
+            "Payment method: BankTransfer, Cash, CreditCard, PayPal, Other. Issued: omit for the client's default. " +
+            "Received: stored as given (omitted = stays empty; anything else, e.g. 'Apple Pay', goes to notes).")] string? paymentMethod = null,
         [Description("Optional notes on the invoice")] string? notes = null,
         [Description("For a credit note (documentType='CreditNote'): the ID of the invoice it corrects")] long? originalInvoiceId = null,
         [Description(
@@ -243,6 +252,13 @@ public static class InvoiceTools
         long? bankAccountId = null,
         [Description("ReceivedInvoice only: the SUPPLIER's invoice number as printed on the document (may stay empty on a draft). Not allowed for issued documents - their number comes from the number sequence.")] string? documentNumber = null,
         [Description("ReceivedInvoice only: the date the document arrived, ISO 8601. Omit for now. The API refuses it for issued documents.")] string? receivedDate = null,
+        [Description("Date of taxable supply (DUZP), ISO 8601 - determines the VAT period. Omit to use issueDate (every document type).")] string? taxableSupplyDate = null,
+        [Description(
+            "Manual exchange rate: CZK per one unit of a non-CZK currency (must be > 0). Normally omit - the CNB rate for the DUZP " +
+            "is assigned when the document is completed (issued / approved). Same for every document type.")] decimal? exchangeRate = null,
+        [Description("ReceivedInvoice only: the SUPPLIER's bank account number the invoice is to be paid to. Not allowed for issued documents - use bankAccountId.")] string? bankAccountNumber = null,
+        [Description("ReceivedInvoice only: the SUPPLIER's IBAN. Not allowed for issued documents - use bankAccountId.")] string? iban = null,
+        [Description("ReceivedInvoice only: the SUPPLIER's SWIFT / BIC. Not allowed for issued documents - use bankAccountId.")] string? swift = null,
         CancellationToken ct = default)
     {
         // ── Validate the model's own input BEFORE any API call ──────────────
@@ -260,6 +276,9 @@ public static class InvoiceTools
         if (!isReceived && !string.IsNullOrWhiteSpace(documentNumber))
             return Error("documentNumber is only for documentType='ReceivedInvoice' (the supplier's number). " +
                          "Issued documents get their number from the number sequence when completed.");
+
+        if (!isReceived && HasSupplierBankDetails(bankAccountNumber, iban, swift))
+            return Error(SupplierBankDetailsRefusal);
 
         EPaymentMethod? parsedPaymentMethod = null;
         if (!string.IsNullOrWhiteSpace(paymentMethod))
@@ -291,6 +310,10 @@ public static class InvoiceTools
         if (receivedDateError is not null)
             return Error(receivedDateError);
 
+        var (parsedDuzp, duzpError) = ParseOptionalDate(taxableSupplyDate, nameof(taxableSupplyDate));
+        if (duzpError is not null)
+            return Error(duzpError);
+
         try
         {
             // ── Resolve issuer (explicit ID or the authenticated user's own company) ────
@@ -319,11 +342,14 @@ public static class InvoiceTools
             // must not be consulted (a German 19 % would be "no matching rate" there).
             // A received invoice never goes through OSS: skip the lookup and let the API refuse applyOss=true
             // with its own message (see the DTO below).
+            // A received invoice also skips the VAT rate lookup: its percentage is whatever the SUPPLIER charged (a
+            // German 19 %, an old Czech 15 %), which our own rate table does not have to contain. The API stores it as
+            // given (ReceivedDocumentWriter.BuildItemsAsync), so refusing it here would block a valid document.
             var ossCountry = applyOss && !isReceived ? await api.GetOssCountryAsync(clientId, issuer.Id, parsedDocumentType, ct) : null;
             if (applyOss && !isReceived && string.IsNullOrEmpty(ossCountry))
                 return Error("applyOss=true but this invoice is not eligible for OSS: it needs an OSS-registered VAT-payer issuer, " +
                              "an Invoice (not proforma/credit note) and a consumer client without VAT id in another EU state.");
-            if (issuer.IsVatPayer && string.IsNullOrEmpty(ossCountry))
+            if (!isReceived && issuer.IsVatPayer && string.IsNullOrEmpty(ossCountry))
             {
                 var rateError = await ResolveItemVatRatesAsync(api, items, parsedIssueDate, ct);
                 if (rateError is not null)
@@ -340,6 +366,7 @@ public static class InvoiceTools
                 CurrencyId = resolvedCurrency.Id,
                 IssueDate = parsedIssueDate,
                 DueDate = parsedDueDate,
+                TaxableSupplyDate = parsedDuzp,
                 ReceivedDate = parsedReceivedDate,
                 CustomDocumentNumber = isReceived ? documentNumber : null,
                 VariableSymbol = variableSymbol,
@@ -348,6 +375,11 @@ public static class InvoiceTools
                 OriginalInvoiceId = originalInvoiceId,
                 ApplyOss = applyOss,
                 BankAccountId = bankAccountId,
+                // Supplier's account: only ever set for a received invoice (issued types were refused above).
+                BankAccountNumber = bankAccountNumber,
+                IBAN = iban,
+                SWIFT = swift,
+                ExchangeRate = exchangeRate,
                 InvoiceItem = items
             };
 
@@ -524,6 +556,25 @@ public static class InvoiceTools
     /// <summary>The error text for an unknown document type: lists every valid name so the model can self-correct.</summary>
     internal static string UnknownDocumentTypeMessage(string? text) =>
         $"Unknown documentType '{text}'. Valid values: {string.Join(", ", Enum.GetNames<EDocumentType>())}.";
+
+    /// <summary>
+    /// Appended to <see cref="UnknownDocumentTypeMessage"/> by the LIST tools only (there "no documentType" means all
+    /// issued documents; in create_invoice it means 'Invoice', so the hint would be wrong there).
+    /// </summary>
+    internal const string OmitDocumentTypeHint = " Omit the parameter for all issued documents.";
+
+    /// <summary>True when the model sent any of the free-text bank fields (the supplier's account of a received invoice).</summary>
+    private static bool HasSupplierBankDetails(string? bankAccountNumber, string? iban, string? swift) =>
+        bankAccountNumber is not null || iban is not null || swift is not null;
+
+    /// <summary>
+    /// Why create_invoice / update_invoice refuse free-text bank details for an ISSUED document: the API would print
+    /// them on our invoice instead of one of the issuer's own stored accounts. An issued document may only point
+    /// at a stored account (bankAccountId), so a model cannot put an arbitrary account number on it.
+    /// </summary>
+    private const string SupplierBankDetailsRefusal =
+        "bankAccountNumber / iban / swift are only for a received invoice (the supplier's account to pay to). " +
+        "For an issued document pick one of the issuer's own accounts with bankAccountId (see get_issuer).";
 
     /// <summary>
     /// Business error for a RECEIVED document passed to an issued-only operation (PDF, issued ISDOC / UBL, e-mail, QR,
@@ -1112,8 +1163,10 @@ public static class InvoiceTools
         "confirmation, then call revert_invoice_to_draft and retry. Paid / credit-noted invoices cannot be edited " +
         "(issue a credit note instead, create_invoice with documentType='CreditNote' and originalInvoiceId; " +
         "a paid document of any type can also go back via mark_invoice_unpaid -> revert_invoice_to_draft after the user confirms). " +
-        "For a RECEIVED invoice you can also change documentNumber (the supplier's number) and receivedDate; its variableSymbol " +
-        "is the supplier's (max 50 chars, any characters) and bankAccountId / applyOss are refused by the API. " +
+        "For a RECEIVED invoice you can also change documentNumber (the supplier's number), receivedDate and the supplier's account " +
+        "(bankAccountNumber / iban / swift); its variableSymbol is the supplier's (max 50 chars, any characters), vatRatePercentage of " +
+        "an item is the rate the supplier charged (stored as given, it does not have to exist in your VAT rate table) and " +
+        "bankAccountId / applyOss are refused by the API. " +
         "IMPORTANT: 'items' REPLACES ALL existing lines — to change one line, call get_invoice first and " +
         "send the complete list back with your change. The client and document type cannot be changed " +
         "(delete the draft and create a new one instead). Returns the updated invoice like get_invoice.")]
@@ -1134,11 +1187,17 @@ public static class InvoiceTools
             "Opt in (true) or out (false) of the EU OSS regime when you also send items. Omit to keep the current regime.")] bool? applyOss = null,
         [Description(
             "COMPLETE replacement list of line items (all existing lines are removed). Same schema as create_invoice: " +
-            "description, quantity, unit, unitPrice, vatRatePercentage (VAT payer; vatRateId is resolved automatically), " +
+            "description, quantity, unit, unitPrice, vatRatePercentage (issued document of a VAT payer: vatRateId is resolved automatically; received: stored as given), " +
             "isTextRow, vatRegime / reverseChargeCodeId. Omit to keep the current lines.")]
         List<CreateInvoiceItemDto>? items = null,
         [Description("ReceivedInvoice only: the supplier's invoice number. The API refuses it for issued documents. Omit to keep.")] string? documentNumber = null,
         [Description("ReceivedInvoice only: the date the document arrived, ISO 8601. The API refuses it for issued documents. Omit to keep.")] string? receivedDate = null,
+        [Description(
+            "New manual exchange rate: CZK per one unit of a non-CZK currency (must be > 0). Normally omit - the CNB rate for the DUZP " +
+            "is assigned when the document is completed (issued / approved). Same for every document type. Omit to keep (cannot be cleared).")] decimal? exchangeRate = null,
+        [Description("ReceivedInvoice only: the SUPPLIER's bank account number the invoice is to be paid to. Not allowed for issued documents - use bankAccountId. Omit to keep, '' to clear.")] string? bankAccountNumber = null,
+        [Description("ReceivedInvoice only: the SUPPLIER's IBAN. Not allowed for issued documents - use bankAccountId. Omit to keep, '' to clear.")] string? iban = null,
+        [Description("ReceivedInvoice only: the SUPPLIER's SWIFT / BIC. Not allowed for issued documents - use bankAccountId. Omit to keep, '' to clear.")] string? swift = null,
         CancellationToken ct = default)
     {
         // ── Validate the model's own input BEFORE any API call (same rule as create_invoice) ──
@@ -1172,7 +1231,8 @@ public static class InvoiceTools
             && variableSymbol is null && constantSymbol is null && specificSymbol is null
             && parsedPaymentMethod is null && bankAccountId is null && currency is null
             && notes is null && applyOss is null && items is null
-            && documentNumber is null && parsedReceivedDate is null;
+            && documentNumber is null && parsedReceivedDate is null
+            && exchangeRate is null && !HasSupplierBankDetails(bankAccountNumber, iban, swift);
         if (nothingToChange)
             return Error("Nothing to update — pass at least one field to change.");
 
@@ -1185,9 +1245,13 @@ public static class InvoiceTools
 
             // Issued documents: digits only, max 10. A received document keeps the supplier's symbol as printed
             // (any characters, max 50), so that case is left to the API, which validates by the STORED type.
-            if (existing.DocumentType != EDocumentType.ReceivedInvoice && variableSymbol is not null
-                && !System.Text.RegularExpressions.Regex.IsMatch(variableSymbol, @"^\d{0,10}$"))
+            // IsValidVariableSymbol is the API's own rule (anchored with \z, so a trailing newline does not pass).
+            var isReceived = existing.DocumentType == EDocumentType.ReceivedInvoice;
+            if (!isReceived && !IssuedDocumentTypes.IsValidVariableSymbol(variableSymbol))
                 return Error("variableSymbol must contain only digits (max 10), or '' to clear it.");
+
+            if (!isReceived && HasSupplierBankDetails(bankAccountNumber, iban, swift))
+                return Error(SupplierBankDetailsRefusal);
 
             var notDraft = NotEditableResult(existing);
             if (notDraft is not null)
@@ -1203,7 +1267,9 @@ public static class InvoiceTools
             }
 
             // ── Resolve vatRatePercentage → VatRateId (VAT-paying issuer, non-OSS invoice) ──
-            if (items is not null && items.Any(i => !i.IsTextRow && !i.VatRateId.HasValue))
+            // Never for a received invoice: its percentage is what the supplier charged and the API stores it as
+            // given, so it does not have to match one of OUR rates (same reason as in create_invoice).
+            if (!isReceived && items is not null && items.Any(i => !i.IsTextRow && !i.VatRateId.HasValue))
             {
                 var issuer = await api.GetClientByIdAsync(existing.IssuerId, ct);
                 var ossActive = applyOss ?? existing.OssCountryCode is not null;
@@ -1227,6 +1293,11 @@ public static class InvoiceTools
                 SpecificSymbol = specificSymbol,
                 PaymentMethod = parsedPaymentMethod,
                 BankAccountId = bankAccountId,
+                // Supplier's account: only ever set for a received invoice (issued types were refused above).
+                BankAccountNumber = bankAccountNumber,
+                IBAN = iban,
+                SWIFT = swift,
+                ExchangeRate = exchangeRate,
                 CurrencyId = currencyId,
                 Notes = notes,
                 ApplyOss = applyOss,
@@ -1272,9 +1343,11 @@ public static class InvoiceTools
     [McpServerTool(Title = "Revert invoice to draft", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
         "Switch a Completed document (any type; a received invoice = approved) back to Draft so it can be edited or deleted. " +
         "A Paid document first needs mark_invoice_unpaid. Call ONLY after the user has " +
-        "explicitly confirmed this in the current conversation (explain: the issued document becomes a draft, it must be " +
-        "issued again with complete_invoice after editing, and re-sent if it was already e-mailed; the invoice still shows as e-mailed, and re-completing fires the invoice webhook again). The document number " +
-        "is kept. Only Completed invoices can be reverted — Paid and credit-noted ones cannot. Typical flow: " +
+        "explicitly confirmed this in the current conversation (explain: the document becomes a draft and must be " +
+        "completed again with complete_invoice after editing. For an ISSUED document also: it must be re-sent if it was already " +
+        "e-mailed; the invoice still shows as e-mailed, and re-completing fires the invoice webhook again. For a RECEIVED invoice: " +
+        "it stops being approved until completed again; nothing is sent to anyone). The document number " +
+        "is kept. Only Completed documents can be reverted — Paid and credit-noted ones cannot. Typical flow: " +
         "update_invoice answers 'requires_revert_to_draft' → ask the user → revert_invoice_to_draft → update_invoice → complete_invoice.")]
     public static async Task<string> RevertInvoiceToDraft(
         IFakvioApiClient api,
@@ -1313,24 +1386,32 @@ public static class InvoiceTools
                 status = "requires_revert_to_draft",
                 invoiceId = existing.Id,
                 number = existing.DocumentNumber,
-                message = "This invoice is already issued (Completed), so it was NOT changed. To edit it, it must first " +
-                          "be switched back to Draft. Ask the user explicitly whether to do that and explain the consequences: " +
-                          "the issued document becomes a draft, it must be issued again with complete_invoice after editing, " +
-                          "and it must be re-sent if it was already e-mailed to the client. Only after the user confirms, " +
-                          "call revert_invoice_to_draft and then update_invoice again."
+                // A received invoice was never issued or e-mailed by us, so it gets its own wording.
+                message = existing.DocumentType == EDocumentType.ReceivedInvoice
+                    ? "This received invoice is already approved (Completed), so it was NOT changed. To edit it, it must first " +
+                      "be switched back to Draft. Ask the user explicitly whether to do that and explain the consequences: " +
+                      "the document stops being approved and must be approved again with complete_invoice after editing. " +
+                      "Only after the user confirms, call revert_invoice_to_draft and then update_invoice again."
+                    : "This invoice is already issued (Completed), so it was NOT changed. To edit it, it must first " +
+                      "be switched back to Draft. Ask the user explicitly whether to do that and explain the consequences: " +
+                      "the issued document becomes a draft, it must be issued again with complete_invoice after editing, " +
+                      "and it must be re-sent if it was already e-mailed to the client. Only after the user confirms, " +
+                      "call revert_invoice_to_draft and then update_invoice again."
             }, JsonOptions);
 
         var number = existing.DocumentNumber ?? existing.Id.ToString();
-        if (existing.Status == EInvoiceStatus.PartiallyPaid)
-            return Error(
-                $"Invoice {number} is partially paid — a partial payment is recorded, so it cannot be edited. " +
-                "Issue a credit note (create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice instead.");
-
+        // The received branch must come BEFORE the PartiallyPaid one: a credit note is something WE issue, so that
+        // advice is wrong for a supplier's document in any non-editable status (partially paid included).
         if (existing.DocumentType == EDocumentType.ReceivedInvoice)
             return Error(
                 $"Received invoice {number} is not editable in status {existing.Status}: " +
                 "only Draft documents can be edited (approved ones after reverting to draft). If a payment was recorded by mistake, " +
                 "after the user confirms call mark_invoice_unpaid, then revert_invoice_to_draft, then update_invoice.");
+
+        if (existing.Status == EInvoiceStatus.PartiallyPaid)
+            return Error(
+                $"Invoice {number} is partially paid — a partial payment is recorded, so it cannot be edited. " +
+                "Issue a credit note (create_invoice with documentType='CreditNote' and originalInvoiceId) and a new invoice instead.");
 
         return Error(
             $"Invoice {number} is not editable in status {existing.Status}: " +
