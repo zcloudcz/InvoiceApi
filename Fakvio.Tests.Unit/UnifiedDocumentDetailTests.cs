@@ -424,6 +424,28 @@ public class UnifiedDocumentDetailTests : DocumentDetailTestBase
         cut.Markup.ShouldContain(L["Btn_ExportPdf"].Value);
     }
 
+    /// <summary>
+    /// Regression: "Edit" asks the server whether the invoice is OSS eligible before it opens the form. The
+    /// handler is async void, so Blazor does not re-render when that answer arrives; without an explicit
+    /// re-render the page silently stayed in view mode and the button looked dead.
+    /// </summary>
+    [Fact]
+    public void Edit_on_an_issued_draft_opens_the_edit_form_even_when_the_oss_check_answers_late()
+    {
+        Api.ReferenceDelay = TimeSpan.FromMilliseconds(100);
+        Api.Documents[7] = Issued(7, EInvoiceStatus.Draft);
+        var cut = RenderAt("/invoices/7", 7);
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain(L["Btn_Edit"].Value), Patience);
+
+        Click(cut, L["Btn_Edit"].Value);
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.ShouldContain(L["Btn_Save"].Value);
+            cut.FindComponents<InvoiceItemEditor>().Count.ShouldBe(1);
+        }, Patience);
+    }
+
     // ── one instance, four routes ───────────────────────────────────────────
 
     [Fact]

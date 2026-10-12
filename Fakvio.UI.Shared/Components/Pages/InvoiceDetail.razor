@@ -2076,6 +2076,11 @@ else
 
         _isEditing = true;
         _isDirty = true; // Entering edit mode means the user intends to change something
+
+        // This handler is async void: Blazor re-renders when its synchronous part ends, i.e. at the first
+        // await above, NOT when it finishes. Without this call the page stayed in view mode after the
+        // bank account / OSS lookups and the Edit button looked dead.
+        StateHasChanged();
     }
 
     /// <summary>
