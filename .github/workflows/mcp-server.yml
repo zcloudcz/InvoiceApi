@@ -76,9 +76,22 @@ jobs:
       - name: Pack the stdio distribution (dotnet tool)
         shell: bash
         run: |
+          set -euo pipefail
+
+          # The package version is <major>.<minor> from the csproj + this workflow's run number
+          # as the patch, e.g. 2.7.<run>. Every production build therefore gets a NEW version
+          # and reaches nuget.org. With a hand-bumped version a merge that forgot the bump was
+          # skipped as a duplicate, silently: 2.6.0 stayed on nuget.org for weeks while the
+          # attachment download and unified document tools existed only on the HTTP host.
+          BASE=$(sed -n 's:.*<Version>\([0-9][0-9]*\.[0-9][0-9]*\)\..*:\1:p' ./Fakvio.McpServer/Fakvio.McpServer.csproj | head -n 1)
+          if [ -z "${BASE}" ]; then
+            echo "::error::Could not read MAJOR.MINOR from <Version> in Fakvio.McpServer.csproj."
+            exit 1
+          fi
           dotnet pack ./Fakvio.McpServer/Fakvio.McpServer.csproj \
             --configuration Release \
-            --output ./nupkg
+            --output ./nupkg \
+            -p:Version="${BASE}.${GITHUB_RUN_NUMBER}"
 
       - name: Assert the packed tool still requires the ASP.NET Core shared framework
         shell: bash
@@ -227,14 +240,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          # --skip-duplicate is what makes this safe to run on every master push: the version
-          # lives in Fakvio.McpServer.csproj and is bumped by hand, so a merge that did not
-          # touch it re-pushes an already-published version. Without the flag nuget.org answers
-          # 409 and the build goes red on a merge that did nothing wrong; with it, the push is
-          # a no-op and a real bump still ships.
-          #
-          # The consequence to know: forgetting the bump means the fix reaches CI artifacts and
-          # nobody else, silently. The version bump belongs in the same PR as the change.
+          # The version carries the run number (see the pack step), so every master push
+          # publishes a new version. --skip-duplicate only covers a RE-RUN of the same run
+          # (same run number = same version): nuget.org would answer 409 and turn a retry red.
           dotnet nuget push ./nupkg/*.nupkg \
             --source https://api.nuget.org/v3/index.json \
             --api-key "${NUGET_API_KEY}" \

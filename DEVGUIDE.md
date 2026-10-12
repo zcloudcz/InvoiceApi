@@ -2004,9 +2004,13 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   jinak by si model mohl plést chování s `create_invoice_from_template` (tam `autoComplete`
   skutečně rozhoduje draft vs. completed), a že zmeškaná perioda se dohání po jedné faktuře za
   cyklus datované na PLÁNOVANÝ den (§4.13 bod 2), ne na dnešek.
-- **Verze balíčku se bumpuje ve stejném PR jako změna nástroje (N2.6), ne později.**
-  `<Version>` v `Fakvio.McpServer.csproj` — publish na nuget.org je `--skip-duplicate` jen na
-  `master` (`.github/workflows/mcp-server.yml`), takže build se stejným číslem je no-op, ne chyba;
+- **Verze balíčku: v csproj se drží jen MAJOR.MINOR, patch doplní CI (od 2026-10-12).**
+  `mcp-server.yml` balí s `-p:Version=<major.minor>.<číslo běhu>`, takže každý produkční build vyjde
+  na nuget.org jako nová verze. Dřív se `<Version>` zvedala ručně a zapomenutý bump nechal na
+  nuget.org 2.6.0 bez nástrojů pro přílohy a jednotných nástrojů dokladů (stdio uživatelé je neviděli,
+  HTTP host ano). MAJOR.MINOR zvedni při nových nástrojích / breaking změně. Historie ručního bumpu:
+  publish na nuget.org byl `--skip-duplicate` jen na
+  `master` (`.github/workflows/mcp-server.yml`), takže build se stejným číslem byl no-op, ne chyba;
   bez bumpu tak oprava/nový nástroj nikdy nevyjde (přesně to se stalo #434/#438 → 1.0.3/1.0.4
   nikdy nevyšly). Změna parametrů existujícího nástroje = major, nový nástroj beze změny
   stávajících = minor. Handshake verze (`ServerInfo.Version`, `McpServerRegistration.cs`) se čte
@@ -3603,11 +3607,10 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
     balíček `Fakvio.McpServer`, scope „push only new versions". Nic se nerotuje; když policy
     chybí nebo nesedí (přejmenované repo / workflow), job skončí **červeně** — dřív bez klíče
     tiše přeskočil a balíček nevycházel. Přejmenováváš workflow nebo repo → uprav i policy.
-  - **Verze se zvedá ručně** v `<Version>` v `Fakvio.McpServer.csproj` a push jde
-    s `--skip-duplicate`. Bez toho flagu by nuget.org vracel 409 a merge, který verzi
-    nesáhl, by shodil build. Důsledek, který je potřeba znát: **zapomenutý bump znamená,
-    že oprava skončí v CI artefaktech a u nikoho jiného** — verze patří do stejného PR
-    jako změna nástroje.
+  - **Verze = MAJOR.MINOR z `<Version>` v `Fakvio.McpServer.csproj` + číslo běhu workflow
+    jako patch** (`-p:Version` v kroku pack). Každý push do `master` tak publikuje novou verzi;
+    `--skip-duplicate` už kryje jen opakované spuštění téhož běhu. Ručně se zvedá jen
+    MAJOR.MINOR.
   - Metadata balíčku (`Authors`, `PackageLicenseExpression`, `PackageReadmeFile`,
     `RepositoryUrl`) jsou v csproj; `README.md` projektu se balí dovnitř a slouží jako
     popisná stránka na nuget.org, takže nemůže odrejvovat od toho, co čte vývojář.
