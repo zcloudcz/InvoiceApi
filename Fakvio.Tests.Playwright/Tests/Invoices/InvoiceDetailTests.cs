@@ -13,6 +13,21 @@ namespace Fakvio.Tests.Playwright.Tests.Invoices;
 public class InvoiceDetailTests : FakvioPageTest
 {
     /// <summary>
+    /// These tests open an existing invoice from the list. An empty list used to make them fail (or pass for the wrong
+    /// reason: the "no records" row was taken for an invoice and clicking it goes nowhere), so the fixture makes
+    /// sure the dev database holds a Draft and an issued invoice.
+    /// </summary>
+    [OneTimeSetUp]
+    public async Task SeedInvoices() => await ApiSeed.EnsureIssuedInvoicesAsync(Config);
+
+    /// <summary>
+    /// The list page has its own heading, so waiting for "h4" returns before the click has navigated. Wait for the
+    /// detail url instead.
+    /// </summary>
+    private async Task WaitForDetailUrlAsync() =>
+        await Page.WaitForURLAsync(new System.Text.RegularExpressions.Regex(@"/invoices/[0-9]+"), new() { Timeout = Config.BlazorLoadTimeout });
+
+    /// <summary>
     /// Navigate to the first invoice from the list.
     /// </summary>
     private async Task NavigateToFirstInvoiceAsync()
@@ -23,6 +38,8 @@ public class InvoiceDetailTests : FakvioPageTest
         // Click the first row in the invoice table
         var firstRow = Page.Locator(".mud-table-body tr").First;
         await firstRow.ClickAsync();
+
+        await WaitForDetailUrlAsync();
 
         // Wait for detail page to load
         await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
@@ -221,6 +238,7 @@ public class InvoiceDetailTests : FakvioPageTest
 
         var firstRow = Page.Locator(".mud-table-body tr").First;
         await firstRow.ClickAsync();
+        await WaitForDetailUrlAsync();
         await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
 
         // Locate the ISDOC button — it must be present on every invoice detail page.
@@ -274,6 +292,7 @@ public class InvoiceDetailTests : FakvioPageTest
                 && !rowText.Contains("Draft", StringComparison.OrdinalIgnoreCase))
             {
                 await row.ClickAsync();
+                await WaitForDetailUrlAsync();
                 await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
                 nonDraftUrl = Page.Url;
             }
@@ -317,6 +336,7 @@ public class InvoiceDetailTests : FakvioPageTest
                 && !rowText.Contains("Draft", StringComparison.OrdinalIgnoreCase))
             {
                 await row.ClickAsync();
+                await WaitForDetailUrlAsync();
                 await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
                 foundNonDraft = true;
             }

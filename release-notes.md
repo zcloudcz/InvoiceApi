@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.12 - 2026-10-12
+
+### Změny pro uživatele
+
+- **#542** - Vydané a přijaté faktury mají jeden seznam a jeden detail (`/invoices` a `/received-invoices` se stejným ovládáním). Přijaté: místo "Zamítnout" je Smazat s možností Obnovit, stav "Částečně uhrazeno", výběr měny, filtr stavu ve sloupci. Panel plateb načítá úhrady podle dokladu a "Zrušit spárování" funguje i u vydaných. Opravy: tlačítko Upravit na konceptu vydané faktury někdy neotevřelo editaci; položka přijaté faktury bez ID sazby (importované doklady) ukazovala prázdnou sazbu DPH. Splatnost po termínu je zvýrazněna v obou seznamech. (PR #543, `b6ba89e`; PR #544, `2b7c37d`)
+
 ## 2026.10.11.3 — 2026-10-11
 
 ### Změny pro uživatele
