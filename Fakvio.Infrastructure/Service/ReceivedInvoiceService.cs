@@ -284,7 +284,14 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         var entity = await BaseQuery()
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
-        return entity is null ? null : MapToDto(entity);
+        if (entity is null) return null;
+
+        // Same count as the paged list reports (the detail used to say 0 whatever was stored).
+        var dto = MapToDto(entity);
+        dto.AttachmentCount = await _context.FileAttachment
+            .AsNoTracking()
+            .CountAsync(f => f.EntityName == "ReceivedInvoice" && f.RecordId == id, ct);
+        return dto;
     }
 
     /// <inheritdoc />

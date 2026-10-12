@@ -309,7 +309,9 @@ public static class ReceivedInvoiceTools
         "Attach a file (e.g. the supplier's original PDF) to an existing received invoice. " +
         "Give the file in exactly ONE way: fileUrl (https link the server downloads — preferred, works for any size), " +
         "filePath (absolute path on the machine running the MCP server — only when the server runs locally over stdio), " +
-        "or base64Content (inline, small files only). Max 50 MB.")]
+        "or base64Content (inline, small files only). Max 50 MB. " +
+        "This tool only UPLOADS. To download stored files use list_attachments + get_attachment_download_link, " +
+        "get_record_attachments_zip_link, or download_received_invoices_attachments (several invoices in one ZIP).")]
     public static async Task<string> UploadReceivedInvoiceAttachment(
         IFakvioApiClient api,
         McpServerSettings settings,

@@ -70,8 +70,9 @@ public class InvoiceDto
     public DateTime? ReceivedDate { get; set; }
 
     /// <summary>
-    /// Number of file attachments of the document. Filled only by the paged list (one grouped query per page,
-    /// and only for received rows - the received grid shows it); 0 everywhere else.
+    /// Number of file attachments of the document (entity "ReceivedInvoice" for a received invoice, "Invoice"
+    /// for every issued type). Filled by the paged list (one grouped query per page) and by the detail, so both
+    /// agree; other list endpoints leave it 0.
     /// </summary>
     public int AttachmentCount { get; set; }
 
