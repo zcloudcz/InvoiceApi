@@ -123,11 +123,10 @@ dotnet tool uninstall --global Fakvio.McpServer
 ```
 
 Verzi na nuget.org publikuje workflow `mcp-server.yml` při pushi do `master`
-(job `publish-nuget`). **Číslo verze se zvedá ručně** — `<Version>` v
-`Fakvio.McpServer.csproj`, ve stejném PR jako změna nástroje. Push jde
-s `--skip-duplicate`, takže merge bez bumpu nic nepublikuje a nic neshodí;
-cena za to je, že zapomenutý bump se projeví jen tím, že se oprava k uživatelům
-nedostane.
+(job `publish-nuget`). **Každý produkční build vyjde jako nová verze**:
+MAJOR.MINOR je v `<Version>` v `Fakvio.McpServer.csproj`, patch doplní CI číslem
+běhu workflow. Aktualizace u uživatele: `dotnet tool update --global Fakvio.McpServer`
+(před tím ukonči běžící `fakvio-mcp`, na Windows drží soubory zamčené).
 
 Z rozpracované větve (nepublikovaná verze) se instaluje z lokálního balíčku:
 
