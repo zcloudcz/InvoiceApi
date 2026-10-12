@@ -305,21 +305,7 @@ public class InvoiceService : IInvoiceService
 
         var dtos = pagedResult.Items.Select(i => MapToDto(i)).ToList();
 
-        // Attachment counts for the received grid's "download attachments" action: one grouped query over just the
-        // page's received ids (max PageSize rows) - no N+1, and no query at all for a page of issued documents.
-        // FileAttachment rows of a received invoice carry EntityName "ReceivedInvoice" - the name of the enum member.
-        var receivedIds = dtos.Where(d => d.DocumentType == EDocumentType.ReceivedInvoice).Select(d => d.Id).ToList();
-        if (receivedIds.Count > 0)
-        {
-            var attachmentCounts = await _context.FileAttachment
-                .AsNoTracking()
-                .Where(f => f.EntityName == nameof(EDocumentType.ReceivedInvoice) && receivedIds.Contains(f.RecordId))
-                .GroupBy(f => f.RecordId)
-                .Select(g => new { g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
-            foreach (var dto in dtos)
-                dto.AttachmentCount = attachmentCounts.GetValueOrDefault(dto.Id);
-        }
+        await FillAttachmentCountsAsync(dtos, cancellationToken);
 
         return new PagedResult<InvoiceDto>(
             dtos,
@@ -346,7 +332,38 @@ public class InvoiceService : IInvoiceService
             // List endpoints (GetAll, GetPaged) still hide deleted invoices by default.
             .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
-        return invoice == null ? null : MapToDto(invoice);
+        if (invoice == null) return null;
+
+        // The detail must report the same attachment count as the list. It used to stay 0 here, so a client
+        // (e.g. an AI assistant over MCP) saw "1 attachment" in the list and "0" in the detail and gave up.
+        var dto = MapToDto(invoice);
+        await FillAttachmentCountsAsync([dto], cancellationToken);
+        return dto;
+    }
+
+    /// <summary>
+    /// Sets <see cref="InvoiceDto.AttachmentCount"/> on the given documents with ONE grouped query (no N+1),
+    /// for every document type. FileAttachment rows carry the entity name the UI and MCP tools use:
+    /// "ReceivedInvoice" for a received invoice, "Invoice" for every issued type. The ids of both groups come
+    /// from the same Invoice table, so they never overlap and one dictionary by record id is enough.
+    /// </summary>
+    private async Task FillAttachmentCountsAsync(IReadOnlyCollection<InvoiceDto> dtos, CancellationToken cancellationToken)
+    {
+        if (dtos.Count == 0) return;
+
+        var receivedIds = dtos.Where(d => d.DocumentType == EDocumentType.ReceivedInvoice).Select(d => d.Id).ToList();
+        var issuedIds = dtos.Where(d => d.DocumentType != EDocumentType.ReceivedInvoice).Select(d => d.Id).ToList();
+
+        var attachmentCounts = await _context.FileAttachment
+            .AsNoTracking()
+            .Where(f => (f.EntityName == nameof(EDocumentType.ReceivedInvoice) && receivedIds.Contains(f.RecordId))
+                     || (f.EntityName == nameof(EDocumentType.Invoice) && issuedIds.Contains(f.RecordId)))
+            .GroupBy(f => f.RecordId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
+
+        foreach (var dto in dtos)
+            dto.AttachmentCount = attachmentCounts.GetValueOrDefault(dto.Id);
     }
 
     public async Task<InvoiceDto?> GetInvoiceByDocumentNumberAsync(
