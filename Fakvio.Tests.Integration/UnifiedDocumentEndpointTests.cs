@@ -6,6 +6,7 @@ using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Tests.Integration.Fixtures;
 using Fakvio.Tests.Integration.Helpers;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 
@@ -224,6 +225,55 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
 
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
         (await JsonOf(create)).GetProperty("variableSymbol").GetString().ShouldBe(SupplierSymbol);
+    }
+
+    /// <summary>
+    /// The unified document page posts the FULL create/update DTO (null issued-only fields, isTextRow false, no rate id)
+    /// for a received invoice. Pins that exact shape: the supplier's free-text bank fields are stored, and an item
+    /// whose VAT percentage is not in the tenant's rate list (15 %, VatRateId null) keeps it through create AND update.
+    /// </summary>
+    [Fact]
+    public async Task ReceivedDocument_FromTheUnifiedPage_StoresFreeTextBankFields_AndKeepsAnOutOfListVatPercentage()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        object Item(string text) => new
+        {
+            orderIndex = 1, isTextRow = false, description = text, quantity = 1, unit = "ks", unitPrice = 1000,
+            vatRateId = (long?)null, vatRatePercentage = 15, vatRegime = (int)EVatRegime.Standard, reverseChargeCodeId = (long?)null
+        };
+
+        var create = await client.PostAsJsonAsync("/api/invoice", new
+        {
+            documentType = (int)EDocumentType.ReceivedInvoice, clientId = SupplierId, issuerId = 0, currencyId = CurrencyId,
+            customDocumentNumber = $"SUP-{Guid.NewGuid():N}"[..12], receivedDate = "2026-05-04T00:00:00Z",
+            variableSymbol = "INV-2026-0042", variableSymbolIsManualOverride = false,
+            bankAccountNumber = "123456789/0100", iban = "CZ6501000000000000000123", swift = "KOMBCZPP",
+            numberSequenceId = (long?)null, bankAccountId = (long?)null, applyOss = false, originalInvoiceId = (long?)null,
+            invoiceItem = new[] { Item("Odd rate") }
+        });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var created = await JsonOf(create);
+        var id = created.GetProperty("id").GetInt64();
+        created.GetProperty("totalWithVat").GetDecimal().ShouldBe(1150m);
+
+        var update = await client.PutAsJsonAsync($"/api/invoice/{id}", new
+        {
+            documentNumber = "SUP-RENAMED", receivedDate = "2026-05-05T00:00:00Z",
+            bankAccountNumber = "123456789/0100", iban = "CZ6501000000000000000123", swift = "KOMBCZPP",
+            invoiceItem = new[] { Item("Odd rate, saved again") }
+        });
+        update.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+        var row = db.Invoice.Include(i => i.InvoiceItem).Single(i => i.Id == id);
+        row.DocumentNumber.ShouldBe("SUP-RENAMED");
+        (row.BankAccountNumber, row.IBAN, row.SWIFT).ShouldBe(("123456789/0100", "CZ6501000000000000000123", "KOMBCZPP"));
+        var item = row.InvoiceItem.ShouldHaveSingleItem();
+        item.VatRateId.ShouldBeNull();
+        item.VatRatePercentage.ShouldBe(15m);
+        item.VatAmount.ShouldBe(150m);
+        row.TotalWithVat.ShouldBe(1150m);
     }
 
     /// <summary>Issued documents keep the old rule, the old message and the old validation-400 shape.</summary>

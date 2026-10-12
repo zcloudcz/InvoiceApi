@@ -54,6 +54,14 @@ public sealed class DocumentTypeUiPolicy
         });
     }
 
+    /// <summary>
+    /// True when the url is a received-invoice page (<c>/received-invoices/create</c>, <c>/received-invoices/{id}</c>).
+    /// The detail page uses it to tell which side the URL belongs to, because the same component serves both
+    /// sides and the document's own type is not known yet while it is loading.
+    /// </summary>
+    public static bool IsReceivedRoute(string absolutePath) =>
+        (absolutePath.TrimEnd('/') + "/").Contains("/received-invoices/", StringComparison.OrdinalIgnoreCase);
+
     // ── Kind ────────────────────────────────────────────────────────────────
 
     /// <summary>True for a received (supplier) invoice, false for every issued document.</summary>
@@ -229,6 +237,27 @@ public sealed class DocumentTypeUiPolicy
     public bool UsesIssuerBankAccountSelect => !IsReceived;
     public bool ValidatesVariableSymbolAsDigits => !IsReceived;
 
+    /// <summary>EU OSS (destination-country VAT) is an issuing-side regime; a supplier's invoice is never OSS.</summary>
+    public bool SupportsOss => !IsReceived;
+
+    /// <summary>
+    /// The client's billing settings (payment method, due days) pre-fill the create form. A supplier's settings
+    /// describe invoices WE issue to that company, so they must not touch a received invoice.
+    /// </summary>
+    public bool UsesCounterpartyBillingSettings => !IsReceived;
+
+    /// <summary>
+    /// A non-VAT-payer ISSUER has no VAT column on its invoices. Received invoices always show VAT: it is what
+    /// the supplier billed, independent of whether we are a VAT payer.
+    /// </summary>
+    public bool HidesVatForNonVatPayerIssuer => !IsReceived;
+
+    /// <summary>
+    /// "Match payment manually" works on issued documents only (the server looks the invoice up among issued
+    /// documents); a received invoice is matched by the automatic outgoing-payment matching.
+    /// </summary>
+    public bool SupportsManualPaymentMatch => !IsReceived;
+
     /// <summary>A proforma is not a tax document, so there is no UBL for it.</summary>
     public bool SupportsUbl => !IsReceived && Type != EDocumentType.Proforma;
 
@@ -245,6 +274,9 @@ public sealed class DocumentTypeUiPolicy
 
     /// <summary>An unissued draft has no legal ISDOC, so bulk ISDOC skips drafts of issued documents.</summary>
     public bool IsdocSkipsDrafts => !IsReceived;
+
+    /// <summary>UBL export is enabled: the type has a UBL at all and the document is not an unissued draft.</summary>
+    public bool CanExportUbl(EInvoiceStatus status) => SupportsUbl && status != EInvoiceStatus.Draft;
 
     // ── State machine (which actions the UI offers in which status) ─────────
 

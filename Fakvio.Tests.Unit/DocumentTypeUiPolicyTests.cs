@@ -311,7 +311,36 @@ public class DocumentTypeUiPolicyTests
         p.UsesIssuerBankAccountSelect.ShouldBe(issued);
         p.ValidatesVariableSymbolAsDigits.ShouldBe(issued);
         p.IsdocSkipsDrafts.ShouldBe(issued);
+        p.SupportsOss.ShouldBe(issued);
+        p.UsesCounterpartyBillingSettings.ShouldBe(issued);
+        p.HidesVatForNonVatPayerIssuer.ShouldBe(issued);
+        p.SupportsManualPaymentMatch.ShouldBe(issued);
     }
+
+    [Theory]
+    [MemberData(nameof(TypeStatusMatrix))]
+    public void CanExportUbl_NeedsAUblTypeAndAnIssuedDocument(EDocumentType type, EInvoiceStatus status)
+    {
+        // Same rule the UBL button used to carry inline: not for a draft, not for a proforma, never for received.
+        var expected = status != EInvoiceStatus.Draft
+                       && type != EDocumentType.Proforma
+                       && type != EDocumentType.ReceivedInvoice;
+
+        DocumentTypeUiPolicy.For(type).CanExportUbl(status).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("/received-invoices/create", true)]
+    [InlineData("/received-invoices/42", true)]
+    [InlineData("/received-invoices", true)]
+    [InlineData("/Received-Invoices/42", true)]
+    [InlineData("/invoices/create", false)]
+    [InlineData("/invoices/42", false)]
+    [InlineData("/", false)]
+    // Not a segment match: a path that merely starts with the same letters is not the received route.
+    [InlineData("/received-invoices-archive/1", false)]
+    public void IsReceivedRoute_RecognisesTheReceivedSide(string path, bool expected) =>
+        DocumentTypeUiPolicy.IsReceivedRoute(path).ShouldBe(expected);
 
     [Theory]
     [MemberData(nameof(AllTypeData))]

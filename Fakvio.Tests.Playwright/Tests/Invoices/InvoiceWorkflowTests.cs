@@ -70,7 +70,8 @@ public class InvoiceWorkflowTests : FakvioPageTest
         if (await addItemButton.CountAsync() > 0)
         {
             await addItemButton.First.ClickAsync();
-            await Page.Locator(".mud-input input").First.WaitForAsync(new() { Timeout = 2000 });
+            // Scoped to the page body: the first ".mud-input input" of the page is a hidden select input (company switcher, client select); wait for the item row instead
+            await Page.Locator(".mud-main-content .mud-table tbody tr input").First.WaitForAsync(new() { Timeout = 2000 });
         }
 
         await BilingualButton("Vytvořit", "Create").First.ClickAsync();

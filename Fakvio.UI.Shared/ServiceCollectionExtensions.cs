@@ -82,7 +82,6 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<TwoFactorApiService>();
         services.AddApiClient<CloudStorageApiService>();
         services.AddApiClient<ChatApiService>();
-        services.AddApiClient<ReceivedInvoiceApiService>();
         services.AddApiClient<VatReportApiService>();
         services.AddApiClient<TaxApiService>();
         services.AddApiClient<ImportApiService>();

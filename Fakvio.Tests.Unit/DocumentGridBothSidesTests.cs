@@ -444,28 +444,38 @@ public class DocumentGridBothSidesTests : BunitContext, IAsyncLifetime
     // ── toolbar urls ────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("/received-invoices", "/received-invoices/create", "/received-invoices/import?target=ReceivedInvoice")]
-    [InlineData("/invoices", "/invoices/create", "/invoices/import?target=IssuedInvoice")]
-    [InlineData("/invoices?type=CreditNote", "/invoices/create?type=CreditNote", "/invoices/import?target=IssuedInvoice")]
-    public void New_and_import_go_to_the_urls_of_the_side(string path, string createUrl, string importUrl)
+    [InlineData("/received-invoices", "/received-invoices/create", null)]
+    [InlineData("/received-invoices", null, "/received-invoices/import?target=ReceivedInvoice")]
+    [InlineData("/invoices", "/invoices/create", null)]
+    [InlineData("/invoices", null, "/invoices/import?target=IssuedInvoice")]
+    [InlineData("/invoices?type=CreditNote", "/invoices/create?type=CreditNote", null)]
+    [InlineData("/invoices?type=CreditNote", null, "/invoices/import?target=IssuedInvoice")]
+    public void New_and_import_go_to_the_urls_of_the_side(string path, string? createUrl, string? importUrl)
     {
         // Menu items live in the popover provider, which the page itself does not render.
         var popover = Render<MudPopoverProvider>();
         var cut = RenderAt(path);
         var policy = PolicyFor(path);
 
-        // "New" is the primary toolbar button.
         cut.WaitForAssertion(() => ToolbarButton(cut, L[policy.NewLabelKey].Value).ShouldNotBeNull());
-        ToolbarButton(cut, L[policy.NewLabelKey].Value)!.Click();
-        Nav.Uri.ShouldEndWith(createUrl);
 
-        // Import lives in the dropdown next to it.
-        Nav.NavigateTo($"{ApiBaseUrl}{path}");
-        ToolbarDropdown(cut).Click();
-        popover.WaitForAssertion(() => popover.Markup.ShouldContain(L["Nav_ImportInvoices"].Value));
-        popover.FindAll(".mud-menu-item")
-            .First(i => i.TextContent.Contains(L["Nav_ImportInvoices"].Value)).Click();
-        popover.WaitForAssertion(() => Nav.Uri.ShouldEndWith(importUrl));
+        // Both targets come from the policy of the page as it was rendered. Each click is checked on a page
+        // that has not been navigated in between: navigating away and back makes the page re-apply its route
+        // while the test is already clicking, which made this test fail now and then.
+        if (importUrl is not null)
+        {
+            // Import lives in the dropdown next to "New".
+            ToolbarDropdown(cut).Click();
+            popover.WaitForAssertion(() => popover.Markup.ShouldContain(L["Nav_ImportInvoices"].Value));
+            popover.FindAll(".mud-menu-item")
+                .First(i => i.TextContent.Contains(L["Nav_ImportInvoices"].Value)).Click();
+            popover.WaitForAssertion(() => Nav.Uri.ShouldEndWith(importUrl));
+            return;
+        }
+
+        // "New" is the primary toolbar button.
+        ToolbarButton(cut, L[policy.NewLabelKey].Value)!.Click();
+        Nav.Uri.ShouldEndWith(createUrl!);
     }
 
     [Theory]
