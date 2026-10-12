@@ -121,7 +121,10 @@ public static class InvoiceTools
     [McpServerTool(Title = "Get invoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get a single document by ID - any type (invoice, credit note, proforma, tax receipt, received invoice); " +
         "the type is read from the stored document. Returns full details including line items, " +
-        "totals (before VAT, VAT, with VAT), payment status, and client (for a received invoice: supplier) / issuer info.")]
+        "totals (before VAT, VAT, with VAT), payment status, and client (for a received invoice: supplier) / issuer info. " +
+        "attachmentCount is the number of stored files (e.g. the supplier's original PDF). To DOWNLOAD them: " +
+        "list_attachments (entityName 'ReceivedInvoice' for a received invoice, 'Invoice' for any other type, recordId = this id), " +
+        "then get_attachment_download_link for one file or get_record_attachments_zip_link for all of them.")]
     public static async Task<string> GetInvoice(
         IFakvioApiClient api,
         [Description("The invoice ID (database primary key)")] long invoiceId,

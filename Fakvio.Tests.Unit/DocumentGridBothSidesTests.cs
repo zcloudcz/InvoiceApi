@@ -465,11 +465,13 @@ public class DocumentGridBothSidesTests : BunitContext, IAsyncLifetime
         if (importUrl is not null)
         {
             // Import lives in the dropdown next to "New".
+            // Generous timeouts: the default 1 s is too short when the whole suite runs in parallel.
+            var patience = TimeSpan.FromSeconds(10);
             ToolbarDropdown(cut).Click();
-            popover.WaitForAssertion(() => popover.Markup.ShouldContain(L["Nav_ImportInvoices"].Value));
+            popover.WaitForAssertion(() => popover.Markup.ShouldContain(L["Nav_ImportInvoices"].Value), patience);
             popover.FindAll(".mud-menu-item")
                 .First(i => i.TextContent.Contains(L["Nav_ImportInvoices"].Value)).Click();
-            popover.WaitForAssertion(() => Nav.Uri.ShouldEndWith(importUrl));
+            popover.WaitForAssertion(() => Nav.Uri.ShouldEndWith(importUrl), patience);
             return;
         }
 
