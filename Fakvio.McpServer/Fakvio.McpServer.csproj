@@ -14,11 +14,11 @@
     <PackageId>Fakvio.McpServer</PackageId>
     <Description>MCP (Model Context Protocol) server for Fakvio invoicing — exposes invoice, client, template, and reporting tools for AI assistants.</Description>
 
-    <!-- Metadata required for a public nuget.org listing. Version is bumped by hand:
-         the publish step pushes with the skip-duplicate flag, so a master build that did not
-         touch this number is a no-op instead of a failure. Bump it in the same PR that
-         changes the tool, or the fix ships to CI artifacts and to nobody else. -->
-    <Version>2.6.0</Version>
+    <!-- Metadata required for a public nuget.org listing. Only MAJOR.MINOR is maintained here
+         (raise it for new tools / breaking changes). The patch number is replaced by the CI run
+         number when the package is built (.github/workflows/mcp-server.yml), so every production
+         build publishes a new version and a forgotten bump can no longer leave nuget.org stale. -->
+    <Version>2.7.0</Version>
     <Authors>zCloud</Authors>
     <Company>zCloud</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

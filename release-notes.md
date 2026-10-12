@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.12.2 - 2026-10-12
+
+### Změny pro uživatele
+
+- **PR #547** - MCP: balíček `Fakvio.McpServer` (stdio nástroj `fakvio-mcp` z nuget.org) znovu vychází při každém produkčním nasazení. Od verze 2.6.0 se nepublikoval, takže v něm chyběly odkazy ke stažení příloh, jednotné nástroje dokladů, `mark_invoice_unpaid` a `restore_invoice` (HTTP server `mcp.fakvio.cz` je měl). Aktualizace: `dotnet tool update --global Fakvio.McpServer`. (PR #547, `e89105a`)
+
 ## 2026.10.12 - 2026-10-12
 
 ### Změny pro uživatele
