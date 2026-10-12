@@ -843,13 +843,12 @@ rows 10/11/25/43/44 and DPHKH1 sections A.1/B.1.
 `ReceivedInvoiceItem.VatRegime` + `ReverseChargeCodeId`. For `ReverseCharge` the supplier bills no VAT, so
 `VatAmount == 0` and `TotalWithVat == TotalBeforeVat` (we pay only the base); the self-assessed tax
 (base x rate) is stored in `InformationalVatAmount` (`ReceivedInvoiceService.CalculateItemVat`).
-UI: `VatRegimeSelect` + `ReverseChargeCodeSelect` in `ReceivedInvoiceDetail.razor`; MCP `create_received_invoice`
+UI: `VatRegimeSelect` + `ReverseChargeCodeSelect` in `InvoiceItemEditor` (used by the unified detail page, §5.7); MCP `create_received_invoice`
 accepts `vatRegime` / `reverseChargeCodeId` per item (the DTO is passed through).
 
 `ReceivedInvoiceDto.PaidAmount` (mapped from `Invoice.PaidAmount`) exists because the legacy status reports PartiallyPaid
-as `Approved`: `ReceivedInvoiceDetail.razor` shows "mark as unpaid" for Paid or (Approved and PaidAmount > 0) and
-"revert to draft" only for Approved with PaidAmount == 0. `ReceivedInvoiceApiService` has `MarkAsUnpaidAsync`,
-`RevertToDraftAsync`, `RestoreAsync` (restore has no button yet).
+as `Approved`. The UI no longer reads it: the unified detail page (§5.7) asks `DocumentTypeUiPolicy` for the buttons
+of the real `EInvoiceStatus` (PartiallyPaid is its own status there).
 
 **UI**: `InvoiceItemEditor` uses the reusable `VatRegimeSelect` (wraps `EnumSelect<EVatRegime>`) and
 `ReverseChargeCodeSelect` (code list supplied by the caller) from `Fakvio.UI.Shared/Components/Shared/`; the
@@ -2528,7 +2527,7 @@ Jeden XML soubor se **vydanými i přijatými** doklady za období, ve formátu 
   `AbraFlexiAccountingExporter`, společné helpery v `AccountingExportCommon`). Nový systém = nová
   hodnota enumu + nový exporter registrovaný v DI.
 - **UI:** `AccountingExportDialog.razor` otevřený tlačítkem „Export do účetnictví" na `Invoices.razor`
-  a `ReceivedInvoices.razor` (klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (vrací odkaz ke stažení
+  (jeden grid pro `/invoices` i `/received-invoices`; klíče `AccountingExport_*`). **MCP:** `ExportAccounting` (vrací odkaz ke stažení
   jako `ExportInvoiceIsdoc`, §2.7a).
 - **Mapování:** číslo dokladu, VS, data (vystavení / DUZP / splatnost), partner (IČO, DIČ, adresa),
   způsob úhrady (jen Pohoda), položky (popis, množství, MJ, cena, sazba DPH), rozpad DPH. Dobropis má ve Fakvio
@@ -2795,7 +2794,7 @@ Konfig `ExchangeRates:SyncEnabled=false` worker nezaregistruje (integrační tes
 Vydané doklady **i přijaté faktury** jsou řádky tabulky `Invoice` (položky v `InvoiceItem`); jediný rozlišovač je
 `Invoice.DocumentType`: `Invoice=1`, `CreditNote=2`, `Proforma=3`, `TaxReceiptForAdvance=4`, **`ReceivedInvoice=5`**.
 Žádný příznak směru. Entity `ReceivedInvoice` / `ReceivedInvoiceItem` neexistují (krok 1 ze 4 sjednocení; jednotné API
-je krok 3a, viz „Jednotné API dokladů" níže; MCP nástroje dokladů jsou krok 4, viz „MCP nástroje dokladů"; UI zatím používá starou fasádu).
+je krok 3a, viz „Jednotné API dokladů" níže; MCP nástroje dokladů jsou krok 4, viz „MCP nástroje dokladů"; UI: přehled (grid) už používá jednotné API a `DocumentTypeUiPolicy` (§5.7), detail přijaté faktury zatím starou fasádu - to je krok 3b část 2).
 
 | Přijatý doklad | v `Invoice` |
 |---|---|
@@ -3031,6 +3030,39 @@ dokladů + `documentType: ReceivedInvoice`; upload přílohy, přijatý ISDOC a 
   `GetInvoiceByIdAsync` (max 100).
 - Přidáváš-li nástroj dokladu: popiš v něm všechny typy, nebo výslovně „jen vydané“ a u odkazů ke stažení vlož `IssuedOnlyRefusal`.
   Testy: `UnifiedDocumentToolsTests`, `FakvioApiClientTests`.
+
+### 5.7 `DocumentTypeUiPolicy` - jediné místo, kde UI rozhoduje podle typu dokladu
+
+`Fakvio.UI.Shared/Models/DocumentTypeUiPolicy.cs`. Stránky a gridy se NEPTAJÍ na `EDocumentType` / `TypeFilter` /
+`IsReceived`-podobné řetězce samy, ale politiky: `DocumentTypeUiPolicy.For(type)` (nebo `ForListRoute(path, ?type=)`
+pro seznam). Je neměnná, bez DI a bez lokalizátoru - vrací **klíče zdrojů** (`L[policy.ListTitleKey]`), url, příznaky
+a stavový automat UI (`CanEdit/CanComplete/CanMarkPaid/CanMarkUnpaid/CanRevertToDraft/CanDelete/CanRestore(status)`).
+
+- **Seznam `/invoices` + `/received-invoices` je jeden grid** (`Invoices.razor`). Typ je pevně dán url: cesta
+  `/received-invoices` = `ReceivedInvoice`, `/invoices` = `Invoice` nebo vydaný typ z `?type=`. Při přechodu mezi nimi
+  se instance komponenty znovu použije, proto stránka poslouchá `LocationChanged`, maže výběr, přenačte PDF šablony
+  a grid (klíč gridu `GridKey` se liší, takže se při změně strany grid vytvoří znovu).
+- **Nové pravidlo podle typu:** přidej člen do politiky + řádek do `DocumentTypeUiPolicyTests` (tabulka typ x stav) a
+  použij ho ve stránce. Žádný nový `switch (TypeFilter)` / `DocumentType ==` v razoru. Každý klíč, který politika vrací,
+  musí existovat v `SharedResource.resx` i `.en.resx` (hlídá test).
+- **Detail dokladu je jedna stránka** (`InvoiceDetail.razor`): `/invoices/create`, `/invoices/{id}`, `/received-invoices/create`,
+  `/received-invoices/{id}`. Typ je v režimu vytvoření dán url (`/received-invoices/create` = přijatá faktura, bez výběru
+  typu), v režimu zobrazení typem načteného dokladu; doklad otevřený na url druhé strany se přesměruje
+  (`replace: true`). Stejná instance komponenty obsluhuje všechny čtyři cesty a router u změny jen cesty (stejné `Id`)
+  nemusí znovu nastavit parametry, proto stránka poslouchá `LocationChanged` a klíč `(Id, strana)` jí říká, kdy stav
+  zahodit (`ResetStateForNavigation`, synchronně před prvním `await`, aby se žádný potomek nevykreslil pro špatný typ).
+  Přijatá faktura: číslo dodavatele (create `CustomDocumentNumber`, edit `DocumentNumber`), datum přijetí, volný text pro
+  VS (max 50) a bankovní údaje dodavatele (`HasFreeTextSupplierBankFields`), bez řady, OSS, PDF/QR/UBL/e-mailu/readiness.
+  `InvoiceItemEditor` má parametr `IsReceived` (bez textových řádků, náš stav plátce DPH nepřepisuje DPH dodavatele) a
+  řádek s procentem mimo číselník sazeb (`VatRateId == null`, u importovaných faktur běžné) ukazuje jako "vlastní sazbu"
+  a při uložení ho nemění. Nové členy politiky: `IsReceivedRoute`, `SupportsOss`, `UsesCounterpartyBillingSettings`,
+  `HidesVatForNonVatPayerIssuer`, `SupportsManualPaymentMatch`, `CanExportUbl(status)`.
+- **UI už legacy fasádu nepoužívá** (`ReceivedInvoiceApiService`, `ReceivedInvoiceDto`, `EReceivedInvoiceStatus` v UI
+  nejsou). Zbývají jen `FakvioService.ExportReceivedIsdocAsync` (ISDOC jedné přijaté faktury), hromadné ISDOC a ZIP příloh.
+- **Jeden panel plateb** (`InvoicePaymentsPanel`): řádky z `GET /api/invoice/{id}/payments` (`FakvioService.GetPaymentsAsync`),
+  odpárování posílá skutečné `PaymentMatchId`, text 400 z API (např. odpárování po ručním "zaplaceno" je odmítnuto) jde do
+  snackbaru. "Spárovat ručně" jen u vydaných (`SupportsManualPaymentMatch`; server páruje ručně jen vydané doklady).
+- Stav `PartiallyPaid` má štítek `Invoice_StatusPartiallyPaid` a barvu `Info` pro všechny typy.
 
 ---
 

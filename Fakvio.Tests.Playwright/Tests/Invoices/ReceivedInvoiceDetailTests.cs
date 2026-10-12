@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Fakvio.Tests.Playwright.Infrastructure;
 using Microsoft.Playwright;
 using NUnit.Framework;
@@ -5,115 +6,129 @@ using NUnit.Framework;
 namespace Fakvio.Tests.Playwright.Tests.Invoices;
 
 /// <summary>
-/// Tests for the Received Invoice Detail page (/received-invoices/{id} and /received-invoices/create).
-/// Covers: viewing, creating, status display, items table, and action buttons.
+/// Tests of the ONE document detail page as it serves a RECEIVED invoice
+/// (/received-invoices/create and /received-invoices/{id}); issue #542.
+///
+/// Every assertion waits for the element (Expect / WaitFor) and fails when it is missing: a locator that matches
+/// nothing must never make a test pass. Texts are the Czech resources, because the browser context runs in cs-CZ.
 /// </summary>
 [TestFixture]
 public class ReceivedInvoiceDetailTests : FakvioPageTest
 {
-    [Test]
-    public async Task ReceivedInvoiceDetail_Create_PageLoads()
-    {
-        await LoginAndNavigateAsync("/received-invoices/create", "h4, h5");
+    private static readonly string Suffix = Guid.NewGuid().ToString("N")[..8];
+    private string _supplierName = "";
+    private long _supplierId;
+    private long _draftId;
+    private string _draftNumber = "";
 
-        var heading = Page.Locator("h4, h5").First;
-        await Expect(heading).ToBeVisibleAsync();
+    private ILocator Button(string name) => Page.GetByRole(AriaRole.Button, new() { Name = name, Exact = true });
+
+    /// <summary>The supplier select (a MudSelect is two nested ".mud-select" elements and its input is hidden, so it is found by its caption).</summary>
+    private ILocator SupplierSelect => Page.Locator(".mud-main-content .mud-select").Filter(new() { HasText = "Dodavatel" }).First;
+
+    private ILocator StatusChip => Page.Locator(".mud-main-content .mud-chip").First;
+
+    /// <summary>A supplier and one received DRAFT, both created through the API so the tests need nothing pre-existing.</summary>
+    [OneTimeSetUp]
+    public async Task SeedSupplierAndDraft()
+    {
+        _supplierName = $"E2E Supplier {Suffix}";
+        _supplierId = await ApiSeed.CreateClientAsync(Config, _supplierName);
+        _draftNumber = $"E2E-R-{Suffix}";
+        _draftId = await ApiSeed.CreateReceivedInvoiceAsync(Config, _supplierId, _draftNumber, vatPercentage: 15m);
     }
 
     [Test]
-    public async Task ReceivedInvoiceDetail_Create_HasFormFields()
+    public async Task Create_ShowsTheReceivedForm()
     {
-        await LoginAndNavigateAsync("/received-invoices/create", "h4, h5");
+        await LoginAndNavigateAsync("/received-invoices/create", "h4");
 
-        // Should have input fields (document number, supplier, dates)
-        var inputs = Page.Locator(".mud-input input");
-        var count = await inputs.CountAsync();
-        Assert.That(count, Is.GreaterThanOrEqualTo(2),
-            "Create form should have input fields for received invoice");
+        await Expect(Page.Locator("h4")).ToHaveTextAsync("Nová přijatá faktura");
+        await Expect(SupplierSelect).ToBeVisibleAsync();
+        await Expect(Page.GetByLabel("Datum přijetí")).ToBeVisibleAsync();
+        await Expect(Page.GetByLabel("Číslo dokladu")).ToBeVisibleAsync();
+        await Expect(Page.GetByLabel("IBAN")).ToBeVisibleAsync();
+        await Expect(Page.GetByLabel("SWIFT")).ToBeVisibleAsync();
+        await Expect(Button("Vytvořit")).ToBeVisibleAsync();
+        await Expect(Button("Zrušit")).ToBeVisibleAsync();
     }
 
     [Test]
-    public async Task ReceivedInvoiceDetail_Create_HasDatePickers()
+    public async Task Create_HasThreeDatePickersAndNoIssuedOnlyControls()
     {
-        await LoginAndNavigateAsync("/received-invoices/create", "h4, h5");
+        await LoginAndNavigateAsync("/received-invoices/create", "h4");
+        await Expect(SupplierSelect).ToBeVisibleAsync();
 
-        var datePickers = Page.Locator(".mud-picker");
-        var count = await datePickers.CountAsync();
-        Assert.That(count, Is.GreaterThanOrEqualTo(2),
-            "Create form should have date pickers (Issue, Received, Due)");
+        // Issue date, received date, due date and DUZP.
+        await Expect(Page.Locator(".mud-main-content .mud-picker")).Not.ToHaveCountAsync(0);
+        Assert.That(await Page.Locator(".mud-main-content .mud-picker").CountAsync(), Is.GreaterThanOrEqualTo(3));
+
+        // The type is fixed by the url: no document type select, no original invoice picker.
+        await Expect(Page.GetByLabel("Typ dokumentu")).ToHaveCountAsync(0);
+        await Expect(Page.GetByLabel("Původní faktura")).ToHaveCountAsync(0);
+
+        // Items: add a row; text rows do not exist on a received invoice.
+        await Button("Přidat položku").ClickAsync();
+        await Expect(Page.Locator(".mud-main-content .mud-table tbody tr")).ToHaveCountAsync(1);
+        await Expect(Button("Přidat textový řádek")).ToHaveCountAsync(0);
     }
 
     [Test]
-    public async Task ReceivedInvoiceDetail_Create_HasSupplierSelect()
+    public async Task View_ShowsTheReceivedDocumentWithItsActionsAndNoIssuedOnlyOnes()
     {
-        await LoginAndNavigateAsync("/received-invoices/create", "h4, h5");
+        await LoginAndNavigateAsync($"/received-invoices/{_draftId}", "h4");
 
-        var selects = Page.Locator(".mud-select");
-        var count = await selects.CountAsync();
-        Assert.That(count, Is.GreaterThanOrEqualTo(1),
-            "Create form should have supplier selector");
+        await Expect(StatusChip).ToHaveTextAsync("Přijato");
+        await Expect(Page.Locator("h4")).ToContainTextAsync(_draftNumber);
+        await Expect(Page.GetByText(_supplierName).First).ToBeVisibleAsync();
+
+        // A draft received invoice: edit, approve, delete, ISDOC.
+        foreach (var name in new[] { "Upravit", "Schválit", "Smazat", "Stáhnout ISDOC" })
+            await Expect(Button(name)).ToBeVisibleAsync();
+
+        // Issued-only actions are not there.
+        foreach (var name in new[] { "Export PDF", "Stáhnout e-fakturu (UBL)", "Odeslat e-mailem" })
+            await Expect(Button(name)).ToHaveCountAsync(0);
     }
 
     [Test]
-    public async Task ReceivedInvoiceDetail_Create_HasAddItemButton()
+    public async Task View_ShowsTheOddVatPercentageOfTheItem()
     {
-        await LoginAndNavigateAsync("/received-invoices/create", "h4, h5");
+        await LoginAndNavigateAsync($"/received-invoices/{_draftId}", "h4");
 
-        // "Add Item" button with plus icon
-        var addButton = Page.GetByRole(AriaRole.Button).Filter(
-            new() { HasText = "Přidat" })
-            .Or(Page.GetByRole(AriaRole.Button).Filter(new() { HasText = "Add" }));
-        var count = await addButton.CountAsync();
-        Assert.That(count, Is.GreaterThanOrEqualTo(0),
-            "Create form should have an add item button");
+        await Expect(StatusChip).ToHaveTextAsync("Přijato");
+        await Expect(Page.Locator(".mud-main-content .mud-table tbody tr").First).ToContainTextAsync("15%");
     }
 
     [Test]
-    public async Task ReceivedInvoiceDetail_Create_HasPaymentFields()
+    public async Task ReceivedDocumentOpenedOnTheIssuedUrl_MovesToTheReceivedUrl()
     {
-        await LoginAndNavigateAsync("/received-invoices/create", "h4, h5");
+        await LoginAndNavigateAsync($"/invoices/{_draftId}", "h4");
 
-        var body = await Page.TextContentAsync("body");
-        // Payment-related labels should be present
-        var hasPayment = body!.Contains("Platba") || body.Contains("Payment")
-            || body.Contains("Variabilní") || body.Contains("Variable")
-            || body.Contains("IBAN") || body.Contains("Účet") || body.Contains("Account");
-        Assert.That(hasPayment, Is.True,
-            "Create form should display payment information fields");
+        await Page.WaitForURLAsync(new Regex($"/received-invoices/{_draftId}$"), new() { Timeout = Config.BlazorLoadTimeout });
+        await Expect(StatusChip).ToHaveTextAsync("Přijato");
     }
 
     [Test]
-    public async Task ReceivedInvoiceDetail_Create_HasCancelAndCreateButtons()
-    {
-        await LoginAndNavigateAsync("/received-invoices/create", "h4, h5");
-
-        var cancelButton = Page.GetByRole(AriaRole.Button).Filter(
-            new() { HasText = "Zrušit" })
-            .Or(Page.GetByRole(AriaRole.Button).Filter(new() { HasText = "Cancel" }));
-        await Expect(cancelButton.First).ToBeVisibleAsync();
-    }
-
-    [Test]
-    public async Task ReceivedInvoiceDetail_ViewExisting_LoadsFromList()
+    public async Task List_OpensTheUnifiedDetail()
     {
         await LoginAndNavigateAsync("/received-invoices", "h4");
         await WaitForTableLoadAsync();
 
-        var firstRow = Page.Locator(".mud-table-body tr").First;
-        var rowCount = await firstRow.CountAsync();
+        await Page.GetByText(_draftNumber).First.ClickAsync();
 
-        if (rowCount > 0)
-        {
-            await firstRow.ClickAsync();
-            await Page.WaitForSelectorAsync("h4, h5", new() { Timeout = Config.BlazorLoadTimeout });
+        await Page.WaitForURLAsync(new Regex($"/received-invoices/{_draftId}$"), new() { Timeout = Config.BlazorLoadTimeout });
+        await Expect(StatusChip).ToHaveTextAsync("Přijato");
+    }
 
-            var heading = Page.Locator("h4, h5").First;
-            await Expect(heading).ToBeVisibleAsync();
-        }
-        else
-        {
-            // No received invoices exist — just verify the list page is fine
-            Assert.Pass("No received invoices to navigate to — list page verified");
-        }
+    [Test]
+    public async Task Isdoc_DownloadsTheFileNamedAfterTheSuppliersNumber()
+    {
+        await LoginAndNavigateAsync($"/received-invoices/{_draftId}", "h4");
+        await Expect(StatusChip).ToHaveTextAsync("Přijato");
+
+        var download = await Page.RunAndWaitForDownloadAsync(async () => await Button("Stáhnout ISDOC").ClickAsync());
+
+        Assert.That(download.SuggestedFilename, Is.EqualTo($"{_draftNumber}.isdoc"));
     }
 }

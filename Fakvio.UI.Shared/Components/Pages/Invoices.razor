@@ -1,5 +1,7 @@
 @page "/invoices"
+@page "/received-invoices"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@implements IDisposable
 @using Fakvio.Contracts.Dto.Invoice
 @using Fakvio.Contracts.Dto.Client
 @using Fakvio.Contracts.Dto.InvoiceTemplate
@@ -9,6 +11,7 @@
 @using Fakvio.Domain.Enums
 @using Fakvio.UI.Shared.Models
 @inject FakvioService InvoiceService
+@inject FileAttachmentApiService FileAttachmentService
 @inject ClientApiService ClientService
 @inject InvoiceTemplateApiService TemplateService
 @inject ContentTemplateApiService ContentTemplateService
@@ -19,11 +22,15 @@
 @inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
-@* Page title adapts based on document type filter *@
+@* One grid for issued documents (/invoices) and received invoices (/received-invoices).
+   Every difference between the document types comes from DocumentTypeUiPolicy (_policy). *@
 <PageTitle>@PageHeading</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">@PageHeading</MudText>
-<MudText Class="mb-4">@PageSubtitle</MudText>
+@if (PageSubtitle != null)
+{
+    <MudText Class="mb-4">@PageSubtitle</MudText>
+}
 
 <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Class="mb-4"
            StartIcon="@Icons.Material.Filled.Download" OnClick="OpenAccountingExportDialog">
@@ -36,23 +43,39 @@
     <MudPaper Class="pa-3 mb-2 d-flex flex-wrap align-center gap-2" Elevation="2" Style="background-color: var(--mud-palette-info-lighten);">
         <MudChip T="string" Color="Color.Info" Size="Size.Small">@_selectedInvoices.Count @L["Bulk_Selected"]</MudChip>
         <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
-                   StartIcon="@Icons.Material.Filled.Send" OnClick="BulkIssue"
-                   Disabled="_bulkProcessing">@L["Bulk_Issue"]</MudButton>
+                   StartIcon="@Icons.Material.Filled.Send" OnClick="BulkComplete"
+                   Disabled="_bulkProcessing">@L[_policy.BulkCompleteLabelKey]</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Check" OnClick="BulkMarkPaid"
                    Disabled="_bulkProcessing">@L["Bulk_MarkPaid"]</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
-                   StartIcon="@Icons.Material.Filled.PictureAsPdf" OnClick="BulkPdf"
-                   Disabled="_bulkProcessing">@L["Bulk_Pdf"]</MudButton>
+        @if (_policy.SupportsPdf)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.PictureAsPdf" OnClick="BulkPdf"
+                       Disabled="_bulkProcessing">@L["Bulk_Pdf"]</MudButton>
+        }
         <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Download" OnClick="BulkIsdoc"
                    Disabled="_bulkProcessing">@L["Bulk_Isdoc"]</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
-                   StartIcon="@Icons.Material.Filled.Download" OnClick="BulkUbl"
-                   Disabled="_bulkProcessing">@L["Bulk_Ubl"]</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Tertiary" Size="Size.Small"
-                   StartIcon="@Icons.Material.Filled.Email" OnClick="BulkEmail"
-                   Disabled="_bulkProcessing">@L["Bulk_Email"]</MudButton>
+        @* Shown for every issued type (also Proforma, as before); BulkUbl itself reports "none eligible" there. *@
+        @if (!_policy.IsReceived)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Download" OnClick="BulkUbl"
+                       Disabled="_bulkProcessing">@L["Bulk_Ubl"]</MudButton>
+        }
+        @if (_policy.SupportsEmail)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Tertiary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Email" OnClick="BulkEmail"
+                       Disabled="_bulkProcessing">@L["Bulk_Email"]</MudButton>
+        }
+        @if (_policy.SupportsBulkAttachmentDownload)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Info" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Download" OnClick="BulkDownloadAttachments"
+                       Disabled="_bulkProcessing">@L["ReceivedInvoice_DownloadAttachments"]</MudButton>
+        }
         <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Delete" OnClick="BulkDelete"
                    Disabled="_bulkProcessing">@L["Bulk_Delete"]</MudButton>
@@ -66,7 +89,8 @@
 
 @* FakvioGrid = universal grid wrapper (see DEVGUIDE 7.10) *@
 <FakvioGrid T="InvoiceDto"
-            GridKey="invoices"
+            @key="_policy.GridKey"
+            GridKey="@_policy.GridKey"
             ServerData="LoadServerData"
             @ref="_dataGrid"
             Loading="@_loading"
@@ -90,11 +114,14 @@
                               OnClick="@NavigateToCreate" />
             <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown"
                      Variant="Variant.Filled" Color="Color.Primary">
-                <MudMenuItem OnClick="OpenFromTemplateDialog"
-                             Icon="@Icons.Material.Filled.ContentPaste">
-                    @L["Invoice_NewFromTemplate"]
-                </MudMenuItem>
-                <MudMenuItem OnClick="@(() => Navigation.NavigateTo("/invoices/import?target=IssuedInvoice"))"
+                @if (_policy.SupportsTemplates)
+                {
+                    <MudMenuItem OnClick="OpenFromTemplateDialog"
+                                 Icon="@Icons.Material.Filled.ContentPaste">
+                        @L["Invoice_NewFromTemplate"]
+                    </MudMenuItem>
+                }
+                <MudMenuItem OnClick="@(() => Navigation.NavigateTo(_policy.ImportUrl))"
                              Icon="@Icons.Material.Filled.UploadFile">
                     @L["Nav_ImportInvoices"]
                 </MudMenuItem>
@@ -109,13 +136,14 @@
         <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" SortBy="x => x.DocumentNumber">
             <CellTemplate>
                 <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
-                    @context.Item.DocumentNumber
+                    @* A received draft may not have the supplier's number yet. *@
+                    @(context.Item.DocumentNumber ?? "-")
                 </MudChip>
             </CellTemplate>
         </PropertyColumn>
 
         @* Client name — sortable, filterable *@
-        <PropertyColumn Property="x => x.ClientName" Title="@L["Invoice_Client"].Value" />
+        <PropertyColumn Property="x => x.ClientName" Title="@L[_policy.CounterpartyLabelKey].Value" />
 
         @* Issue date — sortable, filterable *@
         <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value" HideSmall="true"
@@ -142,6 +170,15 @@
             <FilterTemplate>
                 <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.DueDate" FilterKey="DueDate" />
             </FilterTemplate>
+            @* Overdue = still unpaid (issued/approved or partially paid) and past its due date. *@
+            <CellTemplate>
+                @if (context.Item.DueDate.HasValue)
+                {
+                    <MudText Color="@(IsOverdue(context.Item) ? Color.Error : Color.Default)">
+                        @context.Item.DueDate.Value.ToString("d")
+                    </MudText>
+                }
+            </CellTemplate>
         </PropertyColumn>
 
         @* Total with VAT — sortable, filterable *@
@@ -155,78 +192,114 @@
         @* Status — filterable chip *@
         <PropertyColumn Property="x => x.Status" Title="@L["Label_Status"].Value" Filterable="true">
             <CellTemplate>
-                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Item.Status)">
-                    @GetStatusText(context.Item.Status)
+                <MudChip T="string" Size="Size.Small" Color="@DocumentTypeUiPolicy.StatusColor(context.Item.Status)">
+                    @L[_policy.StatusLabelKey(context.Item.Status)]
                 </MudChip>
             </CellTemplate>
         </PropertyColumn>
 
         @* Alert indicator — shown when the invoice has an open (unresolved) alert *@
-        <TemplateColumn T="InvoiceDto" Title="" Sortable="false" Filterable="false" HeaderStyle="width:32px;">
-            <CellTemplate>
-                @if (_alertedInvoiceIds.Contains(context.Item.Id))
-                {
-                    <MudTooltip Text="@L["Alert_Tooltip"].Value">
-                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
-                    </MudTooltip>
-                }
-            </CellTemplate>
-        </TemplateColumn>
+        @if (_policy.ShowsAlertColumn)
+        {
+            <TemplateColumn T="InvoiceDto" Title="" Sortable="false" Filterable="false" HeaderStyle="width:32px;">
+                <CellTemplate>
+                    @if (_alertedInvoiceIds.Contains(context.Item.Id))
+                    {
+                        <MudTooltip Text="@L["Alert_Tooltip"].Value">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                        </MudTooltip>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+        }
 
         @* Email sent indicator *@
-        <TemplateColumn T="InvoiceDto" Title="@L["Invoice_EmailColumn"].Value" HideSmall="true" Sortable="false" Filterable="false">
-            <CellTemplate>
-                @if (context.Item.IsSentByEmail)
-                {
-                    <MudTooltip Text="@context.Item.LastSentByEmailAt?.ToString("g")">
-                        <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Color="Color.Success" Size="Size.Small" />
-                    </MudTooltip>
-                }
-                else
-                {
-                    <MudText Color="Color.Secondary">—</MudText>
-                }
-            </CellTemplate>
-        </TemplateColumn>
+        @if (_policy.ShowsEmailSentColumn)
+        {
+            <TemplateColumn T="InvoiceDto" Title="@L["Invoice_EmailColumn"].Value" HideSmall="true" Sortable="false" Filterable="false">
+                <CellTemplate>
+                    @if (context.Item.IsSentByEmail)
+                    {
+                        <MudTooltip Text="@context.Item.LastSentByEmailAt?.ToString("g")">
+                            <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Color="Color.Success" Size="Size.Small" />
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <MudText Color="Color.Secondary">—</MudText>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+        }
+
+        @* Attachments column (received invoices) - one file downloads directly, several as a ZIP *@
+        @if (_policy.ShowsAttachmentsColumn)
+        {
+            <TemplateColumn T="InvoiceDto" Title="@L["ReceivedInvoice_Attachments"].Value"
+                            Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
+                <CellTemplate>
+                    @if (context.Item.AttachmentCount > 0)
+                    {
+                        <MudBadge Content="@context.Item.AttachmentCount" Color="Color.Info"
+                                  Overlap="true" Bordered="true">
+                            <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                           Size="Size.Small"
+                                           title="@L["ReceivedInvoice_DownloadAttachments"]"
+                                           Disabled="_downloadingAttachments"
+                                           OnClick="@(() => DownloadAttachments(context.Item))" />
+                        </MudBadge>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+        }
 
         @* Row actions column — conditional buttons based on invoice status *@
         <TemplateColumn T="InvoiceDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false"
                         CellStyle="white-space:nowrap;">
             <CellTemplate>
                 <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
-                               OnClick="@(() => Navigation.NavigateTo($"/invoices/{context.Item.Id}"))" title="@L["Btn_View"].Value" />
-                @if (context.Item.Status == EInvoiceStatus.Draft)
+                               OnClick="@(() => Navigation.NavigateTo(_policy.DetailUrl(context.Item.Id)))" title="@L["Btn_View"].Value" />
+                @if (_policy.CanComplete(context.Item.Status))
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Success"
-                                   OnClick="@(() => IssueInvoice(context.Item.Id))" title="@L["Invoice_Issue"].Value" />
+                                   OnClick="@(() => IssueInvoice(context.Item.Id))" title="@L[_policy.CompleteLabelKey].Value" />
+                }
+                @* Quick delete is Draft-only for every type; other statuses go through the detail page or bulk delete. *@
+                @if (context.Item.Status == EInvoiceStatus.Draft)
+                {
                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                    OnClick="@(() => DeleteInvoice(context.Item.Id))" title="@L["Btn_Delete"].Value" />
                 }
-                @if (context.Item.Status == EInvoiceStatus.Completed)
+                @if (_policy.CanMarkPaid(context.Item.Status))
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
                                    OnClick="@(() => MarkAsPaid(context.Item.Id))" title="@L["Invoice_MarkAsPaid"].Value" />
                 }
-                @if (context.Item.Status == EInvoiceStatus.Deleted)
+                @if (_policy.CanRestore(context.Item.Status))
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.RestoreFromTrash" Size="Size.Small" Color="Color.Warning"
                                    OnClick="@(() => RestoreInvoice(context.Item.Id))" title="@L["Invoice_Restore"].Value" />
                 }
-                <MudMenu Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Secondary"
-                         title="@L["Invoice_DownloadPdf"].Value" Dense="true">
-                    <MudMenuItem OnClick="@(() => DownloadPdf(context.Item))">@L["Pdf_DefaultTemplate"]</MudMenuItem>
-                    @foreach (var tmpl in _pdfTemplates)
-                    {
-                        <MudMenuItem OnClick="@(() => DownloadPdfWithTemplate(context.Item, tmpl.Id))">@tmpl.Name</MudMenuItem>
-                    }
-                </MudMenu>
-                <MudIconButton Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Tertiary"
-                               OnClick="@(() => OpenEmailDialog(context.Item))" title="@L["Invoice_SendByEmail"].Value" />
-                @* Copy icon — duplicates the invoice as a new Draft.
-                   Hidden for CreditNotes (copy semantics don't apply)
+                @if (_policy.SupportsPdf)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Secondary"
+                             title="@L["Invoice_DownloadPdf"].Value" Dense="true">
+                        <MudMenuItem OnClick="@(() => DownloadPdf(context.Item))">@L["Pdf_DefaultTemplate"]</MudMenuItem>
+                        @foreach (var tmpl in _pdfTemplates)
+                        {
+                            <MudMenuItem OnClick="@(() => DownloadPdfWithTemplate(context.Item, tmpl.Id))">@tmpl.Name</MudMenuItem>
+                        }
+                    </MudMenu>
+                }
+                @if (_policy.SupportsEmail)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Tertiary"
+                                   OnClick="@(() => OpenEmailDialog(context.Item))" title="@L["Invoice_SendByEmail"].Value" />
+                }
+                @* Copy icon - duplicates the invoice as a new Draft.
+                   Hidden when the type does not support copy (CreditNote, received)
                    and for Deleted invoices (must be restored first). *@
-                @if (context.Item.DocumentType != EDocumentType.CreditNote
-                     && context.Item.Status != EInvoiceStatus.Deleted)
+                @if (_policy.SupportsCopy && context.Item.Status != EInvoiceStatus.Deleted)
                 {
                     <MudTooltip Text="@L["Invoice_Copy"].Value">
                         <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Primary"
@@ -235,13 +308,16 @@
                 }
                 @* Three-dot menu for secondary actions — currently holds "Create from template"
                    so it is discoverable but does not clutter the primary action row. *@
-                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default"
-                         title="@L["Label_Actions"].Value" Dense="true">
-                    <MudMenuItem OnClick="@(() => OpenCreateTemplateDialog(context.Item))"
-                                 Icon="@Icons.Material.Filled.BookmarkAdd">
-                        @L["Invoice_CreateFromTemplate"]
-                    </MudMenuItem>
-                </MudMenu>
+                @if (_policy.SupportsTemplates)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default"
+                             title="@L["Label_Actions"].Value" Dense="true">
+                        <MudMenuItem OnClick="@(() => OpenCreateTemplateDialog(context.Item))"
+                                     Icon="@Icons.Material.Filled.BookmarkAdd">
+                            @L["Invoice_CreateFromTemplate"]
+                        </MudMenuItem>
+                    </MudMenu>
+                }
             </CellTemplate>
         </TemplateColumn>
     </Columns>
@@ -335,46 +411,23 @@
     private bool _loading = false;
     private bool _loadFailed;
 
-    // Computed page labels — resolved from localization based on the current document type filter
-    private string PageHeading => TypeFilter switch
-    {
-        "CreditNote"           => L["Nav_CreditNotes"].Value,
-        "Proforma"             => L["Proforma_Title"].Value,
-        "TaxReceiptForAdvance" => L["TaxReceiptForAdvance_Title"].Value,
-        _                      => L["Invoice_Title"].Value
-    };
+    // Everything that differs per document type (texts, urls, which buttons exist) comes from this policy.
+    // It is re-resolved from the url whenever the route changes (see ApplyRouteAsync).
+    private DocumentTypeUiPolicy _policy = DocumentTypeUiPolicy.For(EDocumentType.Invoice);
 
-    private string PageSubtitle => TypeFilter switch
-    {
-        "CreditNote"           => L["CreditNote_Subtitle"].Value,
-        "Proforma"             => L["Proforma_Subtitle"].Value,
-        "TaxReceiptForAdvance" => L["TaxReceiptForAdvance_Subtitle"].Value,
-        _                      => L["Invoice_Subtitle"].Value
-    };
+    // Computed page labels - resolved from localization via the policy's resource keys
+    private string PageHeading => L[_policy.ListTitleKey].Value;
 
-    private string NewButtonLabel => TypeFilter switch
-    {
-        "CreditNote"           => L["CreditNote_New"].Value,
-        "Proforma"             => L["Proforma_New"].Value,
-        "TaxReceiptForAdvance" => L["TaxReceiptForAdvance_New"].Value,
-        _                      => L["Invoice_New"].Value
-    };
+    // Received invoices have no subtitle (null key)
+    private string? PageSubtitle => _policy.ListSubtitleKey is { } key ? L[key].Value : null;
+
+    private string NewButtonLabel => L[_policy.NewLabelKey].Value;
 
     /// <summary>
-    /// Navigates to the create page with the current document type pre-set via query param.
+    /// Navigates to the create page of the current document type.
     /// Standard Invoice has no param (keeps backward compat with existing links/bookmarks).
     /// </summary>
-    private void NavigateToCreate()
-    {
-        var url = TypeFilter switch
-        {
-            "CreditNote"           => "/invoices/create?type=CreditNote",
-            "Proforma"             => "/invoices/create?type=Proforma",
-            "TaxReceiptForAdvance" => "/invoices/create?type=TaxReceiptForAdvance",
-            _                      => "/invoices/create"
-        };
-        Navigation.NavigateTo(url);
-    }
+    private void NavigateToCreate() => Navigation.NavigateTo(_policy.CreateUrl);
 
     // Whether the issuer (logged-in company) is a VAT payer — controls DUZP column visibility
     private bool _issuerIsVatPayer = false;
@@ -393,6 +446,9 @@
     // Multi-select state for bulk operations
     private HashSet<InvoiceDto> _selectedInvoices = new();
     private bool _bulkProcessing = false;
+
+    // True while a single-row attachment download runs (disables the download buttons)
+    private bool _downloadingAttachments;
 
     // Template dialog state (small popup — stays as dialog)
     private bool _showCreateTemplateDialog = false;
@@ -421,45 +477,83 @@
         // Load clients, templates, PDF templates, issuer info, and alert IDs in parallel.
         // None of these depend on the document type, so they are loaded once per component
         // instance. The type filter itself is resolved in OnParametersSetAsync below.
+        //
+        // The document type MUST be resolved before the first await: Blazor renders the page at
+        // that await, the grid mounts and immediately asks for its first page. With the type
+        // still unknown that request went out without a DocumentType and the grid showed every
+        // issued type mixed together. A non-list url (only possible in tests) = plain invoices.
+        var uri = new Uri(Navigation.Uri);
+        _policy = DocumentTypeUiPolicy.ForListRoute(uri.AbsolutePath, TypeFromQuery(uri))
+                  ?? DocumentTypeUiPolicy.For(EDocumentType.Invoice);
+        _filterDocumentType = _policy.Type;
+
+        // Navigating /invoices <-> /received-invoices (or between ?type= values) reuses this
+        // component instance and may not re-run OnParametersSet (no parameter value changes when
+        // only the path differs), so the location itself is observed too. Subscribed before the
+        // first await so Dispose() always finds the handler it has to remove.
+        Navigation.LocationChanged += OnLocationChanged;
+
         await Task.WhenAll(
             LoadClients(), LoadTemplates(), LoadPdfTemplates(), LoadIssuerAsync(), LoadAlertedIdsAsync());
     }
 
+    private static string? TypeFromQuery(Uri uri) => System.Web.HttpUtility.ParseQueryString(uri.Query)["type"];
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Read the query ourselves: the [SupplyParameterFromQuery] value may not be updated yet.
+        var type = TypeFromQuery(new Uri(Navigation.Uri));
+        _ = InvokeAsync(async () =>
+        {
+            await ApplyRouteAsync(type);
+            StateHasChanged();
+        });
+    }
+
     /// <summary>
-    /// Maps the URL type param to the EDocumentType filter sent to the API.
+    /// Resolves the document type (and with it the whole UI policy) from the URL.
     ///
-    /// WHY here and not in OnInitializedAsync: /invoices, /invoices?type=Proforma and
-    /// /invoices?type=CreditNote all share the same @page route, so navigating between
-    /// them does NOT create a new component instance — Blazor only re-runs the parameter
-    /// lifecycle. Resolving the filter on init therefore left the grid showing the
-    /// previously selected type until the user pressed F5 (issue #376).
+    /// WHY here and not in OnInitializedAsync: /invoices, /invoices?type=Proforma, /invoices?type=CreditNote
+    /// and /received-invoices all share this component, so navigating between them does NOT
+    /// create a new instance - Blazor only re-runs the parameter lifecycle. Resolving the filter on
+    /// init therefore left the grid showing the previously selected type until the user pressed F5
+    /// (issue #376).
     ///
     /// OnParametersSetAsync also runs before the first render, so the initial page load
     /// is covered by the same code path.
     /// </summary>
-    protected override async Task OnParametersSetAsync()
-    {
-        // Standard Invoice view (no param) intentionally shows only Invoice type
-        // so proformas and credit notes are excluded from the default grid.
-        var documentType = TypeFilter switch
-        {
-            "CreditNote"           => EDocumentType.CreditNote,
-            "Proforma"             => EDocumentType.Proforma,
-            "TaxReceiptForAdvance" => EDocumentType.TaxReceiptForAdvance,
-            _                      => EDocumentType.Invoice   // default: standard invoices only
-        };
+    protected override Task OnParametersSetAsync() => ApplyRouteAsync(TypeFilter);
 
-        // Parameters are set on every re-render, not just when the URL changes — reload
+    private async Task ApplyRouteAsync(string? typeFilter)
+    {
+        // null = the location is not a list route (we are being navigated away from): ignore it.
+        var policy = DocumentTypeUiPolicy.ForListRoute(new Uri(Navigation.Uri).AbsolutePath, typeFilter);
+
+        // Parameters are set on every re-render, not just when the URL changes - reload
         // only when the type actually differs, otherwise every render would refetch.
-        if (documentType == _filterDocumentType)
+        if (policy is null || policy.Type == _filterDocumentType)
             return;
 
-        _filterDocumentType = documentType;
+        var sideChanged = policy.IsReceived != _policy.IsReceived;
 
-        // On the very first pass the grid does not exist yet and fetches its own first
-        // page once rendered, so there is nothing to reload.
-        if (_dataGrid != null)
+        _policy = policy;
+        _filterDocumentType = policy.Type;
+
+        // The selection belongs to the previous view (other type, other bulk rules).
+        _selectedInvoices = new HashSet<InvoiceDto>();
+
+        // Started first, awaited last: the rows must not wait for the PDF template list.
+        var pdfTemplates = LoadPdfTemplates();
+
+        // When the side changes, the grid gets a new @key (issued and received grids keep
+        // separate column state), so the NEW grid instance loads by itself; reloading the old
+        // one would only fire a request with the old settings.
+        if (!sideChanged && _dataGrid != null)
             await _dataGrid.ReloadAsync();
+
+        await pdfTemplates;
     }
 
     /// <summary>
@@ -520,14 +614,19 @@
     {
         try
         {
-            var templateType = TypeFilter switch
+            // Received invoices have no PDF (null type) - nothing to load.
+            var policy = _policy;
+            if (policy.PdfTemplateType is not { } templateType)
             {
-                "CreditNote"           => EContentTemplateType.CreditNotePdf,
-                "Proforma"             => EContentTemplateType.AdvanceInvoicePdf,
-                "TaxReceiptForAdvance" => EContentTemplateType.TaxReceiptForAdvancePdf,
-                _                      => EContentTemplateType.InvoicePdf
-            };
-            _pdfTemplates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
+                _pdfTemplates = new();
+                return;
+            }
+            var templates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
+
+            // The user may have switched to another type while this was loading; a late answer
+            // must not put the previous type's templates into the current view.
+            if (ReferenceEquals(policy, _policy))
+                _pdfTemplates = templates;
         }
         catch (Exception ex) { Snackbar.Add($"Error loading PDF templates: {ex.Message}", Severity.Error); }
     }
@@ -622,7 +721,7 @@
     {
         if (invoice != null)
         {
-            Navigation.NavigateTo($"/invoices/{invoice.Id}");
+            Navigation.NavigateTo(_policy.DetailUrl(invoice.Id));
         }
     }
 
@@ -665,7 +764,7 @@
         {
             if (await InvoiceService.IssueAsync(id) != null)
             {
-                Snackbar.Add(L["Invoice_Issued"].Value, Severity.Success);
+                Snackbar.Add(L[_policy.CompleteSuccessKey].Value, Severity.Success);
                 await SearchInvoices();
             }
         }
@@ -882,12 +981,12 @@
     }
 
     /// <summary>
-    /// Bulk completes (issues) all selected Draft invoices.
+    /// Bulk completes (issues, or approves for received invoices) all selected Draft documents.
     /// Filters eligible invoices first, shows confirmation, then processes.
     /// </summary>
-    private async Task BulkIssue()
+    private async Task BulkComplete()
     {
-        var eligible = _selectedInvoices.Where(i => i.Status == EInvoiceStatus.Draft).ToList();
+        var eligible = _selectedInvoices.Where(i => _policy.CanComplete(i.Status)).ToList();
         if (eligible.Count == 0)
         {
             Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
@@ -896,7 +995,7 @@
 
         // Confirm action with user
         var confirmed = await JS.InvokeAsync<bool>("confirm",
-            string.Format(L["Bulk_ConfirmIssue"].Value, eligible.Count));
+            string.Format(L[_policy.BulkConfirmCompleteKey].Value, eligible.Count));
         if (!confirmed) return;
 
         _bulkProcessing = true;
@@ -913,11 +1012,11 @@
     }
 
     /// <summary>
-    /// Bulk marks all selected Completed invoices as paid.
+    /// Bulk marks all selected invoices that can be paid (per the policy) as paid.
     /// </summary>
     private async Task BulkMarkPaid()
     {
-        var eligible = _selectedInvoices.Where(i => i.Status == EInvoiceStatus.Completed).ToList();
+        var eligible = _selectedInvoices.Where(i => _policy.CanMarkPaid(i.Status)).ToList();
         if (eligible.Count == 0)
         {
             Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
@@ -943,14 +1042,14 @@
 
     /// <summary>
     /// Bulk deletes selected invoices (soft delete).
-    /// Draft invoices can always be deleted. Completed invoices are sent to the server
-    /// which checks if they are the last in the numbering sequence — the server decides.
-    /// Paid and Creditnoted invoices are filtered out on the client side.
+    /// Draft invoices can always be deleted. Completed issued invoices are sent to the server
+    /// which checks if they are the last in the numbering sequence - the server decides.
+    /// Everything else (per DocumentTypeUiPolicy.CanDelete) is filtered out on the client side.
     /// </summary>
     private async Task BulkDelete()
     {
         var eligible = _selectedInvoices
-            .Where(i => i.Status == EInvoiceStatus.Draft || i.Status == EInvoiceStatus.Completed)
+            .Where(i => _policy.CanDelete(i.Status))
             .ToList();
         if (eligible.Count == 0)
         {
@@ -1018,13 +1117,7 @@
             {
                 var base64 = Convert.ToBase64String(zipBytes);
                 // Use localized ZIP name based on current document type view
-                var zipPrefix = TypeFilter switch
-                {
-                    "CreditNote"           => L["FileName_CreditNotes"].Value,
-                    "Proforma"             => L["Proforma_Title"].Value,
-                    "TaxReceiptForAdvance" => L["TaxReceiptForAdvance_Title"].Value,
-                    _                      => L["FileName_Invoices"].Value
-                };
+                var zipPrefix = L[_policy.BulkPdfZipPrefixKey!].Value;
                 var fileName = $"{zipPrefix}_{DateTime.Now:yyyyMMdd}.zip";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/zip");
                 Snackbar.Add(L["Bulk_Success"].Value, Severity.Success);
@@ -1040,12 +1133,15 @@
 
     /// <summary>
     /// Bulk downloads ISDOC exports for all selected invoices as a ZIP archive.
-    /// Drafts are excluded — an unissued invoice has no legal ISDOC to export
+    /// Drafts of issued documents are excluded - an unissued invoice has no legal ISDOC to export
     /// (same rule as the single-invoice ISDOC button on the detail page).
+    /// Received invoices use their own (legacy) ISDOC endpoint and have no such exclusion.
     /// </summary>
     private async Task BulkIsdoc()
     {
-        var eligible = _selectedInvoices.Where(i => i.Status != EInvoiceStatus.Draft).ToList();
+        var eligible = _selectedInvoices
+            .Where(i => !_policy.IsdocSkipsDrafts || i.Status != EInvoiceStatus.Draft)
+            .ToList();
         if (eligible.Count == 0)
         {
             Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
@@ -1056,7 +1152,10 @@
         StateHasChanged();
         try
         {
-            var zipBytes = await InvoiceService.BulkExportIsdocAsync(eligible.Select(i => i.Id).Distinct().ToList());
+            var isdocIds = eligible.Select(i => i.Id).Distinct().ToList();
+            var zipBytes = _policy.IsReceived
+                ? await InvoiceService.BulkExportReceivedIsdocAsync(isdocIds)
+                : await InvoiceService.BulkExportIsdocAsync(isdocIds);
             if (zipBytes != null && zipBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(zipBytes);
@@ -1082,7 +1181,7 @@
     private async Task BulkUbl()
     {
         var eligible = _selectedInvoices
-            .Where(i => i.Status != EInvoiceStatus.Draft && i.DocumentType != EDocumentType.Proforma)
+            .Where(i => i.Status != EInvoiceStatus.Draft && _policy.SupportsUbl)
             .ToList();
         if (eligible.Count == 0)
         {
@@ -1113,12 +1212,16 @@
 
     /// <summary>
     /// Opens the "Export do účetnictví" dialog (Pohoda/MoneyS3/AbraFlexi), pre-selected to
-    /// issued invoices only since we're on the Invoices page — the user can still tick
-    /// "include received" in the dialog if they want a combined export.
+    /// the side of the current list (issued or received) - the user can still tick the other
+    /// one in the dialog if they want a combined export.
     /// </summary>
     private async Task OpenAccountingExportDialog()
     {
-        var parameters = new DialogParameters { ["DefaultIncludeIssued"] = true, ["DefaultIncludeReceived"] = false };
+        var parameters = new DialogParameters
+        {
+            ["DefaultIncludeIssued"] = _policy.AccountingExportIncludeIssued,
+            ["DefaultIncludeReceived"] = _policy.AccountingExportIncludeReceived
+        };
         await DialogService.ShowAsync<AccountingExportDialog>(L["AccountingExport_Open"].Value, parameters);
     }
 
@@ -1146,25 +1249,106 @@
 
     // --- Helpers ---
 
-    private Color GetStatusColor(EInvoiceStatus status) => status switch
-    {
-        EInvoiceStatus.Draft => Color.Default,
-        EInvoiceStatus.Completed => Color.Info,
-        EInvoiceStatus.Paid => Color.Success,
-        EInvoiceStatus.Creditnoted => Color.Warning,
-        EInvoiceStatus.Deleted => Color.Dark,
-        _ => Color.Default
-    };
+    /// <summary>
+    /// A document is overdue when it is still (partly) unpaid - issued/approved or partially
+    /// paid - and its due date has passed. Drafts, paid and deleted documents never are.
+    /// </summary>
+    private static bool IsOverdue(InvoiceDto invoice) =>
+        invoice.Status is EInvoiceStatus.Completed or EInvoiceStatus.PartiallyPaid
+        && invoice.DueDate < DateTime.UtcNow;
 
-    private string GetStatusText(EInvoiceStatus status) => status switch
+    // --- Attachments (received invoices) ---
+
+    /// <summary>
+    /// Downloads attachments of one invoice from the grid row.
+    /// One attachment: direct download with the original file name and type.
+    /// Multiple attachments: one ZIP named by the invoice document number.
+    /// </summary>
+    private async Task DownloadAttachments(InvoiceDto invoice)
     {
-        EInvoiceStatus.Draft => L["Invoice_StatusDraft"].Value,
-        EInvoiceStatus.Completed => L["Invoice_StatusIssued"].Value,
-        EInvoiceStatus.Paid => L["Invoice_StatusPaid"].Value,
-        EInvoiceStatus.Creditnoted => L["Invoice_StatusCredited"].Value,
-        EInvoiceStatus.Deleted => L["Invoice_StatusDeleted"].Value,
-        _ => status.ToString()
-    };
+        _downloadingAttachments = true;
+        try
+        {
+            if (invoice.AttachmentCount == 1)
+            {
+                // Single file: fetch metadata to get the id + original name, then
+                // reuse the single-download endpoint (no pointless ZIP wrapping).
+                var attachments = await FileAttachmentService.GetByEntityAsync(_policy.AttachmentEntityName, invoice.Id);
+                var single = attachments.FirstOrDefault();
+                if (single is null)
+                {
+                    Snackbar.Add(L["ReceivedInvoice_NoAttachments"].Value, Severity.Warning);
+                    return;
+                }
+
+                var bytes = await FileAttachmentService.DownloadAsync(single.Id);
+                if (bytes is null) return;
+
+                await JS.InvokeVoidAsync("downloadFile",
+                    single.OriginalFileName, Convert.ToBase64String(bytes), single.ContentType);
+            }
+            else
+            {
+                var zipBytes = await FileAttachmentService.DownloadAllAsync(_policy.AttachmentEntityName, invoice.Id);
+                if (zipBytes is null) return;
+
+                var zipName = $"Prilohy_{invoice.DocumentNumber ?? invoice.Id.ToString()}.zip";
+                await JS.InvokeVoidAsync("downloadFile",
+                    zipName, Convert.ToBase64String(zipBytes), "application/zip");
+            }
+        }
+        catch (ApiException)
+        {
+            // 404 - attachments disappeared between grid load and click
+            Snackbar.Add(L["ReceivedInvoice_NoAttachments"].Value, Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _downloadingAttachments = false;
+        }
+    }
+
+    /// <summary>
+    /// Bulk downloads attachments of all selected invoices as one ZIP
+    /// (folder per invoice). Invoices without attachments are skipped.
+    /// </summary>
+    private async Task BulkDownloadAttachments()
+    {
+        var eligible = _selectedInvoices.Where(i => i.AttachmentCount > 0).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var zipBytes = await InvoiceService.BulkDownloadReceivedAttachmentsAsync(eligible.Select(i => i.Id));
+            if (zipBytes is not null)
+            {
+                await JS.InvokeVoidAsync("downloadFile",
+                    $"Prilohy_{DateTime.Now:yyyyMMdd}.zip", Convert.ToBase64String(zipBytes), "application/zip");
+            }
+        }
+        catch (ApiException)
+        {
+            Snackbar.Add(L["ReceivedInvoice_NoAttachments"].Value, Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _bulkProcessing = false;
+        }
+    }
 
     /// <summary>
     /// Returns a background-color CSS style for the row based on the client's display color.

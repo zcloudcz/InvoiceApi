@@ -713,7 +713,9 @@ Dvě možnosti:
 
 ### Stavy přijatých faktur
 
-Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
+Přijaté a vydané faktury sdílejí stejný přehled (stejné ovládání, sloupce se liší jen tím, co dává smysl: u přijatých je „Dodavatel" a sloupec „Přílohy", chybí e-mail a PDF). Filtrovat lze podle stavu ve sloupci „Stav" (řádek filtrů pod hlavičkou); samostatné výběrové pole nad gridem už není.
+
+Stavy: „Přijata" (koncept), „Schválena", „Částečně uhrazena" (je vidět jako štítek „Částečně uhrazeno"), „Zaplacena", „Smazána". Smazanou fakturu vrátíte tlačítkem **Obnovit** přímo v řádku přehledu. Splatnost schválené nebo částečně uhrazené faktury po termínu je zvýrazněná červeně (stejně u vydaných faktur).
 
 **Částečná úhrada:** platba nižší než zbývající částka přijatou fakturu už **neoznačí jako zaplacenou** — zůstane
 „Schválena" (s uhrazenou částkou) a jako „Zaplacena" se označí až po úhradě celé částky (další platbou).
@@ -727,12 +729,25 @@ ani v návrzích nenabízí a potvrzení párování aplikace odmítne - fakturu
 částečně uhrazené faktury; zruší spárované platby a faktura se vrátí do stavu „Schválena") a **Vrátit do konceptu**
 (u schválené faktury bez úhrady: „Schválena" → „Přijata"). Zaplacenou fakturu tedy zrušíte v pořadí: označit jako
 nezaplacenou → vrátit do konceptu → smazat (smazat lze jen fakturu ve stavu „Přijata"). U částečně uhrazené faktury
-tlačítko „Vrátit do konceptu" není, nejdřív je nutné zrušit úhradu. Akce **Obnovit** (smazaná → „Přijata") je zatím
-dostupná jen přes API; tlačítko v UI přibude v dalším kroku.
+tlačítko „Vrátit do konceptu" není, nejdřív je nutné zrušit úhradu. Akce **Obnovit** (smazaná → „Přijata") je v řádku přehledu;
+v detailu faktury je tlačítko **Obnovit** také.
 
-**Odmítnutí faktury:** akce **Odmítnout** (u faktury ve stavu „Přijata") nyní fakturu **smaže** — stav „Odmítnuta" už
+**Odmítnutí faktury:** v přehledu tlačítko Odmítnout už není - fakturu ve stavu „Přijata" **smažte** (ikona koše; hromadně přes „Smazat"). V detailu akce **Odmítnout** (u faktury ve stavu „Přijata") nyní fakturu **smaže** — stav „Odmítnuta" už
 neexistuje, odmítnutá faktura se chová jako smazaná a z přehledů zmizí. Dříve odmítnuté faktury byly při
 aktualizaci převedeny do stavu „Smazána".
+
+### Detail přijaté faktury
+
+Detail přijaté faktury (`/received-invoices/{id}`, nová: `/received-invoices/create`) je **stejný formulář jako u vydané faktury**; liší se jen tím, co dává smysl:
+
+- místo klienta je **Dodavatel** (povinný), číslo dokladu je **číslo od dodavatele** (zadáváte ručně, nepřidělí se z řady a jde později opravit), přibývá **Datum přijetí** (dnes);
+- **Měnu** vyberete ze seznamu jako u vydané faktury; variabilní symbol je libovolný text (až 50 znaků, nejen číslice);
+- bankovní účet, IBAN a SWIFT **dodavatele** se píší ručně;
+- nejsou tu řada dokladů, OSS, PDF, QR kód, e-faktura (UBL), odeslání e-mailem ani textové řádky položek; ISDOC stáhnete vždy (soubor `{číslo dodavatele}.isdoc`);
+- tlačítka podle stavu: Přijata - Upravit, Schválit, Smazat; Schválena - Upravit, Označit jako zaplaceno, Vrátit do konceptu; Částečně uhrazena - Upravit, Označit jako zaplaceno / nezaplaceno; Zaplacena - Označit jako nezaplaceno (s potvrzením); Smazána - Obnovit;
+- položky se upravují stejným editorem jako u vydané faktury. Sazba DPH, která není v číselníku (např. 15 %), se zobrazí tak, jak je uložena, a při uložení se nezmění.
+
+Panel **Platby** (u schválené, částečně uhrazené a zaplacené faktury, vydané i přijaté) ukazuje platby spárované právě s tímto dokladem. Ikona rozpojení platbu odpáruje (po potvrzení); pokud to systém odmítne (např. část úhrady jste označili ručně), zobrazí důvod - pak použijte "Označit jako nezaplaceno". Tlačítko "Spárovat ručně" je jen u vydaných faktur.
 
 ### Filtrování a řazení v gridu
 

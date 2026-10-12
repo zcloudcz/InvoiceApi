@@ -365,6 +365,27 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
+    /// ISDOC of ONE received invoice. Like the bulk variant below it stays on the legacy controller,
+    /// because the unified /api/invoice/{id}/isdoc is issued-only and refuses a received id.
+    /// </summary>
+    public async Task<byte[]?> ExportReceivedIsdocAsync(long id)
+        => await GetBytesAsync($"/api/received-invoice/{id}/isdoc");
+
+    /// <summary>
+    /// ISDOC ZIP for RECEIVED invoices. Received ISDOC stays on the legacy controller
+    /// (the unified /api/invoice/bulk/isdoc refuses received ids).
+    /// </summary>
+    public async Task<byte[]?> BulkExportReceivedIsdocAsync(IEnumerable<long> ids)
+        => await GetBytesAsync($"/api/received-invoice/bulk/isdoc?ids={string.Join(',', ids)}");
+
+    /// <summary>
+    /// ZIP with the attachments of several received invoices (folder per invoice).
+    /// Throws ApiException (404) when none of them has an attachment.
+    /// </summary>
+    public async Task<byte[]?> BulkDownloadReceivedAttachmentsAsync(IEnumerable<long> ids)
+        => await GetBytesAsync($"/api/received-invoice/bulk/attachments?ids={string.Join(',', ids)}");
+
+    /// <summary>
     /// Downloads a ZIP archive containing PDFs for multiple invoices.
     /// Returns the ZIP as a byte array for client-side download via JS interop.
     /// </summary>
@@ -424,7 +445,7 @@ public class FakvioService : ApiClientBase
     /// <summary>
     /// Downloads one XML export file containing issued and/or received invoices for a date range,
     /// formatted for the given accounting system. Used by the AccountingExportDialog shown from
-    /// both the Invoices and ReceivedInvoices pages.
+    /// both lists (/invoices and /received-invoices).
     /// </summary>
     public async Task<AccountingExportFile?> ExportAccountingAsync(
         EAccountingSystem system, DateTime from, DateTime to, bool includeIssued, bool includeReceived)
@@ -547,6 +568,18 @@ public class FakvioService : ApiClientBase
     public async Task<InvoiceDto?> CopyAsync(long id, bool shiftPeriods = true)
     {
         return await PostWithoutBodyAsync<InvoiceDto>($"/api/invoice/{id}/copy?shiftPeriods={shiftPeriods.ToString().ToLowerInvariant()}");
+    }
+
+    // ─── Payments of one document ────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the PaymentMatch rows linked to one document (issued or received) via
+    /// GET /api/invoice/{id}/payments. Each row carries its real <see cref="PaymentMatchDto.Id"/>,
+    /// which the unmatch call needs. Throws ApiException on a failed request so the panel can say so.
+    /// </summary>
+    public async Task<List<PaymentMatchDto>> GetPaymentsAsync(long id)
+    {
+        return await GetAsync<List<PaymentMatchDto>>($"/api/invoice/{id}/payments") ?? [];
     }
 
     // ─── Auto-match ──────────────────────────────────────────────────────────

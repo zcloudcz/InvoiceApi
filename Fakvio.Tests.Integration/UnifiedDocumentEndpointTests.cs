@@ -6,6 +6,7 @@ using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Tests.Integration.Fixtures;
 using Fakvio.Tests.Integration.Helpers;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 
@@ -89,6 +90,23 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         using var scope = _factory.Services.CreateScope();
         var row = scope.ServiceProvider.GetRequiredService<TenantDbContext>().Invoice.Single(i => i.Id == id);
         return (row.Status, row.DocumentNumber, row.Notes);
+    }
+
+    /// <summary>Adds one FileAttachment metadata row to a received document (the list only counts rows).</summary>
+    private void SeedReceivedAttachment(long recordId, string fileName)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+        tenantDb.FileAttachment.Add(new FileAttachment
+        {
+            EntityName = "ReceivedInvoice",
+            RecordId = recordId,
+            OriginalFileName = fileName,
+            ContentType = "application/pdf",
+            FileSizeBytes = 1,
+            BlobPath = $"{CompanyId}/{Guid.NewGuid()}.pdf"
+        });
+        tenantDb.SaveChanges();
     }
 
     private async Task<HttpClient> CreateAuthenticatedClientAsync()
@@ -209,6 +227,55 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         (await JsonOf(create)).GetProperty("variableSymbol").GetString().ShouldBe(SupplierSymbol);
     }
 
+    /// <summary>
+    /// The unified document page posts the FULL create/update DTO (null issued-only fields, isTextRow false, no rate id)
+    /// for a received invoice. Pins that exact shape: the supplier's free-text bank fields are stored, and an item
+    /// whose VAT percentage is not in the tenant's rate list (15 %, VatRateId null) keeps it through create AND update.
+    /// </summary>
+    [Fact]
+    public async Task ReceivedDocument_FromTheUnifiedPage_StoresFreeTextBankFields_AndKeepsAnOutOfListVatPercentage()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        object Item(string text) => new
+        {
+            orderIndex = 1, isTextRow = false, description = text, quantity = 1, unit = "ks", unitPrice = 1000,
+            vatRateId = (long?)null, vatRatePercentage = 15, vatRegime = (int)EVatRegime.Standard, reverseChargeCodeId = (long?)null
+        };
+
+        var create = await client.PostAsJsonAsync("/api/invoice", new
+        {
+            documentType = (int)EDocumentType.ReceivedInvoice, clientId = SupplierId, issuerId = 0, currencyId = CurrencyId,
+            customDocumentNumber = $"SUP-{Guid.NewGuid():N}"[..12], receivedDate = "2026-05-04T00:00:00Z",
+            variableSymbol = "INV-2026-0042", variableSymbolIsManualOverride = false,
+            bankAccountNumber = "123456789/0100", iban = "CZ6501000000000000000123", swift = "KOMBCZPP",
+            numberSequenceId = (long?)null, bankAccountId = (long?)null, applyOss = false, originalInvoiceId = (long?)null,
+            invoiceItem = new[] { Item("Odd rate") }
+        });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var created = await JsonOf(create);
+        var id = created.GetProperty("id").GetInt64();
+        created.GetProperty("totalWithVat").GetDecimal().ShouldBe(1150m);
+
+        var update = await client.PutAsJsonAsync($"/api/invoice/{id}", new
+        {
+            documentNumber = "SUP-RENAMED", receivedDate = "2026-05-05T00:00:00Z",
+            bankAccountNumber = "123456789/0100", iban = "CZ6501000000000000000123", swift = "KOMBCZPP",
+            invoiceItem = new[] { Item("Odd rate, saved again") }
+        });
+        update.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+        var row = db.Invoice.Include(i => i.InvoiceItem).Single(i => i.Id == id);
+        row.DocumentNumber.ShouldBe("SUP-RENAMED");
+        (row.BankAccountNumber, row.IBAN, row.SWIFT).ShouldBe(("123456789/0100", "CZ6501000000000000000123", "KOMBCZPP"));
+        var item = row.InvoiceItem.ShouldHaveSingleItem();
+        item.VatRateId.ShouldBeNull();
+        item.VatRatePercentage.ShouldBe(15m);
+        item.VatAmount.ShouldBe(150m);
+        row.TotalWithVat.ShouldBe(1150m);
+    }
+
     /// <summary>Issued documents keep the old rule, the old message and the old validation-400 shape.</summary>
     [Theory]
     [InlineData("INV-2026-0042")] // not digits
@@ -288,6 +355,59 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         result.GetProperty("successCount").GetInt32().ShouldBe(2);
         RowOf(received).Status.ShouldBe(EInvoiceStatus.Paid);
         RowOf(issued).Status.ShouldBe(EInvoiceStatus.Paid);
+    }
+
+    // The unified grid (Invoices.razor on /received-invoices, #542) drives a received list through these bulk routes.
+
+    [Fact]
+    public async Task BulkComplete_ApprovesDraftReceivedDocuments()
+    {
+        var draft = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var client = await CreateAuthenticatedClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/invoice/bulk/complete", new { invoiceIds = new[] { draft } });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await JsonOf(response)).GetProperty("successCount").GetInt32().ShouldBe(1);
+        RowOf(draft).Status.ShouldBe(EInvoiceStatus.Completed); // "approved"
+    }
+
+    [Fact]
+    public async Task BulkDelete_DeletesDraftReceivedDocuments_AndReportsTheOnesThatCannotBeDeleted()
+    {
+        var draft = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var completed = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Completed); // a received document needs a revert first
+        var client = await CreateAuthenticatedClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/invoice/bulk/delete", new { invoiceIds = new[] { draft, completed } });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var result = await JsonOf(response);
+        result.GetProperty("successCount").GetInt32().ShouldBe(1);
+        result.GetProperty("failedCount").GetInt32().ShouldBe(1);
+        RowOf(draft).Status.ShouldBe(EInvoiceStatus.Deleted);
+        RowOf(completed).Status.ShouldBe(EInvoiceStatus.Completed);
+    }
+
+    [Fact]
+    public async Task PagedList_WithDocumentTypeReceivedInvoice_ReturnsReceivedRowsWithAttachmentCount()
+    {
+        var withFiles = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var withoutFiles = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var issued = SeedDoc(EDocumentType.Invoice, EInvoiceStatus.Draft);
+        SeedReceivedAttachment(withFiles, "a.pdf");
+        SeedReceivedAttachment(withFiles, "b.pdf");
+        var client = await CreateAuthenticatedClientAsync();
+
+        // The grid sends the singular "DocumentType" filter by name.
+        var list = await JsonOf(await client.GetAsync("/api/invoice/paged?pageSize=100&DocumentType=ReceivedInvoice"));
+
+        var rows = list.GetProperty("items").EnumerateArray().ToDictionary(r => r.GetProperty("id").GetInt64());
+        rows.ShouldContainKey(withFiles);
+        rows.ShouldContainKey(withoutFiles);
+        rows.ShouldNotContainKey(issued);
+        rows[withFiles].GetProperty("attachmentCount").GetInt32().ShouldBe(2);
+        rows[withoutFiles].GetProperty("attachmentCount").GetInt32().ShouldBe(0);
     }
 
     [Fact]

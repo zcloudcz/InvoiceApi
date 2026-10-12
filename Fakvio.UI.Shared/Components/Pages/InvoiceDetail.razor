@@ -1,5 +1,7 @@
 @page "/invoices/create"
 @page "/invoices/{Id:long}"
+@page "/received-invoices/create"
+@page "/received-invoices/{Id:long}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using Fakvio.Contracts.Dto.Alert
 @using Fakvio.Contracts.Dto.Invoice
@@ -9,6 +11,7 @@
 @using Fakvio.Contracts.Common
 @using Fakvio.Contracts.Dto.ContentTemplate
 @using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Models
 @inject AlertApiService AlertService
 @inject FakvioService InvoiceService
 @inject ClientApiService ClientService
@@ -21,8 +24,11 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
+@implements IDisposable
 
-@* Dynamic page title — adapts to document type in both create and view mode *@
+@* Dynamic page title — adapts to document type in both create and view mode.
+   ONE page serves the issued types (/invoices/...) and received invoices (/received-invoices/...); every
+   difference between them comes from DocumentTypeUiPolicy (_policy), not from checks in this markup. *@
 <PageTitle>@GetPageTitle()</PageTitle>
 
 @* Warn user before navigating away from dirty forms (create or edit mode) *@
@@ -59,27 +65,31 @@ else if (_isCreateMode)
             <MudCard Elevation="2" Class="mb-4">
                 <MudCardHeader>
                     <CardHeaderContent>
-                        <MudText Typo="Typo.h6">@L["Invoice_Detail"]</MudText>
+                        <MudText Typo="Typo.h6">@L[InfoCardTitleKey]</MudText>
                     </CardHeaderContent>
                 </MudCardHeader>
                 <MudCardContent>
-                    @* Client selector — reactive: auto-fills billing params from client settings *@
+                    @* Client (received: supplier) selector — reactive: auto-fills billing params from client settings *@
                     <MudSelect T="long?" Value="@(_createDto.ClientId > 0 ? (long?)_createDto.ClientId : null)"
                                ValueChanged="@((long? v) => OnClientChanged(v ?? 0))"
-                               Placeholder="@L["Invoice_SelectClient"].Value" Strict="true"
-                               Label="@L["Invoice_Client"].Value" Required="true" Class="mb-3">
+                               Placeholder="@(_policy.IsReceived ? null : L["Invoice_SelectClient"].Value)" Strict="true"
+                               Label="@L[_policy.CounterpartyLabelKey].Value" Required="true" Class="mb-3">
                         @foreach (var client in _allClients)
                         {
                             <MudSelectItem T="long?" Value="@((long?)client.Id)">@client.CompanyName</MudSelectItem>
                         }
                     </MudSelect>
-                    @* Document type selector — all supported types *@
-                    <MudSelect T="EDocumentType" Value="_createDto.DocumentType" ValueChanged="OnDocumentTypeChanged" Label="@L["Template_DocumentType"].Value" Class="mb-3">
-                        <MudSelectItem Value="@EDocumentType.Invoice">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
-                        <MudSelectItem Value="@EDocumentType.CreditNote">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
-                        <MudSelectItem Value="@EDocumentType.Proforma">@L["Template_DocumentTypeProforma"]</MudSelectItem>
-                        <MudSelectItem Value="@EDocumentType.TaxReceiptForAdvance">@L["Template_DocumentTypeTaxReceiptForAdvance"]</MudSelectItem>
-                    </MudSelect>
+                    @* Document type selector — the four issued types. Not shown for a received invoice: its type
+                       is fixed by the url (/received-invoices/create). *@
+                    @if (!_policy.IsReceived)
+                    {
+                        <MudSelect T="EDocumentType" Value="_createDto.DocumentType" ValueChanged="OnDocumentTypeChanged" Label="@L["Template_DocumentType"].Value" Class="mb-3">
+                            <MudSelectItem Value="@EDocumentType.Invoice">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
+                            <MudSelectItem Value="@EDocumentType.CreditNote">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
+                            <MudSelectItem Value="@EDocumentType.Proforma">@L["Template_DocumentTypeProforma"]</MudSelectItem>
+                            <MudSelectItem Value="@EDocumentType.TaxReceiptForAdvance">@L["Template_DocumentTypeTaxReceiptForAdvance"]</MudSelectItem>
+                        </MudSelect>
+                    }
                     @* Original invoice selector — only shown for credit notes *@
                     @if (_createDto.DocumentType == EDocumentType.CreditNote)
                     {
@@ -100,11 +110,22 @@ else if (_isCreateMode)
                     </MudSelect>
                     @* Document number — shows preview of next auto-generated number as placeholder.
                        Leave empty for auto-generation (recommended), or type a custom number. *@
-                    <MudTextField @bind-Value="_createDto.CustomDocumentNumber"
-                                  Label="@L["Invoice_DocumentNumber"].Value"
-                                  Placeholder="@_documentNumberPreview"
-                                  HelperText="@L["Invoice_AutoGeneratedHint"].Value"
-                                  Class="mb-3" />
+                    @if (_policy.UsesNumberSequence)
+                    {
+                        <MudTextField @bind-Value="_createDto.CustomDocumentNumber"
+                                      Label="@L["Invoice_DocumentNumber"].Value"
+                                      Placeholder="@_documentNumberPreview"
+                                      HelperText="@L["Invoice_AutoGeneratedHint"].Value"
+                                      Class="mb-3" />
+                    }
+                    else
+                    {
+                        @* Received: the supplier's own number, free text, never generated (no sequence preview). *@
+                        <MudTextField @bind-Value="_createDto.CustomDocumentNumber"
+                                      Label="@L["Invoice_DocumentNumber"].Value"
+                                      MaxLength="100"
+                                      Class="mb-3" />
+                    }
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -122,7 +143,11 @@ else if (_isCreateMode)
                     <MudDatePicker Date="_createIssueDate"
                                    DateChanged="@(d => OnIssueDateChanged(d))"
                                    Label="@L["Table_IssueDate"].Value" Required="true" Class="mb-3" />
-                    <MudDatePicker @bind-Date="_createDueDate" Label="@L["Table_DueDate"].Value" Required="true" Class="mb-3" />
+                    @if (_policy.HasReceivedDate)
+                    {
+                        <MudDatePicker @bind-Date="_createReceivedDate" Label="@L["ReceivedInvoice_ReceivedDate"].Value" Class="mb-3" />
+                    }
+                    <MudDatePicker @bind-Date="_createDueDate" Label="@L["Table_DueDate"].Value" Required="@(!_policy.IsReceived)" Class="mb-3" />
                     <MudDatePicker @bind-Date="_createTaxableSupplyDate" Label="@L["Invoice_TaxableSupplyDate"].Value" Class="mb-3" />
                 </MudCardContent>
             </MudCard>
@@ -147,18 +172,38 @@ else if (_isCreateMode)
                        If the user types a custom value it is treated as a manual override:
                        VariableSymbolIsManualOverride is set to true so the backend preserves it instead of
                        re-deriving VS from the generated DocumentNumber (issue #107). *@
-                    <MudTextField Value="_createDto.VariableSymbol"
-                                  ValueChanged="@((string? v) => { _createDto.VariableSymbol = v; _createDto.VariableSymbolIsManualOverride = !string.IsNullOrEmpty(v); })"
-                                  Label="@L["Invoice_VariableSymbol"].Value"
-                                  Placeholder="@_variableSymbolPreview"
-                                  MaxLength="10" Validation="@(new Func<string?, string?>(ValidateVariableSymbol))"
-                                  HelperText="@L["Invoice_VSDigitsOnly"].Value" Class="mb-3" />
-                    @* Bank account selector — shows issuer's accounts from the 1:N BankAccount collection.
-                       On selection, populates BankAccountNumber/IBAN/SWIFT on the create DTO. *@
-                    <BankAccountSelect BankAccounts="_issuerBankAccounts"
-                                       SelectedAccountId="_selectedBankAccountId"
-                                       OnBankAccountSelected="OnBankAccountSelected"
-                                       Label="@L["BankAccount_SelectAccount"].Value" />
+                    @if (_policy.ValidatesVariableSymbolAsDigits)
+                    {
+                        <MudTextField Value="_createDto.VariableSymbol"
+                                      ValueChanged="@((string? v) => { _createDto.VariableSymbol = v; _createDto.VariableSymbolIsManualOverride = !string.IsNullOrEmpty(v); })"
+                                      Label="@L["Invoice_VariableSymbol"].Value"
+                                      Placeholder="@_variableSymbolPreview"
+                                      MaxLength="10" Validation="@(new Func<string?, string?>(ValidateVariableSymbol))"
+                                      HelperText="@L["Invoice_VSDigitsOnly"].Value" Class="mb-3" />
+                    }
+                    else
+                    {
+                        @* Received: the supplier's variable symbol is free text (up to 50 characters, the API limit). *@
+                        <MudTextField @bind-Value="_createDto.VariableSymbol"
+                                      Label="@L["Invoice_VariableSymbol"].Value"
+                                      MaxLength="50" Class="mb-3" />
+                    }
+                    @if (_policy.UsesIssuerBankAccountSelect)
+                    {
+                        @* Bank account selector — shows issuer's accounts from the 1:N BankAccount collection.
+                           On selection, populates BankAccountNumber/IBAN/SWIFT on the create DTO. *@
+                        <BankAccountSelect BankAccounts="_issuerBankAccounts"
+                                           SelectedAccountId="_selectedBankAccountId"
+                                           OnBankAccountSelected="OnBankAccountSelected"
+                                           Label="@L["BankAccount_SelectAccount"].Value" />
+                    }
+                    else
+                    {
+                        @* Received: the SUPPLIER's account is typed in (it is not one of our own accounts). *@
+                        <MudTextField @bind-Value="_createDto.BankAccountNumber" Label="@L["Invoice_BankAccount"].Value" MaxLength="100" Class="mb-3" />
+                        <MudTextField @bind-Value="_createDto.IBAN" Label="IBAN" MaxLength="50" Class="mb-3" />
+                        <MudTextField @bind-Value="_createDto.SWIFT" Label="SWIFT" MaxLength="50" Class="mb-3" />
+                    }
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -173,6 +218,7 @@ else if (_isCreateMode)
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">@string.Format(L["Oss_ApplyHint"].Value, _createOssEligible)</MudText>
             }
             <InvoiceItemEditor Items="_createDto.InvoiceItem" OssCountryCode="@(_createApplyOss ? _createOssEligible : null)" RateDate="_createTaxableSupplyDate"
+                               IsReceived="_policy.IsReceived"
                                ItemsChanged="@(items => _createDto.InvoiceItem = items)" />
         </MudItem>
 
@@ -189,13 +235,13 @@ else
     <div class="d-flex flex-wrap align-center gap-2 mb-4">
         <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" Title="@L["Btn_Back"].Value" />
         <MudText Typo="Typo.h4" Class="mr-2">
-            @(_invoice!.DocumentNumber ?? L["Invoice_Draft"].Value)
+            @(_invoice!.DocumentNumber ?? (_policy.IsReceived ? $"#{_invoice.Id}" : L["Invoice_Draft"].Value))
         </MudText>
-        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_invoice?.Status ?? EInvoiceStatus.Draft)">
-            @GetStatusText(_invoice.Status)
+        <MudChip T="string" Size="Size.Small" Color="@DocumentTypeUiPolicy.StatusColor(_invoice.Status)">
+            @L[_policy.StatusLabelKey(_invoice.Status)]
         </MudChip>
         @* Email sent indicator — shows a chip with sent date if invoice was emailed *@
-        @if (_invoice.IsSentByEmail)
+        @if (_policy.ShowsEmailSentColumn && _invoice.IsSentByEmail)
         {
             <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.MarkEmailRead">
                 @L["Invoice_EmailSentAt"] @_invoice.LastSentByEmailAt?.ToShortDateString()
@@ -204,27 +250,33 @@ else
         <MudSpacer />
 
         @* Action buttons depending on status *@
-        @if (_invoice.Status == EInvoiceStatus.Draft && !_isEditing)
+        @* Which button is offered in which status is decided by the policy for BOTH sides (issued and received). *@
+        @if (_policy.CanEdit(_invoice.Status) && !_isEditing)
         {
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
                        OnClick="EnableEditing">@L["Btn_Edit"]</MudButton>
+        }
+        @if (_policy.CanComplete(_invoice.Status) && !_isEditing)
+        {
+            @* Issue (issued documents) / approve (received invoices) *@
             <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Send"
-                       OnClick="IssueInvoice">@L["Invoice_Issue"]</MudButton>
+                       OnClick="IssueInvoice">@L[_policy.CompleteLabelKey]</MudButton>
+        }
+        @if (_policy.CanDelete(_invoice.Status) && !_isEditing)
+        {
+            @* A draft deletes outright; an issued Completed document only when it is the last number (the server decides). *@
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
                        OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
         }
-        @* Completed invoice: revert to draft (for full editing) + delete (if last in sequence) *@
-        @if (_invoice.Status == EInvoiceStatus.Completed)
+        @* Completed invoice: revert to draft (for full editing) *@
+        @if (_policy.CanRevertToDraft(_invoice.Status) && !_isEditing)
         {
             <MudButton Variant="Variant.Outlined" Color="Color.Warning"
                        StartIcon="@Icons.Material.Filled.Undo"
                        OnClick="RevertToDraft">@L["Invoice_RevertToDraft"]</MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Error"
-                       StartIcon="@Icons.Material.Filled.Delete"
-                       OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
         }
         @* Restore button — only visible for deleted invoices, allows undoing accidental deletes *@
-        @if (_invoice.Status == EInvoiceStatus.Deleted)
+        @if (_policy.CanRestore(_invoice.Status))
         {
             <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.RestoreFromTrash"
                        OnClick="RestoreInvoice">@L["Invoice_Restore"]</MudButton>
@@ -235,53 +287,63 @@ else
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
                        Disabled="_saving" OnClick="SaveInvoice">@L["Btn_Save"]</MudButton>
         }
-        @if (_invoice.Status == EInvoiceStatus.Completed)
+        @if (_policy.CanMarkPaid(_invoice.Status) && !_isEditing)
         {
             <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check"
                        OnClick="MarkAsPaid">@L["Invoice_MarkAsPaid"]</MudButton>
         }
-        @if (_invoice.Status == EInvoiceStatus.Paid)
+        @if (_policy.CanMarkUnpaid(_invoice.Status) && !_isEditing)
         {
-            @* Visible only when the invoice is in Paid status — lets the user revert an accidental payment mark. *@
+            @* Visible only when the invoice is paid (received: also partially paid) — lets the user revert an accidental payment mark. *@
             <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.MoneyOff"
                        OnClick="MarkAsUnpaid">@L["Invoice_MarkAsUnpaid"]</MudButton>
         }
         @* PDF download with template selection — split button: primary = default, dropdown = template list *@
-        <MudButtonGroup OverrideStyles="false">
-            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.PictureAsPdf"
-                       OnClick="DownloadPdf">@L["Btn_ExportPdf"]</MudButton>
-            @if (_pdfTemplates.Count > 0)
-            {
-                <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown" Variant="Variant.Outlined" Color="Color.Secondary">
-                    @foreach (var tmpl in _pdfTemplates)
-                    {
-                        <MudMenuItem OnClick="@(() => DownloadPdfWithTemplate(tmpl.Id))">@tmpl.Name</MudMenuItem>
-                    }
-                </MudMenu>
-            }
-        </MudButtonGroup>
-        @* ISDOC download — disabled for Draft invoices because an unissued invoice has no legal ISDOC to export *@
+        @if (_policy.SupportsPdf)
+        {
+            <MudButtonGroup OverrideStyles="false">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                           OnClick="DownloadPdf">@L["Btn_ExportPdf"]</MudButton>
+                @if (_pdfTemplates.Count > 0)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown" Variant="Variant.Outlined" Color="Color.Secondary">
+                        @foreach (var tmpl in _pdfTemplates)
+                        {
+                            <MudMenuItem OnClick="@(() => DownloadPdfWithTemplate(tmpl.Id))">@tmpl.Name</MudMenuItem>
+                        }
+                    </MudMenu>
+                }
+            </MudButtonGroup>
+        }
+        @* ISDOC download — disabled for Draft issued documents because an unissued invoice has no legal ISDOC to export;
+           a received invoice is already final, so it has no status restriction (IsdocSkipsDrafts). *@
         <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
                    StartIcon="@Icons.Material.Filled.Download"
-                   Disabled="@(_invoice.Status == EInvoiceStatus.Draft)"
+                   Disabled="@(_invoice.Status == EInvoiceStatus.Draft && _policy.IsdocSkipsDrafts)"
                    OnClick="DownloadIsdoc">@L["Btn_ExportIsdoc"]</MudButton>
         @* UBL / Peppol eInvoice download (ADR 0002, F1.6) — disabled for Draft (nothing issued
            yet) and Proforma (not a tax document, [FAQ] I/34); UblExportService's own pre-flight
            still gates finer-grained problems (missing Peppol ID, incomplete address, …), shown
            via the issues list on failure instead of a generic error. *@
-        <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
-                   StartIcon="@Icons.Material.Filled.Download"
-                   Disabled="@(_invoice.Status == EInvoiceStatus.Draft || _invoice.DocumentType == EDocumentType.Proforma)"
-                   OnClick="DownloadUbl">@L["Btn_ExportUbl"]</MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Email"
-                   OnClick="OpenSendEmailDialog">@L["Btn_SendEmail"]</MudButton>
+        @if (!_policy.IsReceived)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Disabled="@(!_policy.CanExportUbl(_invoice.Status))"
+                       OnClick="DownloadUbl">@L["Btn_ExportUbl"]</MudButton>
+        }
+        @if (_policy.SupportsEmail)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Email"
+                       OnClick="OpenSendEmailDialog">@L["Btn_SendEmail"]</MudButton>
+        }
     </div>
 
     @* Readiness banner (issue #215) — only while the document is still a Draft, because that
        is the state in which the "Vystavit" button below is one click away from the API's
        TENANT_NOT_READY refusal (issue #206). Scoped to this document's issuer so an unrelated
        second company with incomplete settings does not raise a false alarm here. *@
-    @if (_invoice.Status == EInvoiceStatus.Draft)
+    @if (_invoice.Status == EInvoiceStatus.Draft && _policy.SupportsReadinessBanner)
     {
         <ReadinessBanner IssuerId="@(_invoice.IssuerId > 0 ? _invoice.IssuerId : (long?)null)" />
     }
@@ -324,18 +386,29 @@ else
                 <MudCard Elevation="2" Class="mb-4">
                     <MudCardHeader>
                         <CardHeaderContent>
-                            <MudText Typo="Typo.h6">@L["Invoice_Detail"]</MudText>
+                            <MudText Typo="Typo.h6">@L[InfoCardTitleKey]</MudText>
                         </CardHeaderContent>
                     </MudCardHeader>
                     <MudCardContent>
-                        @* Document number — readonly, cannot be changed after creation *@
-                        <MudTextField Value="@_invoice.DocumentNumber" Label="@L["Invoice_DocumentNumber"].Value" ReadOnly="true" Class="mb-3" />
-                        @* Client and issuer — readonly after creation *@
-                        <MudTextField Value="@_invoice.ClientName" Label="@L["Invoice_Client"].Value" ReadOnly="true" Class="mb-3" />
-                        <MudTextField Value="@_invoice.IssuerName" Label="@L["Invoice_Issuer"].Value" ReadOnly="true" Class="mb-3" />
-                        @* Document type — readonly (all types) *@
-                        <MudTextField Value="@GetDocumentTypeLabel(_invoice.DocumentType)"
-                                      Label="@L["Template_DocumentType"].Value" ReadOnly="true" Class="mb-3" />
+                        @if (_policy.UsesNumberSequence)
+                        {
+                            @* Document number — readonly, cannot be changed after creation *@
+                            <MudTextField Value="@_invoice.DocumentNumber" Label="@L["Invoice_DocumentNumber"].Value" ReadOnly="true" Class="mb-3" />
+                        }
+                        else
+                        {
+                            @* Received: the supplier's own number, a correction is allowed (sent as DocumentNumber on save). *@
+                            <MudTextField @bind-Value="_editDto.DocumentNumber" Label="@L["Invoice_DocumentNumber"].Value" MaxLength="100" Class="mb-3" />
+                        }
+                        @* Client (received: supplier) and issuer — readonly after creation *@
+                        <MudTextField Value="@_invoice.ClientName" Label="@L[_policy.CounterpartyLabelKey].Value" ReadOnly="true" Class="mb-3" />
+                        @if (!_policy.IsReceived)
+                        {
+                            <MudTextField Value="@_invoice.IssuerName" Label="@L["Invoice_Issuer"].Value" ReadOnly="true" Class="mb-3" />
+                            @* Document type — readonly (all issued types) *@
+                            <MudTextField Value="@GetDocumentTypeLabel(_invoice.DocumentType)"
+                                          Label="@L["Template_DocumentType"].Value" ReadOnly="true" Class="mb-3" />
+                        }
                         @* Currency — readonly (changing currency on existing invoice is risky) *@
                         <MudTextField Value="@($"{_invoice.CurrencyCode} ({_invoice.CurrencySymbol})")"
                                       Label="@L["Template_Currency"].Value" ReadOnly="true" Class="mb-3" />
@@ -359,6 +432,10 @@ else
                     </MudCardHeader>
                     <MudCardContent>
                         <MudDatePicker @bind-Date="_editIssueDate" Label="@L["Table_IssueDate"].Value" Class="mb-3" />
+                        @if (_policy.HasReceivedDate)
+                        {
+                            <MudDatePicker @bind-Date="_editReceivedDate" Label="@L["ReceivedInvoice_ReceivedDate"].Value" Class="mb-3" />
+                        }
                         <MudDatePicker @bind-Date="_editDueDate" Label="@L["Table_DueDate"].Value" Class="mb-3" />
                         <MudDatePicker @bind-Date="_editTaxableSupplyDate" Label="@L["Invoice_TaxableSupplyDate"].Value" Class="mb-3" />
                     </MudCardContent>
@@ -379,14 +456,32 @@ else
                                     NullableValueChanged="@(v => _editDto.PaymentMethod = v)"
                                     Label="@L["Invoice_PaymentMethod"].Value"
                                     Nullable="true" />
-                        <MudTextField @bind-Value="_editDto.VariableSymbol" Label="@L["Invoice_VariableSymbol"].Value"
-                                      MaxLength="10" Validation="@(new Func<string?, string?>(ValidateVariableSymbol))"
-                                      HelperText="@L["Invoice_VSDigitsOnly"].Value" Class="mb-3" />
-                        @* Bank account selector — shows issuer's accounts for editing *@
-                        <BankAccountSelect BankAccounts="_issuerBankAccounts"
-                                           SelectedAccountId="_selectedBankAccountId"
-                                           OnBankAccountSelected="OnEditBankAccountSelected"
-                                           Label="@L["BankAccount_SelectAccount"].Value" />
+                        @if (_policy.ValidatesVariableSymbolAsDigits)
+                        {
+                            <MudTextField @bind-Value="_editDto.VariableSymbol" Label="@L["Invoice_VariableSymbol"].Value"
+                                          MaxLength="10" Validation="@(new Func<string?, string?>(ValidateVariableSymbol))"
+                                          HelperText="@L["Invoice_VSDigitsOnly"].Value" Class="mb-3" />
+                        }
+                        else
+                        {
+                            <MudTextField @bind-Value="_editDto.VariableSymbol" Label="@L["Invoice_VariableSymbol"].Value"
+                                          MaxLength="50" Class="mb-3" />
+                        }
+                        @if (_policy.UsesIssuerBankAccountSelect)
+                        {
+                            @* Bank account selector — shows issuer's accounts for editing *@
+                            <BankAccountSelect BankAccounts="_issuerBankAccounts"
+                                               SelectedAccountId="_selectedBankAccountId"
+                                               OnBankAccountSelected="OnEditBankAccountSelected"
+                                               Label="@L["BankAccount_SelectAccount"].Value" />
+                        }
+                        else
+                        {
+                            @* Received: the supplier's account as free text *@
+                            <MudTextField @bind-Value="_editDto.BankAccountNumber" Label="@L["Invoice_BankAccount"].Value" MaxLength="100" Class="mb-3" />
+                            <MudTextField @bind-Value="_editDto.IBAN" Label="IBAN" MaxLength="50" Class="mb-3" />
+                            <MudTextField @bind-Value="_editDto.SWIFT" Label="SWIFT" MaxLength="50" Class="mb-3" />
+                        }
                     </MudCardContent>
                 </MudCard>
             </MudItem>
@@ -401,6 +496,7 @@ else
                     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">@string.Format(L["Oss_ApplyHint"].Value, _editOssEligible)</MudText>
                 }
                 <InvoiceItemEditor Items="_editItems" OssCountryCode="@(_editApplyOss ? _editOssEligible : null)" RateDate="_invoice.TaxableSupplyDate"
+                                   IsReceived="_policy.IsReceived"
                                    ItemsChanged="@(items => _editItems = items)" />
             </MudItem>
 
@@ -419,7 +515,7 @@ else
                 <MudCard Elevation="2" Class="mb-4">
                     <MudCardHeader>
                         <CardHeaderContent>
-                            <MudText Typo="Typo.h6">@L["Invoice_Detail"]</MudText>
+                            <MudText Typo="Typo.h6">@L[InfoCardTitleKey]</MudText>
                         </CardHeaderContent>
                     </MudCardHeader>
                     <MudCardContent>
@@ -428,14 +524,23 @@ else
                                 <strong>@L["Invoice_DocumentNumber"]:</strong> @_invoice.DocumentNumber
                             </MudListItem>
                             <MudListItem T="string" Icon="@Icons.Material.Filled.Business">
-                                <strong>@L["Invoice_Client"]:</strong> @_invoice.ClientName
+                                <strong>@L[_policy.CounterpartyLabelKey]:</strong> @_invoice.ClientName
                             </MudListItem>
-                            <MudListItem T="string" Icon="@Icons.Material.Filled.AccountBalance">
-                                <strong>@L["Invoice_Issuer"]:</strong> @_invoice.IssuerName
-                            </MudListItem>
+                            @if (!_policy.IsReceived)
+                            {
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.AccountBalance">
+                                    <strong>@L["Invoice_Issuer"]:</strong> @_invoice.IssuerName
+                                </MudListItem>
+                            }
                             <MudListItem T="string" Icon="@Icons.Material.Filled.CalendarToday">
                                 <strong>@L["Table_IssueDate"]:</strong> @_invoice.IssueDate?.ToShortDateString()
                             </MudListItem>
+                            @if (_policy.HasReceivedDate && _invoice.ReceivedDate.HasValue)
+                            {
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.MoveToInbox">
+                                    <strong>@L["ReceivedInvoice_ReceivedDate"]:</strong> @_invoice.ReceivedDate.Value.ToShortDateString()
+                                </MudListItem>
+                            }
                             <MudListItem T="string" Icon="@Icons.Material.Filled.Event">
                                 <strong>@L["Table_DueDate"]:</strong> @_invoice.DueDate?.ToShortDateString()
                             </MudListItem>
@@ -499,6 +604,12 @@ else
                                     <strong>IBAN:</strong> @_invoice.IBAN
                                 </MudListItem>
                             }
+                            @if (_policy.HasFreeTextSupplierBankFields && !string.IsNullOrEmpty(_invoice.SWIFT))
+                            {
+                                <MudListItem T="string">
+                                    <strong>SWIFT:</strong> @_invoice.SWIFT
+                                </MudListItem>
+                            }
                             <MudListItem T="string" Icon="@Icons.Material.Filled.CurrencyExchange">
                                 <strong>@L["Template_Currency"]:</strong> @_invoice.CurrencyCode (@_invoice.CurrencySymbol)
                             </MudListItem>
@@ -549,9 +660,9 @@ else
                 </MudCard>
             </MudItem>
 
-            @* Full-width: Payments panel — progress bar + matched payments + manual match button.
-               Wired only for invoices that have been issued (Completed / PartiallyPaid / Paid).
-               Drafts and credit notes don't show this section. *@
+            @* Full-width: Payments panel — progress bar + matched payments + manual match button (issued only).
+               Wired only for documents that have been issued/approved (Completed / PartiallyPaid / Paid),
+               on both sides. Drafts and credit notes don't show this section. *@
             @if (_invoice.Status == EInvoiceStatus.Completed
                  || _invoice.Status == EInvoiceStatus.PartiallyPaid
                  || _invoice.Status == EInvoiceStatus.Paid)
@@ -692,6 +803,11 @@ else
                         {
                             <MudTh Style="text-align:right">@L["InvoiceItem_VatRate"]</MudTh>
                         }
+                        @if (_policy.IsReceived)
+                        {
+                            @* VAT regime (standard / reverse charge / exempt ...) matters on a supplier invoice *@
+                            <MudTh>@L["InvoiceItem_VatRegime"]</MudTh>
+                        }
                         <MudTh Style="text-align:right">@L["InvoiceItem_Total"]</MudTh>
                     </HeaderContent>
                     <RowTemplate>
@@ -703,6 +819,10 @@ else
                         @if (IssuerIsVatPayer)
                         {
                             <MudTd Style="text-align:right">@context.VatRatePercentage.ToString("N0")%</MudTd>
+                        }
+                        @if (_policy.IsReceived)
+                        {
+                            <MudTd>@L[$"EVatRegime_{context.VatRegime}"]</MudTd>
                         }
                         <MudTd Style="text-align:right"><strong>@context.TotalWithVat.ToString("N2")</strong></MudTd>
                     </RowTemplate>
@@ -723,7 +843,7 @@ else
             }
 
             @* QR code section — QR Platba+F (payment + invoice) or QR Faktura (invoice only) *@
-            @if (_invoice.Status != EInvoiceStatus.Draft)
+            @if (_invoice.Status != EInvoiceStatus.Draft && _policy.SupportsQr)
             {
                 <MudItem xs="12" md="4">
                     <MudCard Elevation="2" Class="mt-2">
@@ -765,7 +885,7 @@ else
     }
 
     @* File attachments — entity-agnostic component, works for any entity *@
-    <FileAttachmentManager EntityName="Invoice"
+    <FileAttachmentManager EntityName="@_policy.AttachmentEntityName"
                            RecordId="_invoice.Id" />
 
     @* ── "Issue Final Invoice" dialog — shown from the proforma detail page ── *@
@@ -823,8 +943,9 @@ else
 
 @code {
     /// <summary>
-    /// Route parameter — invoice ID from URL.
-    /// Id == 0 means create mode (/invoices/create), Id > 0 means view/edit mode (/invoices/{id}).
+    /// Route parameter — document ID from URL.
+    /// Id == 0 means create mode (/invoices/create or /received-invoices/create), Id > 0 means
+    /// view/edit mode (/invoices/{id} or /received-invoices/{id}).
     /// </summary>
     [Parameter] public long Id { get; set; }
 
@@ -886,6 +1007,8 @@ else
     private DateTime? _createIssueDate = DateTime.UtcNow.Date;
     private DateTime? _createDueDate = DateTime.UtcNow.Date.AddDays(14);
     private DateTime? _createTaxableSupplyDate = DateTime.UtcNow.Date;
+    // Received invoice only: the day the supplier's invoice arrived (defaults to today on create).
+    private DateTime? _createReceivedDate;
     private List<ClientDto> _allClients = new();
     private List<CurrencyDto> _currencies = new();
     private ClientDto? _issuer;
@@ -894,7 +1017,27 @@ else
     /// A non-VAT payer's invoice shows no VAT rate column and no VAT totals.
     /// Unknown issuer (still loading / failed) = show VAT, i.e. today's behaviour.
     /// </summary>
-    private bool IssuerIsVatPayer => _issuer?.IsVatPayer ?? true;
+    private bool IssuerIsVatPayer => !_policy.HidesVatForNonVatPayerIssuer || (_issuer?.IsVatPayer ?? true);
+
+    // True while the url is a /received-invoices/... one. The url FIXES the type in create mode and tells which
+    // side to expect while a document is loading; set synchronously in OnParametersSetAsync before the first await.
+    private bool _receivedRoute;
+
+    /// <summary>Policy for a type; a type the policy does not know (e.g. an unset DTO default) is treated as an invoice.</summary>
+    private static DocumentTypeUiPolicy PolicyFor(EDocumentType type) =>
+        DocumentTypeUiPolicy.For(Enum.IsDefined(type) ? type : EDocumentType.Invoice);
+
+    /// <summary>
+    /// THE source of every per-type decision on this page. Create mode: the type of the form being filled
+    /// (received on /received-invoices/create); view mode: the loaded document's own type, and until it is
+    /// loaded the side the url belongs to.
+    /// </summary>
+    private DocumentTypeUiPolicy _policy => _isCreateMode
+        ? PolicyFor(_createDto.DocumentType)
+        : PolicyFor(_invoice?.DocumentType ?? (_receivedRoute ? EDocumentType.ReceivedInvoice : EDocumentType.Invoice));
+
+    // Heading of the left info card: the received side has its own wording.
+    private string InfoCardTitleKey => _policy.IsReceived ? "ReceivedInvoice_BasicInfo" : "Invoice_Detail";
 
     // Bank account selection state — loaded from issuer's BankAccount collection
     private List<BankAccountDto> _issuerBankAccounts = new();
@@ -933,10 +1076,11 @@ else
     // PDF template list — loaded once, used for the PDF template picker split button
     private List<ContentTemplateDto> _pdfTemplates = new();
 
-    // Tracks previous Id to detect parameter changes (e.g., /invoices/create → /invoices/1).
-    // Blazor reuses components for the same @page route, so OnInitializedAsync only fires once.
-    // OnParametersSetAsync fires every time [Parameter] values change.
-    private long _previousId = -1;
+    // Tracks the previous (Id, side) to detect navigation (e.g., /invoices/create → /invoices/1, or
+    // /invoices/create → /received-invoices/create where Id stays 0 and only the path changes).
+    // Blazor reuses ONE component instance for all four routes of this page, so OnInitializedAsync only fires
+    // once; OnParametersSetAsync fires every time the parameters are set.
+    private string _previousKey = "";
 
     // Edit mode state (only for Draft invoices in view mode)
     private bool _isEditing = false;
@@ -946,6 +1090,7 @@ else
     private DateTime? _editIssueDate;
     private DateTime? _editDueDate;
     private DateTime? _editTaxableSupplyDate;
+    private DateTime? _editReceivedDate;
 
     // Alert state — null = no open OverpaidProforma alert for this invoice
     private AlertDto? _overpaidAlert;
@@ -967,25 +1112,105 @@ else
 
     /// <summary>
     /// Called every time a [Parameter] value changes.
-    /// Detects navigation between /invoices/create ↔ /invoices/{id} and reloads accordingly.
+    /// Detects navigation between /invoices/create ↔ /invoices/{id} (and the /received-invoices/... twins)
+    /// and reloads accordingly.
     /// Without this, saving a new invoice and navigating to /invoices/{newId} shows "Not Found"
     /// because Blazor reuses the same component instance and OnInitializedAsync only fires once.
     /// </summary>
-    protected override async Task OnParametersSetAsync()
+    protected override Task OnParametersSetAsync() => ApplyRouteAsync();
+
+    // Watch the location itself: /invoices/42 -> /received-invoices/42 and /invoices/create -> /received-invoices/create
+    // keep the same component instance AND the same parameter values (Id does not change), so the router may
+    // not set the parameters again and OnParametersSetAsync would never run. Subscribed in OnInitialized (before
+    // any await) so Dispose always finds the handler it has to remove.
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    // Set on Dispose: a response that arrives after the user left must not touch the page or navigate.
+    private bool _disposed;
+
+    public void Dispose()
     {
-        // Only reload when the Id parameter actually changes
-        if (Id == _previousId) return;
-        _previousId = Id;
+        _disposed = true;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    /// <summary>
+    /// True when the route this load was started for is no longer the current one (the user opened another
+    /// document, switched sides or left the page while the request was running). The caller then drops its
+    /// result: applying it would show document A under the url of document B.
+    /// </summary>
+    private bool IsStale(string? routeKey) => _disposed || routeKey != _previousKey;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Only for a url of this page whose Id is the one we already have. A different Id comes with a parameter
+        // update (which reads the then-current side itself); any other url means we are being navigated away.
+        if (!TryReadDetailRoute(new Uri(e.Location), out var urlId) || urlId != Id) return;
+
+        _ = InvokeAsync(async () =>
+        {
+            // Nobody awaits this task, so a failure would otherwise vanish and leave the spinner up forever.
+            try
+            {
+                await ApplyRouteAsync();
+            }
+            catch (Exception ex)
+            {
+                _loading = false;
+                _errorMessage = ex.Message;
+            }
+
+            if (!_disposed) StateHasChanged();
+        });
+    }
+
+    /// <summary>
+    /// Reads /invoices/create, /invoices/{id}, /received-invoices/create and /received-invoices/{id}.
+    /// Returns false for any other url (the lists, /invoices/import, other pages).
+    /// </summary>
+    private static bool TryReadDetailRoute(Uri uri, out long id)
+    {
+        id = 0;
+        var segments = uri.AbsolutePath.Trim('/').Split('/');
+        if (segments.Length < 2) return false;
+
+        var section = segments[^2];
+        if (!section.Equals("invoices", StringComparison.OrdinalIgnoreCase)
+            && !section.Equals("received-invoices", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var last = segments[^1];
+        return last.Equals("create", StringComparison.OrdinalIgnoreCase) || long.TryParse(last, out id);
+    }
+
+    private async Task ApplyRouteAsync()
+    {
+        // Only reload when the Id or the side (issued / received) actually changes
+        _receivedRoute = DocumentTypeUiPolicy.IsReceivedRoute(new Uri(Navigation.Uri).AbsolutePath);
+        var key = $"{Id}|{_receivedRoute}";
+        if (key == _previousKey) return;
+        _previousKey = key;
+
+        // Everything below the reset runs on a clean slate, and the reset itself is synchronous (no await before
+        // it): the type is already known when the first render happens, so no child (item editor, selects) is
+        // ever rendered for the wrong type, and nothing of the previous document leaks into the next one.
+        ResetStateForNavigation();
 
         if (_isCreateMode)
         {
-            // Create mode — load reference data (clients, issuer, currencies) in parallel
-            await Task.WhenAll(LoadClients(), LoadIssuer(), LoadCurrencies());
+            // Create mode — load reference data (clients, issuer, currencies) in parallel.
+            // A received invoice has no issuer to load: the server uses our own company.
+            var loads = new List<Task> { LoadClients(), LoadCurrencies() };
+            if (!_policy.IsReceived) loads.Add(LoadIssuer());
+            await Task.WhenAll(loads);
+            if (IsStale(key)) return;
 
             // If creating from template, load template data and pre-fill the form
-            if (TemplateId.HasValue && TemplateId.Value > 0)
+            // (templates are an issuing-side feature, ignored on the received route)
+            if (TemplateId.HasValue && TemplateId.Value > 0 && _policy.SupportsTemplates)
             {
                 await InitCreateDtoFromTemplate(TemplateId.Value, TemplateClientId);
+                if (IsStale(key)) return;
             }
             else
             {
@@ -996,11 +1221,17 @@ else
             if (_createDto.DocumentType == EDocumentType.CreditNote)
             {
                 if (_createDto.OriginalInvoiceId is long originalId)
-                    _originalInvoice = await InvoiceService.GetByIdAsync(originalId);
+                {
+                    var original = await InvoiceService.GetByIdAsync(originalId);
+                    if (IsStale(key)) return;
+                    _originalInvoice = original;
+                }
             }
 
-            // Pre-fill document number from the default sequence (user can still override)
-            await LoadDocumentNumberPreview();
+            // Pre-fill document number from the default sequence (user can still override).
+            // A received invoice carries the supplier's own number, so there is nothing to preview.
+            if (_policy.UsesNumberSequence)
+                await LoadDocumentNumberPreview();
         }
         else
         {
@@ -1008,8 +1239,59 @@ else
             _isEditing = false;
             _isDirty = false;
             // Issuer is needed in view mode too — a non-VAT payer's invoice hides VAT rows.
-            await Task.WhenAll(LoadInvoice(), LoadIssuer());
+            // (A received invoice always shows VAT, so its page does not need the issuer.)
+            await Task.WhenAll(LoadInvoice(), _policy.IsReceived ? Task.CompletedTask : LoadIssuer());
         }
+    }
+
+    /// <summary>
+    /// Puts the page into the "nothing loaded yet" state for the route it was just navigated to. The same
+    /// component instance serves /invoices/create, /invoices/{id}, /received-invoices/create and
+    /// /received-invoices/{id}, so without this the form of the previous document (type, dates, previews, QR code,
+    /// alert, proforma links...) would still be there while the next one loads.
+    /// </summary>
+    private void ResetStateForNavigation()
+    {
+        _loading = true;
+        _errorMessage = null;
+        _invoice = null;
+        _isEditing = false;
+        _isDirty = false;
+
+        // The create form starts with the type the url fixes (the issued type from ?type= is applied in InitCreateDto).
+        var today = DateTime.UtcNow.Date;
+        _createDto = new CreateInvoiceDto
+        {
+            DocumentType = _receivedRoute ? EDocumentType.ReceivedInvoice : EDocumentType.Invoice
+        };
+        _createIssueDate = today;
+        _createDueDate = _receivedRoute ? null : today.AddDays(14); // a supplier's due date is typed in, not derived
+        _createTaxableSupplyDate = today;
+        _createReceivedDate = _receivedRoute ? today : null;
+        _originalInvoice = null;
+        _originalSearchFailed = false;
+        _documentNumberPreview = null;
+        _variableSymbolPreview = null;
+        _createOssEligible = null;
+        _createApplyOss = false;
+        _editOssEligible = null;
+        _editApplyOss = false;
+        _selectedBankAccountId = null;
+        _bankAccountManuallySelectedInCreate = false;
+        // Our own accounts belong to the issued form only; a received form must never see them (see
+        // OnCreateCurrencyChanged). The issued routes load them again through LoadIssuer.
+        _issuerBankAccounts = new List<BankAccountDto>();
+
+        _qrCodeBase64 = null;
+        _qrLoading = false;
+        _pdfTemplates = new List<ContentTemplateDto>();
+        _overpaidAlert = null;
+        _finalInvoices = [];
+        _taxReceipts = [];
+        _remainingAdvance = null;
+        _showIssueFinalDialog = false;
+        _issueFinalDto = new IssueFinalInvoiceDto();
+        _issueFinalItems = [];
     }
 
     /// <summary>
@@ -1069,7 +1351,7 @@ else
 
     private async Task RefreshOssCountryAsync()
     {
-        _createOssEligible = _createDto.ClientId > 0
+        _createOssEligible = _createDto.ClientId > 0 && _policy.SupportsOss
             ? await InvoiceService.GetOssCountryAsync(_createDto.ClientId, _createDto.IssuerId, _createDto.DocumentType)
             : null;
         if (_createOssEligible == null) _createApplyOss = false; // opt-in vanishes with eligibility
@@ -1174,18 +1456,21 @@ else
     /// </summary>
     private void InitCreateDto()
     {
-        // Map the ?type= query param to EDocumentType; default = Invoice
-        var docType = TypeParam switch
+        // The received route fixes the type; otherwise map the ?type= query param to EDocumentType (default = Invoice)
+        var docType = _receivedRoute ? EDocumentType.ReceivedInvoice : TypeParam switch
         {
             "CreditNote"           => EDocumentType.CreditNote,
             "Proforma"             => EDocumentType.Proforma,
             "TaxReceiptForAdvance" => EDocumentType.TaxReceiptForAdvance,
             _                      => EDocumentType.Invoice
         };
+        var typePolicy = PolicyFor(docType);
 
-        // Auto-select the default bank account from the issuer's 1:N BankAccount collection
-        var defaultAccount = _issuerBankAccounts.FirstOrDefault(a => a.IsDefault)
-                             ?? _issuerBankAccounts.FirstOrDefault();
+        // Auto-select the default bank account from the issuer's 1:N BankAccount collection.
+        // (A received invoice carries the SUPPLIER's account, typed in by hand - never ours.)
+        var defaultAccount = typePolicy.UsesIssuerBankAccountSelect
+            ? _issuerBankAccounts.FirstOrDefault(a => a.IsDefault) ?? _issuerBankAccounts.FirstOrDefault()
+            : null;
         _selectedBankAccountId = defaultAccount?.Id;
         _bankAccountManuallySelectedInCreate = false;
 
@@ -1201,7 +1486,7 @@ else
             SWIFT = defaultAccount?.SWIFT,
             InvoiceItem = new List<CreateInvoiceItemDto>(),
             // Pre-link to source proforma when creating TaxReceiptForAdvance manually
-            OriginalInvoiceId = OriginalId.HasValue && OriginalId.Value > 0 ? OriginalId : null
+            OriginalInvoiceId = OriginalId.HasValue && OriginalId.Value > 0 && !typePolicy.IsReceived ? OriginalId : null
         };
         _loading = false;
     }
@@ -1312,18 +1597,31 @@ else
     /// </summary>
     private async Task LoadInvoice()
     {
+        var redirecting = false;
         try
         {
             _loading = true;
-            _invoice = await InvoiceService.GetByIdAsync(Id);
-
-            // api/invoice/{id} returns a received (supplier) invoice too (DEVGUIDE §5.6), but this page is the
-            // ISSUED detail (PDF, e-mail, credit note...). Send the user to the received detail instead of
-            // rendering it here. replace: true keeps "Back" from landing on this URL and bouncing again.
-            if (_invoice?.DocumentType == EDocumentType.ReceivedInvoice)
+            var routeKey = _previousKey;
+            var loaded = await InvoiceService.GetByIdAsync(Id);
+            if (IsStale(routeKey))
             {
+                redirecting = true; // the newer load owns the spinner now; do not switch it off under it
+                return;
+            }
+            _invoice = loaded;
+
+            // api/invoice/{id} serves BOTH sides (DEVGUIDE §5.6), so the url may name the wrong one: a received
+            // invoice opened on /invoices/{id}, or an issued one on /received-invoices/{id}. Send the user to the
+            // document's own url. replace: true keeps "Back" from landing on this URL and bouncing again.
+            // The redirect re-enters this page (same instance, new path) and loads the document again.
+            if (_invoice != null
+                && PolicyFor(_invoice.DocumentType).IsReceived
+                   != DocumentTypeUiPolicy.IsReceivedRoute(new Uri(Navigation.Uri).AbsolutePath))
+            {
+                var target = PolicyFor(_invoice.DocumentType).DetailUrl(Id);
                 _invoice = null;
-                Navigation.NavigateTo($"/received-invoices/{Id}", replace: true);
+                redirecting = true; // keep the spinner up until the reload on the right url takes over
+                Navigation.NavigateTo(target, replace: true);
                 return;
             }
 
@@ -1333,21 +1631,22 @@ else
                 EnableEditing();
             }
 
-            // Load PDF templates for the template picker split button
-            if (_invoice != null)
+            // Load PDF templates for the template picker split button (only types that have a PDF)
+            if (_invoice != null && _policy.SupportsPdf)
             {
                 _ = LoadPdfTemplatesAsync();
             }
 
             // Load QR code for completed/paid invoices (non-blocking, runs in background)
-            if (_invoice != null && _invoice.Status != EInvoiceStatus.Draft)
+            if (_invoice != null && _invoice.Status != EInvoiceStatus.Draft && _policy.SupportsQr)
             {
                 _ = LoadQrCodeAsync();
             }
 
             // Load open OverpaidProforma alert for this invoice (non-blocking).
             // The banner is shown only when an open alert exists — no noise for normal invoices.
-            if (_invoice != null)
+            // (Alerts only exist for issued documents.)
+            if (_invoice != null && _policy.ShowsAlertColumn)
             {
                 _ = LoadOverpaidAlertAsync();
             }
@@ -1368,7 +1667,7 @@ else
         }
         finally
         {
-            _loading = false;
+            if (!redirecting) _loading = false;
         }
     }
 
@@ -1489,6 +1788,11 @@ else
         _isDirty = true;
         _createDto.CurrencyId = currencyId;
 
+        // Only an issued document is paid to OUR account. On a received invoice the bank fields hold the
+        // SUPPLIER's account as typed in, so a currency change must never overwrite them with one of ours.
+        if (!_policy.UsesIssuerBankAccountSelect)
+            return;
+
         if (_bankAccountManuallySelectedInCreate)
             return;
 
@@ -1545,7 +1849,8 @@ else
         await RefreshOssCountryAsync();
 
         var client = _allClients.FirstOrDefault(c => c.Id == clientId);
-        if (client?.BillingSettings != null)
+        // A supplier's billing settings describe invoices WE issue to it, so they do not apply to a received invoice.
+        if (_policy.UsesCounterpartyBillingSettings && client?.BillingSettings != null)
         {
             var bs = client.BillingSettings;
 
@@ -1572,6 +1877,9 @@ else
     {
         _createIssueDate = newDate;
         _isDirty = true;
+
+        // Received: the due date and DUZP are typed in from the supplier's invoice, nothing is derived.
+        if (!_policy.UsesCounterpartyBillingSettings) return;
 
         // Look up the selected client's billing settings for due date calculation
         var client = _allClients.FirstOrDefault(c => c.Id == _createDto.ClientId);
@@ -1639,12 +1947,13 @@ else
             // Validate that a client is selected — the API would reject ClientId=0
             if (_createDto.ClientId <= 0)
             {
-                Snackbar.Add(L["Invoice_NoClientSelected"].Value, Severity.Error);
+                Snackbar.Add(L[_policy.IsReceived ? "ReceivedInvoice_SupplierRequired" : "Invoice_NoClientSelected"].Value, Severity.Error);
                 return;
             }
 
             // Validate that an issuer exists — the API would reject IssuerId=0
-            if (_createDto.IssuerId <= 0)
+            // (a received invoice sends 0 on purpose: the server uses our own company)
+            if (!_policy.IsReceived && _createDto.IssuerId <= 0)
             {
                 Snackbar.Add(L["Invoice_NoIssuerFound"].Value, Severity.Error);
                 return;
@@ -1668,6 +1977,7 @@ else
             _createDto.IssueDate = _createIssueDate;
             _createDto.DueDate = _createDueDate;
             _createDto.TaxableSupplyDate = _createTaxableSupplyDate;
+            if (_policy.HasReceivedDate) _createDto.ReceivedDate = _createReceivedDate;
 
             var result = await InvoiceService.CreateAsync(_createDto);
             if (result != null)
@@ -1682,7 +1992,7 @@ else
 
                 Snackbar.Add(L["Invoice_Created"].Value, Severity.Success);
                 // Navigate to the newly created invoice's detail page
-                Navigation.NavigateTo($"/invoices/{result.Id}");
+                Navigation.NavigateTo(_policy.DetailUrl(result.Id));
             }
             else
             {
@@ -1702,34 +2012,45 @@ else
     /// </summary>
     private async void EnableEditing()
     {
-        if (_invoice == null || _invoice.Status != EInvoiceStatus.Draft) return;
+        if (_invoice == null || !_policy.CanEdit(_invoice.Status)) return;
 
-        // Load issuer bank accounts if not already loaded (needed for the BankAccountSelect)
-        if (_issuerBankAccounts.Count == 0)
+        // Issued documents pick the bank account from our own accounts and may opt in to OSS; a received invoice
+        // has neither (the supplier's account is free text, OSS does not apply) and the server refuses both.
+        if (_policy.UsesIssuerBankAccountSelect)
         {
-            try
+            // Load issuer bank accounts if not already loaded (needed for the BankAccountSelect)
+            if (_issuerBankAccounts.Count == 0)
             {
-                var issuer = await ClientService.GetIssuerAsync();
-                _issuerBankAccounts = issuer?.BankAccount ?? new List<BankAccountDto>();
+                try
+                {
+                    var issuer = await ClientService.GetIssuerAsync();
+                    _issuerBankAccounts = issuer?.BankAccount ?? new List<BankAccountDto>();
+                }
+                catch { /* Non-critical — dropdown will be empty */ }
             }
-            catch { /* Non-critical — dropdown will be empty */ }
+
+            // Pre-select the bank account that matches the invoice's current BankAccountNumber
+            _selectedBankAccountId = _issuerBankAccounts
+                .FirstOrDefault(a => a.AccountNumber == _invoice.BankAccountNumber)?.Id;
         }
 
-        // Pre-select the bank account that matches the invoice's current BankAccountNumber
-        _selectedBankAccountId = _issuerBankAccounts
-            .FirstOrDefault(a => a.AccountNumber == _invoice.BankAccountNumber)?.Id;
-
-        // OSS: the invoice's current regime + whether it is (still) eligible for the opt-in.
-        _editApplyOss = _invoice.OssCountryCode != null;
-        _editOssEligible = _invoice.OssCountryCode
-            ?? (_invoice.ClientId.HasValue
-                ? await InvoiceService.GetOssCountryAsync(_invoice.ClientId.Value, _invoice.IssuerId, _invoice.DocumentType)
-                : null);
+        if (_policy.SupportsOss)
+        {
+            // OSS: the invoice's current regime + whether it is (still) eligible for the opt-in.
+            _editApplyOss = _invoice.OssCountryCode != null;
+            _editOssEligible = _invoice.OssCountryCode
+                ?? (_invoice.ClientId.HasValue
+                    ? await InvoiceService.GetOssCountryAsync(_invoice.ClientId.Value, _invoice.IssuerId, _invoice.DocumentType)
+                    : null);
+        }
 
         // Populate edit DTO from current invoice (only editable fields)
         _editDto = new UpdateInvoiceDto
         {
-            ApplyOss = _editApplyOss,
+            // null (not false): the server refuses ApplyOss on a received invoice even when it is false
+            ApplyOss = _policy.SupportsOss ? _editApplyOss : null,
+            // The supplier's number is editable on a received invoice only; an issued number never changes
+            DocumentNumber = _policy.UsesNumberSequence ? null : _invoice.DocumentNumber,
             DueDate = _invoice.DueDate,
             TaxableSupplyDate = _invoice.TaxableSupplyDate,
             VariableSymbol = _invoice.VariableSymbol,
@@ -1744,6 +2065,7 @@ else
         };
 
         _editIssueDate = _invoice.IssueDate;
+        _editReceivedDate = _invoice.ReceivedDate;
         _editDueDate = _invoice.DueDate;
         _editTaxableSupplyDate = _invoice.TaxableSupplyDate;
 
@@ -1754,6 +2076,11 @@ else
 
         _isEditing = true;
         _isDirty = true; // Entering edit mode means the user intends to change something
+
+        // This handler is async void: Blazor re-renders when its synchronous part ends, i.e. at the first
+        // await above, NOT when it finishes. Without this call the page stayed in view mode after the
+        // bank account / OSS lookups and the Edit button looked dead.
+        StateHasChanged();
     }
 
     /// <summary>
@@ -1788,6 +2115,7 @@ else
             _editDto.IssueDate = _editIssueDate;
             _editDto.DueDate = _editDueDate;
             _editDto.TaxableSupplyDate = _editTaxableSupplyDate;
+            if (_policy.HasReceivedDate) _editDto.ReceivedDate = _editReceivedDate;
             _editDto.InvoiceItem = _editItems;
 
             var result = await InvoiceService.UpdateAsync(Id, _editDto);
@@ -1852,7 +2180,7 @@ else
             var result = await InvoiceService.IssueAsync(Id);
             if (result != null)
             {
-                Snackbar.Add(L["Invoice_Issued"].Value, Severity.Success);
+                Snackbar.Add(L[_policy.CompleteSuccessKey].Value, Severity.Success);
                 _invoice = result;
             }
         }
@@ -1868,6 +2196,7 @@ else
             {
                 Snackbar.Add(L["Invoice_MarkedAsPaid"].Value, Severity.Success);
                 _invoice = result;
+                _paymentsRefreshTrigger++; // the panel's header and rows follow the new status
             }
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
@@ -1896,6 +2225,7 @@ else
             {
                 Snackbar.Add(L["Invoice_MarkAsUnpaidSuccess"].Value, Severity.Success);
                 _invoice = result;
+                _paymentsRefreshTrigger++; // marking unpaid removes the matched payments - reload the panel
             }
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
@@ -1908,7 +2238,7 @@ else
             if (await InvoiceService.DeleteAsync(Id))
             {
                 Snackbar.Add(L["Invoice_Deleted"].Value, Severity.Success);
-                Navigation.NavigateTo("/invoices");
+                Navigation.NavigateTo(_policy.ListUrl);
             }
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
@@ -1969,12 +2299,26 @@ else
         if (_invoice == null) return;
         try
         {
-            var isdoc = await InvoiceService.ExportIsdocAsync(Id);
-            if (isdoc != null && isdoc.Bytes.Length > 0)
+            byte[]? bytes;
+            string fileName;
+            if (_policy.IsReceived)
             {
-                var base64 = Convert.ToBase64String(isdoc.Bytes);
+                // Received ISDOC lives on the legacy endpoint and returns only the bytes; the file is named after the
+                // supplier's document number so the user can identify it easily.
+                bytes = await InvoiceService.ExportReceivedIsdocAsync(Id);
+                fileName = $"{_invoice.DocumentNumber ?? Id.ToString()}.isdoc";
+            }
+            else
+            {
+                var isdoc = await InvoiceService.ExportIsdocAsync(Id);
+                bytes = isdoc?.Bytes;
                 // The name comes from the server (same format as the PDF); the fallback only covers a missing header.
-                var fileName = isdoc.FileName ?? $"{Id}.isdoc";
+                fileName = isdoc?.FileName ?? $"{Id}.isdoc";
+            }
+
+            if (bytes != null && bytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(bytes);
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/xml");
                 Snackbar.Add(L["Invoice_IsdocDownloaded"].Value, Severity.Success);
             }
@@ -2044,13 +2388,8 @@ else
     {
         try
         {
-            var templateType = _invoice?.DocumentType switch
-            {
-                EDocumentType.CreditNote           => EContentTemplateType.CreditNotePdf,
-                EDocumentType.Proforma             => EContentTemplateType.AdvanceInvoicePdf,
-                EDocumentType.TaxReceiptForAdvance => EContentTemplateType.TaxReceiptForAdvancePdf,
-                _                                  => EContentTemplateType.InvoicePdf
-            };
+            // null = this type has no PDF (received invoice)
+            if (_policy.PdfTemplateType is not { } templateType) return;
             _pdfTemplates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
             StateHasChanged();
         }
@@ -2087,22 +2426,12 @@ else
     }
 
     /// <summary>
-    /// Navigates back to the appropriate list page based on the document type.
-    /// Proformas go to /invoices?type=Proforma, DPPs to /invoices?type=TaxReceiptForAdvance,
-    /// CreditNotes to /invoices?type=CreditNote, everything else to /invoices.
+    /// Navigates back to the list page of the document type (DocumentTypeUiPolicy.ListUrl):
+    /// proformas go to /invoices?type=Proforma, DPPs to /invoices?type=TaxReceiptForAdvance,
+    /// credit notes to /invoices?type=CreditNote, received invoices to /received-invoices,
+    /// everything else to /invoices.
     /// </summary>
-    private void GoBack()
-    {
-        var docType = _isCreateMode ? _createDto.DocumentType : _invoice?.DocumentType;
-        var url = docType switch
-        {
-            EDocumentType.CreditNote           => "/invoices?type=CreditNote",
-            EDocumentType.Proforma             => "/invoices?type=Proforma",
-            EDocumentType.TaxReceiptForAdvance => "/invoices?type=TaxReceiptForAdvance",
-            _                                  => "/invoices"
-        };
-        Navigation.NavigateTo(url);
-    }
+    private void GoBack() => Navigation.NavigateTo(_policy.ListUrl);
 
     // --- Validation helpers ---
 
@@ -2217,32 +2546,16 @@ else
 
     /// <summary>
     /// Returns the page title string for the &lt;PageTitle&gt; element.
-    /// Covers all four document types in both create and view mode.
+    /// Covers every document type (issued and received) in both create and view mode.
     /// </summary>
-    private string GetPageTitle()
-    {
-        if (_isCreateMode)
-            return GetCreateModeTitle();
-
-        return _invoice?.DocumentType switch
-        {
-            EDocumentType.CreditNote           => L["CreditNote_Detail"].Value,
-            EDocumentType.Proforma             => L["Proforma_Detail"].Value,
-            EDocumentType.TaxReceiptForAdvance => L["TaxReceiptForAdvance_Detail"].Value,
-            _                                  => L["Invoice_Detail"].Value
-        };
-    }
+    private string GetPageTitle() => _isCreateMode
+        ? GetCreateModeTitle()
+        : L[_policy.DetailTitleKey].Value;
 
     /// <summary>
     /// Returns the heading text shown in the create-mode header bar.
     /// </summary>
-    private string GetCreateModeTitle() => _createDto.DocumentType switch
-    {
-        EDocumentType.CreditNote           => L["CreditNote_New"].Value,
-        EDocumentType.Proforma             => L["Proforma_New"].Value,
-        EDocumentType.TaxReceiptForAdvance => L["TaxReceiptForAdvance_New"].Value,
-        _                                  => L["Invoice_New"].Value
-    };
+    private string GetCreateModeTitle() => L[_policy.CreateTitleKey].Value;
 
     /// <summary>
     /// Returns the localized document type label for the readonly DocumentType field.
@@ -2267,25 +2580,4 @@ else
         _                                  => L["CreditNote_OriginalInvoice"].Value
     };
 
-    // --- Helpers ---
-
-    private Color GetStatusColor(EInvoiceStatus status) => status switch
-    {
-        EInvoiceStatus.Draft => Color.Default,
-        EInvoiceStatus.Completed => Color.Info,
-        EInvoiceStatus.Paid => Color.Success,
-        EInvoiceStatus.Creditnoted => Color.Warning,
-        EInvoiceStatus.Deleted => Color.Dark,
-        _ => Color.Default
-    };
-
-    private string GetStatusText(EInvoiceStatus status) => status switch
-    {
-        EInvoiceStatus.Draft => L["Invoice_StatusDraft"].Value,
-        EInvoiceStatus.Completed => L["Invoice_StatusIssued"].Value,
-        EInvoiceStatus.Paid => L["Invoice_StatusPaid"].Value,
-        EInvoiceStatus.Creditnoted => L["Invoice_StatusCredited"].Value,
-        EInvoiceStatus.Deleted => L["Invoice_StatusDeleted"].Value,
-        _ => status.ToString()
-    };
 }
