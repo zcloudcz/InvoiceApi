@@ -93,13 +93,15 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
     }
 
     /// <summary>Adds one FileAttachment metadata row to a received document (the list only counts rows).</summary>
-    private void SeedReceivedAttachment(long recordId, string fileName)
+    private void SeedReceivedAttachment(long recordId, string fileName) => SeedAttachment("ReceivedInvoice", recordId, fileName);
+
+    private void SeedAttachment(string entityName, long recordId, string fileName)
     {
         using var scope = _factory.Services.CreateScope();
         var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
         tenantDb.FileAttachment.Add(new FileAttachment
         {
-            EntityName = "ReceivedInvoice",
+            EntityName = entityName,
             RecordId = recordId,
             OriginalFileName = fileName,
             ContentType = "application/pdf",
@@ -408,6 +410,37 @@ public class UnifiedDocumentEndpointTests : IClassFixture<FakvioFactory>
         rows.ShouldNotContainKey(issued);
         rows[withFiles].GetProperty("attachmentCount").GetInt32().ShouldBe(2);
         rows[withoutFiles].GetProperty("attachmentCount").GetInt32().ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Regression: the detail reported attachmentCount 0 whatever was stored, while the list said 2. An MCP
+    /// client read the detail, concluded there was nothing to download and never asked for the files.
+    /// </summary>
+    [Fact]
+    public async Task Detail_ReportsTheSameAttachmentCountAsTheList_ForEveryDocumentType()
+    {
+        var received = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        var issued = SeedDoc(EDocumentType.Invoice, EInvoiceStatus.Draft);
+        var bare = SeedDoc(EDocumentType.ReceivedInvoice, EInvoiceStatus.Draft);
+        SeedAttachment("ReceivedInvoice", received, "supplier.pdf");
+        SeedAttachment("ReceivedInvoice", received, "scan.pdf");
+        SeedAttachment("Invoice", issued, "contract.pdf");
+        // A file of ANOTHER entity with the same record id must not be counted.
+        SeedAttachment("Client", bare, "unrelated.pdf");
+        var client = await CreateAuthenticatedClientAsync();
+
+        (await JsonOf(await client.GetAsync($"/api/invoice/{received}"))).GetProperty("attachmentCount").GetInt32().ShouldBe(2);
+        (await JsonOf(await client.GetAsync($"/api/invoice/{issued}"))).GetProperty("attachmentCount").GetInt32().ShouldBe(1);
+        (await JsonOf(await client.GetAsync($"/api/invoice/{bare}"))).GetProperty("attachmentCount").GetInt32().ShouldBe(0);
+
+        // The legacy received endpoint (still used by the legacy MCP tool get_received_invoice) agrees.
+        (await JsonOf(await client.GetAsync($"/api/received-invoice/{received}"))).GetProperty("attachmentCount").GetInt32().ShouldBe(2);
+
+        // And the issued list now carries the count too.
+        var issuedList = await JsonOf(await client.GetAsync("/api/invoice/paged?pageSize=100&DocumentType=Invoice"));
+        issuedList.GetProperty("items").EnumerateArray()
+            .Single(r => r.GetProperty("id").GetInt64() == issued)
+            .GetProperty("attachmentCount").GetInt32().ShouldBe(1);
     }
 
     [Fact]

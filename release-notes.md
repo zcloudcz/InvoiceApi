@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.12.3 - 2026-10-12
+
+### Změny pro uživatele
+
+- **PR #550** - Oprava: detail dokladu (API i MCP `get_invoice`) vracel počet příloh vždy 0, i když seznam ukazoval správné číslo; AI klient z toho usoudil, že přílohy stáhnout nejde. Počet příloh nově sedí v seznamu i detailu u vydaných i přijatých dokladů. Popisy MCP nástrojů `get_invoice` a `upload_received_invoice_attachment` odkazují na nástroje pro stažení příloh. (PR #550, `b4a9b92`)
+
 ## 2026.10.12.2 - 2026-10-12
 
 ### Změny pro uživatele

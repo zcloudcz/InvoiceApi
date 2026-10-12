@@ -2926,7 +2926,7 @@ platby, auto-match) berou typ z **uloženého řádku**, nikdy z URL; přechody 
 (UI, MCP, chat nástroje, exporty) to, co dřív. `by-number` vrací při shodě čísla u více přijatých dokladů (dva dodavatelé) vždy stejný řádek:
 nesmazaný před smazaným, pak nejnovější (nejvyšší Id). **Pro volání podle id a pro seznam se zadaným typem to neplatí**, viz
 „Co se změnilo pro stávající volající" níže. Zadané obě (`DocumentTypes` i `DocumentType`) = průnik. Stránkovaný seznam plní
-`AttachmentCount` jen u přijatých řádků (jeden seskupený dotaz na stránku). Příloh se jednotné API netýká: zůstává
+`AttachmentCount` u všech řádků (jeden seskupený dotaz na stránku; entita `ReceivedInvoice` pro přijaté, `Invoice` pro vydané typy) a **stejně ho plní i detail** `GET /api/invoice/{id}` a legacy `GET /api/received-invoice/{id}` (`InvoiceService.FillAttachmentCountsAsync`; do 2026-10-12 detail vracel vždy 0 a MCP klient z toho usoudil, že doklad přílohy nemá). Příloh se jednotné API netýká: zůstává
 generické `FileAttachmentController` (`entityName` = `"ReceivedInvoice"` pro přijaté).
 
 **Id firmy NENÍ id vystavitele.** `CompanyId` (claim, `ITenantResolver.GetCurrentCompanyId()`) je id firmy v **master**
