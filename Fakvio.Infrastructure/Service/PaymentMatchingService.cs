@@ -537,15 +537,6 @@ public class PaymentMatchingService : IPaymentMatchingService
             return null;
         }
 
-        // Only unmatched/partially-matched incoming transactions make sense here.
-        if (tx.Direction != EPaymentDirection.Incoming)
-        {
-            _logger.LogDebug(
-                "FindAutoMatchForTransactionAsync: Tx {Id} is Outgoing — skip (use received invoice matching instead)",
-                bankTransactionId);
-            return null;
-        }
-
         if (tx.MatchStatus is EMatchStatus.Matched or EMatchStatus.Ignored or EMatchStatus.Recognized)
         {
             _logger.LogDebug(
@@ -573,7 +564,11 @@ public class PaymentMatchingService : IPaymentMatchingService
         if (issuerId.HasValue)
             query = query.Where(i => i.IssuerId == issuerId.Value);
 
-        var candidates = await query.ToListAsync(ct);
+        // An outgoing payment never pays one of OUR invoices — skip the issued rules (empty candidate list)
+        // and fall through to the received-invoice rules below.
+        var candidates = tx.Direction == EPaymentDirection.Incoming
+            ? await query.ToListAsync(ct)
+            : [];
 
         // Rule 1 — Variable symbol (exact match, single hit).
         if (!string.IsNullOrWhiteSpace(tx.VariableSymbol))
@@ -621,7 +616,8 @@ public class PaymentMatchingService : IPaymentMatchingService
             .Include(ri => ri.Client)
             .Include(ri => ri.Currency)
             .Where(ri =>
-                ri.Status != EInvoiceStatus.Paid
+                ri.Currency.Code == tx.CurrencyCode // same rule as the issued candidates above
+                && ri.Status != EInvoiceStatus.Paid
                 && ri.Status != EInvoiceStatus.Deleted
                 && ri.Status != EInvoiceStatus.Draft);
 
