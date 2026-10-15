@@ -314,7 +314,6 @@ public class DocumentTypeUiPolicyTests
         p.SupportsOss.ShouldBe(issued);
         p.UsesCounterpartyBillingSettings.ShouldBe(issued);
         p.HidesVatForNonVatPayerIssuer.ShouldBe(issued);
-        p.SupportsManualPaymentMatch.ShouldBe(issued);
     }
 
     [Theory]

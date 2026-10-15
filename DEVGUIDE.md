@@ -3065,7 +3065,8 @@ a stavový automat UI (`CanEdit/CanComplete/CanMarkPaid/CanMarkUnpaid/CanRevertT
   nejsou). Zbývají jen `FakvioService.ExportReceivedIsdocAsync` (ISDOC jedné přijaté faktury), hromadné ISDOC a ZIP příloh.
 - **Jeden panel plateb** (`InvoicePaymentsPanel`): řádky z `GET /api/invoice/{id}/payments` (`FakvioService.GetPaymentsAsync`),
   odpárování posílá skutečné `PaymentMatchId`, text 400 z API (např. odpárování po ručním "zaplaceno" je odmítnuto) jde do
-  snackbaru. "Spárovat ručně" jen u vydaných (`SupportsManualPaymentMatch`; server páruje ručně jen vydané doklady).
+  snackbaru. "Spárovat ručně" u vydaných i přijatých: `ManualMatchAsync` bere doklad přes `AnyDocument()` a typ z řádku
+  (přijatá = bez webhooků a bez auto-DPP); `MatchPaymentDialog` u odchozí platby nabízí přijaté faktury.
 - Stav `PartiallyPaid` má štítek `Invoice_StatusPartiallyPaid` a barvu `Info` pro všechny typy.
 
 ---
