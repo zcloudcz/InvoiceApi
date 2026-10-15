@@ -135,9 +135,12 @@ public class PaymentMatchingService : IPaymentMatchingService
             .FirstOrDefaultAsync(t => t.Id == bankTransactionId, ct)
             ?? throw new InvalidOperationException($"BankTransaction {bankTransactionId} not found.");
 
-        var invoice = await _context.Invoice.IssuedOnly()
+        // Either side: an issued invoice (incoming payment) or a received one (outgoing payment to a supplier).
+        // The type comes from the stored row; the only difference is the type policy below (isReceived).
+        var invoice = await _context.Invoice.AnyDocument()
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new InvalidOperationException($"Invoice {invoiceId} not found.");
+        var isReceived = invoice.DocumentType == EDocumentType.ReceivedInvoice;
 
         if (invoice.Status == EInvoiceStatus.Deleted)
             throw new InvalidOperationException($"Invoice {invoiceId} is deleted.");
@@ -179,22 +182,26 @@ public class PaymentMatchingService : IPaymentMatchingService
         RecalculateInvoice(invoice, delta: matchedAmount, tx.TransactionDate);
         RecalculateTransactionStatus(tx, alreadyAssigned + matchedAmount);
 
-        await PublishPaymentAsync(invoice, matchedAmount, match.MatchedAt, !wasPaid && invoice.Status == EInvoiceStatus.Paid, ct);
+        // Type policy (same as ConfirmAutoMatchAsync): a received invoice sends no payment webhooks
+        // and is never a proforma, so there is no DPP to auto-issue.
+        if (!isReceived)
+            await PublishPaymentAsync(invoice, matchedAmount, match.MatchedAt, !wasPaid && invoice.Status == EInvoiceStatus.Paid, ct);
         await _context.SaveChangesAsync(ct);
 
         // Proforma just received (part of) its advance — auto-issue its DPP, if enabled.
-        await _invoiceService.TryAutoIssueTaxReceiptAsync(invoice.Id, matchedAmount, tx.TransactionDate, ct);
+        if (!isReceived)
+            await _invoiceService.TryAutoIssueTaxReceiptAsync(invoice.Id, matchedAmount, tx.TransactionDate, ct);
 
         _logger.LogInformation(
-            "Manual match: Tx={TxId} → Invoice={InvoiceId} Amount={Amount} User={UserId}",
-            tx.Id, invoice.Id, matchedAmount, userId);
+            "Manual match: Tx={TxId} → Invoice={InvoiceId} Received={IsReceived} Amount={Amount} User={UserId}",
+            tx.Id, invoice.Id, isReceived, matchedAmount, userId);
 
         await _notificationService.CreateForAllUsersAsync(
             ENotificationType.PaymentMatched,
             "Platba spárována",
-            $"Transakce VS {tx.VariableSymbol} ({matchedAmount:N2} {tx.CurrencyCode}) ručně spárována s fakturou {invoice.DocumentNumber}.",
+            $"Transakce VS {tx.VariableSymbol} ({matchedAmount:N2} {tx.CurrencyCode}) ručně spárována s {(isReceived ? "přijatou fakturou" : "fakturou")} {invoice.DocumentNumber}.",
             invoice.Id,
-            "Invoice",
+            isReceived ? "ReceivedInvoice" : "Invoice",
             ct);
 
         return new ManualMatchResult(match.Id, invoice.PaidAmount, invoice.TotalWithVat - invoice.PaidAmount);
