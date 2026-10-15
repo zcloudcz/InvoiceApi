@@ -1216,7 +1216,7 @@ Aplikace podporuje dvě jazykové mutace:
 
 ### Stránkování plateb a výběr pro párování
 
-Historie plateb načítá zvolenou stránku ze serveru a umožňuje změnit počet řádků. Změna filtru vrátí historii na první stránku. Také nespárované příchozí platby mají vlastní stránky. Hromadné párování zpracuje označené řádky, nebo aktuální stránku, pokud nic neoznačíte. Při přechodu na jinou stránku či obnovení nespárovaných plateb se předchozí výběr zruší. Chyba načtení se zobrazí samostatně; použijte tlačítko obnovení.
+Historie plateb načítá zvolenou stránku ze serveru a umožňuje změnit počet řádků. Změna filtru vrátí historii na první stránku. Také nespárované platby (příchozí i odchozí, šipka u částky ukazuje směr) mají vlastní stránky; odchozí platba se automaticky i ručně páruje s přijatou fakturou. Hromadné párování zpracuje označené řádky, nebo aktuální stránku, pokud nic neoznačíte. Při přechodu na jinou stránku či obnovení nespárovaných plateb se předchozí výběr zruší. Chyba načtení se zobrazí samostatně; použijte tlačítko obnovení.
 
 ## 17. Notifikace
 

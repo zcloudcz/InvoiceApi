@@ -1646,7 +1646,7 @@
   <data name="BulkAutoMatch_ErrorToast" xml:space="preserve"><value>{0} párování se nezdařilo.</value></data>
 
   <data name="Payments_Unmatched_Title" xml:space="preserve"><value>Nespárované platby</value></data>
-  <data name="Payments_Unmatched_Empty" xml:space="preserve"><value>Žádné nespárované příchozí platby.</value></data>
+  <data name="Payments_Unmatched_Empty" xml:space="preserve"><value>Žádné nespárované platby.</value></data>
   <data name="Payments_BulkAutoMatch" xml:space="preserve"><value>Spárovat vše</value></data>
   <data name="Payments_AutoMatch_Tooltip" xml:space="preserve"><value>Automaticky spárovat s fakturou</value></data>
 
