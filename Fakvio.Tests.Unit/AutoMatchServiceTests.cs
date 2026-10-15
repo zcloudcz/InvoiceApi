@@ -352,6 +352,29 @@ public class FindAutoMatchForReceivedInvoice_Tests : IDisposable
         // Assert
         result.ShouldBeNull();
     }
+
+    // The per-row "Spárovat" button on the Payments page starts from the TRANSACTION side.
+    [Fact]
+    public async Task FindAutoMatchForTransaction_OutgoingTx_ProposesReceivedInvoice()
+    {
+        var tx = MakeTx(vs: "111111", amount: 1210m);
+        var ri = MakeReceivedInvoice(vs: "111111", total: 1210m);
+
+        var result = await _service.FindAutoMatchForTransactionAsync(tx.Id);
+
+        result.ShouldNotBeNull();
+        result.ReceivedInvoiceId.ShouldBe(ri.Id);
+        result.InvoiceId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FindAutoMatchForTransaction_OutgoingTx_OtherCurrency_ReturnsNull()
+    {
+        var tx = MakeTx(vs: "111111", amount: 1210m, currency: "EUR");
+        MakeReceivedInvoice(vs: "111111", total: 1210m);
+
+        (await _service.FindAutoMatchForTransactionAsync(tx.Id)).ShouldBeNull();
+    }
 }
 
 /// <summary>

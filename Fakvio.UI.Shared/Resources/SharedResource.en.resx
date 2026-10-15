@@ -1646,7 +1646,7 @@
   <data name="BulkAutoMatch_ErrorToast" xml:space="preserve"><value>{0} matches failed.</value></data>
 
   <data name="Payments_Unmatched_Title" xml:space="preserve"><value>Unmatched payments</value></data>
-  <data name="Payments_Unmatched_Empty" xml:space="preserve"><value>No unmatched incoming payments.</value></data>
+  <data name="Payments_Unmatched_Empty" xml:space="preserve"><value>No unmatched payments.</value></data>
   <data name="Payments_BulkAutoMatch" xml:space="preserve"><value>Match all</value></data>
   <data name="Payments_AutoMatch_Tooltip" xml:space="preserve"><value>Auto-match with invoice</value></data>
 
