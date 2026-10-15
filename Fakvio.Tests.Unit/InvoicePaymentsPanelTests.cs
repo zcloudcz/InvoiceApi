@@ -68,16 +68,16 @@ public class InvoicePaymentsPanelTests : DocumentDetailTestBase
     }
 
     [Fact]
-    public void Match_manually_is_offered_for_issued_documents_only()
+    public void Match_manually_is_offered_for_issued_and_received_documents()
     {
         var issued = RenderPanel(WithPaid(Issued(10, EInvoiceStatus.Completed), 0m));
         issued.WaitForAssertion(() => Api.Called(HttpMethod.Get, "/api/invoice/10/payments").ShouldBeTrue(), Patience);
         ButtonTexts(issued).ShouldContain(L["InvoicePayments_MatchManually"].Value);
 
+        // The server's manual match takes the document type from the stored row, so received invoices match too.
         var received = RenderPanel(WithPaid(Received(20, EInvoiceStatus.Completed), 0m));
         received.WaitForAssertion(() => Api.Called(HttpMethod.Get, "/api/invoice/20/payments").ShouldBeTrue(), Patience);
-        ButtonTexts(received).ShouldNotContain(L["InvoicePayments_MatchManually"].Value,
-            "the server matches manual payments against issued documents only");
+        ButtonTexts(received).ShouldContain(L["InvoicePayments_MatchManually"].Value);
     }
 
     [Theory]

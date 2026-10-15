@@ -8,7 +8,8 @@
 
 @*
     Manual match dialog. Two entry modes:
-      1) Caller passes a BankTransactionDto → user picks an invoice.
+      1) Caller passes a BankTransactionDto → user picks an invoice
+         (issued invoice for an incoming payment, received supplier invoice for an outgoing one).
       2) Caller passes an InvoiceDto       → user picks an unmatched transaction.
     Both modes share the same backend call (PaymentMatchingService.ManualMatchAsync).
 
@@ -134,7 +135,9 @@
 
                 // Candidates: every Completed/PartiallyPaid invoice with matching currency.
                 // Real backend filtering would scale better; for MVP we GetAll and filter client-side.
-                var all = await InvoiceApi.GetAllAsync();
+                // Outgoing payment = we paid a supplier → it belongs to a received invoice.
+                var all = await InvoiceApi.GetAllAsync(
+                    Transaction.Direction == EPaymentDirection.Outgoing ? EDocumentType.ReceivedInvoice : null);
                 _candidateInvoices = all
                     .Where(i => i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.PartiallyPaid)
                     .Where(i => i.CurrencyCode == Transaction.CurrencyCode)

@@ -51,13 +51,15 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
-    /// Gets all invoices (non-paginated).
+    /// Gets all invoices (non-paginated). Without a document type the server returns issued documents only;
+    /// pass <see cref="EDocumentType.ReceivedInvoice"/> to get received (supplier) invoices.
     /// </summary>
-    public async Task<List<InvoiceDto>> GetAllAsync()
+    public async Task<List<InvoiceDto>> GetAllAsync(EDocumentType? documentType = null)
     {
         try
         {
-            return await GetAsync<List<InvoiceDto>>("/api/invoice") ?? [];
+            var url = documentType.HasValue ? $"/api/invoice?documentType={documentType.Value}" : "/api/invoice";
+            return await GetAsync<List<InvoiceDto>>(url) ?? [];
         }
         catch (ApiException)
         {
