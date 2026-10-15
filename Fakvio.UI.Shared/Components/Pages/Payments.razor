@@ -17,8 +17,8 @@
     Payments page — main entry point for the payment matching feature.
 
     Layout (top to bottom):
-      1. "Unmatched payments" collapsible section — shows incoming transactions with
-         MatchStatus=Unmatched. Each row has a per-row "Spárovat" button (auto-match
+      1. "Unmatched payments" collapsible section — shows incoming AND outgoing transactions with
+         MatchStatus=Unmatched (outgoing ones are matched against received invoices). Each row has a per-row "Spárovat" button (auto-match
          for that single transaction) plus a "Spárovat vše" bulk button above the table.
       2. All-transactions grid with filters (existing behaviour).
 
@@ -134,6 +134,10 @@
                     @context.TransactionDate.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
                 </MudTd>
                 <MudTd DataLabel="@L["Payments_Col_Amount"]">
+                    @* Direction arrow: the section lists both incoming and outgoing payments. *@
+                    <MudIcon Icon="@(context.Direction == EPaymentDirection.Incoming ? Icons.Material.Filled.ArrowDownward : Icons.Material.Filled.ArrowUpward)"
+                             Color="@(context.Direction == EPaymentDirection.Incoming ? Color.Success : Color.Warning)"
+                             Size="Size.Small" Style="vertical-align:middle;" />
                     <strong>@context.Amount.ToString("N2") @context.CurrencyCode</strong>
                 </MudTd>
                 <MudTd DataLabel="@L["Payments_Col_VS"]">@(context.VariableSymbol ?? "—")</MudTd>
@@ -466,7 +470,6 @@ else if (_page is not null)
         {
             _unmatchedPage = await Api.ListTransactionsAsync(
                 status: EMatchStatus.Unmatched,
-                direction: EPaymentDirection.Incoming,
                 page: _unmatchedPageNumber,
                 pageSize: UnmatchedPageSize);
             if (_unmatchedPage is null) throw new InvalidOperationException("Missing payment response.");
