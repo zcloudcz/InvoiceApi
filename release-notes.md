@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.15 - 2026-10-15
+
+### Změny pro uživatele
+
+- **PR #553** - Oprava: odchozí platbu šlo ručně spárovat jen s vydanou fakturou, s přijatou fakturou od dodavatele ne. Tlačítko "Spárovat ručně" je nově i v detailu přijaté faktury a dialog párování u odchozí platby nabízí přijaté faktury; po spárování se přijatá faktura označí jako zaplacená. (PR #553, `69e5a2b`)
+
 ## 2026.10.12.3 - 2026-10-12
 
 ### Změny pro uživatele
