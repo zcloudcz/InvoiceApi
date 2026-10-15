@@ -747,7 +747,7 @@ Detail přijaté faktury (`/received-invoices/{id}`, nová: `/received-invoices/
 - tlačítka podle stavu: Přijata - Upravit, Schválit, Smazat; Schválena - Upravit, Označit jako zaplaceno, Vrátit do konceptu; Částečně uhrazena - Upravit, Označit jako zaplaceno / nezaplaceno; Zaplacena - Označit jako nezaplaceno (s potvrzením); Smazána - Obnovit;
 - položky se upravují stejným editorem jako u vydané faktury. Sazba DPH, která není v číselníku (např. 15 %), se zobrazí tak, jak je uložena, a při uložení se nezmění.
 
-Panel **Platby** (u schválené, částečně uhrazené a zaplacené faktury, vydané i přijaté) ukazuje platby spárované právě s tímto dokladem. Ikona rozpojení platbu odpáruje (po potvrzení); pokud to systém odmítne (např. část úhrady jste označili ručně), zobrazí důvod - pak použijte "Označit jako nezaplaceno". Tlačítko "Spárovat ručně" je jen u vydaných faktur.
+Panel **Platby** (u schválené, částečně uhrazené a zaplacené faktury, vydané i přijaté) ukazuje platby spárované právě s tímto dokladem. Ikona rozpojení platbu odpáruje (po potvrzení); pokud to systém odmítne (např. část úhrady jste označili ručně), zobrazí důvod - pak použijte "Označit jako nezaplaceno". Tlačítko "Spárovat ručně" je u vydaných i přijatých faktur.
 
 ### Filtrování a řazení v gridu
 
@@ -1131,6 +1131,7 @@ nespárovaných plateb a případná upozornění (např. storno položky se nei
 ### Ruční párování
 
 Kliknutím na řádek s platbou se otevře detail → tlačítko „Spárovat s fakturou" → výběr faktury ze seznamu.
+U příchozí platby se nabízí vydané faktury, u odchozí platby přijaté faktury od dodavatelů.
 
 **Zrušení párování:** v detailu faktury (i přijaté faktury) lze u spárované platby párování zrušit; stav dokladu se přepočítá
 podle zbylých plateb (částečně uhrazená / vystavená). **Výjimka:** pokud byl doklad zčásti uhrazen bankovní platbou a zbytek jste

@@ -13,8 +13,7 @@
       - Progress bar PaidAmount / TotalWithVat
       - List of PaymentMatch rows of THIS document (GET /api/invoice/{id}/payments: date, amount, source,
         note, Unmatch button that sends the real PaymentMatch id)
-      - "Match payment manually..." button → MatchPaymentDialog (issued documents only, see
-        DocumentTypeUiPolicy.SupportsManualPaymentMatch)
+      - "Match payment manually..." button → MatchPaymentDialog (issued and received documents)
     Auto-match has been moved to the Payments overview page (issue #125).
     Parent controls when to refresh by toggling the RefreshTrigger parameter.
 *@
@@ -28,14 +27,11 @@
                 @L["InvoicePayments_Panel_Title"]
             </MudText>
             <MudSpacer />
-            @if (Policy.SupportsManualPaymentMatch)
-            {
-                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Link"
-                           OnClick="OpenMatchDialog">
-                    @L["InvoicePayments_MatchManually"]
-                </MudButton>
-            }
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Link"
+                       OnClick="OpenMatchDialog">
+                @L["InvoicePayments_MatchManually"]
+            </MudButton>
         </div>
 
         @* Progress bar — green when fully paid, blue partial, grey unpaid. *@
@@ -114,10 +110,6 @@
         { PaidAmount: > 0 } => Color.Info,
         _ => Color.Default,
     };
-
-    /// <summary>Policy of the viewed document (an unset/unknown type falls back to an ordinary invoice).</summary>
-    private DocumentTypeUiPolicy Policy => DocumentTypeUiPolicy.For(
-        Invoice != null && Enum.IsDefined(Invoice.DocumentType) ? Invoice.DocumentType : EDocumentType.Invoice);
 
     protected override async Task OnParametersSetAsync()
     {

@@ -296,11 +296,29 @@ public class DocumentSideIsolationTests : IDisposable
         (await _matching.GetPaymentsForInvoiceAsync(_receivedId)).ShouldBeEmpty();
         (await _matching.FindAutoMatchForInvoiceAsync(_receivedId)).ShouldBeNull();
         await Should.ThrowAsync<InvalidOperationException>(
-            () => _matching.ManualMatchAsync(_txId, _receivedId, 100m, null, null));
-        await Should.ThrowAsync<InvalidOperationException>(
             () => _matching.ConfirmAutoMatchAsync(_txId, _receivedId, null, null));
 
         (await _db.PaymentMatch.CountAsync()).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Manual match is a UNIFIED operation: the user picks the document in the dialog and the type comes from the
+    /// stored row, so an outgoing payment can be matched to a received invoice by hand (not only by the auto-matcher).
+    /// </summary>
+    [Fact]
+    public async Task ManualMatch_GivenReceivedId_MatchesTheReceivedDocument()
+    {
+        var result = await _matching.ManualMatchAsync(_txId, _receivedId, 1210m, "by hand", null);
+
+        result.InvoiceRemaining.ShouldBe(0m);
+        var match = await _db.PaymentMatch.AsNoTracking().SingleAsync();
+        match.InvoiceId.ShouldBe(_receivedId);
+        match.MatchedBy.ShouldBe(EMatchType.Manual);
+
+        var received = await _db.Invoice.AsNoTracking().SingleAsync(i => i.Id == _receivedId);
+        received.Status.ShouldBe(EInvoiceStatus.Paid);
+        received.PaidAmount.ShouldBe(1210m);
+        (await _db.BankTransaction.AsNoTracking().SingleAsync(t => t.Id == _txId)).MatchStatus.ShouldBe(EMatchStatus.Matched);
     }
 
     [Fact]

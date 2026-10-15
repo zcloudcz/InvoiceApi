@@ -252,12 +252,6 @@ public sealed class DocumentTypeUiPolicy
     /// </summary>
     public bool HidesVatForNonVatPayerIssuer => !IsReceived;
 
-    /// <summary>
-    /// "Match payment manually" works on issued documents only (the server looks the invoice up among issued
-    /// documents); a received invoice is matched by the automatic outgoing-payment matching.
-    /// </summary>
-    public bool SupportsManualPaymentMatch => !IsReceived;
-
     /// <summary>A proforma is not a tax document, so there is no UBL for it.</summary>
     public bool SupportsUbl => !IsReceived && Type != EDocumentType.Proforma;
 
