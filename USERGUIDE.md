@@ -1630,6 +1630,23 @@ stačí v daném klientovi zadat adresu Fakvio MCP serveru a přihlásit se bě�
 kterou aplikaci jde (podle adresy, ne podle jména, které si aplikace sama zvolila), kam vás po
 povolení pošle, a zvolíte **Jen čtení** (výchozí) nebo **Čtení i zápis**.
 
+Veřejný návod s týmiž kroky je na [fakvio.cz/ai-asistent.html](https://fakvio.cz/ai-asistent.html).
+
+**claude.ai na webu (a v Claude Desktop):**
+
+1. Otevřete [claude.ai](https://claude.ai/), přihlaste se a přejděte do **Customize → Connectors**.
+2. Klikněte na **+ Add** a zvolte **Add custom connector**.
+3. Jako název zadejte **Fakvio**, jako adresu serveru `https://mcp.fakvio.cz/mcp` a potvrďte **Continue**.
+4. Ponechte přihlášení přes OAuth (**Sign in now**) a klikněte **Add**. Otevře se stránka Fakvia.
+5. Přihlaste se svým běžným účtem, zkontrolujte název aplikace, firmu a oprávnění; pro první
+   připojení zvolte **Jen čtení** a potvrďte **Povolit**.
+6. V novém chatu klikněte vlevo dole na **+ → Connectors**, zapněte Fakvio a zkuste
+   „Zobraz moje poslední faktury.“ Konektor se zapíná pro každý chat zvlášť.
+
+Vlastní konektor je dostupný ve všech plánech claude.ai (na Free jen jeden). V plánech Team a
+Enterprise může přidání omezit správce organizace. Názvy v nabídce se mohou měnit, aktuální
+postup je v [nápovědě Anthropic](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+
 **ChatGPT na webu — běžný uživatel:**
 
 1. Otevřete [ChatGPT](https://chatgpt.com/) v prohlížeči, přihlaste se a přejděte do
