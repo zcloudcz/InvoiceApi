@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Fakvio.Infrastructure.Authentication.OAuth;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -342,6 +343,102 @@ public class OAuthClientResolverTests
         var resolver = CreateResolver(out _, response: redirect);
 
         (await resolver.ResolveAsync(ClientId)).ShouldBeNull();
+    }
+
+    // ─── bounded state / concurrency (anonymous client_id flood) ────────────
+
+    private static OAuthClientResolver CreateResolverFor(HttpMessageHandler handler) => new(
+        new StubFactory(new HttpClient(handler)),
+        new MemoryCache(new MemoryCacheOptions()),
+        Options.Create(new McpOAuthOptions { TrustedClientHosts = ["claude.ai"] }),
+        NullLogger<OAuthClientResolver>.Instance);
+
+    [Fact]
+    public async Task ResolveAsync_ManyDistinctUnknownClientIds_BoundsConcurrencyAndLeavesNoInFlightState()
+    {
+        var handler = new SlowNotFoundHandler();
+        var resolver = CreateResolverFor(handler);
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 1000)
+            .Select(i => resolver.ResolveAsync($"https://claude.ai/oauth/random-{i}")));
+
+        results.ShouldAllBe(r => r == null);
+        handler.Calls.ShouldBe(1000);
+        handler.MaxConcurrent.ShouldBeLessThanOrEqualTo(OAuthClientResolver.MaxConcurrentFetches);
+        resolver.InFlightCount.ShouldBe(0); // single-flight map is emptied, not one entry per client_id
+    }
+
+    [Fact]
+    public async Task ResolveAsync_SameClientIdConcurrently_SharesOneFetch()
+    {
+        var handler = new SlowNotFoundHandler();
+        var resolver = CreateResolverFor(handler);
+
+        await Task.WhenAll(Enumerable.Range(0, 50).Select(_ => resolver.ResolveAsync(ClientId)));
+
+        handler.Calls.ShouldBe(1);
+    }
+
+    // ─── real DI-built HttpClient wiring ────────────────────────────────────
+
+    [Fact]
+    public async Task RealNamedHttpClient_BlocksLoopbackHost_ViaSsrfGuard()
+    {
+        using var provider = new ServiceCollection()
+            .AddOAuthClientMetadataHttpClient().Services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IHttpClientFactory>();
+
+        var resolver = new OAuthClientResolver(factory, new MemoryCache(new MemoryCacheOptions()),
+            Options.Create(new McpOAuthOptions { TrustedClientHosts = ["localhost"] }),
+            NullLogger<OAuthClientResolver>.Instance);
+
+        // Resolver level: allowlisted host, but the real ConnectCallback must refuse loopback.
+        (await resolver.ResolveAsync("https://localhost/x")).ShouldBeNull();
+
+        // Client level: prove the refusal comes from SsrfSafeConnect, not from e.g. a connection error.
+        var ex = await Should.ThrowAsync<HttpRequestException>(
+            () => factory.CreateClient(OAuthClientResolver.HttpClientName).GetAsync("https://localhost/x"));
+        ex.InnerException.ShouldBeOfType<SsrfBlockedException>();
+    }
+
+    [Fact]
+    public void RealNamedHttpClient_HandlerDoesNotFollowRedirectsOrUseProxy()
+    {
+        using var provider = new ServiceCollection()
+            .AddOAuthClientMetadataHttpClient().Services.BuildServiceProvider();
+
+        HttpMessageHandler handler = provider.GetRequiredService<IHttpMessageHandlerFactory>()
+            .CreateHandler(OAuthClientResolver.HttpClientName);
+        while (handler is DelegatingHandler d) handler = d.InnerHandler!;
+
+        var sockets = handler.ShouldBeOfType<SocketsHttpHandler>();
+        sockets.AllowAutoRedirect.ShouldBeFalse();
+        sockets.UseProxy.ShouldBeFalse();
+        sockets.ConnectCallback.ShouldNotBeNull();
+    }
+
+    private sealed class StubFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => client;
+    }
+
+    /// <summary>Answers 404 after a short delay and records the peak number of simultaneous requests.</summary>
+    private sealed class SlowNotFoundHandler : HttpMessageHandler
+    {
+        private int _calls, _current, _max;
+        public int Calls => _calls;
+        public int MaxConcurrent => _max;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _calls);
+            var now = Interlocked.Increment(ref _current);
+            int seen;
+            while (now > (seen = Volatile.Read(ref _max)) && Interlocked.CompareExchange(ref _max, now, seen) != seen) { }
+            await Task.Delay(5, ct);
+            Interlocked.Decrement(ref _current);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
     }
 
     /// <summary>Records every outgoing request and answers with a fixed response — no real network access.</summary>

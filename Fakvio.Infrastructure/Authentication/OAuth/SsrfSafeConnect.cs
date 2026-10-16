@@ -83,6 +83,13 @@ public static class SsrfSafeConnect
             if (bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xFF && bytes[3] == 0x9B
                 && bytes[4] == 0x00 && bytes[5] == 0x01)
                 return true;
+            // ::a.b.c.d — deprecated IPv4-compatible IPv6 (first 96 bits zero; ::1 and :: handled above).
+            // Some stacks still route it to the embedded IPv4 address.
+            if (bytes.Take(12).All(b => b == 0)) return true;
+            // 2002::/16 — 6to4: embeds an arbitrary IPv4 address, can tunnel to internal hosts.
+            if (bytes[0] == 0x20 && bytes[1] == 0x02) return true;
+            // 2001:0000::/32 — Teredo, same tunnelling concern.
+            if (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0 && bytes[3] == 0) return true;
         }
 
         // Azure instance metadata service — reachable from every App Service/VM, must never be
