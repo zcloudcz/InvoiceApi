@@ -208,7 +208,7 @@
     private long _editCompanyId;
     private string _editCompanyName = "";
     private string _editSchemaName = "";
-    private UpdateCompanySystemSettingsDto _editDto = new();
+    private UpdateCompanyAdminSettingsDto _editDto = new();
 
     /// <summary>
     /// Load all settings and companies when the page is first initialized.
@@ -296,7 +296,9 @@
         _editCompanyId = settings.CompanyId;
         _editCompanyName = settings.CompanyName;
         _editSchemaName = settings.SchemaName;
-        _editDto = new UpdateCompanySystemSettingsDto
+        // Pre-filled with the stored values: the admin endpoint writes both fields as sent,
+        // so an emptied MaxUsers field (null) means "unlimited", not "keep".
+        _editDto = new UpdateCompanyAdminSettingsDto
         {
             MaxUsers = settings.MaxUsers,
             AdminNotes = settings.AdminNotes
@@ -305,7 +307,7 @@
     }
 
     /// <summary>
-    /// Submits the Edit Settings form — updates the CompanySystemSettings record.
+    /// Submits the Edit Settings form — updates the SysAdmin-only MaxUsers / AdminNotes pair.
     /// </summary>
     private async Task UpdateSettings()
     {
@@ -315,7 +317,7 @@
 
         try
         {
-            await SettingsService.UpdateSettingsAsync(_editCompanyId, _editDto);
+            await SettingsService.UpdateAdminSettingsAsync(_editCompanyId, _editDto);
             Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
             _showEditDialog = false;
             await LoadData();
