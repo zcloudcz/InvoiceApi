@@ -28,6 +28,8 @@ using Microsoft.Extensions.Logging;
 //   FAKVIO_API_URL       — API base URL, defaults to https://localhost:7047
 //   FAKVIO_API_TOKEN     — API key (fak_live_…, recommended) or a login JWT; REQUIRED in
 //                          stdio mode, unused in http mode
+//   FAKVIO_OPENAI_APPS_CHALLENGE_TOKEN — http mode only, optional: token served at
+//                          /.well-known/openai-apps-challenge for ChatGPT app domain verification
 //   ASPNETCORE_URLS      — http mode only: what Kestrel binds to (standard ASP.NET Core)
 // ──────────────────────────────────────────────────────────────────────
 

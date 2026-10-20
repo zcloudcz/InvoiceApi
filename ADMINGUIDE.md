@@ -678,6 +678,7 @@ login, refresh a revokace ještě vyžadují ruční E2E kontrolu.
 | `FAKVIO_MCP_PUBLIC_URL` | `https://mcp.fakvio.cz` |
 | `FAKVIO_OAUTH_ISSUER` | `https://api.fakvio.cz` |
 | `FAKVIO_MCP_RESOURCE_PROOF_SECRET` | stejná hodnota jako `McpOAuth__ResourceProofSecret` výše |
+| `FAKVIO_OPENAI_APPS_CHALLENGE_TOKEN` | volitelné: token z OpenAI portálu pro ověření domény ChatGPT aplikace; MCP host ho vrací jako `text/plain` na `/.well-known/openai-apps-challenge` (bez nastavení 404). Balíček pro odeslání: `Fakvio.McpServer/ChatGptApp/` |
 
 **Ověření po zapnutí (ADR §5.2 — ruční E2E, protože chybí TEST-ENV):**
 

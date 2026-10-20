@@ -23,6 +23,9 @@ public static class McpHttpHost
     /// <summary>Route prefix the MCP Streamable HTTP transport is mapped to.</summary>
     public const string EndpointPath = "/mcp";
 
+    /// <summary>Well-known path OpenAI's ChatGPT app domain verification fetches the challenge token from.</summary>
+    public const string OpenAiAppsChallengePath = "/.well-known/openai-apps-challenge";
+
     /// <summary>
     /// Registers the HTTP-mode services: the ambient-context token provider plus everything
     /// the two transports share, wired to the Streamable HTTP transport.
@@ -72,9 +75,22 @@ public static class McpHttpHost
     {
         var settings = app.Services.GetRequiredService<McpServerSettings>();
         MapProtectedResourceMetadata(app, settings);
+        MapOpenAiAppsChallenge(app, settings);
 
         app.Use(McpApiKeyMiddleware.InvokeAsync);
         app.MapMcp(EndpointPath);
+    }
+
+    /// <summary>
+    /// OpenAI ChatGPT app domain verification: the token must be served as the whole
+    /// <c>text/plain</c> body (no JSON). 404 while no token is configured.
+    /// </summary>
+    private static void MapOpenAiAppsChallenge(WebApplication app, McpServerSettings settings)
+    {
+        app.MapGet(OpenAiAppsChallengePath, () =>
+            string.IsNullOrWhiteSpace(settings.OpenAiAppsChallengeToken)
+                ? Results.NotFound()
+                : Results.Text(settings.OpenAiAppsChallengeToken.Trim(), "text/plain", System.Text.Encoding.UTF8));
     }
 
     /// <summary>

@@ -39,6 +39,12 @@ public class McpServerSettings
     public const string ResourceProofSecretEnv = "FAKVIO_MCP_RESOURCE_PROOF_SECRET";
 
     /// <summary>
+    /// Environment variable supplying <see cref="OpenAiAppsChallengeToken"/> — the token OpenAI's
+    /// ChatGPT app domain verification asks to be served at <c>/.well-known/openai-apps-challenge</c>.
+    /// </summary>
+    public const string OpenAiAppsChallengeTokenEnv = "FAKVIO_OPENAI_APPS_CHALLENGE_TOKEN";
+
+    /// <summary>
     /// The single place the default API base URL is written down — used both by the property
     /// initializer below and by <see cref="FromEnvironment"/>, so the two cannot drift apart.
     /// That drift is what #257 was: two separate literals, and only the one startup never reads
@@ -85,6 +91,9 @@ public class McpServerSettings
     /// <summary>Shared secret proving to the API that a request really came from this MCP host (ADR §4.4). Null/empty = the header is not sent.</summary>
     public string? ResourceProofSecret { get; set; }
 
+    /// <summary>Token served as plain text at <c>/.well-known/openai-apps-challenge</c> for ChatGPT app domain verification. Null/blank = the endpoint answers 404.</summary>
+    public string? OpenAiAppsChallengeToken { get; set; }
+
     /// <summary>
     /// Builds the settings the process actually runs with, from the environment.
     /// <para>
@@ -104,6 +113,7 @@ public class McpServerSettings
         OAuthEnabled = bool.TryParse(Environment.GetEnvironmentVariable(OAuthEnabledEnv), out var oauthEnabled) && oauthEnabled,
         PublicUrl = Environment.GetEnvironmentVariable(PublicUrlEnv),
         OAuthIssuer = Environment.GetEnvironmentVariable(OAuthIssuerEnv),
-        ResourceProofSecret = Environment.GetEnvironmentVariable(ResourceProofSecretEnv)
+        ResourceProofSecret = Environment.GetEnvironmentVariable(ResourceProofSecretEnv),
+        OpenAiAppsChallengeToken = Environment.GetEnvironmentVariable(OpenAiAppsChallengeTokenEnv)
     };
 }
