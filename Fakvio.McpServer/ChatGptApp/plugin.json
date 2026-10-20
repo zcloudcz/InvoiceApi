@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "fakvio",
+  "version": "0.1.0",
+  "description": "Invoicing for Czech and Slovak freelancers and small businesses: list, create and send invoices, clients, received invoices, payments, VAT reports and tax estimates.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Fakvio",
+        "shortDescription": "Czech and Slovak invoicing",
+        "longDescription": "Fakvio is cloud invoicing for Czech and Slovak freelancers and small businesses. Through this app you can list, create and send invoices, manage clients, work with received invoices and payments, and get VAT reports and tax estimates for your Fakvio account.",
+        "developerName": "Fakvio",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "websiteURL": "https://fakvio.cz",
+        "supportURL": "https://fakvio.cz",
+        "privacyPolicyURL": "https://fakvio.cz/privacy.html",
+        "termsOfServiceURL": "https://fakvio.cz/terms.html",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/icon.png"
+      }
+    }
+  }
+}

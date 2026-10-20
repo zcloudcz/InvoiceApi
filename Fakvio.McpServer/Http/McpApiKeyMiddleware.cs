@@ -52,7 +52,9 @@ public static class McpApiKeyMiddleware
         // namespace public too, without anyone touching this file to notice.
         if (HttpMethods.IsGet(context.Request.Method) &&
             (context.Request.Path.Equals("/.well-known/oauth-protected-resource/mcp", StringComparison.OrdinalIgnoreCase) ||
-             context.Request.Path.Equals("/.well-known/oauth-protected-resource", StringComparison.OrdinalIgnoreCase)))
+             context.Request.Path.Equals("/.well-known/oauth-protected-resource", StringComparison.OrdinalIgnoreCase) ||
+             // OpenAI app domain verification fetches this anonymously (served by McpHttpHost).
+             context.Request.Path.Equals(McpHttpHost.OpenAiAppsChallengePath, StringComparison.OrdinalIgnoreCase)))
         {
             await next(context);
             return;
