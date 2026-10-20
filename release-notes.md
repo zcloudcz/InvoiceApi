@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.20 - 2026-10-20
+
+### Změny pro uživatele
+
+- **PR #560** - MCP server na mcp.fakvio.cz jde ověřit v ChatGPT aplikaci: na `/.well-known/openai-apps-challenge` vrací ověřovací token z nastavení `FAKVIO_OPENAI_APPS_CHALLENGE_TOKEN` (bez přihlášení a jen pro tuto jednu cestu). Bez nastaveného tokenu cesta vrací 404. (PR #560, `8481e3f`)
+
 ## 2026.10.15.2 - 2026-10-15
 
 ### Změny pro uživatele

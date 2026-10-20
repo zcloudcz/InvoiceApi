@@ -448,6 +448,48 @@ public class McpHttpTransportTests
         answer.ShouldContain(TenantAIssuer);
     }
 
+    // ─── OpenAI apps domain challenge ────────────────────────────────────────
+
+    [Fact]
+    public async Task OpenAiAppsChallenge_WhenTokenSet_ServesTrimmedTokenAsPlainTextWithoutAuth()
+    {
+        await using var host = await McpHttpTestHost.StartAsync(
+            settings: new McpServerSettings { OpenAiAppsChallengeToken = "  tok-123\n" });
+
+        var response = await host.GetAsync("/.well-known/openai-apps-challenge");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("text/plain");
+        response.Content.Headers.ContentType.CharSet.ShouldBe("utf-8");
+        (await response.Content.ReadAsStringAsync()).ShouldBe("tok-123");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task OpenAiAppsChallenge_WhenTokenUnset_Is404(string? token)
+    {
+        await using var host = await McpHttpTestHost.StartAsync(
+            settings: new McpServerSettings { OpenAiAppsChallengeToken = token });
+
+        var response = await host.GetAsync("/.well-known/openai-apps-challenge");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task OpenAiAppsChallenge_DoesNotOpenOtherWellKnownPaths()
+    {
+        // Exact-path allowlist, not a /.well-known prefix: neighbours stay behind the gate.
+        await using var host = await McpHttpTestHost.StartAsync(
+            settings: new McpServerSettings { OpenAiAppsChallengeToken = "tok" });
+
+        var response = await host.GetAsync("/.well-known/other");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
     /// <summary>
     /// The MCP HTTP server under test, hosted in memory, with <see cref="FakvioApiStub"/> wired in
     /// as the far end of the outbound HTTP pipeline.

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "fakvio": {
+      "type": "streamable-http",
+      "url": "https://mcp.fakvio.cz/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "oauth",
+            "client": {
+              "mode": "cimd"
+            },
+            "authorizationServerBase": "https://api.fakvio.cz",
+            "defaultScopes": ["read", "write"]
+          }
+        }
+      }
+    }
+  }
+}
