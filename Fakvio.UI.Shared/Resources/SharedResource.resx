@@ -2215,4 +2215,23 @@
   <data name="Payments_Import_Button" xml:space="preserve"><value>Nahrát výpis</value></data>
   <data name="Payments_Import_Hint" xml:space="preserve"><value>Soubor .gpc / .abo / .txt z internetového bankovnictví (max. 5 MB). Opakovaný import téhož výpisu nevytvoří duplicity. Účet z výpisu musí být uvedený v nastavení firmy.</value></data>
   <data name="Payments_Import_Summary" xml:space="preserve"><value>Výpisů: {0}, nově naimportováno: {1}, duplicit: {2}, spárováno: {3}, nespárováno: {4}.</value></data>
+  <data name="Pref_LanguageTitle" xml:space="preserve"><value>Jazyk rozhraní</value></data>
+  <data name="Pref_LanguageHelper" xml:space="preserve"><value>Přepne jazyk aplikace (CZ / EN) v tomto prohlížeči. Stránka se znovu načte.</value></data>
+  <data name="Btn_Actions" xml:space="preserve"><value>Akce</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Zrušit</value></data>
+  <data name="ContentTemplate_SubjectPdfHint" xml:space="preserve"><value>Předmět se u PDF šablon nepoužívá.</value></data>
+  <data name="Import_AiReviewRunning" xml:space="preserve"><value>AI kontrola probíhá...</value></data>
+  <data name="Invoice_EmailColumnTo" xml:space="preserve"><value>E-mail byl odeslán na {0}</value></data>
+  <data name="Label_Client" xml:space="preserve"><value>Klient</value></data>
+  <data name="Label_Type" xml:space="preserve"><value>Typ</value></data>
+  <data name="Msg_Required" xml:space="preserve"><value>Toto pole je povinné</value></data>
+  <data name="Reminder_BulkCancelConfirm" xml:space="preserve"><value>Zrušit {0} vybraných upomínek?</value></data>
+  <data name="Reminder_BulkSendConfirm" xml:space="preserve"><value>Odeslat {0} vybraných upomínek?</value></data>
+  <data name="Reminder_CancelConfirm" xml:space="preserve"><value>Opravdu zrušit tuto upomínku?</value></data>
+  <data name="Reminder_Cancelled" xml:space="preserve"><value>Upomínka byla zrušena</value></data>
+  <data name="Reminder_InvoiceNumber" xml:space="preserve"><value>Číslo faktury</value></data>
+  <data name="Reminder_Retry" xml:space="preserve"><value>Zkusit znovu</value></data>
+  <data name="Reminder_Sent" xml:space="preserve"><value>Upomínka byla odeslána</value></data>
+  <data name="TenantSettings_SchemaName" xml:space="preserve"><value>Název schématu</value></data>
+  <data name="TenantSettings_SchemaNameHelper" xml:space="preserve"><value>Název databázového schématu firmy (malá písmena, číslice a podtržítka).</value></data>
 </root>

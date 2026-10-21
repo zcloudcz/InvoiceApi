@@ -1,5 +1,12 @@
 # Fakvio TODO
 
+## UI language switch in Preferences (branch `feat/ui-language-switcher`)
+
+- [x] `Program.cs` reads the stored culture (`cs-CZ` default, only `en-US` accepted); `LanguageSwitcher` back in Preferences.
+- [x] 18 resource keys used in code but missing from both resx added (CZ + EN); CS/EN key sets identical (1363).
+- [ ] Language is per browser (localStorage), not per account; per-account setting would need a DB field + API.
+- [ ] Hardcoded (non-`L[...]`) UI strings not audited.
+
 ## One table for all documents - step 1 of 4: persistence (branch `feature/unify-documents-db`, issue #526)
 
 - [x] `EDocumentType.ReceivedInvoice = 5`, `Invoice.ReceivedDate`, entities `ReceivedInvoice`/`ReceivedInvoiceItem` removed; `PaymentMatch.InvoiceId` required, `InboundInvoiceEmail.InvoiceId` only.

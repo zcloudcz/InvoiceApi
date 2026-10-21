@@ -40,6 +40,13 @@
     }
 </MudPaper>
 
+@* UI language - stored per browser (localStorage); toggling reloads the app *@
+<MudPaper Class="pa-6 mt-6" Elevation="1" Style="max-width: 600px;">
+    <MudText Typo="Typo.h6" Class="mb-2">@L["Pref_LanguageTitle"]</MudText>
+    <MudText Class="mb-2" Color="Color.Secondary">@L["Pref_LanguageHelper"]</MudText>
+    <LanguageSwitcher />
+</MudPaper>
+
 @code {
     // Must match FakvioGrid pager options and the server-side allowed set
     private static readonly int[] PageSizeOptions = { 10, 25, 50, 100 };
