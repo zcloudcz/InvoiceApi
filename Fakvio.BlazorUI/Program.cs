@@ -3,6 +3,7 @@ using Fakvio.UI.Shared;
 using Fakvio.UI.Shared.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.JSInterop;
 
 // Standalone Blazor WebAssembly entry point — thin host.
 // All shared UI components, services, and models live in Fakvio.UI.Shared (RCL).
@@ -38,9 +39,14 @@ builder.Services.AddHttpClient("InvoiceAPI", client =>
 
 var host = builder.Build();
 
-// UI is always Czech (cs-CZ). Per-client document language is configured on Client detail page.
-// No need to read from localStorage — the LanguageSwitcher has been removed.
-CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("cs-CZ");
+// UI language defaults to Czech (cs-CZ); the user can switch to English on the Preferences page,
+// which stores the choice in localStorage (see LanguageSwitcher). Per-client document language
+// is configured separately on the Client detail page.
+var js = host.Services.GetRequiredService<IJSRuntime>();
+var storedCulture = await js.InvokeAsync<string?>("blazorCulture.get");
+// Only accept the two supported cultures so a tampered localStorage value cannot break startup.
+var uiCulture = storedCulture == "en-US" ? "en-US" : "cs-CZ";
+CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo(uiCulture);
 
 // Czech culture for date formatting (dd.MM.yyyy) in MudDatePicker and other date inputs.
 // Override the number format to use '.' as decimal separator — this prevents issues

@@ -1204,7 +1204,7 @@ Aplikace se na telefonu (šířka pod 600px) automaticky přizpůsobí:
 
 ## 16. Lokalizace — přepínání jazyka CZ/EN
 
-**Komponenta:** LanguageSwitcher v pravém horním rohu navigace
+**Kde:** Předvolby (profil → Předvolby) → karta „Jazyk rozhraní“. Volba se ukládá v prohlížeči, takže ji nastavte v každém prohlížeči, který používáte; stránka se po přepnutí znovu načte.
 
 Aplikace podporuje dvě jazykové mutace:
 - **Česky (cs)** — výchozí
