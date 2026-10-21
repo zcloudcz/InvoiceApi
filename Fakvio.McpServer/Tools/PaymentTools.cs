@@ -26,7 +26,7 @@ public static class PaymentTools
     /// <summary>
     /// Lists bank payments (transactions imported from the bank) with optional filters.
     /// </summary>
-    [McpServerTool(Title = "List payments", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List payments", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List bank payments (transactions imported from the bank), with optional filtering by " +
         "matching status, direction, and date range. Read-only — matching a payment to an " +
         "invoice is done by the user on the Payments page.")]
@@ -89,7 +89,7 @@ public static class PaymentTools
     }
 
     /// <summary>Gets a single bank payment (transaction) by ID.</summary>
-    [McpServerTool(Title = "Get payment", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get payment", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get a single bank payment (transaction) by ID. Returns full details including " +
         "matched invoices and counterparty info.")]
     public static async Task<string> GetPayment(
@@ -116,7 +116,7 @@ public static class PaymentTools
     }
 
     /// <summary>Lists payment reminders (dunning), optionally scoped to one invoice.</summary>
-    [McpServerTool(Title = "List reminders", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List reminders", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List payment reminders (upomínky) sent for overdue invoices. Filter by invoiceId to see " +
         "the escalation history of one invoice, or by status.")]
     public static async Task<string> ListReminders(
@@ -168,7 +168,7 @@ public static class PaymentTools
     }
 
     /// <summary>Gets the company-wide default reminder settings.</summary>
-    [McpServerTool(Title = "Get reminder settings", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get reminder settings", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get the company's default reminder (dunning) settings: whether reminders are enabled, " +
         "grace period, escalation levels with their fees and interest.")]
     public static async Task<string> GetReminderSettings(

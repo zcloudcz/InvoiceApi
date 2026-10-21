@@ -1926,6 +1926,8 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
     (snížení `currentNumber` → duplicitní čísla dokladů) a `update_my_company` (seznam adres se
     přepíše celý → souběžná změna adresy se ztratí). Hlídá `ToolDiscoveryTests.DataRiskyUpdateTools_AreMarkedDestructive`.
   - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
+  Všechny čtyři hinty se musí nastavit explicitně (i `Destructive = false` u read-only nástrojů): SDK nenastavený hint
+  v `tools/list` vynechá a sken ChatGPT aplikace takový nástroj odmítne (`ToolDiscoveryTests.EveryTool_SerializesAllThreeBooleanHintsExplicitly`).
   Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
   podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
 - **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro běžné MCP nástroje.**

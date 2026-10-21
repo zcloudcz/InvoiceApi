@@ -30,7 +30,7 @@ public static class SettingsTools
     /// formats — a model needs a format ID to call <see cref="CreateNumberSequence"/>, and this
     /// is the only tool that hands one out.
     /// </summary>
-    [McpServerTool(Title = "List number sequences", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List number sequences", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List the company's document number sequences (číselné řady): name, document type, " +
         "prefix/suffix, current counter, numbering format and which one is the default. " +
         "Also lists the available numbering formats with the IDs needed by create_number_sequence. " +
@@ -73,7 +73,7 @@ public static class SettingsTools
     /// resolves <c>vatRatePercentage</c> against, exposed directly so the model (or the user) can
     /// see what percentages are currently valid.
     /// </summary>
-    [McpServerTool(Title = "List VAT rates", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List VAT rates", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List VAT (DPH) rates valid at a given date — percentage, name, whether it is reduced " +
         "or the default standard rate.")]
     public static async Task<string> ListVatRates(

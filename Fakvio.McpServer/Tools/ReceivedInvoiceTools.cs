@@ -30,7 +30,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Lists received invoices with pagination and filtering.
     /// </summary>
-    [McpServerTool(Title = "List received invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List received invoices", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "LEGACY - prefer list_invoices with documentType='ReceivedInvoice'. " +
         "List received (incoming) invoices with pagination and filters. " +
         "These are expenses from suppliers. " +
@@ -86,7 +86,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Gets a single received invoice by ID.
     /// </summary>
-    [McpServerTool(Title = "Get received invoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get received invoice", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "LEGACY - prefer get_invoice (works for received invoices too). " +
         "Get a received (incoming) invoice by ID. Returns full details including line items and supplier info.")]
     public static async Task<string> GetReceivedInvoice(
@@ -241,7 +241,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Exports a received invoice as ISDOC 6.0.2 XML, returned as a short-lived download link.
     /// </summary>
-    [McpServerTool(Title = "Export received invoice as ISDOC", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Export received invoice as ISDOC", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Export a received (incoming) invoice as ISDOC 6.0.2 XML for import into accounting software. " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation.")]
     public static async Task<string> ExportReceivedInvoiceIsdoc(
@@ -268,7 +268,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// All stored attachments of several received invoices as one ZIP, returned as a download link.
     /// </summary>
-    [McpServerTool(Title = "Download received invoices attachments as ZIP", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Download received invoices attachments as ZIP", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Download the stored attachments (e.g. supplier PDFs) of several received invoices (max 100) as ONE ZIP, one folder per invoice. " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "Invoices without attachments are skipped; the link fails when none of them has any.")]

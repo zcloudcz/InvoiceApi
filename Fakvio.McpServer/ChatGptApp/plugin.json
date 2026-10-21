@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "fakvio",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Invoicing for Czech and Slovak freelancers and small businesses: list, create and send invoices, clients, received invoices, payments, VAT reports and tax estimates.",
   "extensions": {
     "com.openai": {

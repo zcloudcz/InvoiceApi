@@ -32,7 +32,7 @@ public static class CodeListTools
     /// pick one (id, code, name, symbol) — the API's CurrencyDto also carries sort order and
     /// display format, which are UI concerns an AI client has no use for.
     /// </summary>
-    [McpServerTool(Title = "List currencies", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List currencies", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List active currencies. Use the code (e.g. 'EUR') when creating invoices — " +
         "create_invoice and create_received_invoice accept a currency code directly.")]
     public static async Task<string> ListCurrencies(
@@ -66,7 +66,7 @@ public static class CodeListTools
     /// Official ČNB exchange rate for a currency on a date — what Czech VAT (§38 ZDPH) uses to convert a
     /// foreign-currency invoice to CZK. Issued/received invoices get the same rate automatically (DUZP).
     /// </summary>
-    [McpServerTool(Title = "Get exchange rate", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get exchange rate", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = true), Description(
         "Get the official Czech National Bank (ČNB) exchange rate to CZK for a currency on a date: the last daily fixing " +
         "declared on or before that date (weekends/holidays get the previous business day). Returns the published rate " +
         "(for amount units, e.g. 100 for HUF/JPY), ratePerUnit (CZK for exactly one unit) and validFor (the fixing date). " +
@@ -103,7 +103,7 @@ public static class CodeListTools
     /// one of these codes (its "id" field, passed as reverseChargeCodeId) when creating an invoice item with
     /// vatRegime "ReverseCharge" via create_invoice.
     /// </summary>
-    [McpServerTool(Title = "List reverse charge codes", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List reverse charge codes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List active reverse charge codes (kódy předmětu plnění PDP, §92a-92e ZDPH). " +
         "Pass the 'id' field as reverseChargeCodeId when creating an invoice item with vatRegime 'ReverseCharge' (the 'code' like '4' is only the human-readable label).")]
     public static async Task<string> ListReverseChargeCodes(

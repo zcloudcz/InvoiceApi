@@ -631,7 +631,7 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 > **Produkční hodnota se k uživateli dostane až releasem.** Tentýž push do `master` nasadí
 > i samotný host, takže adresa a to, na co ukazuje, jdou živě spolu.
 
-Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
+Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`. Každý MCP nástroj musí mít explicitně nastavené hinty `ReadOnly`, `Destructive`, `Idempotent` a `OpenWorld`, protože SDK nenastavený hint z `tools/list` vynechá a sken ChatGPT aplikace to odmítne.
 
 ### MCP OAuth 2.1 — zapnutí a rollback (ADR 0001)
 

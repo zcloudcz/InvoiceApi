@@ -10,7 +10,7 @@ namespace Fakvio.McpServer.Tools;
 [McpServerToolType]
 public static class CompanyTools
 {
-    [McpServerTool(Name = "list_user_company_memberships", Title = "List user company memberships", ReadOnly = true, Idempotent = true, OpenWorld = false),
+    [McpServerTool(Name = "list_user_company_memberships", Title = "List user company memberships", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("SysAdmin only. List a user's active and revoked company memberships. Requires read scope.")]
     public static Task<string> ListUserCompanyMemberships(IFakvioApiClient api, long userId, CancellationToken ct = default) =>
         ExecuteAsync(() => api.GetUserCompanyMembershipsAsync(userId, ct), ct);
@@ -21,12 +21,12 @@ public static class CompanyTools
         UpdateCompanyMembershipDto membership, CancellationToken ct = default) =>
         ExecuteAsync(() => api.UpdateUserCompanyMembershipAsync(userId, targetCompanyId, membership, ct), ct);
 
-    [McpServerTool(Name = "list_companies", Title = "List accessible companies", ReadOnly = true, Idempotent = true, OpenWorld = false),
+    [McpServerTool(Name = "list_companies", Title = "List accessible companies", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("List active companies explicitly granted to this credential. Newly joined or created companies are not automatically granted. Requires read scope.")]
     public static Task<string> ListCompanies(IFakvioApiClient api, CancellationToken ct = default) =>
         ExecuteAsync(() => api.GetMyCompaniesAsync(ct), ct);
 
-    [McpServerTool(Name = "select_company", Title = "Validate company selection", ReadOnly = true, Idempotent = true, OpenWorld = false),
+    [McpServerTool(Name = "select_company", Title = "Validate company selection", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("Validate an allowed company for subsequent calls. No session state or token is changed: pass the returned companyId on EACH subsequent tool call. Existing API-key grants and live membership are checked; OAuth remains bound to its consent company.")]
     public static Task<string> SelectCompany(IFakvioApiClient api,
         [Description("The desired explicitly granted company ID.")] long selectedCompanyId, CancellationToken ct = default) =>

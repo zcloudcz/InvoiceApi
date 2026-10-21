@@ -32,7 +32,7 @@ public static class ReportingTools
     /// Gets the full dashboard summary with invoice counts, unpaid totals,
     /// overdue invoices, and top clients by revenue.
     /// </summary>
-    [McpServerTool(Title = "Get dashboard", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get dashboard", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get the dashboard summary. Returns: invoices this month, total clients, " +
         "unpaid amount, overdue count, recent invoices, overdue invoices list, " +
         "invoice count by status (for charts), and top clients by revenue.")]
@@ -59,7 +59,7 @@ public static class ReportingTools
     /// Gets all overdue invoices — completed but unpaid invoices past their due date.
     /// Sorted by due date ascending (most overdue first).
     /// </summary>
-    [McpServerTool(Title = "Get overdue invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get overdue invoices", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get all overdue documents (completed but unpaid, past due date). " +
         "Without documentType only ISSUED documents (what customers owe you); pass documentType='ReceivedInvoice' " +
         "for received supplier invoices (what you owe). " +
@@ -112,7 +112,7 @@ public static class ReportingTools
     /// Gets all invoices for a specific client.
     /// Useful for viewing a client's invoice history.
     /// </summary>
-    [McpServerTool(Title = "Get client invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get client invoices", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get all invoices for a specific client. " +
         "Returns the client's invoice history sorted by issue date (newest first). " +
         "Useful for account review and client communication.")]
@@ -151,7 +151,7 @@ public static class ReportingTools
     /// Gets invoices within a specific date range.
     /// Useful for monthly/quarterly reports and accounting summaries.
     /// </summary>
-    [McpServerTool(Title = "Get invoices by date range", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get invoices by date range", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get invoices within a date range. Useful for monthly/quarterly reports. " +
         "Dates should be ISO 8601 format (e.g., '2026-01-01'). " +
         "Optionally filter by document type or status.")]
@@ -207,7 +207,7 @@ public static class ReportingTools
     /// Gets a VAT (DPH) report for a specified period.
     /// Shows output VAT, input VAT, tax liability, revenue, expenses, and profit.
     /// </summary>
-    [McpServerTool(Title = "Get VAT report", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get VAT report", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get a VAT (DPH) report for a date period. Shows output VAT (from issued invoices), " +
         "input VAT (from received invoices), tax liability (output - input), " +
         "revenue, expenses, and profit. Uses TaxableSupplyDate (DUZP). " +
@@ -243,7 +243,7 @@ public static class ReportingTools
     /// Exports an EPO XML filing (VAT return, control statement or EU summary statement)
     /// for one period, returned as a short-lived download link like the other export tools.
     /// </summary>
-    [McpServerTool(Title = "Export VAT filing for EPO", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Export VAT filing for EPO", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Export an XML filing for the Czech tax portal EPO for one period. kind: " +
         "'return' = DPHDP3 VAT return (Priznani k DPH), 'control' = DPHKH1 control statement (Kontrolni hlaseni), " +
         "'summary' = DPHSHV EU summary statement (Souhrnne hlaseni, supplies to EU VAT payers). " +
@@ -299,7 +299,7 @@ public static class ReportingTools
     /// <summary>
     /// Gets the quarterly EU OSS (One-Stop-Shop) report: base and VAT per destination country and rate in EUR.
     /// </summary>
-    [McpServerTool(Title = "Get OSS report", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get OSS report", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = true), Description(
         "Get the quarterly EU OSS (One-Stop-Shop) report: taxable base and VAT per destination EU country " +
         "and VAT rate, in EUR (non-EUR invoices converted at the ECB rate of the last day of the quarter; " +
         "credit notes reduce the figures). Covers only invoices issued under OSS (B2C sales to other EU states). " +
@@ -331,7 +331,7 @@ public static class ReportingTools
     /// <summary>
     /// Gets overdue received invoices — approved but unpaid expenses past due date.
     /// </summary>
-    [McpServerTool(Title = "Get overdue received invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get overdue received invoices", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get overdue received (incoming) invoices — approved but unpaid expenses past due date. " +
         "Useful for tracking outstanding supplier payments.")]
     public static async Task<string> GetOverdueReceivedInvoices(
