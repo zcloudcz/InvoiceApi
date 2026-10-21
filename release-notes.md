@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Změny pro uživatele
+
+- **PR #562** - MCP nástroje nyní výslovně uvádějí, zda jen čtou, jsou destruktivní a zda pracují s vnějším světem (create_client, update_client, get_oss_report, get_exchange_rate, recurring schedules). ChatGPT app scan už nehlásí chybějící údaje u 56 nástrojů. (PR #562, `633e5e6`)
+
 ## 2026.10.20 - 2026-10-20
 
 ### Změny pro uživatele
