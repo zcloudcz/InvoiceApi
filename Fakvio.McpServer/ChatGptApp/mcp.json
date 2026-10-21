@@ -10,9 +10,7 @@
             "type": "oauth",
             "client": {
               "mode": "cimd"
-            },
-            "authorizationServerBase": "https://api.fakvio.cz",
-            "defaultScopes": ["read", "write"]
+            }
           }
         }
       }

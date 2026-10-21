@@ -39,7 +39,7 @@ public static class InvoiceTools
     /// Lists invoices with pagination and optional filters.
     /// Returns a page of invoices matching the given criteria.
     /// </summary>
-    [McpServerTool(Title = "List invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List invoices", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List documents with pagination and filters. ONE toolbox for every document type: issued Invoice, CreditNote, " +
         "Proforma, TaxReceiptForAdvance and received ReceivedInvoice (supplier invoices) - they differ only by documentType. " +
         "Without documentType only ISSUED documents are listed; pass documentType='ReceivedInvoice' for received ones. " +
@@ -118,7 +118,7 @@ public static class InvoiceTools
     /// Gets a single invoice by its database ID.
     /// Returns full invoice details including items, amounts, and metadata.
     /// </summary>
-    [McpServerTool(Title = "Get invoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get invoice", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get a single document by ID - any type (invoice, credit note, proforma, tax receipt, received invoice); " +
         "the type is read from the stored document. Returns full details including line items, " +
         "totals (before VAT, VAT, with VAT), payment status, and client (for a received invoice: supplier) / issuer info. " +
@@ -153,7 +153,7 @@ public static class InvoiceTools
     /// Finds an invoice by its document number (e.g., "FAK2026001").
     /// Useful when the user refers to an invoice by its printed number.
     /// </summary>
-    [McpServerTool(Title = "Find invoice by number", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Find invoice by number", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Find a document by its document number (e.g., 'FAK2026001'). " +
         "Use this when the user refers to an invoice by its printed/visible number. " +
         "Searches issued documents unless documentType is given; for a received invoice pass documentType='ReceivedInvoice' " +
@@ -474,7 +474,7 @@ public static class InvoiceTools
     /// <summary>
     /// Returns how much of a proforma's received advance is not yet deducted on final invoices.
     /// </summary>
-    [McpServerTool(Title = "Get remaining advance", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get remaining advance", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get the remaining advance of a proforma: received (paid) amount incl. VAT minus what " +
         "final invoices already deducted. Use before issue_final_invoice.")]
     public static async Task<string> GetRemainingAdvance(
@@ -816,7 +816,7 @@ public static class InvoiceTools
     /// <summary>
     /// Read-only preview of what send_invoice_email would do: recipients, default attachments, stored files.
     /// </summary>
-    [McpServerTool(Title = "Get invoice e-mail options", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get invoice e-mail options", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Show the options for sending an ISSUED invoice by e-mail (a received invoice is refused): the client's e-mail contacts (best recipient first), the effective " +
         "default attachments (attachPdf / attachIsdoc / attachUbl, and whether UBL is automatic), the files stored on the invoice " +
         "(id, name, size - pass the ids to send_invoice_email fileAttachmentIds) and the rendered default subject " +
@@ -846,7 +846,7 @@ public static class InvoiceTools
     /// Exports an invoice as a PDF file, returned as a short-lived download link
     /// (never as file content - AI clients cannot turn base64 text into a file).
     /// </summary>
-    [McpServerTool(Title = "Export invoice as PDF", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Export invoice as PDF", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Export an ISSUED invoice as PDF (a received invoice is refused - its original is an attachment, see list_attachments). " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user " +
         "and do NOT fetch it or load the file contents into the conversation. " +
@@ -888,7 +888,7 @@ public static class InvoiceTools
     /// Exports an invoice as ISDOC 6.0.2 XML, returned as a short-lived download link.
     /// ISDOC is the Czech electronic invoice standard importable by Pohoda, Money S3, Helios.
     /// </summary>
-    [McpServerTool(Title = "Export invoice as ISDOC", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Export invoice as ISDOC", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Export an ISSUED invoice as ISDOC 6.0.2 XML (Czech electronic invoice standard; a received invoice is refused - use export_received_invoice_isdoc). " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "Use this when the user asks to download or export an invoice as ISDOC for import into accounting software. " +
@@ -930,7 +930,7 @@ public static class InvoiceTools
     /// eInvoice export (still a Draft, a pro-forma, missing Peppol ID, …), the API refuses to mint
     /// the link with 400 and the error JSON carries the readable EINVOICE_* codes instead of a stack trace.
     /// </summary>
-    [McpServerTool(Title = "Export invoice as UBL/Peppol eInvoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Export invoice as UBL/Peppol eInvoice", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Export an ISSUED invoice as UBL 2.1 / Peppol BIS Billing 3.0 XML (SK e-invoicing 2027, Peppol network; a received invoice is refused). " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "Use this instead of ExportInvoiceIsdoc when the user asks for a Peppol / UBL / SK eFaktura export, " +
@@ -987,7 +987,7 @@ public static class InvoiceTools
     /// Unlike ExportInvoiceIsdoc/ExportInvoiceUbl this covers many invoices in one file, so it's
     /// the right tool when the user wants a whole month/period handed to their accountant.
     /// </summary>
-    [McpServerTool(Title = "Export accounting period", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Export accounting period", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Export issued and/or received invoices for a date range as one XML file for an accounting " +
         "system. Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "Use this when the user asks to export invoices to Pohoda, Money S3 or ABRA Flexi, " +
@@ -1041,7 +1041,7 @@ public static class InvoiceTools
     /// <summary>
     /// Bulk export of several invoices as one ZIP (PDF, ISDOC or UBL), returned as a download link.
     /// </summary>
-    [McpServerTool(Title = "Export several invoices as ZIP", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Export several invoices as ZIP", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Export several invoices (max 100) as ONE ZIP archive in the chosen format: 'pdf', 'isdoc' or 'ubl'. " +
         "Returns a short-lived download link (downloadUrl) - give that link to the user and do NOT fetch it or load the file contents into the conversation. " +
         "ISSUED invoices only: if any id is a received invoice the call is refused with a clear error. " +

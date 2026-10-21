@@ -24,7 +24,7 @@ public static class AttachmentTools
     };
 
     /// <summary>Lists the attachments of one record (metadata only, newest first).</summary>
-    [McpServerTool(Title = "List attachments of a record", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List attachments of a record", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List the stored file attachments (id, file name, type, size, description) of a record, e.g. entityName 'ReceivedInvoice' " +
         "or 'Invoice' with the record ID. Use the returned attachment id with GetAttachmentDownloadLink.")]
     public static async Task<string> ListAttachments(
@@ -49,7 +49,7 @@ public static class AttachmentTools
     }
 
     /// <summary>Download link for one stored attachment.</summary>
-    [McpServerTool(Title = "Get attachment download link", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get attachment download link", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get a short-lived download link (downloadUrl) for ONE stored attachment - give that link to the user and do NOT fetch it " +
         "or load the file contents into the conversation. Find the attachment id with ListAttachments.")]
     public static async Task<string> GetAttachmentDownloadLink(
@@ -74,7 +74,7 @@ public static class AttachmentTools
     }
 
     /// <summary>Download link for a ZIP of all attachments of one record.</summary>
-    [McpServerTool(Title = "Get ZIP of all attachments of a record", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get ZIP of all attachments of a record", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get a short-lived download link (downloadUrl) for a ZIP with ALL attachments of one record - give that link to the user and " +
         "do NOT fetch it or load the file contents into the conversation. The link fails when the record has no attachments.")]
     public static async Task<string> GetRecordAttachmentsZipLink(

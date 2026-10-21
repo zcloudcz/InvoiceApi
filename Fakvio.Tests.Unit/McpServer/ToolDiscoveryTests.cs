@@ -6,6 +6,7 @@ using Fakvio.McpServer;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using NSubstitute;
 using Shouldly;
@@ -432,6 +433,29 @@ public class ToolDiscoveryTests
             {
                 annotations.ReadOnlyHint.ShouldBe(true,
                     $"Tool '{name}' looks read-only from its name and must be ReadOnlyHint = true.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The ChatGPT app scan rejects a tool unless readOnlyHint, destructiveHint and openWorldHint are
+    /// explicit booleans in <c>tools/list</c>. The SDK omits any hint left unset on the attribute, so
+    /// we serialize the protocol tool exactly as the wire would and check the three keys are present.
+    /// </summary>
+    [Fact]
+    public void EveryTool_SerializesAllThreeBooleanHintsExplicitly()
+    {
+        foreach (var tool in DiscoverTools())
+        {
+            var json = JsonSerializer.SerializeToElement(tool.ProtocolTool, McpJsonUtilities.DefaultOptions);
+            var annotations = json.GetProperty("annotations");
+
+            foreach (var hint in new[] { "readOnlyHint", "destructiveHint", "openWorldHint" })
+            {
+                annotations.TryGetProperty(hint, out var value).ShouldBeTrue(
+                    $"Tool '{tool.ProtocolTool.Name}' does not serialize '{hint}' - set it explicitly on [McpServerTool].");
+                (value.ValueKind is JsonValueKind.True or JsonValueKind.False).ShouldBeTrue(
+                    $"Tool '{tool.ProtocolTool.Name}': '{hint}' is not a boolean.");
             }
         }
     }
