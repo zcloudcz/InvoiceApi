@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.21.2 - 2026-10-21
+
+### Změny pro uživatele
+
+- **PR #564** - Jazyk rozhraní (CZ / EN) jde znovu přepnout, tentokrát v Předvolbách; volba se pamatuje v prohlížeči. Zároveň doplněno 18 chybějících překladů (tlačítko Zrušit, hlášky upomínek, název schématu firmy a další), které se dosud zobrazovaly jako holé názvy klíčů. (PR #564, `ccf59c7`)
+
 ## 2026.10.21 - 2026-10-21
 
 ### Změny pro uživatele
