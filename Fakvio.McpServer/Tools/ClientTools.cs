@@ -29,7 +29,7 @@ public static class ClientTools
     /// Lists clients with pagination and optional search.
     /// By default returns only active customers (not issuers).
     /// </summary>
-    [McpServerTool(Title = "List clients", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List clients", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List clients (customers) with pagination and search. " +
         "Returns paginated results with company details, addresses, contacts, and billing settings.")]
     public static async Task<string> ListClients(
@@ -68,7 +68,7 @@ public static class ClientTools
     /// <summary>
     /// Gets a single client by ID with all details (addresses, contacts, bank accounts, billing).
     /// </summary>
-    [McpServerTool(Title = "Get client", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get client", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get a single client by ID. Returns full details including addresses, " +
         "contacts, bank accounts, and billing settings.")]
     public static async Task<string> GetClient(
@@ -99,7 +99,7 @@ public static class ClientTools
     /// Creates a new client (customer).
     /// At minimum requires companyName. Set fetchFromAres=true to auto-fill from Czech registry.
     /// </summary>
-    [McpServerTool(Title = "Create client", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
+    [McpServerTool(Title = "Create client", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true), Description(
         "Create a new client (customer). Requires companyName at minimum. " +
         "JSON object with: companyName (required), registrationNumber (IČO), taxNumber (DIČ), " +
         "isVatPayer, language ('cs'/'en'), fetchFromAres (auto-fill from Czech registry), " +
@@ -133,7 +133,7 @@ public static class ClientTools
     /// Updates an existing client.
     /// Only provided fields are changed — null fields are left unchanged.
     /// </summary>
-    [McpServerTool(Title = "Update client", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Update client", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = true), Description(
         "Update an existing client. Only provided fields are changed (partial update). " +
         "JSON object with optional: companyName, taxNumber, isVatPayer, isActive, language, " +
         "refreshFromAres (re-fetch from ARES registry), " +
@@ -181,7 +181,7 @@ public static class ClientTools
     /// Looks up a Czech company by IČO (registration number) in the ARES registry.
     /// Returns company data preview — does NOT save to database.
     /// </summary>
-    [McpServerTool(Title = "Look up company in ARES", ReadOnly = true, Idempotent = true, OpenWorld = true), Description(
+    [McpServerTool(Title = "Look up company in ARES", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = true), Description(
         "Look up a Czech company in the ARES registry by IČO (registration number). " +
         "Returns company name, address, VAT status, etc. Does NOT create a client — " +
         "use CreateClient with fetchFromAres=true for that.")]
@@ -215,7 +215,7 @@ public static class ClientTools
     /// Verifies an EU VAT identification number (DIČ) against VIES.
     /// Works for any EU member state, unlike LookupAres which is Czech-only (IČO).
     /// </summary>
-    [McpServerTool(Title = "Verify VAT ID in VIES", ReadOnly = true, Idempotent = true, OpenWorld = true), Description(
+    [McpServerTool(Title = "Verify VAT ID in VIES", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = true), Description(
         "Verify an EU VAT identification number (DIČ) against VIES (EU VAT registry). " +
         "Returns whether the number is currently registered, plus name/address when the " +
         "member state releases them. Use for any EU country — LookupAres is Czech IČO only.")]
@@ -243,7 +243,7 @@ public static class ClientTools
     /// Gets the authenticated user's own company (issuer).
     /// This is the company that appears as the sender on invoices.
     /// </summary>
-    [McpServerTool(Title = "Get my company", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get my company", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get the authenticated user's own company (issuer). " +
         "This is the entity that appears as the sender/creator on invoices. " +
         "Useful for getting issuerId when creating invoices. " +

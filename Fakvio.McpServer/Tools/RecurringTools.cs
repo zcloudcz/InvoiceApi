@@ -30,7 +30,7 @@ public static class RecurringTools
     };
 
     /// <summary>Lists recurring schedules, optionally filtered to one template.</summary>
-    [McpServerTool(Title = "List recurring schedules", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "List recurring schedules", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "List recurring invoice schedules — automatic rules that issue an invoice on a repeating " +
         "cadence (Weekly/Monthly/Quarterly/Yearly) for a template + client pair. Optionally filter " +
         "to schedules of one template. Each result includes nextRunAt (next planned issue date), " +
@@ -56,7 +56,7 @@ public static class RecurringTools
     }
 
     /// <summary>Gets a single recurring schedule by ID.</summary>
-    [McpServerTool(Title = "Get recurring schedule", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Get recurring schedule", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get a single recurring invoice schedule by ID — its frequency, next/last run dates, " +
         "occurrence count/cap, end date, and last error if the last attempt failed.")]
     public static async Task<string> GetRecurringSchedule(
@@ -84,7 +84,7 @@ public static class RecurringTools
     }
 
     /// <summary>Creates a new recurring schedule on a template.</summary>
-    [McpServerTool(Title = "Create recurring schedule", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
+    [McpServerTool(Title = "Create recurring schedule", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true), Description(
         "Create a recurring invoice schedule: from startDate onward, an invoice for the given " +
         "template + client is automatically ISSUED (Status = Completed, not a draft) every " +
         "intervalCount-th period of frequency. Monthly/Quarterly/Yearly fire on dayOfMonth (1-28 " +
@@ -120,7 +120,7 @@ public static class RecurringTools
     }
 
     /// <summary>Updates fields of an existing recurring schedule. Null fields are left unchanged.</summary>
-    [McpServerTool(Title = "Update recurring schedule", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Update recurring schedule", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = true), Description(
         "Update an existing recurring schedule. Only provided (non-null) fields change. " +
         "Changing frequency/intervalCount/dayOfMonth/dayOfWeek does NOT recompute nextRunAt — it " +
         "only applies from the next successful run onward. To switch TO Weekly: set " +
@@ -181,7 +181,7 @@ public static class RecurringTools
     }
 
     /// <summary>Resumes a paused schedule (IsActive = true).</summary>
-    [McpServerTool(Title = "Resume recurring schedule", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Title = "Resume recurring schedule", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = true), Description(
         "Resume a paused recurring schedule. Rejected if the schedule already reached its end " +
         "condition (endDate passed or maxOccurrences already produced) — update it first to move " +
         "that limit before resuming. Calling this on an already-active schedule is a no-op.")]
