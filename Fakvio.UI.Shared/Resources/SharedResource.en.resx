@@ -2215,4 +2215,23 @@
   <data name="Payments_Import_Button" xml:space="preserve"><value>Upload statement</value></data>
   <data name="Payments_Import_Hint" xml:space="preserve"><value>A .gpc / .abo / .txt file from internet banking (max 5 MB). Re-importing the same statement creates no duplicates. The statement account must be listed in company settings.</value></data>
   <data name="Payments_Import_Summary" xml:space="preserve"><value>Statements: {0}, newly imported: {1}, duplicates: {2}, matched: {3}, unmatched: {4}.</value></data>
+  <data name="Pref_LanguageTitle" xml:space="preserve"><value>Interface language</value></data>
+  <data name="Pref_LanguageHelper" xml:space="preserve"><value>Switches the application language (CZ / EN) in this browser. The page reloads.</value></data>
+  <data name="Btn_Actions" xml:space="preserve"><value>Actions</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ContentTemplate_SubjectPdfHint" xml:space="preserve"><value>The subject is not used for PDF templates.</value></data>
+  <data name="Import_AiReviewRunning" xml:space="preserve"><value>AI review in progress...</value></data>
+  <data name="Invoice_EmailColumnTo" xml:space="preserve"><value>Email sent to {0}</value></data>
+  <data name="Label_Client" xml:space="preserve"><value>Client</value></data>
+  <data name="Label_Type" xml:space="preserve"><value>Type</value></data>
+  <data name="Msg_Required" xml:space="preserve"><value>This field is required</value></data>
+  <data name="Reminder_BulkCancelConfirm" xml:space="preserve"><value>Cancel {0} selected reminders?</value></data>
+  <data name="Reminder_BulkSendConfirm" xml:space="preserve"><value>Send {0} selected reminders?</value></data>
+  <data name="Reminder_CancelConfirm" xml:space="preserve"><value>Really cancel this reminder?</value></data>
+  <data name="Reminder_Cancelled" xml:space="preserve"><value>Reminder cancelled</value></data>
+  <data name="Reminder_InvoiceNumber" xml:space="preserve"><value>Invoice number</value></data>
+  <data name="Reminder_Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Reminder_Sent" xml:space="preserve"><value>Reminder sent</value></data>
+  <data name="TenantSettings_SchemaName" xml:space="preserve"><value>Schema name</value></data>
+  <data name="TenantSettings_SchemaNameHelper" xml:space="preserve"><value>Company database schema name (lowercase letters, digits and underscores).</value></data>
 </root>
