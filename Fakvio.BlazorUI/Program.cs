@@ -39,13 +39,15 @@ builder.Services.AddHttpClient("InvoiceAPI", client =>
 
 var host = builder.Build();
 
-// UI language defaults to Czech (cs-CZ); the user can switch to English on the Preferences page,
-// which stores the choice in localStorage (see LanguageSwitcher). Per-client document language
-// is configured separately on the Client detail page.
+// UI language: localStorage 'culture' caches the logged-in user's preference (stored server-side
+// in UserPreferences; MainLayout syncs it after login). Without it (login page, after logout)
+// we use the browser language: English browsers get en-US, everything else cs-CZ.
+// Per-client document language is configured separately on the Client detail page.
 var js = host.Services.GetRequiredService<IJSRuntime>();
 var storedCulture = await js.InvokeAsync<string?>("blazorCulture.get");
-// Only accept the two supported cultures so a tampered localStorage value cannot break startup.
-var uiCulture = storedCulture == "en-US" ? "en-US" : "cs-CZ";
+var browserLanguage = await js.InvokeAsync<string?>("blazorCulture.browser");
+// The resolver only accepts the supported cultures so a tampered localStorage value cannot break startup.
+var uiCulture = UiCultureResolver.Resolve(storedCulture, browserLanguage);
 CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo(uiCulture);
 
 // Czech culture for date formatting (dd.MM.yyyy) in MudDatePicker and other date inputs.

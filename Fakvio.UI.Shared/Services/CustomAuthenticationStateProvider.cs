@@ -281,5 +281,8 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
         await _localStorage.RemoveItemAsync("UserSession");
         await _localStorage.RemoveItemAsync("ImpersonatedCompanyId");
         await _localStorage.RemoveItemAsync("ImpersonatedCompanyName");
+        // Cached UI language of the logged-in user: drop it so the next login page
+        // uses the browser language again (see UiCultureResolver / Program.cs).
+        await _localStorage.RemoveItemAsync("culture");
     }
 }

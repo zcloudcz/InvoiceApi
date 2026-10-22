@@ -21,6 +21,11 @@ public class UserPreferencesService : IUserPreferencesService
     /// </summary>
     private static readonly int[] AllowedPageSizes = { 10, 25, 50, 100 };
 
+    /// <summary>
+    /// Allowed UI cultures — must match the resx localizations shipped with the UI.
+    /// </summary>
+    private static readonly string[] AllowedUiCultures = { "cs-CZ", "en-US" };
+
     private readonly MasterDbContext _context;
     private readonly ILogger<UserPreferencesService> _logger;
 
@@ -50,6 +55,12 @@ public class UserPreferencesService : IUserPreferencesService
                 $"DefaultGridPageSize must be one of: {string.Join(", ", AllowedPageSizes)}.");
         }
 
+        if (!AllowedUiCultures.Contains(dto.UiCulture))
+        {
+            throw new ArgumentException(
+                $"UiCulture must be one of: {string.Join(", ", AllowedUiCultures)}.");
+        }
+
         var entity = await _context.UserPreferences
             .FirstOrDefaultAsync(p => p.UserId == userId, ct);
 
@@ -67,10 +78,11 @@ public class UserPreferencesService : IUserPreferencesService
             .ToList();
         entity.DashboardLayoutJson = layout is null ? null : JsonSerializer.Serialize(layout);
         entity.SetupWizardDismissedAt = dto.SetupWizardDismissedAt;
+        entity.UiCulture = dto.UiCulture;
         await _context.SaveChangesAsync(ct);
 
-        _logger.LogInformation("User {UserId} preferences updated (grid page size {PageSize})",
-            userId, dto.DefaultGridPageSize);
+        _logger.LogInformation("User {UserId} preferences updated (grid page size {PageSize}, UI culture {UiCulture})",
+            userId, dto.DefaultGridPageSize, dto.UiCulture);
 
         return MapToDto(entity);
     }
@@ -85,7 +97,8 @@ public class UserPreferencesService : IUserPreferencesService
             // A corrupt/old-shape JSON value must not take the dashboard down — same
             // "decoration, never crash the host page" reasoning as ReadinessApiService.
             : TryDeserializeLayout(entity.DashboardLayoutJson),
-        SetupWizardDismissedAt = entity.SetupWizardDismissedAt
+        SetupWizardDismissedAt = entity.SetupWizardDismissedAt,
+        UiCulture = entity.UiCulture
     };
 
     private static List<DashboardWidgetLayoutItemDto>? TryDeserializeLayout(string json)

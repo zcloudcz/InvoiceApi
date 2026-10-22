@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@using System.Globalization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Fakvio.UI.Shared.Services
 @using Fakvio.Contracts.Dto.Client
@@ -12,6 +13,8 @@
 @inject AppStateService AppState
 @inject IJSRuntime JS
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@inject UserPreferencesState PreferencesState
+@inject ILogger<MainLayout> Logger
 @implements IDisposable
 
 @* NOTE: CascadingAuthenticationState is provided by App.razor — no need to wrap here.
@@ -219,6 +222,38 @@
             AppState.OnCompanyListChanged += OnCompanyListChanged;
 
             await LoadCompaniesAsync();
+            await ApplyUserCultureAsync();
+        }
+    }
+
+    /// <summary>
+    /// Switches the UI to the language stored in the logged-in user's preferences.
+    /// Runs once per app start; on the login page there is no session, so it does nothing
+    /// and the browser-language culture chosen in Program.cs stays in effect.
+    /// </summary>
+    private async Task ApplyUserCultureAsync()
+    {
+        try
+        {
+            var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
+            if (await customAuth.GetUserSessionAsync() is null)
+                return;
+
+            var wanted = (await PreferencesState.EnsureLoadedAsync()).UiCulture;
+            if (!UiCultureResolver.IsSupported(wanted) || wanted == CultureInfo.CurrentUICulture.Name)
+                return;
+
+            await JS.InvokeVoidAsync("blazorCulture.set", wanted);
+
+            // Reload-loop guard: only reload when the value was really stored. If localStorage
+            // is blocked, Program.cs would never see it and we would reload forever.
+            if (await JS.InvokeAsync<string?>("blazorCulture.get") == wanted)
+                Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            // Preferences are optional here - keep the current culture if the API is unavailable.
+            Logger.LogWarning(ex, "Could not apply the user's UI culture");
         }
     }
 
@@ -295,6 +330,7 @@
     {
         var customAuthStateProvider = (CustomAuthenticationStateProvider)AuthStateProvider;
         await customAuthStateProvider.MarkUserAsLoggedOutAsync();
+        PreferencesState.Reset();
         Navigation.NavigateTo("/login", forceLoad: true);
     }
 }

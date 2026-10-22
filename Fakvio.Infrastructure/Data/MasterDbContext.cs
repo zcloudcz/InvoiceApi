@@ -337,6 +337,11 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
             entity.Property(e => e.DefaultGridPageSize).HasDefaultValue(10);
             entity.Property(e => e.DashboardLayoutJson).HasColumnType("text");
+
+            entity.Property(e => e.UiCulture)
+                .IsRequired()
+                .HasMaxLength(10)
+                .HasDefaultValue("cs-CZ");
         });
     }
 

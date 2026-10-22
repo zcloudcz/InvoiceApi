@@ -40,7 +40,12 @@
     <script>
         window.blazorCulture = {
             get: function () { return localStorage.getItem('culture'); },
-            set: function (value) { localStorage.setItem('culture', value); }
+            set: function (value) { localStorage.setItem('culture', value); },
+            // 'culture' = cached UI language of the LOGGED-IN user (source of truth is the
+            // server-side user preferences). It is removed on logout (see
+            // CustomAuthenticationStateProvider.ClearSessionAsync) so the login page
+            // falls back to the browser language (browser()).
+            browser: function () { return navigator.language; }
         };
     </script>
 

@@ -174,6 +174,8 @@ public class FeedbackUiTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(Substitute.For<IClientLogger>());
         Services.AddSingleton<CompanyApiService>();
         Services.AddSingleton<NotificationApiService>();
+        // MainLayout applies the user's UI language from preferences after first render.
+        Services.AddSingleton(Substitute.For<UserPreferencesState>());
         ComponentFactories.AddStub<NavMenu>();
         ComponentFactories.AddStub<CompanyMembershipSelector>();
         var cut = Render<MainLayout>();
