@@ -51,6 +51,7 @@ public class UserPreferencesServiceTests : IDisposable
         var result = await _service.GetAsync(1);
 
         result.DefaultGridPageSize.ShouldBe(10);
+        result.UiCulture.ShouldBe("cs-CZ");
         // Reading must NOT create a row — lazy upsert happens only on save
         (await _context.UserPreferences.CountAsync()).ShouldBe(0);
     }
@@ -119,6 +120,24 @@ public class UserPreferencesServiceTests : IDisposable
     {
         await Should.ThrowAsync<ArgumentException>(
             () => _service.UpdateAsync(1, new UserPreferencesDto { DefaultGridPageSize = pageSize }));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EnglishCulture_RoundTrips()
+    {
+        await _service.UpdateAsync(1, new UserPreferencesDto { UiCulture = "en-US" });
+
+        (await _service.GetAsync(1)).UiCulture.ShouldBe("en-US");
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("")]
+    [InlineData("en")]
+    public async Task UpdateAsync_InvalidCulture_Throws(string culture)
+    {
+        await Should.ThrowAsync<ArgumentException>(
+            () => _service.UpdateAsync(1, new UserPreferencesDto { UiCulture = culture }));
     }
 
     [Theory]

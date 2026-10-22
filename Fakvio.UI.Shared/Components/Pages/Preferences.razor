@@ -2,11 +2,14 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
 @using Fakvio.Contracts.Dto.User
+@using System.Globalization
 @using Fakvio.UI.Shared.Services
 
 @inject UserPreferencesApiService PreferencesService
 @inject UserPreferencesState PreferencesState
 @inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@L["Pref_Title"]</PageTitle>
@@ -32,19 +35,21 @@
             }
         </MudSelect>
 
+        @* UI language - stored in the user account; applied on every login/device *@
+        <MudSelect T="string" @bind-Value="_preferences.UiCulture" Class="mt-4"
+                   Label="@L["Pref_LanguageTitle"].Value"
+                   HelperText="@L["Pref_LanguageHelper"].Value"
+                   Variant="Variant.Outlined">
+            <MudSelectItem T="string" Value="@UiCultureResolver.Czech">@L["Pref_LanguageCs"]</MudSelectItem>
+            <MudSelectItem T="string" Value="@UiCultureResolver.English">@L["Pref_LanguageEn"]</MudSelectItem>
+        </MudSelect>
+
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-6"
                    StartIcon="@Icons.Material.Filled.Save"
                    OnClick="SaveAsync" Disabled="_saving">
             @L["Btn_Save"]
         </MudButton>
     }
-</MudPaper>
-
-@* UI language - stored per browser (localStorage); toggling reloads the app *@
-<MudPaper Class="pa-6 mt-6" Elevation="1" Style="max-width: 600px;">
-    <MudText Typo="Typo.h6" Class="mb-2">@L["Pref_LanguageTitle"]</MudText>
-    <MudText Class="mb-2" Color="Color.Secondary">@L["Pref_LanguageHelper"]</MudText>
-    <LanguageSwitcher />
 </MudPaper>
 
 @code {
@@ -77,6 +82,16 @@
                 // the new page size without reloading the app.
                 PreferencesState.Set(saved);
                 Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+
+                // Language changed: cache it for the next app start and reload so all
+                // components pick up the new culture. Only reload if the value was really
+                // stored (localStorage may be blocked), otherwise we could loop.
+                if (saved.UiCulture != CultureInfo.CurrentUICulture.Name)
+                {
+                    await JS.InvokeVoidAsync("blazorCulture.set", saved.UiCulture);
+                    if (await JS.InvokeAsync<string?>("blazorCulture.get") == saved.UiCulture)
+                        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+                }
             }
             else
             {

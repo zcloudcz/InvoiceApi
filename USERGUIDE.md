@@ -1204,11 +1204,14 @@ Aplikace se na telefonu (šířka pod 600px) automaticky přizpůsobí:
 
 ## 16. Lokalizace — přepínání jazyka CZ/EN
 
-**Kde:** Předvolby (profil → Předvolby) → karta „Jazyk rozhraní“. Volba se ukládá v prohlížeči, takže ji nastavte v každém prohlížeči, který používáte; stránka se po přepnutí znovu načte.
+**Kde:** Předvolby (profil → Předvolby) → „Jazyk rozhraní“ (uloží se tlačítkem Uložit; stránka se pak znovu načte)
 
 Aplikace podporuje dvě jazykové mutace:
-- **Česky (cs)** — výchozí
-- **English (en)** — přepnutím se změní veškerý popis UI
+- **Česky (cs)** - výchozí
+- **English (en)** - přepnutím se změní veškerý popis UI
+
+Jazyk je uložený ve vašem účtu, takže platí na každém zařízení a v každém prohlížeči po přihlášení.
+Přihlašovací stránka (před přihlášením) se zobrazí podle jazyka prohlížeče: anglický prohlížeč = English, jinak čeština.
 
 **Jazyk dokumentů** (PDF, emaily) závisí na nastavení každého klienta (pole „Jazyk" v detailu klienta), ne na jazyku UI. Pokud klient má `en`, dostane PDF a email v angličtině bez ohledu na váš jazyk UI.
 

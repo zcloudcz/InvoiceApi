@@ -27,4 +27,9 @@ public class UserPreferencesDto
     /// Null = never dismissed.
     /// </summary>
     public DateTime? SetupWizardDismissedAt { get; set; }
+
+    /// <summary>
+    /// UI language of the user. Allowed values: "cs-CZ" (default), "en-US".
+    /// </summary>
+    public string UiCulture { get; set; } = "cs-CZ";
 }
