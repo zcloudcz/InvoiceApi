@@ -2490,6 +2490,13 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<DateTime?>("SetupWizardDismissedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("UiCulture")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("cs-CZ");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 

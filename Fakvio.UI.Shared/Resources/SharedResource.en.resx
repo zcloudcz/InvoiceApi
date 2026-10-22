@@ -2216,7 +2216,9 @@
   <data name="Payments_Import_Hint" xml:space="preserve"><value>A .gpc / .abo / .txt file from internet banking (max 5 MB). Re-importing the same statement creates no duplicates. The statement account must be listed in company settings.</value></data>
   <data name="Payments_Import_Summary" xml:space="preserve"><value>Statements: {0}, newly imported: {1}, duplicates: {2}, matched: {3}, unmatched: {4}.</value></data>
   <data name="Pref_LanguageTitle" xml:space="preserve"><value>Interface language</value></data>
-  <data name="Pref_LanguageHelper" xml:space="preserve"><value>Switches the application language (CZ / EN) in this browser. The page reloads.</value></data>
+  <data name="Pref_LanguageHelper" xml:space="preserve"><value>The application language is stored in your account and applies whenever you sign in, on any device. The page reloads after saving.</value></data>
+  <data name="Pref_LanguageCs" xml:space="preserve"><value>Čeština</value></data>
+  <data name="Pref_LanguageEn" xml:space="preserve"><value>English</value></data>
   <data name="Btn_Actions" xml:space="preserve"><value>Actions</value></data>
   <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="ContentTemplate_SubjectPdfHint" xml:space="preserve"><value>The subject is not used for PDF templates.</value></data>

@@ -58,6 +58,31 @@ public class UserPreferencesEndpointTests : IClassFixture<FakvioFactory>
     }
 
     [Fact]
+    public async Task Put_UiCulture_RoundTrips()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+
+        var putResponse = await client.PutAsJsonAsync("/api/user-preferences",
+            new UserPreferencesDto { UiCulture = "en-US" });
+        putResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var dto = await (await client.GetAsync("/api/user-preferences"))
+            .Content.ReadFromJsonAsync<UserPreferencesDto>();
+        dto!.UiCulture.ShouldBe("en-US");
+    }
+
+    [Fact]
+    public async Task Put_InvalidUiCulture_Returns400()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+
+        var response = await client.PutAsJsonAsync("/api/user-preferences",
+            new UserPreferencesDto { UiCulture = "de-DE" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Put_InvalidPageSize_Returns400()
     {
         var client = await CreateAuthenticatedClientAsync();

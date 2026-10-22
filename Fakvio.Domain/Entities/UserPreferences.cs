@@ -47,4 +47,9 @@ public class UserPreferences : BaseEntity
     /// longer has blocking readiness issues and the redirect condition is false anyway.
     /// </summary>
     public DateTime? SetupWizardDismissedAt { get; set; }
+
+    /// <summary>
+    /// UI language of the user: "cs-CZ" (default) or "en-US". Validated in the service.
+    /// </summary>
+    public string UiCulture { get; set; } = "cs-CZ";
 }

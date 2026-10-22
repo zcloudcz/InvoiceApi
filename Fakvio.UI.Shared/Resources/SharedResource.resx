@@ -2216,7 +2216,9 @@
   <data name="Payments_Import_Hint" xml:space="preserve"><value>Soubor .gpc / .abo / .txt z internetového bankovnictví (max. 5 MB). Opakovaný import téhož výpisu nevytvoří duplicity. Účet z výpisu musí být uvedený v nastavení firmy.</value></data>
   <data name="Payments_Import_Summary" xml:space="preserve"><value>Výpisů: {0}, nově naimportováno: {1}, duplicit: {2}, spárováno: {3}, nespárováno: {4}.</value></data>
   <data name="Pref_LanguageTitle" xml:space="preserve"><value>Jazyk rozhraní</value></data>
-  <data name="Pref_LanguageHelper" xml:space="preserve"><value>Přepne jazyk aplikace (CZ / EN) v tomto prohlížeči. Stránka se znovu načte.</value></data>
+  <data name="Pref_LanguageHelper" xml:space="preserve"><value>Jazyk aplikace se ukládá do vašeho účtu a platí po přihlášení na všech zařízeních. Po uložení se stránka znovu načte.</value></data>
+  <data name="Pref_LanguageCs" xml:space="preserve"><value>Čeština</value></data>
+  <data name="Pref_LanguageEn" xml:space="preserve"><value>English</value></data>
   <data name="Btn_Actions" xml:space="preserve"><value>Akce</value></data>
   <data name="Cancel" xml:space="preserve"><value>Zrušit</value></data>
   <data name="ContentTemplate_SubjectPdfHint" xml:space="preserve"><value>Předmět se u PDF šablon nepoužívá.</value></data>

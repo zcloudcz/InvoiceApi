@@ -3233,7 +3233,10 @@ Při `null` výsledku resolver zaloguje všechny prošlé kandidátní adresy na
 - Resources: `Fakvio.UI.Shared/Resources/SharedResource.resx` + `SharedResource.en.resx`.
 - Marker class `Fakvio.UI.Shared/SharedResource.cs` — **MUSÍ** být v root namespace, NE v `.Resources` sub-namespace (jinak double-path trap → resource manager hledá `Resources/Resources/SharedResource.resx`).
 - Setup: `services.AddLocalization(o => o.ResourcesPath = "Resources");` (`ServiceCollectionExtensions.cs:33`).
-- WASM Program.cs: `CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("cs-CZ")`.
+- UI jazyk je per user: `UserPreferences.UiCulture` (`cs-CZ` default / `en-US`, validace v `UserPreferencesService`).
+  - WASM Program.cs: `UiCultureResolver.Resolve(localStorage 'culture', navigator.language)`; bez cache (login, po odhlášení) rozhoduje prohlížeč (`en*` = EN, jinak CZ).
+  - `MainLayout.ApplyUserCultureAsync` po přihlášení načte preference, uloží `culture` do localStorage a jednou reloadne; `ClearSessionAsync` klíč maže.
+  - Změna jazyka = reload (`forceLoad`), resx se v běžící WASM nepřepne.
 
 **API host culture detection** (pokud někdy povolíme browser auto-detect): `AcceptLanguageHeaderRequestCultureProvider` po `CookieRequestCultureProvider` — cookie = explicit choice, header = browser default.
 

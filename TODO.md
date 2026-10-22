@@ -1,5 +1,11 @@
 # Fakvio TODO
 
+## Per-user UI language (2026-10-22)
+
+- [x] `UserPreferences.UiCulture` (cs-CZ default / en-US) + migration `AddUserPreferencesUiCulture`; login page follows browser language, logged-in user gets their preference; Preferences page select; tests.
+- [ ] Verify in browser after deploy (login -> reload to EN for an EN user, logout -> browser language).
+- [ ] `LanguageSwitcher.razor` is now unused - delete?
+
 ## UI language switch in Preferences (branch `feat/ui-language-switcher`)
 
 - [x] `Program.cs` reads the stored culture (`cs-CZ` default, only `en-US` accepted); `LanguageSwitcher` back in Preferences.
