@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.10.22 - 2026-10-22
+
+### Změny pro uživatele
+
+- **PR #567** - Jazyk rozhraní se ukládá do účtu uživatele (výchozí čeština) a platí po přihlášení na všech zařízeních. Přihlašovací stránka se řídí jazykem prohlížeče, takže už nezůstává anglicky jen proto, že někdo v tom prohlížeči dříve přepnul na EN. (PR #567, `1ed5cf1`)
+
 ## 2026.10.21.2 - 2026-10-21
 
 ### Změny pro uživatele
