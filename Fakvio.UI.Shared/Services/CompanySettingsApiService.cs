@@ -62,9 +62,9 @@ public class CompanySettingsApiService : ApiClientBase
     }
 
     /// <summary>
-    /// Updates an existing CompanySystemSettings record.
-    /// Only mutable fields can be changed (connectionString, maxUsers, adminNotes).
-    /// Database name and provisioning status are immutable.
+    /// Updates the company-editable SMTP / AI / EPO settings (partial update — null fields
+    /// keep their stored value). Database name and provisioning status are immutable;
+    /// MaxUsers / AdminNotes go through <see cref="UpdateAdminSettingsAsync"/>.
     /// </summary>
     /// <param name="companyId">Company (issuer) ID</param>
     /// <param name="dto">Updated settings data</param>
@@ -73,6 +73,19 @@ public class CompanySettingsApiService : ApiClientBase
     {
         return await PutAsync<UpdateCompanySystemSettingsDto, CompanySystemSettingsDto>(
             $"/api/company/{companyId}/settings", dto);
+    }
+
+    /// <summary>
+    /// Updates the SysAdmin-only MaxUsers / AdminNotes pair. Both fields are written as sent
+    /// (null MaxUsers = unlimited), so always send the complete pair (issue #184).
+    /// </summary>
+    /// <param name="companyId">Company (issuer) ID</param>
+    /// <param name="dto">New MaxUsers / AdminNotes values</param>
+    public async Task<CompanySystemSettingsDto?> UpdateAdminSettingsAsync(
+        long companyId, UpdateCompanyAdminSettingsDto dto)
+    {
+        return await PutAsync<UpdateCompanyAdminSettingsDto, CompanySystemSettingsDto>(
+            $"/api/company/{companyId}/settings/admin", dto);
     }
 
     /// <summary>
