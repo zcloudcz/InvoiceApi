@@ -18,9 +18,10 @@ namespace Fakvio.Infrastructure.Authentication.OAuth;
 /// be defeated, so read it in order:
 /// 1. <paramref name="clientId"/> shape — https, has a path, no fragment/userinfo/query, port 443 only.
 /// 2. Host allowlist (<c>McpOAuth:TrustedClientHosts</c>) — early access is closed to unknown hosts.
-/// 3. Cache (positive AND negative) — also caps the fetch to one concurrent request per client_id.
+/// 3. Cache (positive AND negative, negative bounded) — single-flight per client_id plus a global
+/// cap of <see cref="MaxConcurrentFetches"/> concurrent outbound fetches.
 /// 4. The fetch itself — <see cref="SsrfSafeConnect"/> via a dedicated named HttpClient, no
-///    redirects, 5s timeout, 64 KB response cap.
+///    redirects, one 5s deadline for send + body read, 64 KB response cap.
 /// 5. Document validation — client_id echoes the URL, redirect_uris present and well-formed,
 ///    and the client supports the public-client "none" token endpoint authentication method.
 ///
@@ -34,6 +35,9 @@ public class OAuthClientResolver : IOAuthClientResolver
     /// <summary>Registered name of the dedicated HttpClient (see DI registration).</summary>
     public const string HttpClientName = "OAuthClientMetadata";
 
+    /// <summary>Global cap on concurrent outbound CIMD fetches (see <c>_fetchSlots</c>).</summary>
+    public const int MaxConcurrentFetches = 4;
+    private const int MaxNegativeEntries = 1000;
     private const int MaxResponseBytes = 64 * 1024;
     private static readonly TimeSpan FetchTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MinPositiveCache = TimeSpan.FromMinutes(5);
@@ -46,11 +50,28 @@ public class OAuthClientResolver : IOAuthClientResolver
     private readonly ILogger<OAuthClientResolver> _logger;
 
     /// <summary>
-    /// One semaphore per client_id, so a burst of authorize requests for the same never-seen
-    /// client collapses to a single outbound fetch instead of hammering the client's server
-    /// (ADR §4.6: "max 1 souběžný fetch per client_id").
+    /// Single-flight per client_id: a burst of authorize requests for the same never-seen client
+    /// shares ONE outbound fetch (ADR §4.6). Entries are removed when the fetch finishes, so the
+    /// map only ever holds fetches that are running right now (bounded by their 5 s deadline).
     /// </summary>
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _fetchLocks = new();
+    private readonly ConcurrentDictionary<string, Lazy<Task<OAuthClientDocument?>>> _inFlight = new();
+
+    /// <summary>
+    /// Global cap on concurrent outbound fetches. Without it an anonymous caller could use random
+    /// client_ids on a trusted host (claude.ai/...) to make us flood that host and get our egress
+    /// IP blocked, which would break every real login.
+    /// </summary>
+    private readonly SemaphoreSlim _fetchSlots = new(MaxConcurrentFetches, MaxConcurrentFetches);
+
+    /// <summary>
+    /// Negative results live in their own size-limited cache: the shared IMemoryCache is unbounded,
+    /// and random client_ids would otherwise fill it with 5-minute failure markers. When full, new
+    /// failures simply are not cached (the global fetch cap still protects the remote host).
+    /// </summary>
+    private readonly MemoryCache _negativeCache = new(new MemoryCacheOptions { SizeLimit = MaxNegativeEntries });
+
+    /// <summary>Number of fetches currently running (exposed for tests).</summary>
+    public int InFlightCount => _inFlight.Count;
 
     public OAuthClientResolver(
         IHttpClientFactory httpClientFactory,
@@ -81,31 +102,50 @@ public class OAuthClientResolver : IOAuthClientResolver
 
         var cacheKey = CacheKey(clientId);
         if (_cache.TryGetValue(cacheKey, out CacheEntry? cached))
-            return cached!.Document; // Document is null for a cached negative result.
+            return cached!.Document;
+        if (_negativeCache.TryGetValue(cacheKey, out _))
+            return null;
 
-        var gate = _fetchLocks.GetOrAdd(clientId, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
+        // The shared fetch must not be tied to the first caller's token (cancelling it would
+        // cancel everyone else's result), so it runs on its own deadline; each caller only
+        // abandons its own wait.
+        var lazy = _inFlight.GetOrAdd(clientId,
+            id => new Lazy<Task<OAuthClientDocument?>>(() => FetchAndCacheAsync(id, uri, cacheKey)));
+        return await lazy.Value.WaitAsync(ct);
+    }
+
+    private async Task<OAuthClientDocument?> FetchAndCacheAsync(string clientId, Uri uri, string cacheKey)
+    {
         try
         {
-            // Another caller may have populated the cache while we waited for the gate.
-            if (_cache.TryGetValue(cacheKey, out cached))
-                return cached!.Document;
-
-            var (document, positiveCacheDuration, rejectReason) = await FetchAndValidateAsync(clientId, uri, ct);
-
-            if (document is null)
+            await _fetchSlots.WaitAsync();
+            (OAuthClientDocument? Document, TimeSpan CacheDuration, string? RejectReason) result;
+            try
             {
-                Reject(clientId, rejectReason!);
-                _cache.Set(cacheKey, new CacheEntry(null), NegativeCacheDuration);
+                // ONE deadline around send + body read: HttpClient.Timeout (headers only, with
+                // ResponseHeadersRead) would let a server trickling the body hold a slot forever.
+                using var cts = new CancellationTokenSource(FetchTimeout);
+                result = await FetchAndValidateAsync(clientId, uri, cts.Token);
+            }
+            finally
+            {
+                _fetchSlots.Release();
+            }
+
+            if (result.Document is null)
+            {
+                Reject(clientId, result.RejectReason!);
+                _negativeCache.Set(cacheKey, true,
+                    new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = NegativeCacheDuration });
                 return null;
             }
 
-            _cache.Set(cacheKey, new CacheEntry(document), positiveCacheDuration);
-            return document;
+            _cache.Set(cacheKey, new CacheEntry(result.Document), result.CacheDuration);
+            return result.Document;
         }
         finally
         {
-            gate.Release();
+            _inFlight.TryRemove(clientId, out _);
         }
     }
 
@@ -174,7 +214,6 @@ public class OAuthClientResolver : IOAuthClientResolver
         FetchAndValidateAsync(string clientId, Uri uri, CancellationToken ct)
     {
         var client = _httpClientFactory.CreateClient(HttpClientName);
-        client.Timeout = FetchTimeout;
 
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -195,7 +234,7 @@ public class OAuthClientResolver : IOAuthClientResolver
         {
             return (null, default, $"SSRF guard blocked the fetch: {inner.Message}");
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
             return (null, default, $"fetch failed: {ex.Message}");
         }
@@ -224,6 +263,10 @@ public class OAuthClientResolver : IOAuthClientResolver
             catch (InvalidOperationException ex)
             {
                 return (null, default, ex.Message);
+            }
+            catch (OperationCanceledException)
+            {
+                return (null, default, "CIMD body read timed out");
             }
 
             OAuthClientDocumentJson? parsed;
